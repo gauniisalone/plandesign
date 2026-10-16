@@ -1,0 +1,250 @@
+---
+import Base from "../layouts/Base.astro";
+import {
+  APP_URL,
+  NEW_PROJECT_URL,
+  REPO_URL,
+  DESCRIPTION_MAX,
+  SURFACE_MIN,
+  SURFACE_MAX,
+  ROOM_TYPES,
+} from "../config";
+
+const title = "PlanDesign · De la photo de la pièce au plan et aux rendus";
+const description =
+  "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Code ouvert, données hébergées en France.";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "PlanDesign",
+  url: "https://plandesign.fr/",
+  description,
+  applicationCategory: "DesignApplication",
+  operatingSystem: "Web",
+  inLanguage: "fr",
+  isAccessibleForFree: true,
+  offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+  license: "https://www.apache.org/licenses/LICENSE-2.0",
+  sameAs: [REPO_URL],
+  featureList: [
+    "Plan construit depuis la photo d'une pièce ou un plan 2D (PDF, DXF)",
+    "Rendus réalistes sous plusieurs points de vue",
+    "Tableau de projet : exigences, photos, inspirations, plan, rendus",
+    "Planche d'inspiration",
+    "Exports SVG, PDF, DXF et GLB",
+  ],
+};
+---
+
+<Base title={title} description={description} path="/" jsonLd={jsonLd}>
+  <section class="hero" aria-labelledby="titre">
+    <div class="wrap">
+      <h1 id="titre">Nous dessiner</h1>
+      <p class="lead">
+        De la photo de la pièce au plan, puis aux rendus — décrivez le projet, le tableau fait le reste.
+      </p>
+
+      <form
+        id="projet"
+        class="project-form"
+        action={NEW_PROJECT_URL}
+        method="get"
+        accept-charset="utf-8"
+        aria-describedby="projet-aide"
+      >
+        <input type="hidden" name="v" value="1" />
+        <input type="hidden" name="source" value="site" />
+        <div class="form-meta">
+          <span>Votre projet</span>
+          <strong>Gratuit · connexion par e-mail, sans mot de passe</strong>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="mono" for="piece">Type de pièce</label>
+            <select id="piece" name="piece">
+              <option value="">Choisir…</option>
+              {ROOM_TYPES.map((r) => <option value={r.value}>{r.label}</option>)}
+            </select>
+            <svg class="chev" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M10 3v13M4 10l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div class="field">
+            <label class="mono" for="surface">Surface (m²)</label>
+            <input
+              id="surface"
+              name="surface"
+              type="number"
+              inputmode="decimal"
+              min={SURFACE_MIN}
+              max={SURFACE_MAX}
+              step="0.1"
+              placeholder="35"
+            />
+          </div>
+          <div class="field field-wide">
+            <label class="mono" for="description">Décrivez le projet*</label>
+            <textarea
+              id="description"
+              name="description"
+              rows="4"
+              required
+              maxlength={DESCRIPTION_MAX}
+              placeholder="Ex. : transformer les combles en chambre d'amis, avec un coin bureau sous la fenêtre de toit. Ambiance bois clair et lin."
+            ></textarea>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Commencer</button>
+        <p id="projet-aide" class="form-hint">
+          *Obligatoire. Vous vous connecterez ensuite par e-mail ; votre saisie préremplira votre premier tableau.
+          Ce site ne la conserve pas. Inscription sur invitation pendant la version d'essai.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <section id="comment-ca-marche" class="section section-alt" aria-labelledby="titre-comment">
+    <div class="wrap">
+      <p class="eyebrow mono">Comment ça marche</p>
+      <h2 id="titre-comment">Une photo suffit pour commencer.</h2>
+      <p class="intro">
+        Pas de logiciel à apprendre : vous déposez, PlanDesign construit le plan puis propose des rendus. Vous corrigez
+        ce que vous voulez, quand vous voulez.
+      </p>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-art">
+            <svg viewBox="0 0 240 180" role="img" aria-labelledby="art1">
+              <title id="art1">Illustration : une photo de pièce posée sur le tableau</title>
+              <rect x="34" y="22" width="172" height="136" rx="10" fill="#f6f0e5" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M34 128 L88 96 H152 L206 128" fill="none" stroke="#2a2420" stroke-width="2"></path>
+              <path d="M88 96 V40 H152 V96" fill="none" stroke="#2a2420" stroke-width="2"></path>
+              <rect x="104" y="52" width="32" height="28" fill="#9fb3ce" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M88 40 L34 22 M152 40 L206 22" stroke="#2a2420" stroke-width="2"></path>
+              <circle cx="186" cy="146" r="18" fill="#a63a2e"></circle>
+              <path d="M186 154 V138 M179 145 L186 138 L193 145" fill="none" stroke="#ede3d1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <span class="step-num" aria-hidden="true">1</span>
+          <h3>Déposez la pièce</h3>
+          <p>Une ou plusieurs photos de la pièce, ou un plan 2D existant (PDF ou DXF). Ajoutez vos envies en quelques mots.</p>
+        </li>
+        <li class="step">
+          <div class="step-art">
+            <svg viewBox="0 0 240 180" role="img" aria-labelledby="art2">
+              <title id="art2">Illustration : le plan de la pièce, avec porte et fenêtre</title>
+              <rect x="40" y="30" width="160" height="120" fill="none" stroke="#2a2420" stroke-width="6"></rect>
+              <rect x="90" y="26" width="48" height="8" fill="#9fb3ce" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M200 96 V128" stroke="#f6f0e5" stroke-width="8"></path>
+              <path d="M200 96 L170 96 M170 96 A32 32 0 0 1 200 128" fill="none" stroke="#2a2420" stroke-width="1.6"></path>
+              <rect x="56" y="98" width="56" height="38" rx="4" fill="#dccfb8" stroke="#2a2420" stroke-width="1.6"></rect>
+              <rect x="128" y="50" width="34" height="22" rx="3" fill="#8c7bbf" opacity="0.55" stroke="#2a2420" stroke-width="1.6"></rect>
+              <path d="M40 164 H200 M40 160 V168 M200 160 V168" stroke="#c4743f" stroke-width="2"></path>
+            </svg>
+          </div>
+          <span class="step-num" aria-hidden="true">2</span>
+          <h3>Le plan se construit</h3>
+          <p>Murs, ouvertures et dimensions sont estimés automatiquement. Vous pouvez aussi tracer le plan à la main ou le générer depuis un programme.</p>
+        </li>
+        <li class="step">
+          <div class="step-art">
+            <svg viewBox="0 0 240 180" role="img" aria-labelledby="art3">
+              <title id="art3">Illustration : trois vues rendues de la même pièce</title>
+              <rect x="20" y="40" width="96" height="72" rx="8" fill="#ede3d1" stroke="#2a2420" stroke-width="2"></rect>
+              <rect x="124" y="40" width="96" height="72" rx="8" fill="#ede3d1" stroke="#2a2420" stroke-width="2"></rect>
+              <rect x="72" y="104" width="96" height="60" rx="8" fill="#f6f0e5" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M20 96 L52 78 H84 L116 96" fill="none" stroke="#2a2420" stroke-width="1.6"></path>
+              <rect x="40" y="86" width="30" height="14" rx="3" fill="#a63a2e"></rect>
+              <path d="M124 92 L150 72 H220" fill="none" stroke="#2a2420" stroke-width="1.6"></path>
+              <rect x="176" y="80" width="26" height="22" rx="3" fill="#6f7d4e"></rect>
+              <path d="M72 150 L104 130 H136 L168 150" fill="none" stroke="#2a2420" stroke-width="1.6"></path>
+              <rect x="108" y="136" width="24" height="12" rx="3" fill="#c4743f"></rect>
+            </svg>
+          </div>
+          <span class="step-num" aria-hidden="true">3</span>
+          <h3>Recevez les rendus</h3>
+          <p>Plusieurs rendus réalistes de la pièce aménagée, sous plusieurs points de vue, sans aucun réglage à faire.</p>
+        </li>
+      </ol>
+
+      <div class="placeholder" role="note">
+        <p>
+          <strong>Visuel à fournir</strong>
+          Exemple réel : la photo d'une pièce et ses trois rendus (accord du propriétaire des images requis avant publication).
+        </p>
+      </div>
+
+      <p class="note">
+        Lors de nos essais du 16 octobre 2026 sur un ordinateur équipé d'une carte graphique, le plan était prêt en 17 à
+        38 secondes et trois vues rendues en une à deux minutes après le dépôt. En ligne, les délais dépendront des postes
+        de calcul mis à disposition pendant la version d'essai.
+      </p>
+    </div>
+  </section>
+
+  <section id="fonctionnalites" class="section" aria-labelledby="titre-fonctions">
+    <div class="wrap">
+      <p class="eyebrow mono">Fonctionnalités</p>
+      <h2 id="titre-fonctions">Tout le projet sur un seul tableau.</h2>
+      <ul class="features">
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect x="3" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="16" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="3" y="16" width="22" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect></svg>
+          <h3>Un tableau par projet</h3>
+          <p>Exigences, photos, inspirations, plan et rendus réunis au même endroit.</p>
+        </li>
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M4 4h20v20H4z M4 14h9 M13 14v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
+          <h3>Plan tracé ou généré</h3>
+          <p>Construit depuis vos photos ou un plan 2D, tracé à la main, ou généré depuis une liste de pièces.</p>
+        </li>
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M2 14s4.5-8 12-8 12 8 12 8-4.5 8-12 8S2 14 2 14z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><circle cx="14" cy="14" r="3.5" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>
+          <h3>Rendus multi-vues</h3>
+          <p>Vue d'ensemble, contrechamp, détail : la même pièce vue sous plusieurs angles.</p>
+        </li>
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect x="3" y="5" width="22" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"></rect><path d="M3 19l6-6 5 5 3-3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><circle cx="19" cy="10" r="2" fill="currentColor"></circle></svg>
+          <h3>Planche d'inspiration</h3>
+          <p>Des images d'ambiance générées d'après votre projet et vos références, calculées sans service tiers.</p>
+        </li>
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M14 3v14 M8 11l6 6 6-6 M4 21v3h20v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <h3>Exports ouverts</h3>
+          <p>Plan en SVG, PDF ou DXF, scène 3D en GLB : vos fichiers vont où vous voulez.</p>
+        </li>
+        <li class="feature">
+          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M10 8l-6 6 6 6 M18 8l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <h3>Code ouvert</h3>
+          <p>Le code est public sous licence Apache-2.0 : <a href={REPO_URL} rel="noopener">voir sur GitHub</a>.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="vos-donnees" class="section section-alt" aria-labelledby="titre-donnees">
+    <div class="wrap">
+      <p class="eyebrow mono">Vos données</p>
+      <h2 id="titre-donnees">Hébergé en France, sans traceur.</h2>
+      <ul class="data-list">
+        <li><p><strong>Hébergé en France</strong><span>Les projets sont hébergés chez Hostinger, dans un centre de données à Paris.</span></p></li>
+        <li><p><strong>Aucune photo envoyée à un tiers</strong><span>Vos photos ne sont transmises à aucun service tiers, ni pour le plan ni pour les rendus.</span></p></li>
+        <li><p><strong>Aucun traceur publicitaire</strong><span>Pas de publicité, pas de mesure d'audience tierce, pas de cookie sur ce site.</span></p></li>
+        <li><p><strong>Assistant externe sur demande</strong><span>Un modèle de langage externe (Gemini, texte seul) n'est utilisé que si vous cochez la case prévue.</span></p></li>
+      </ul>
+      <p class="note">Détails dans la page <a href="/confidentialite/">Confidentialité</a>.</p>
+    </div>
+  </section>
+
+  <section class="section cta" aria-labelledby="titre-cta">
+    <div class="wrap">
+      <h2 id="titre-cta">Prêt à dessiner votre pièce ?</h2>
+      <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail, et déposez votre première photo.</p>
+      <div class="cta-actions">
+        <a class="btn btn-primary" href="#projet">Commencer</a>
+        <a class="btn btn-outline" href={APP_URL}>Ouvrir le tableau</a>
+      </div>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,21 @@
+---
+import Logo from "./Logo.astro";
+import { APP_URL, NEW_PROJECT_URL } from "../config";
+---
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="PlanDesign, accueil">
+      <Logo />
+      <span>PlanDesign</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="/#fonctionnalites">Fonctionnalités</a>
+      <a href="/#comment-ca-marche">Comment ça marche</a>
+      <a href="/#vos-donnees">Vos données</a>
+    </nav>
+    <div class="header-actions">
+      <a class="btn btn-outline" href={APP_URL}>Ouvrir le tableau</a>
+      <a class="btn btn-primary" href={NEW_PROJECT_URL}>Se lancer</a>
+    </div>
+  </div>
+</header>

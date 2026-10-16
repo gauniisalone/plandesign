@@ -1,0 +1,46 @@
+---
+import Base from "../layouts/Base.astro";
+import { REPO_URL } from "../config";
+---
+
+<Base
+  title="Mentions légales · PlanDesign"
+  description="Mentions légales du site plandesign.fr : éditeur, directeur de la publication, hébergeur et propriété intellectuelle."
+  path="/mentions-legales/"
+>
+  <article class="wrap prose">
+    <h1>Mentions légales</h1>
+    <p class="updated">Dernière mise à jour : <span class="todo">[À COMPLÉTER PAR AUGUS : date de mise en ligne]</span></p>
+
+    <h2>Éditeur du site</h2>
+    <p>Le site plandesign.fr et l'application app.plandesign.fr sont édités par :</p>
+    <ul>
+      <li>Nom ou raison sociale : <span class="todo">[À COMPLÉTER PAR AUGUS : nom et prénom, ou dénomination sociale]</span></li>
+      <li>Statut : <span class="todo">[À COMPLÉTER PAR AUGUS : particulier, entrepreneur individuel, société (forme et capital)]</span></li>
+      <li>Adresse : <span class="todo">[À COMPLÉTER PAR AUGUS : adresse postale, ou mention « adresse communiquée à l'hébergeur » pour un éditeur non professionnel]</span></li>
+      <li>Immatriculation : <span class="todo">[À COMPLÉTER PAR AUGUS : SIREN / RCS, ou « sans objet »]</span></li>
+      <li>Contact : <span class="todo">[À COMPLÉTER PAR AUGUS : adresse e-mail de contact]</span></li>
+    </ul>
+
+    <h2>Directeur de la publication</h2>
+    <p><span class="todo">[À COMPLÉTER PAR AUGUS : nom du directeur de la publication]</span></p>
+
+    <h2>Hébergeur</h2>
+    <p>
+      Hostinger International Ltd, 61 Lordou Vironos Street, 6023 Larnaca, Chypre — site : hostinger.fr.
+      Les serveurs utilisés sont situés en France (Paris).
+      <span class="todo">[À VÉRIFIER PAR AUGUS : entité et adresse figurant sur le contrat Hostinger]</span>
+    </p>
+
+    <h2>Propriété intellectuelle</h2>
+    <p>
+      Le code de PlanDesign est publié sous licence Apache-2.0 : <a href={REPO_URL} rel="noopener">dépôt public</a>.
+      Les polices Outfit et JetBrains Mono sont distribuées sous licence SIL Open Font License 1.1
+      (<a href="/fonts/OFL-Outfit.txt">Outfit</a>, <a href="/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).
+      Les textes et visuels de ce site restent la propriété de leur auteur, sauf mention contraire.
+    </p>
+
+    <h2>Données personnelles</h2>
+    <p>Voir la page <a href="/confidentialite/">Confidentialité</a>.</p>
+  </article>
+</Base>
