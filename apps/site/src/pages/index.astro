@@ -10,7 +10,7 @@ import {
   ROOM_TYPES,
 } from "../config";
 
-const title = "PlanDesign · De la photo de la pièce au plan et aux rendus";
+const title = "Vos designs et plans en un clic · PlanDesign";
 const description =
   "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Code ouvert, données hébergées en France.";
 
@@ -23,14 +23,12 @@ const jsonLd = {
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
   inLanguage: "fr",
-  isAccessibleForFree: true,
-  offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
   license: "https://www.apache.org/licenses/LICENSE-2.0",
   sameAs: [REPO_URL],
   featureList: [
     "Plan construit depuis la photo d'une pièce ou un plan 2D (PDF, DXF)",
     "Rendus réalistes sous plusieurs points de vue",
-    "Tableau de projet : exigences, photos, inspirations, plan, rendus",
+    "Espace de travail par projet : exigences, photos, inspirations, plan, rendus",
     "Planche d'inspiration",
     "Exports SVG, PDF, DXF et GLB",
   ],
@@ -40,9 +38,9 @@ const jsonLd = {
 <Base title={title} description={description} path="/" jsonLd={jsonLd}>
   <section class="hero" aria-labelledby="titre">
     <div class="wrap">
-      <h1 id="titre">Nous dessiner</h1>
+      <h1 id="titre">Vos designs et plans en un clic</h1>
       <p class="lead">
-        De la photo de la pièce au plan, puis aux rendus — décrivez le projet, le tableau fait le reste.
+        De la photo de la pièce au plan, puis aux rendus — décrivez le projet, l'espace de travail fait le reste.
       </p>
 
       <form
@@ -57,7 +55,7 @@ const jsonLd = {
         <input type="hidden" name="source" value="site" />
         <div class="form-meta">
           <span>Votre projet</span>
-          <strong>Gratuit · connexion par e-mail, sans mot de passe</strong>
+          <strong>Connexion par e-mail, sans mot de passe</strong>
         </div>
         <div class="form-grid">
           <div class="field">
@@ -97,7 +95,7 @@ const jsonLd = {
         </div>
         <button class="btn btn-primary btn-block" type="submit">Commencer</button>
         <p id="projet-aide" class="form-hint">
-          *Obligatoire. Vous vous connecterez ensuite par e-mail ; votre saisie préremplira votre premier tableau.
+          *Obligatoire. Vous vous connecterez ensuite par e-mail ; votre saisie préremplira votre premier espace de travail.
           Ce site ne la conserve pas. Inscription sur invitation pendant la version d'essai.
         </p>
       </form>
@@ -117,7 +115,7 @@ const jsonLd = {
         <li class="step">
           <div class="step-art">
             <svg viewBox="0 0 240 180" role="img" aria-labelledby="art1">
-              <title id="art1">Illustration : une photo de pièce posée sur le tableau</title>
+              <title id="art1">Illustration : une photo de pièce déposée dans l'espace de travail</title>
               <rect x="34" y="22" width="172" height="136" rx="10" fill="#f6f0e5" stroke="#2a2420" stroke-width="2"></rect>
               <path d="M34 128 L88 96 H152 L206 128" fill="none" stroke="#2a2420" stroke-width="2"></path>
               <path d="M88 96 V40 H152 V96" fill="none" stroke="#2a2420" stroke-width="2"></path>
@@ -187,11 +185,11 @@ const jsonLd = {
   <section id="fonctionnalites" class="section" aria-labelledby="titre-fonctions">
     <div class="wrap">
       <p class="eyebrow mono">Fonctionnalités</p>
-      <h2 id="titre-fonctions">Tout le projet sur un seul tableau.</h2>
+      <h2 id="titre-fonctions">Tout le projet dans un seul espace de travail.</h2>
       <ul class="features">
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect x="3" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="16" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="3" y="16" width="22" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect></svg>
-          <h3>Un tableau par projet</h3>
+          <h3>Un espace de travail par projet</h3>
           <p>Exigences, photos, inspirations, plan et rendus réunis au même endroit.</p>
         </li>
         <li class="feature">
@@ -243,7 +241,7 @@ const jsonLd = {
       <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail, et déposez votre première photo.</p>
       <div class="cta-actions">
         <a class="btn btn-primary" href="#projet">Commencer</a>
-        <a class="btn btn-outline" href={APP_URL}>Ouvrir le tableau</a>
+        <a class="btn btn-outline" href={APP_URL}>Ouvrir mon espace</a>
       </div>
     </div>
   </section>
