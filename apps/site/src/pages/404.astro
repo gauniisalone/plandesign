@@ -1,0 +1,21 @@
+---
+import Base from "../layouts/Base.astro";
+import { APP_URL } from "../config";
+---
+
+<Base
+  title="Page introuvable · PlanDesign"
+  description="Cette page n'existe pas ou a été déplacée."
+  path="/404/"
+  noindex
+>
+  <section class="wrap prose notfound">
+    <p class="eyebrow mono">Erreur 404</p>
+    <h1>Cette page n'existe pas.</h1>
+    <p>Elle a peut-être été déplacée. Revenez à l'accueil ou ouvrez directement votre espace de travail.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/">Retour à l'accueil</a>
+      <a class="btn btn-outline" href={APP_URL}>Ouvrir mon espace</a>
+    </div>
+  </section>
+</Base>

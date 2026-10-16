@@ -1,0 +1,43 @@
+---
+import Base from "../layouts/Base.astro";
+import { REPO_URL, ISSUES_URL } from "../config";
+---
+
+<Base
+  title="Mentions légales · PlanDesign"
+  description="Mentions légales du site plandesign.fr : éditeur, directeur de la publication, hébergeur et propriété intellectuelle."
+  path="/mentions-legales/"
+>
+  <article class="wrap prose">
+    <h1>Mentions légales</h1>
+    <p class="updated">Dernière mise à jour : 16 octobre 2026</p>
+
+    <h2>Éditeur du site</h2>
+    <p>
+      PlanDesign (site plandesign.fr et application app.plandesign.fr) est un projet personnel, non professionnel.
+      Conformément à l'article 6, III, 2 de la loi n° 2004-575 du 21 juin 2004 (LCEN), son éditeur a choisi de ne pas
+      rendre publiques ses coordonnées, qui ont été communiquées à l'hébergeur.
+    </p>
+    <p>Nous écrire : <a href={ISSUES_URL} rel="noopener">ouvrir un ticket sur GitHub</a>.</p>
+
+    <h2>Directeur de la publication</h2>
+    <p>L'éditeur.</p>
+
+    <h2>Hébergeur</h2>
+    <p>
+      Hostinger International Ltd, 61 Lordou Vironos Street, 6023 Larnaca, Chypre — site : hostinger.fr.
+      Les données sont hébergées dans un centre de données à Paris (France).
+    </p>
+
+    <h2>Propriété intellectuelle</h2>
+    <p>
+      Le code de PlanDesign est publié sous licence Apache-2.0 : <a href={REPO_URL} rel="noopener">dépôt public</a>.
+      Les polices Outfit et JetBrains Mono sont distribuées sous licence SIL Open Font License 1.1
+      (<a href="/fonts/OFL-Outfit.txt">Outfit</a>, <a href="/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).
+      Les textes et visuels de ce site restent la propriété de leur auteur, sauf mention contraire.
+    </p>
+
+    <h2>Données personnelles</h2>
+    <p>Voir la page <a href="/confidentialite/">Confidentialité</a>.</p>
+  </article>
+</Base>
