@@ -28,7 +28,7 @@ test("médias : vidéo, PDF avec vignette, lien jamais récupéré, fichiers de 
     .setInputFiles(PLAN_DXF);
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
 
   // Vidéo et PDF importés depuis le tableau.
   await board.locator(".board-rail input[type=file]").setInputFiles([

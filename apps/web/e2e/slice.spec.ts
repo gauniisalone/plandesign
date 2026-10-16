@@ -19,7 +19,7 @@ async function createProject(page: Page, name: string): Promise<void> {
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "Vos tableaux",
+      name: "Vos espaces de travail",
     }),
   ).toBeVisible();
   await createEmptyProject(page, name);
@@ -417,7 +417,7 @@ test("première photo d'un projet neuf (tableau) : plan construit sans autre act
   });
   await expectSpace(page, "board", { timeout: 30_000 });
   await page
-    .getByRole("region", { name: "Tableau" })
+    .getByRole("region", { name: "Espace de travail" })
     .locator(".board-rail input[type=file]")
     .setInputFiles(FIXTURE);
   const id = /projects\/([0-9a-f-]{36})/.exec(page.url())?.[1];

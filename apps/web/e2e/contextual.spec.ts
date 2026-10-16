@@ -37,7 +37,7 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   });
   await page.reload();
   await expectSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
 
   // Le plan comme source : pas un guide d'image, une vue 3D est proposée (aucune rendue ici).
   await board.locator(".board-item.kind-plan .board-plan-head").click();
@@ -99,7 +99,9 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   await expect(panel).toContainText("profondeur seule");
   // Modifiable avant la génération ; trop long, le volet prévient (le modèle coupe à 77).
   const built = await prompt.inputValue();
-  await prompt.fill(built + ", " + Array(40).fill("golden brass lamp").join(", "));
+  await prompt.fill(
+    built + ", " + Array(40).fill("golden brass lamp").join(", "),
+  );
   await expect(panel.getByRole("alert")).toContainText("Trop long");
   // Une modification à longueur égale : plus d'alerte (le prompt construit tient le budget).
   await prompt.fill(built.replace("scandinavian", "nordic"));
@@ -114,7 +116,10 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   await page.route(`**/levels/*/contextual`, (route) =>
     route.fulfill({
       status: 409,
-      json: { detail: "poids du modèle d'images absents (essai) : openplan models pull sd15" },
+      json: {
+        detail:
+          "poids du modèle d'images absents (essai) : openplan models pull sd15",
+      },
     }),
   );
   await panel.getByRole("button", { name: /Générer 3 variantes/ }).click();

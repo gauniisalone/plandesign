@@ -192,7 +192,7 @@ export function TopBar({
             type="button"
             className="primary"
             onClick={() => onTab("board")}
-            title="Le tableau : photos, demande, rendus, plan et fichiers sur un même espace"
+            title="L'espace de travail : photos, demande, rendus, plan et fichiers sur un même espace"
           >
             Ouvrir l'éditeur →
           </button>
@@ -210,9 +210,9 @@ export function TopBar({
           <button
             type="button"
             onClick={() => onTab("board")}
-            title="Revenir au tableau, là où vous l'aviez laissé"
+            title="Revenir à l'espace de travail, là où vous l'aviez laissé"
           >
-            ← Tableau
+            ← Espace de travail
           </button>
         )}
         {tab && <span className="space-name">{SPACE_LABEL[tab]}</span>}
@@ -746,8 +746,8 @@ export function BottomBar({
             <a href={api.exportArchiveUrl(project.id)} download>
               Archive (.zip)
               <small>
-                sauvegarde complète : plan et historique, tableau, photos,
-                fichiers joints, rendus
+                sauvegarde complète : plan et historique, espace de travail,
+                photos, fichiers joints, rendus
               </small>
             </a>
             <a href={api.exportJsonUrl(project.id)} download>

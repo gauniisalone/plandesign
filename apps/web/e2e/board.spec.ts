@@ -29,7 +29,7 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
     .setInputFiles(PLAN_DXF);
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   const plan = board.locator(".board-item.kind-plan");
   await expect(plan).toBeVisible();
   await expect(plan).toContainText("Modifier le plan");
@@ -107,7 +107,7 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
   await expect(page.getByRole("tablist")).toHaveCount(0);
   await page
     .getByRole("navigation", { name: "Espaces du projet" })
-    .getByRole("button", { name: "← Tableau" })
+    .getByRole("button", { name: "← Espace de travail" })
     .click();
   await expectSpace(page, "board");
   await expect(world).toHaveAttribute("style", seen ?? "");

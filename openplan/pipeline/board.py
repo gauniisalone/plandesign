@@ -84,7 +84,8 @@ class StaleBoardError(ValueError):
 
     def __init__(self, sent: int, current: int) -> None:
         super().__init__(
-            f"le tableau a changé ailleurs (révision {current}, envoyée {sent}) : rechargez-le"
+            f"l'espace de travail a changé ailleurs (révision {current}, envoyée {sent}) : "
+            "rechargez-le"
         )
         self.current = current
 

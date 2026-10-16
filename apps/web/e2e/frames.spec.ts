@@ -8,10 +8,17 @@ import { createEmptyProject, expectSpace, goSpace } from "./helpers";
  *  une image jointe cochée Référence, visible ; une photo déposée dans Photos de la pièce
  *  entre dans le projet et prend sa place dans le cadre. Aucune requête externe. */
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
-const PNG = readFileSync(path.resolve("../../tests/fixtures/rect_room/image.png"));
+const PNG = readFileSync(
+  path.resolve("../../tests/fixtures/rect_room/image.png"),
+);
 
 /** Dépose un fichier sur le tableau, au centre d'un cadre (événement drop réel). */
-async function dropInto(page: Page, frame: Locator, name: string, bytes: Buffer) {
+async function dropInto(
+  page: Page,
+  frame: Locator,
+  name: string,
+  bytes: Buffer,
+) {
   const box = (await frame.boundingBox())!;
   const dt = await page.evaluateHandle(
     ([data, fileName]) => {
@@ -47,9 +54,11 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
     .setInputFiles(PLAN_DXF);
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");
-  const inspirations = board.locator(".board-item.kind-frame.role-inspirations");
+  const inspirations = board.locator(
+    ".board-item.kind-frame.role-inspirations",
+  );
   await expect(photos).toContainText("Photos de la pièce");
   await expect(photos).toContainText("photos réelles de la pièce");
   await expect(inspirations).toContainText("images d'ambiance");
@@ -62,14 +71,18 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
   await expect(inspiration).toContainText("chalet.png");
   await expect(inspirations).not.toContainText("images d'ambiance");
   const insideInspirations = await inspiration.evaluate((el) => {
-    const frame = el.closest(".board-world")?.querySelector(".role-inspirations");
+    const frame = el
+      .closest(".board-world")
+      ?.querySelector(".role-inspirations");
     const a = el.getBoundingClientRect();
     const b = frame?.getBoundingClientRect();
     return !!b && a.left >= b.left && a.top >= b.top && a.right <= b.right;
   });
   expect(insideInspirations).toBe(true);
   // Elle n'est pas une photo du projet.
-  const project = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+  const project = (await (
+    await page.request.get(`/api/projects/${id}`)
+  ).json()) as {
     images: Record<string, unknown>;
   };
   expect(Object.keys(project.images)).toHaveLength(0);
@@ -81,7 +94,9 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
   await expect(photos).not.toContainText("photos réelles de la pièce");
   await expect
     .poll(async () => {
-      const p = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+      const p = (await (
+        await page.request.get(`/api/projects/${id}`)
+      ).json()) as {
         images: Record<string, unknown>;
       };
       return Object.keys(p.images).length;
@@ -91,8 +106,8 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
   await photo.click();
   await board.getByRole("button", { name: "Rendu contextualisé…" }).click();
   const panel = page.getByRole("region", { name: "Rendu contextualisé" });
-  await expect(panel.getByRole("list", { name: "Références cochées" })).toContainText(
-    "chalet.png",
-  );
+  await expect(
+    panel.getByRole("list", { name: "Références cochées" }),
+  ).toContainText("chalet.png");
   expect(outside).toEqual([]);
 });

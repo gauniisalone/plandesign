@@ -73,7 +73,7 @@ for (const [width, height] of SIZES) {
     await page.goto("/");
     await expect(
       page.getByRole("heading", {
-        name: "Vos tableaux",
+        name: "Vos espaces de travail",
       }),
     ).toBeVisible();
     await expectNoHorizontalScroll(page);

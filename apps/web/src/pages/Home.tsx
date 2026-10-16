@@ -88,7 +88,7 @@ export function Home({ onOpen }: Props) {
           <IconPlan />
         </span>
         <span className="boards-brand">{APP_NAME}</span>
-        <span className="chip muted">vos tableaux</span>
+        <span className="chip muted">vos espaces de travail</span>
         <span className="boards-sp" />
         <button
           type="button"
@@ -128,10 +128,10 @@ export function Home({ onOpen }: Props) {
             recharge la page.
           </div>
         )}
-        <h1>Vos tableaux</h1>
+        <h1>Vos espaces de travail</h1>
         <p className="muted">
-          Un tableau par projet : vos exigences, vos photos, vos inspirations,
-          le plan et les rendus au même endroit.
+          Un espace de travail par projet : vos exigences, vos photos, vos
+          inspirations, le plan et les rendus au même endroit.
         </p>
         <ul className="boards-cards" aria-label="Projets">
           <li>
@@ -157,8 +157,8 @@ export function Home({ onOpen }: Props) {
         </ul>
         {projects && projects.length === 0 && (
           <p className="muted">
-            Aucun projet pour l'instant : « Nouveau projet » ouvre un tableau
-            vide.
+            Aucun projet pour l'instant : « Nouveau projet » ouvre un espace de
+            travail vide.
           </p>
         )}
         {error && <p className="warn">{error}</p>}
@@ -214,7 +214,7 @@ function ProjectCard({
   const remove = async () => {
     if (
       !window.confirm(
-        `Supprimer définitivement « ${p.name} » (tableau, scène, images, rendus) ?`,
+        `Supprimer définitivement « ${p.name} » (espace de travail, scène, images, rendus) ?`,
       )
     )
       return;

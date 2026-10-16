@@ -16,7 +16,7 @@ test("cadre Plan vide : tracer ou générer, progression, plan de départ depuis
   });
   const id = await createEmptyProject(page, "Plan vide");
   await goSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   const plan = board.locator(".board-item.kind-plan");
   await expect(plan).toContainText("Votre plan");
   await expect(

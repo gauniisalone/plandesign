@@ -125,7 +125,7 @@ test("galerie : nouveau projet → tableau, consigne et photos → plan, vignett
   test.setTimeout(240_000);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Vos tableaux" }),
+    page.getByRole("heading", { name: "Vos espaces de travail" }),
   ).toBeVisible();
   await expect(page.locator(".boards-foot")).toContainText(
     "vos photos et plans restent sur cette machine ; rien ne part",
@@ -143,7 +143,7 @@ test("galerie : nouveau projet → tableau, consigne et photos → plan, vignett
   await kept(page, id, (p) => p.pending_instruction === CONSIGNE);
 
   // Deux photos dans « Photos de la pièce » : la première construit le plan, sans geste.
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");
   await dropInto(page, photos, PHOTO, "image/png");
   await expect(
@@ -210,7 +210,7 @@ test("tableau : échec de la construction → message clair, photo et consigne g
   await card.getByLabel("Vos envies et contraintes").fill(CONSIGNE);
   await card.getByLabel("Vos envies et contraintes").blur();
   await kept(page, id, (p) => p.pending_instruction === CONSIGNE);
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   await dropInto(
     page,
     board.locator(".board-item.kind-frame.role-photos"),
@@ -254,7 +254,7 @@ test("L1b sur le tableau : une pièce et sa surface → plan de départ simplifi
     .fill("Une chambre de 60 m² lumineuse, bois clair");
   await card.getByLabel("Vos envies et contraintes").blur();
   await kept(page, id, (p) => (p.pending_instruction ?? "").includes("60 m²"));
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   await board
     .locator(".board-item.kind-plan")
     .getByRole("button", { name: "Générer le plan" })
@@ -280,13 +280,13 @@ test("L3 sur le tableau : un logement décrit → plan généré, pièces nommé
   await card.getByLabel("Vos envies et contraintes").blur();
   await kept(page, id, (p) => p.pending_instruction === T3);
   await page
-    .getByRole("region", { name: "Tableau" })
+    .getByRole("region", { name: "Espace de travail" })
     .locator(".board-item.kind-plan")
     .getByRole("button", { name: "Générer le plan" })
     .click();
   await expect(
     page
-      .getByRole("region", { name: "Tableau" })
+      .getByRole("region", { name: "Espace de travail" })
       .locator(".board-item.kind-plan img.board-plan"),
   ).toBeVisible({ timeout: 60_000 });
   await goSpace(page, "plan");

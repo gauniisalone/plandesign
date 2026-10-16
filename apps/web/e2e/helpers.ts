@@ -51,7 +51,7 @@ export async function goSpace(page: Page, space: Space): Promise<void> {
       await page.getByRole("button", { name: /Ajouter une source/ }).click();
     else if ((space === "plan" || space === "3d") && now === "board")
       await page
-        .getByRole("region", { name: "Tableau" })
+        .getByRole("region", { name: "Espace de travail" })
         .locator(".board-item.kind-plan .board-plan-head button")
         .first()
         .click();

@@ -112,7 +112,7 @@ test("barres compactes : infobulles, raccourcis, aucune fonction perdue", async 
   await expect(
     page
       .getByRole("navigation", { name: "Espaces du projet" })
-      .getByRole("button", { name: "← Tableau" }),
+      .getByRole("button", { name: "← Espace de travail" }),
   ).toBeVisible();
   await expect(button(page, "3D")).toBeVisible();
   await expectSpace(page, "plan");

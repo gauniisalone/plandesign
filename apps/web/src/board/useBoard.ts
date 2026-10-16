@@ -61,7 +61,7 @@ export function useBoard(projectId: string, syncKey: string) {
         setBoard(fresh);
       })
       .catch((e: unknown) => {
-        if (!off) setNotice(`Tableau indisponible : ${String(e)}`);
+        if (!off) setNotice(`Espace de travail indisponible : ${String(e)}`);
       });
     return () => {
       off = true;
@@ -89,7 +89,7 @@ export function useBoard(projectId: string, syncKey: string) {
       inflight.current = false;
       if (e instanceof ApiError && e.status === 409) {
         await reload(
-          "Le tableau a été enregistré ailleurs (un autre onglet ?) : il est rechargé, votre dernier geste n'y est pas.",
+          "L'espace de travail a été enregistré ailleurs (un autre onglet ?) : il est rechargé, votre dernier geste n'y est pas.",
         ).catch(() => setSave("error"));
         return;
       }

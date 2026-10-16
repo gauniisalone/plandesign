@@ -27,7 +27,7 @@ test("P0 : passages d'espace mesurés au journal local, sans réseau extérieur"
   // Fermer « Ajouter une source » n'est pas un passage d'espace.
   await source.click();
   await expectSpace(page, "plan");
-  await nav.getByRole("button", { name: "← Tableau" }).click();
+  await nav.getByRole("button", { name: "← Espace de travail" }).click();
   await expectSpace(page, "board");
   await nav.getByRole("button", { name: "← Résultats" }).click();
   await expectSpace(page, "renders");

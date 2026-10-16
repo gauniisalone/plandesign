@@ -567,7 +567,7 @@ function LayoutsSection({
                     onClick={() =>
                       onCompare(compare?.index === p.index ? null : p)
                     }
-                    title="Dessine cette variante en vert à côté de celle montrée en orange, avec un tableau côte à côte"
+                    title="Dessine cette variante en vert à côté de celle montrée en orange, avec une comparaison côte à côte"
                   >
                     {compare?.index === p.index
                       ? "ne plus comparer"

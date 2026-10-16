@@ -112,7 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--camera-height", type=float, default=1.5, help="hauteur de prise de vue (m)")
 
     evaluate = sub.add_parser(
-        "evaluate", help="photos réelles mesurées (dossier par pièce) → tableau d'erreurs"
+        "evaluate",
+        help="photos réelles mesurées (dossier par pièce) → erreurs mesurées, pièce par pièce",
     )
     evaluate.add_argument("root", type=Path, help="racine : un sous-dossier par pièce")
     evaluate.add_argument("--no-depth", action="store_true", help="sans profondeur métrique")

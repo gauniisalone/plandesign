@@ -29,8 +29,8 @@ wsl -d Debian -- bash -lc "cd ~/plandesign && make start"
 
 ### 1. Déposer la photo du grenier
 
-La page d'arrivée est la **galerie de vos tableaux** (un projet = un tableau, avec sa
-vignette : son dernier rendu, sinon son plan). Cliquer **+ Nouveau projet** : le tableau du
+La page d'arrivée est la **galerie de vos espaces de travail** (un projet = un espace de travail, avec sa
+vignette : son dernier rendu, sinon son plan). Cliquer **+ Nouveau projet** : l'espace de travail du
 projet s'ouvre : à gauche les cadres **Photos de la pièce** et **Inspirations**, au centre le
 **Plan**, à droite les **Rendus**, et en bas le **compositeur** (vos exigences et « Générer »). **Déposer la photo du grenier** dans le cadre « Photos de la pièce »
 (ou le bouton Importer de la colonne d'outils). La photo est importée et le plan se construit
@@ -64,9 +64,9 @@ message qui dit pourquoi ; l'image d'inspiration de secours de l'ancien accueil 
 désormais depuis Paramètres avancés › Outils experts › Photos.
 
 L'atelier a trois espaces, sans onglets : l'écran de **résultats** (les rendus, d'abord dès
-qu'un rendu existe), l'**éditeur** (le tableau, voir plus bas) et le **plan**, édité depuis son
-cadre du tableau. On passe de l'un à l'autre par un seul bouton en haut : **Ouvrir l'éditeur →**
-sur les résultats, **← Résultats** sur le tableau, **← Tableau** dans le plan. Dans le plan :
+qu'un rendu existe), l'**éditeur** (l'espace de travail, voir plus bas) et le **plan**, édité depuis son
+cadre de l'espace de travail. On passe de l'un à l'autre par un seul bouton en haut : **Ouvrir l'éditeur →**
+sur les résultats, **← Résultats** dans l'espace de travail, **← Espace de travail** dans le plan. Dans le plan :
 un canevas quadrillé plein écran ; en haut le nom du projet, **Ajouter une source** (photos ou plan), le bouton qui replie le panneau de droite et l'engrenage
 **Paramètres avancés** ; dessous la palette (sélection, main, mur, porte, fenêtre,
 **Recalibrer**, pièces, **Meuble**, **Aménager**, annuler, rétablir, supprimer) ; en bas à
@@ -121,10 +121,9 @@ restent et le bouton le dit. Le menu **Éclairage** choisit l'heure du jour (mat
 nuit, ou neutre) ; dites où est le **nord** de votre plan (Paramètres avancés › Réglages, en
 haut par défaut, boussole en haut à droite du plan) pour que le soleil vienne du bon côté.
 
-## Le tableau du projet
+## L'espace de travail du projet
 
-Le tableau (l'éditeur, ouvert par **Ouvrir l'éditeur →**) réunit tout le projet sur un même espace, comme
-un tableau Figma ou Miro : les photos, la note de votre demande, les rendus, le plan et les
+L'espace de travail (l'éditeur, ouvert par **Ouvrir l'éditeur →**) réunit tout le projet sur un même espace, comme dans Figma ou Miro : les photos, la note de votre demande, les rendus, le plan et les
 fichiers joints. À la première ouverture, tout est déjà posé : les photos et les rendus dans
 leurs cadres, la note sous les photos, le plan à droite. Une nouvelle photo ou un nouveau
 rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
@@ -136,14 +135,14 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
 - **Ranger** : l'outil Cadre (F) trace un cadre nommé ; ce qui est lâché dedans lui
   appartient et bouge avec lui.
 - **Écrire** : l'outil Note (N), puis un clic ; double-clic sur une note pour la modifier.
-- **Exigences : le compositeur** flotte en bas du tableau. Onglet **Prompt libre** : vos
+- **Exigences : le compositeur** flotte en bas de l'espace de travail. Onglet **Prompt libre** : vos
   envies en texte libre ; onglet **Questions guidées** : espace, surface, chambres, style,
   « plus d'options » (format, lumière, ambiance, meubles voulus, à éviter). La case Gemini
   (texte seul) et la ligne « compris : … » sont communes. Tout est gardé dans le projet et
   lu par le chemin automatique au prochain plan ; « Nouvelle variante » envoie le texte à
-  l'assistant. Le × le referme : plus rien de vos exigences sur le tableau, la pastille
+  l'assistant. Le × le referme : plus rien de vos exigences dans l'espace de travail, la pastille
   **Générer** le rouvre.
-- **Importer** : glissez des photos ou des fichiers sur le tableau, collez-les (Ctrl+V),
+- **Importer** : glissez des photos ou des fichiers dans l'espace de travail, collez-les (Ctrl+V),
   ou le bouton Importer. Une photo entre dans le projet ; un autre fichier est joint tel
   quel (50 Mo au plus) et se télécharge depuis sa carte.
 - **Le plan, à votre main ou généré** : tant qu'il est vide, le cadre Plan propose
@@ -154,10 +153,9 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
   (activée : déposer une photo de la pièce suffit, le plan puis les rendus suivent) et
   « Générer maintenant ».
 - **Deux cadres à remplir** : **Photos de la pièce** reçoit les photos réelles (elles font le
-  plan) ; **Inspirations** reçoit vos images d'ambiance : jointes au projet, montrées sur le
-  tableau et cochées Référence, leur allure guide les rendus contextualisés. Un fichier
+  plan) ; **Inspirations** reçoit vos images d'ambiance : jointes au projet, montrées dans l'espace de travail et cochées Référence, leur allure guide les rendus contextualisés. Un fichier
   déposé dans un cadre y prend sa place.
-- **Vidéos, PDF, liens** : une vidéo mp4 ou webm (200 Mo au plus) se lit sur le tableau ; un
+- **Vidéos, PDF, liens** : une vidéo mp4 ou webm (200 Mo au plus) se lit dans l'espace de travail ; un
   PDF montre sa première page, rendue sur la machine, et **Ouvrir** l'affiche dans un nouvel
   onglet ; l'outil **Lien** (L), ou une adresse collée, pose une carte avec le domaine et le
   titre saisi : la page n'est jamais récupérée, elle s'ouvre au clic. Un fichier joint autrement
@@ -177,7 +175,7 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
   l'anglais (que le modèle lit). Le volet compte les jetons (« environ N sur 77 ») : le modèle
   coupe la fin au-delà, un avertissement le dit si votre modification déborde. Une génération
   ne modifie jamais le plan ni la 3D.
-- **Références d'allure** : sélectionnez des images du tableau (photos, rendus, variantes,
+- **Références d'allure** : sélectionnez des images de l'espace de travail (photos, rendus, variantes,
   images jointes) et cochez **Référence** dans la barre de sélection : leur allure (matières,
   ambiance) guide les variantes, jamais leur géométrie (IP-Adapter local, poids à télécharger
   une fois avec `openplan models pull ip_adapter_sd15@1.0`, 2,6 Go). Quatre au plus, poids
@@ -185,26 +183,26 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
   disent quelles références les ont guidées.
 - **Trier les variantes** : sur chaque carte du moodboard, ☆ **À conserver** marque la
   variante retenue (étoile, contour), 💬 **Commenter** attache une remarque à la carte
-  (enregistrée avec le tableau), ⧉ **Dupliquer** en pose une copie à côté. Un commentaire ne
+  (enregistrée avec l'espace de travail), ⧉ **Dupliquer** en pose une copie à côté. Un commentaire ne
   modifie rien d'autre.
 - **Ordonner, verrouiller, dupliquer, supprimer** : la barre qui apparaît au-dessus de la
-  sélection, ou ] et [, Ctrl+L, Ctrl+D, Suppr. Le plan ne se supprime pas du tableau.
+  sélection, ou ] et [, Ctrl+L, Ctrl+D, Suppr. Le plan ne se supprime pas de l'espace de travail.
 - **Se déplacer** : molette pour faire défiler, Ctrl + molette pour zoomer, espace + glisser
   ou l'outil Main (H) ; Ctrl+0 montre tout.
 - **Aller plus loin** : double-clic sur le plan (ou « Modifier le plan ») : la vue zoome dans
-  son cadre et le plan s'édite en grand, avec la 3D dans sa barre des vues ; **← Tableau**
-  rend le tableau à la même position et au même zoom ;
+  son cadre et le plan s'édite en grand, avec la 3D dans sa barre des vues ; **← Espace de travail**
+  rend l'espace de travail à la même position et au même zoom ;
   double-clic sur un rendu pour le retrouver en grand dans Rendus.
 
-**Annuler et rétablir agissent sur l'espace actif.** Sur le tableau, Ctrl+Z et Ctrl+Maj+Z
-(ou Ctrl+Y) défont et refont les gestes du tableau (déplacer, agrandir, ranger, écrire),
+**Annuler et rétablir agissent sur l'espace actif.** Dans l'espace de travail, Ctrl+Z et Ctrl+Maj+Z
+(ou Ctrl+Y) défont et refont les gestes de l'espace de travail (déplacer, agrandir, ranger, écrire),
 sans toucher au plan. Pendant l'édition du plan, les mêmes touches défont et refont les
-gestes sur le plan, sans toucher au tableau. Les deux historiques sont séparés.
+gestes sur le plan, sans toucher à l'espace de travail. Les deux historiques sont séparés.
 
 L'indicateur en haut à droite dit l'état réel : « Enregistrement… » pendant l'envoi,
 « Enregistré » une fois la réponse reçue, « Échec de l'enregistrement » avec « réessayer »
-sinon. Si le tableau a été enregistré entre-temps ailleurs (un autre onglet), il est rechargé
-et le message le dit : rien n'est écrasé en silence. Le tableau est gardé à part du plan
+sinon. Si l'espace de travail a été enregistré entre-temps ailleurs (un autre onglet), il est rechargé
+et le message le dit : rien n'est écrasé en silence. L'espace de travail est gardé à part du plan
 (`board.json` à côté de `project.json`) et fait partie de l'export « Archive (.zip) ».
 
 ## Pour aller plus loin, si le cœur vous en dit

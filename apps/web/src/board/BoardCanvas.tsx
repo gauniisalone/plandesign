@@ -242,7 +242,7 @@ export function BoardCanvas(props: Props) {
     const planned = selection.filter((i) => i.kind === "plan");
     if (planned.length)
       setMessage(
-        "Le plan reste sur le tableau : on peut le déplacer ou le réduire, pas le retirer.",
+        "Le plan reste dans l'espace de travail : on peut le déplacer ou le réduire, pas le retirer.",
       );
     const gone = new Set(
       selection.filter((i) => i.kind !== "plan" && !i.locked).map((i) => i.id),
@@ -1131,8 +1131,12 @@ export function BoardCanvas(props: Props) {
     drag && (drag.kind === "marquee" || drag.kind === "frame") ? drag : null;
 
   return (
-    <section className="board" aria-label="Tableau">
-      <div className="board-rail" role="toolbar" aria-label="Outils du tableau">
+    <section className="board" aria-label="Espace de travail">
+      <div
+        className="board-rail"
+        role="toolbar"
+        aria-label="Outils de l'espace de travail"
+      >
         {(
           [
             ["select", "↖", "Sélection (V)"],
@@ -1197,8 +1201,8 @@ export function BoardCanvas(props: Props) {
         <button
           type="button"
           className="icon"
-          aria-label="Annuler sur le tableau"
-          title="Annuler sur le tableau (Ctrl+Z)"
+          aria-label="Annuler dans l'espace de travail"
+          title="Annuler dans l'espace de travail (Ctrl+Z)"
           disabled={!props.canUndo}
           onClick={props.onUndo}
         >
@@ -1207,8 +1211,8 @@ export function BoardCanvas(props: Props) {
         <button
           type="button"
           className="icon"
-          aria-label="Rétablir sur le tableau"
-          title="Rétablir sur le tableau (Ctrl+Maj+Z)"
+          aria-label="Rétablir dans l'espace de travail"
+          title="Rétablir dans l'espace de travail (Ctrl+Maj+Z)"
           disabled={!props.canRedo}
           onClick={props.onRedo}
         >
@@ -1414,7 +1418,11 @@ export function BoardCanvas(props: Props) {
           onGenerateNow={props.onGenerateNow}
         />
 
-        <div className="board-zoom" role="group" aria-label="Zoom du tableau">
+        <div
+          className="board-zoom"
+          role="group"
+          aria-label="Zoom de l'espace de travail"
+        >
           <button
             type="button"
             className="icon"

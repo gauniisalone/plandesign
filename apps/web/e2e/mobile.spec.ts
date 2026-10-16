@@ -22,7 +22,7 @@ test("téléphone : tracer une pièce au doigt, sans débordement", async ({
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "Vos tableaux",
+      name: "Vos espaces de travail",
     }),
   ).toBeVisible();
   await createEmptyProject(page, "Au doigt");

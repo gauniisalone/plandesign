@@ -45,23 +45,24 @@ const VARIANTS: { id: ContextualVariant; label: string; hint: string }[] = [
   },
 ];
 /** Source photo (A4) : profondeur seule, forces plus hautes, contraintes plus basses. */
-const PHOTO_VARIANTS: { id: ContextualVariant; label: string; hint: string }[] = [
-  {
-    id: "conservatrice",
-    label: "Conservatrice",
-    hint: "restyle la pièce, garde l'essentiel (0,5 · profondeur 0,9)",
-  },
-  {
-    id: "creative",
-    label: "Créative",
-    hint: "laisse venir les meubles de l'intention (0,75 · 0,6)",
-  },
-  {
-    id: "radicale",
-    label: "Radicale",
-    hint: "réinvente la pièce, volume tenu par la profondeur (0,92 · 0,4)",
-  },
-];
+const PHOTO_VARIANTS: { id: ContextualVariant; label: string; hint: string }[] =
+  [
+    {
+      id: "conservatrice",
+      label: "Conservatrice",
+      hint: "restyle la pièce, garde l'essentiel (0,5 · profondeur 0,9)",
+    },
+    {
+      id: "creative",
+      label: "Créative",
+      hint: "laisse venir les meubles de l'intention (0,75 · 0,6)",
+    },
+    {
+      id: "radicale",
+      label: "Radicale",
+      hint: "réinvente la pièce, volume tenu par la profondeur (0,92 · 0,4)",
+    },
+  ];
 const BUDGETS: {
   id: "economique" | "standard" | "haut_de_gamme";
   label: string;
@@ -243,7 +244,9 @@ export function ContextualPanel({
                   <input
                     type="radio"
                     name="contextual-source"
-                    checked={source?.kind === "render" && source.id === entry.run_id}
+                    checked={
+                      source?.kind === "render" && source.id === entry.run_id
+                    }
                     onChange={() =>
                       setSource({
                         kind: "render",
@@ -296,9 +299,10 @@ export function ContextualPanel({
       <h3>Références d'allure</h3>
       {usedReferences.length === 0 ? (
         <p className="muted">
-          Aucune : sélectionnez des images du tableau (photos, rendus, images
-          jointes) et cochez <b>Référence</b> pour que leur allure (matières,
-          ambiance) guide les variantes. Sans référence, le texte seul guide.
+          Aucune : sélectionnez des images de l'espace de travail (photos,
+          rendus, images jointes) et cochez <b>Référence</b> pour que leur
+          allure (matières, ambiance) guide les variantes. Sans référence, le
+          texte seul guide.
         </p>
       ) : (
         <>
@@ -410,7 +414,10 @@ export function ContextualPanel({
             onChange={(e) => setPrompt(e.target.value)}
             disabled={running}
           />
-          <p className={overflow ? "warn" : "muted"} role={overflow ? "alert" : undefined}>
+          <p
+            className={overflow ? "warn" : "muted"}
+            role={overflow ? "alert" : undefined}
+          >
             {overflow
               ? `Trop long : environ ${tokens} jetons, le modèle n'en lit que ${CLIP_LIMIT} et coupe la fin sans prévenir. Raccourcissez.`
               : `Environ ${tokens} jetons sur ${CLIP_LIMIT} lus par le modèle. `}
@@ -474,7 +481,7 @@ export function ContextualPanel({
           {job.status === "running"
             ? `${job.stage || job.message}${job.remaining_s != null ? ` · environ ${Math.round(job.remaining_s)} s` : ""}`
             : job.status === "done"
-              ? "Variantes ajoutées au tableau (cadre Moodboard)."
+              ? "Variantes ajoutées à l'espace de travail (cadre Moodboard)."
               : ""}
         </p>
       )}

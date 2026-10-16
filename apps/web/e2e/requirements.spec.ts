@@ -23,7 +23,7 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
     .setInputFiles(PLAN_DXF);
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
-  const board = page.getByRole("region", { name: "Tableau" });
+  const board = page.getByRole("region", { name: "Espace de travail" });
   await expect(board.locator(".board-item.kind-requirements")).toHaveCount(0);
   const composer = page.getByRole("region", { name: "Compositeur" });
   await expect(composer).toHaveCount(1);

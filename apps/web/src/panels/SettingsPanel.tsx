@@ -103,7 +103,7 @@ export function SettingsPanel({
               })
             }
           />
-          Une photo déposée sur le tableau d'un projet sans plan lance la construction du plan
+          Une photo déposée dans l'espace de travail d'un projet sans plan lance la construction du plan
         </label>
         <label className="check">
           <input
