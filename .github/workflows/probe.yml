@@ -1,0 +1,46 @@
+# .github/workflows/probe.yml (D4, après passage en public) : sonde externe toutes les 15 min.
+# Vérifie depuis l'extérieur ce que Gatus (sur le VPS) ne peut pas voir : le VPS entier injoignable.
+# Alerte Telegram en cas d'échec ; pas de message quand tout va bien (Gatus envoie les rétablissements).
+name: probe
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Sonder plandesign.fr, l'application, la page d'état et le suivi des erreurs
+        id: check
+        run: |
+          fail=""
+          for url in https://plandesign.fr/ https://app.plandesign.fr/api/health https://status.plandesign.fr/ https://errors.plandesign.fr/api/0/; do
+            code=000
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || true)
+              [ "$code" = 200 ] && break; sleep 10
+            done
+            echo "$url → $code" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$code" = 200 ] || fail="$fail $url($code)"
+          done
+          echo "fail=$fail" >> "$GITHUB_OUTPUT"
+          [ -z "$fail" ]
+      - name: Alerte Telegram
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FAIL: ${{ steps.check.outputs.fail }}
+        run: |
+          printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$TG_TOKEN" \
+            | curl -s --max-time 15 -K - --data-urlencode "chat_id=$TG_CHAT" \
+                --data-urlencode "text=PlanDesign · sonde externe (GitHub) : injoignable depuis l'extérieur :$FAIL" > /dev/null
