@@ -1,0 +1,5 @@
+node_modules
+dist
+*.local
+# JSON Schema intermédiaires : régénérés par `make web-types`
+schemas/

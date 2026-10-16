@@ -1,0 +1,30 @@
+# OpenPlan Studio en conteneur (roadmap 2.7) : un seul service, API + front sur un port.
+#   docker compose up --build      puis ouvrir http://localhost:8000/
+#
+# network_mode: host : l'API écoute 127.0.0.1:8000 de la machine, comme `make start`, donc sans
+# jeton et injoignable depuis le réseau. Fonctionne avec Docker Engine sous Linux / WSL2 et
+# Docker Desktop (option « Enable host networking »). Sans réseau hôte, utiliser la variante
+# du bas : port publié sur 127.0.0.1 et jeton obligatoire (l'API écoute 0.0.0.0 dans le conteneur).
+#
+# Les projets restent dans ./data de ce dépôt (volume) : supprimables, jamais dans l'image.
+# Image « légère » : sans torch ni Blender (voir Dockerfile).
+services:
+  openplan:
+    build: .
+    image: openplan-studio:local
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+      - ./models/weights:/app/models/weights:ro
+    environment:
+      OPENPLAN_HOST: 127.0.0.1
+      OPENPLAN_PORT: ${OPENPLAN_PORT:-8000}   # OPENPLAN_PORT=8010 docker compose up si 8000 est pris
+    restart: unless-stopped
+
+# Variante sans réseau hôte (décommenter, commenter network_mode ci-dessus) :
+#   ports:
+#     - "127.0.0.1:8000:8000"
+#   environment:
+#     OPENPLAN_HOST: 0.0.0.0
+#     OPENPLAN_API_TOKEN: ${OPENPLAN_API_TOKEN:?définir OPENPLAN_API_TOKEN dans .env}
+# Le front demande alors le jeton une fois (il ne va jamais dans l'URL).

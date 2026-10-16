@@ -1,0 +1,164 @@
+# ============================================================
+# Logs
+# ============================================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================================================
+# Runtime
+# ============================================================
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================================
+# Tests / couverture
+# ============================================================
+coverage/
+*.lcov
+.nyc_output
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ============================================================
+# Node
+# ============================================================
+node_modules/
+jspm_packages/
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+.next/
+out/
+.nuxt/
+.turbo/
+.parcel-cache
+.vite/
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Java / JVM
+# ============================================================
+*.class
+*.war
+*.ear
+target/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# ============================================================
+# Rust
+# ============================================================
+/target/
+**/target/
+# NB : ne PAS ignorer Cargo.lock pour un binaire/application.
+#      Décommente uniquement s'il s'agit d'une bibliothèque publiée.
+# Cargo.lock
+
+# ============================================================
+# Go
+# ============================================================
+bin/
+obj/
+*.exe
+*.test
+
+# ============================================================
+# Build générique
+# ============================================================
+dist/
+build/
+
+# ============================================================
+# Android
+# ============================================================
+local.properties
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# ============================================================
+# Terraform
+# ============================================================
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+
+# ============================================================
+# Docker
+# ============================================================
+docker-compose.override.yml
+
+# ============================================================
+# IDE / OS
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# OpenPlan Studio
+# ============================================================
+# Données utilisateur (images, scènes, runs) : jamais dans le dépôt
+/data/
+/out/
+# Ressources copiées par `make build` pour le wheel (front, registre, catalogue, script Blender)
+/openplan/_bundled/
+# Poids de modèles : gérés par models/.gitignore
+# Artefacts Blender
+*.blend1
+# uv.lock est COMMITÉ (reproductibilité) ; .venv/ est déjà ignoré plus haut
+
+# ============================================================
+# Secrets - NE JAMAIS COMMITER
+# ============================================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+credentials.json
+
+# ============================================================
+# Tests navigateur (Playwright) : données jetables, rapports, captures
+# ============================================================
+apps/web/.e2e-data/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/e2e/screenshots/
+apps/web/test-results-audit/

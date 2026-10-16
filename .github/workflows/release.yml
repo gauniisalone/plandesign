@@ -1,0 +1,42 @@
+# Publication (gratuit) : à chaque étiquette `v*`, construit le front et le wheel qui l'embarque,
+# les attache à la release GitHub et les publie sur PyPI par « trusted publishing » (aucun
+# secret dans le dépôt : PyPI fait confiance à ce dépôt et ce workflow, à déclarer une fois sur
+# pypi.org). Les poids des modèles ne sont jamais publiés.
+# Désactivé le 15 oct. 2026 (décision PO, lot D1) jusqu'à la décision PyPI : l'environnement
+# `pypi` et le trusted publishing ne sont pas déclarés, le workflow échouerait. Lancement manuel
+# seulement ; remettre `push: tags: ["v*"]` le jour venu.
+name: release
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: cd apps/web && npm ci --no-audit --no-fund
+      - run: make build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,0 +1,338 @@
+{
+  "schema_version": "0.1.0",
+  "id": "9bd25e26-62d0-4f28-8221-28783b24df49",
+  "name": "Fixture pièce rectangulaire",
+  "created_at": "2026-09-23T12:29:56.856882Z",
+  "updated_at": "2026-09-23T12:29:56.856882Z",
+  "units_display": "m",
+  "privacy": {
+    "strip_exif": true,
+    "keep_exif_focal": true,
+    "allow_remote_models": false,
+    "telemetry": false
+  },
+  "images": {},
+  "levels": {
+    "40eb65fb-ef94-4f11-a5db-d2f4c9cf8965": {
+      "id": "40eb65fb-ef94-4f11-a5db-d2f4c9cf8965",
+      "name": "RDC",
+      "elevation": 0.0,
+      "height": 2.5,
+      "height_source": "estimated",
+      "vertices": {
+        "cefe294b-bc9e-42e0-a59b-556247385a36": {
+          "id": "cefe294b-bc9e-42e0-a59b-556247385a36",
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "source": "user_defined",
+          "confidence": 1.0,
+          "locked": false,
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          }
+        },
+        "90abe6fd-7a84-40e3-b356-4a2e1a38132f": {
+          "id": "90abe6fd-7a84-40e3-b356-4a2e1a38132f",
+          "position": {
+            "x": 4.0,
+            "y": 0.0
+          },
+          "source": "user_defined",
+          "confidence": 1.0,
+          "locked": false,
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          }
+        },
+        "b6f47952-0f95-48ed-a6e7-e6cea42fbfb6": {
+          "id": "b6f47952-0f95-48ed-a6e7-e6cea42fbfb6",
+          "position": {
+            "x": 4.0,
+            "y": 3.0
+          },
+          "source": "user_defined",
+          "confidence": 1.0,
+          "locked": false,
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          }
+        },
+        "3e5c1f8e-eaff-4585-8df9-39d83ef73884": {
+          "id": "3e5c1f8e-eaff-4585-8df9-39d83ef73884",
+          "position": {
+            "x": 0.0,
+            "y": 3.0
+          },
+          "source": "user_defined",
+          "confidence": 1.0,
+          "locked": false,
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          }
+        }
+      },
+      "elements": {
+        "0e5b14ba-5411-4d78-a8c7-ceab32a9c3c3": {
+          "id": "0e5b14ba-5411-4d78-a8c7-ceab32a9c3c3",
+          "source": "measured",
+          "confidence": 1.0,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856625Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "W1",
+          "metadata": {},
+          "type": "wall",
+          "start_vertex": "cefe294b-bc9e-42e0-a59b-556247385a36",
+          "end_vertex": "90abe6fd-7a84-40e3-b356-4a2e1a38132f",
+          "thickness": 0.15,
+          "height": null,
+          "offset": "center",
+          "exterior": null
+        },
+        "97d82cb1-8c53-4950-8445-eb99a81d6871": {
+          "id": "97d82cb1-8c53-4950-8445-eb99a81d6871",
+          "source": "estimated",
+          "confidence": 0.6,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856648Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "W2",
+          "metadata": {},
+          "type": "wall",
+          "start_vertex": "90abe6fd-7a84-40e3-b356-4a2e1a38132f",
+          "end_vertex": "b6f47952-0f95-48ed-a6e7-e6cea42fbfb6",
+          "thickness": 0.15,
+          "height": null,
+          "offset": "center",
+          "exterior": null
+        },
+        "c06cc049-6e9e-426c-9d13-1fc6f02f924a": {
+          "id": "c06cc049-6e9e-426c-9d13-1fc6f02f924a",
+          "source": "estimated",
+          "confidence": 0.6,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856655Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "W3",
+          "metadata": {},
+          "type": "wall",
+          "start_vertex": "b6f47952-0f95-48ed-a6e7-e6cea42fbfb6",
+          "end_vertex": "3e5c1f8e-eaff-4585-8df9-39d83ef73884",
+          "thickness": 0.15,
+          "height": null,
+          "offset": "center",
+          "exterior": null
+        },
+        "5a181a88-b736-4b65-8d24-d279c00959ee": {
+          "id": "5a181a88-b736-4b65-8d24-d279c00959ee",
+          "source": "estimated",
+          "confidence": 0.6,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856661Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "W4",
+          "metadata": {},
+          "type": "wall",
+          "start_vertex": "3e5c1f8e-eaff-4585-8df9-39d83ef73884",
+          "end_vertex": "cefe294b-bc9e-42e0-a59b-556247385a36",
+          "thickness": 0.15,
+          "height": null,
+          "offset": "center",
+          "exterior": null
+        },
+        "ba928679-571a-4ace-91b9-4acfc0ff0843": {
+          "id": "ba928679-571a-4ace-91b9-4acfc0ff0843",
+          "source": "inferred",
+          "confidence": 0.6,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856670Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "R1",
+          "metadata": {},
+          "type": "room",
+          "boundary_walls": [
+            "0e5b14ba-5411-4d78-a8c7-ceab32a9c3c3",
+            "97d82cb1-8c53-4950-8445-eb99a81d6871",
+            "c06cc049-6e9e-426c-9d13-1fc6f02f924a",
+            "5a181a88-b736-4b65-8d24-d279c00959ee"
+          ],
+          "room_type": "bedroom"
+        },
+        "23407da0-d0aa-4be4-ba04-37cf363a0a8e": {
+          "id": "23407da0-d0aa-4be4-ba04-37cf363a0a8e",
+          "source": "inferred",
+          "confidence": 0.6,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856684Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "floor",
+          "metadata": {},
+          "type": "floor",
+          "room": "ba928679-571a-4ace-91b9-4acfc0ff0843",
+          "derived": true,
+          "polygon": null,
+          "material": null
+        },
+        "ed5d3df6-fad2-4304-8d12-c775944edf59": {
+          "id": "ed5d3df6-fad2-4304-8d12-c775944edf59",
+          "source": "user_defined",
+          "confidence": 1.0,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856699Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "door",
+          "metadata": {},
+          "type": "opening",
+          "kind": "door",
+          "host_wall": "0e5b14ba-5411-4d78-a8c7-ceab32a9c3c3",
+          "offset": 0.5,
+          "width": 0.83,
+          "height": 2.04,
+          "sill_height": 0.0,
+          "swing": {
+            "hinge": "left",
+            "direction": "inward",
+            "angle": 1.5708
+          }
+        },
+        "97f35121-d16d-4174-a8b5-172128c8aa15": {
+          "id": "97f35121-d16d-4174-a8b5-172128c8aa15",
+          "source": "observed",
+          "confidence": 0.8,
+          "locked": false,
+          "visible": true,
+          "provenance": {
+            "image_ids": [],
+            "step": null,
+            "model": null,
+            "run_id": null,
+            "created_at": "2026-09-23T12:29:56.856708Z"
+          },
+          "uncertainty": {
+            "sigma": null,
+            "interval": null,
+            "notes": null
+          },
+          "name": "window",
+          "metadata": {},
+          "type": "opening",
+          "kind": "window",
+          "host_wall": "c06cc049-6e9e-426c-9d13-1fc6f02f924a",
+          "offset": 1.2,
+          "width": 1.2,
+          "height": 1.25,
+          "sill_height": 0.9,
+          "swing": null
+        }
+      },
+      "background_image": null,
+      "background_transform": {}
+    }
+  },
+  "measurements": {
+    "081f9df4-550b-456e-8a60-b5bbd1b57863": {
+      "id": "081f9df4-550b-456e-8a60-b5bbd1b57863",
+      "kind": "wall_length",
+      "value": 4.0,
+      "tolerance": 0.01,
+      "element_id": "0e5b14ba-5411-4d78-a8c7-ceab32a9c3c3",
+      "vertex_ids": null,
+      "image_points": null,
+      "confirmed_by_user": true,
+      "created_at": "2026-09-23T12:29:56.856868Z",
+      "note": null
+    }
+  },
+  "calibrations": [],
+  "constraints": {},
+  "materials": {},
+  "history": [],
+  "history_cursor": 0
+}

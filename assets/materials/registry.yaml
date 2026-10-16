@@ -1,0 +1,313 @@
+# Matières de rendu (D2, 4 octobre 2026) : métadonnées seules. Les images ne sont PAS dans le
+# dépôt : `uv run openplan materials pull --all` les télécharge dans models/materials/, en
+# vérifiant l'empreinte SHA-256 de chaque fichier. Licence CC0 vérifiée sur la page officielle
+# (license_evidence) le jour indiqué ; aucune attribution exigée. Sans matière installée, le
+# rendu garde ses matières procédurales.
+version: 1
+materials:
+- id: plaster_grey_04
+  kind: surface
+  finish: plaster
+  label: Enduit
+  source: Poly Haven
+  page: https://polyhaven.com/a/plaster_grey_04
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 2.0
+  brightness: 1.6
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/plaster_grey_04/plaster_grey_04_diff_1k.jpg
+      sha256: e78df7d6e762fe767634278e14316564e0d4510031986239458994ec9fc5410d
+      bytes: 456938
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/plaster_grey_04/plaster_grey_04_nor_gl_1k.jpg
+      sha256: 9d0eb5299f797c07eb841737eb7164755a2c8a2363540e175a76188a2aa5a2dc
+      bytes: 983244
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/plaster_grey_04/plaster_grey_04_rough_1k.jpg
+      sha256: 0d8cc6216ac3dc9dc4339cb17a08d249f7341961f432ae1451c35cdff222869b
+      bytes: 370366
+- id: hinoki_planks
+  kind: surface
+  finish: wood_floor
+  label: Parquet clair (pin)
+  source: Poly Haven
+  page: https://polyhaven.com/a/hinoki_planks
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 1.6
+  planks: u
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hinoki_planks/hinoki_planks_diff_1k.jpg
+      sha256: a0166cad69a255971bf25f336c9947d2853b4dae5707c84a86f25f79aec347a5
+      bytes: 527974
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hinoki_planks/hinoki_planks_nor_gl_1k.jpg
+      sha256: 90c97139c4a6e086c67b9e2c23c138c92df59070de0414763bcd3e7fc3c878a1
+      bytes: 456865
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hinoki_planks/hinoki_planks_rough_1k.jpg
+      sha256: 20d2dc9fdbd2b76b267d68617836efb4af74397716f7ad9b5dff3752bdb097f5
+      bytes: 155781
+- id: old_wood_floor
+  kind: surface
+  finish: wood_dark
+  label: Parquet ancien
+  source: Poly Haven
+  page: https://polyhaven.com/a/old_wood_floor
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 1.6
+  planks: u
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_wood_floor/old_wood_floor_diff_1k.jpg
+      sha256: e6952149cd1bb02e485a183f526e9dbe8d90d2a22bfac564cc3874cfb8eddd03
+      bytes: 755937
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_wood_floor/old_wood_floor_nor_gl_1k.jpg
+      sha256: 617f2b20da0af0304ccf55194beb31a9f30ff1acf793a41a61a43d9d0f3bf886
+      bytes: 714487
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_wood_floor/old_wood_floor_rough_1k.jpg
+      sha256: ab7c16727ac2672a029c2441796a6b3524b90b3ddbb5e5085ed32dd961a6f1ca
+      bytes: 519577
+- id: oak_wood_planks
+  kind: surface
+  finish: wood_boards
+  label: Lambris (chêne)
+  source: Poly Haven
+  page: https://polyhaven.com/a/oak_wood_planks
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 1.4
+  planks: u
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/oak_wood_planks/oak_wood_planks_diff_1k.jpg
+      sha256: f715ed3e4346e94f971ef8dd61221ff6cc774886c20f65381e01e1dc0bb0a634
+      bytes: 696814
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/oak_wood_planks/oak_wood_planks_nor_gl_1k.jpg
+      sha256: b4272cb2818f8f33f2620a2dc093c962f34920e9d485a4e132eb6d69de1ba950
+      bytes: 392213
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/oak_wood_planks/oak_wood_planks_rough_1k.jpg
+      sha256: 10ced559145df3c537bf1ccef6dc767ef6c47e134c21a9650bab261fa95ecacf
+      bytes: 845590
+- id: old_stone_wall
+  kind: surface
+  finish: stone
+  label: Pierre
+  source: Poly Haven
+  page: https://polyhaven.com/a/old_stone_wall
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 2.0
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_stone_wall/old_stone_wall_diff_1k.jpg
+      sha256: 76210155ce0a17f006664f602305583e145a8a00be77bea8a0e3341df5148710
+      bytes: 880453
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_stone_wall/old_stone_wall_nor_gl_1k.jpg
+      sha256: f847656c8f8e62dd78189ca6ff3ee2f42f9127cfa7834ebd3d313df1699e9c28
+      bytes: 1186893
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/old_stone_wall/old_stone_wall_rough_1k.jpg
+      sha256: d6811fb6431f30d3c9295a8b3f3e22b66f61bafcf11f53d98709ad0a8ddcf4d5
+      bytes: 233946
+- id: coral_stone_wall
+  kind: surface
+  finish: stone_rubble
+  label: Moellons
+  source: Poly Haven
+  page: https://polyhaven.com/a/coral_stone_wall
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 1.8
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_diff_1k.jpg
+      sha256: 45e4bcbb4ac9b03d34896f5d9f9be26dd0b5ec9f161484f6284b949dc25f9f31
+      bytes: 794995
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_nor_gl_1k.jpg
+      sha256: 300d9860306a5acb521cc2034ede5dc70cf26886b05f6a7d5a41f0a2d412f05c
+      bytes: 1199284
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_rough_1k.jpg
+      sha256: 6968f1b7d50d1902ff1313188df24ecf6330aeea1630e920a3586c2d3d986906
+      bytes: 406820
+- id: grey_plaster
+  kind: surface
+  finish: concrete
+  label: Béton
+  source: Poly Haven
+  page: https://polyhaven.com/a/grey_plaster
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 2.0
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/grey_plaster/grey_plaster_diff_1k.jpg
+      sha256: dcf34c5f3801cc43189f0edae3c430b602c827956e9d6ce4b89a85e53e952da9
+      bytes: 704079
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/grey_plaster/grey_plaster_nor_gl_1k.jpg
+      sha256: 85fe18209cb354b582003892898ee0cd6fe6b853644e01983718fc011140c0c2
+      bytes: 355288
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/grey_plaster/grey_plaster_rough_1k.jpg
+      sha256: 67566b1b5ee25502596916303c246b08d47725b8a697283cfdc1494e6f659aa2
+      bytes: 635335
+- id: rough_wood
+  kind: surface
+  finish: timber
+  label: Bois de charpente (vieilli)
+  source: Poly Haven
+  page: https://polyhaven.com/a/rough_wood
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 0.8
+  planks: v
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rough_wood/rough_wood_diff_1k.jpg
+      sha256: abc46d8e3163d911220f4ec3a4043b68d2b0c6d750513f80871211acfefb2a98
+      bytes: 567074
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rough_wood/rough_wood_nor_gl_1k.jpg
+      sha256: 3d1c6f098b66d93e52071b41834dd14a424d8cd2f7c4130c62dc062acfa65011
+      bytes: 790334
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rough_wood/rough_wood_rough_1k.jpg
+      sha256: 4e9ea9962a7e8b69057937e6723c4b0134b949c1ee5cdb5f3687a54113027b09
+      bytes: 195056
+- id: kloofendal_48d_partly_cloudy_puresky
+  kind: sky
+  finish: null
+  label: Ciel nuageux (HDRI)
+  source: Poly Haven
+  page: https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-04'
+  tile_m: 1.0
+  files:
+    hdri:
+      url: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr
+      sha256: fd94c84997b8a3c353b62c2125a9b44e19509956986a126e472684432a02d798
+      bytes: 1435119
+- id: painted_plaster_wall
+  kind: surface
+  finish: limewash
+  label: Chaux blanche
+  source: Poly Haven
+  page: https://polyhaven.com/a/painted_plaster_wall
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-05'
+  tile_m: 2.0
+  brightness: 1.5
+  saturation: 0.6
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/painted_plaster_wall/painted_plaster_wall_diff_1k.jpg
+      sha256: 440310f05af089f2c93353167573403cbc3f805948203237b5d26431eeb9e19c
+      bytes: 686726
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/painted_plaster_wall/painted_plaster_wall_nor_gl_1k.jpg
+      sha256: 8eb01647d126eb5341e2c325821ad48c8ca11349dbef53447c95422c5d91cc9d
+      bytes: 900461
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/painted_plaster_wall/painted_plaster_wall_rough_1k.jpg
+      sha256: e0564c297b22ab1cf4ef02a82157b84ce3b92eb4fd49d9c64b7256a8b300af82
+      bytes: 354762
+- id: concrete_floor_worn_001
+  kind: surface
+  finish: concrete_floor
+  label: Béton de sol
+  source: Poly Haven
+  page: https://polyhaven.com/a/concrete_floor_worn_001
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-05'
+  tile_m: 2.0
+  brightness: 1.1
+  saturation: 1.0
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_diff_1k.jpg
+      sha256: 6e40c0fc908f4d66431836f5abe203f3a4eb064e88824378a91a46a26e2f464c
+      bytes: 118806
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_nor_gl_1k.jpg
+      sha256: 523bd94a1be5dd2f11c2ae2b7d7c77445cf5bd9e41604db515a7c8364dcba067
+      bytes: 110906
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_rough_1k.jpg
+      sha256: 069efe4ca018e0ef61fd8cc9964395ba8272284ae239da68d7f87988e2e9f488
+      bytes: 181942
+- id: dark_wooden_planks
+  kind: surface
+  finish: oak_dark
+  label: Chêne foncé
+  source: Poly Haven
+  page: https://polyhaven.com/a/dark_wooden_planks
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-05'
+  tile_m: 1.6
+  brightness: 1.0
+  saturation: 1.0
+  planks: u
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dark_wooden_planks/dark_wooden_planks_diff_1k.jpg
+      sha256: e8216baa6b2d701b5523fcb904d45570acf7b96d160ef815e96e2dbfa82bdd9b
+      bytes: 701221
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dark_wooden_planks/dark_wooden_planks_nor_gl_1k.jpg
+      sha256: 87a7b26bc674477865d4589c6589200bfa649a6461422bf56f5600c05a470206
+      bytes: 658444
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dark_wooden_planks/dark_wooden_planks_rough_1k.jpg
+      sha256: a10ea0b52fe395a7ad205cacfd28bd1aea48ef8545d171209f528dcf58d0a8d3
+      bytes: 673968
+- id: distressed_painted_planks
+  kind: surface
+  finish: painted_wood
+  label: Bois peint blanc
+  source: Poly Haven
+  page: https://polyhaven.com/a/distressed_painted_planks
+  license: cc0
+  license_evidence: https://polyhaven.com/license
+  verified_on: '2026-10-05'
+  tile_m: 1.6
+  brightness: 1.9
+  saturation: 0.08
+  planks: v
+  files:
+    diff:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/distressed_painted_planks/distressed_painted_planks_diff_1k.jpg
+      sha256: ec8d54700e32d583ec3cd64089de73810de1e177874266fe29e931d33ab5ca1e
+      bytes: 366553
+    nor:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/distressed_painted_planks/distressed_painted_planks_nor_gl_1k.jpg
+      sha256: 65372398238b1a4d723e414b195e94900e076fa63d9409c5acc9b55d795abe88
+      bytes: 424390
+    rough:
+      url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/distressed_painted_planks/distressed_painted_planks_rough_1k.jpg
+      sha256: e264068652b135ed477ea123a751c83bb33d6693e16f4c4458dc57bca6ae675c
+      bytes: 337009

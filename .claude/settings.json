@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "opus",
+  "sandbox": {
+    "enabled": true,
+    "enableWeakerNestedSandbox": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyWrite": [
+        "~/.claude/settings.json",
+        "~/.claude/hooks",
+        "~/.claude.json",
+        "~/.claude/credentials.json",
+        "~/.ssh",
+        "~/.aws",
+        "~/.gnupg"
+      ],
+      "allowRead": ["."],
+      "allowWrite": ["."]
+    },
+    "network": {
+      "policy": "balanced"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(pnpm:*)",
+      "Bash(yarn:*)",
+      "Bash(pip:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)",
+      "Bash(mvn:*)",
+      "Bash(gradle:*)",
+      "Bash(./gradlew:*)",
+      "Bash(cargo:*)",
+      "Bash(go:*)",
+      "Bash(make:*)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(kubectl:*)",
+      "Bash(helm:*)",
+      "Bash(terraform:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(tree:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(rm -rf /*)",
+      "Bash(dd:*)",
+      "Bash(mkfs:*)",
+      "Bash(chmod 777:*)",
+      "Bash(curl:* | sh)",
+      "Bash(git push --force:*)",
+      "Read(./.env)",
+      "Read(./secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/id_rsa*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Session démarrée dans le sandbox de développement'"
+          }
+        ]
+      }
+    ]
+  }
+}

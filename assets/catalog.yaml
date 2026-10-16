@@ -1,0 +1,550 @@
+# Catalogue OpenPlan Studio : bibliothèque de mobilier (roadmap 3.1, élargie le 3 octobre 2026).
+# Dimensions en mètres (plage min / défaut / max), dégagements pour les règles d'aménagement,
+# ancrage (free : n'importe où ; wall : dos à un mur ; eave_wall : dos au mur d'égout, zone
+# basse d'un comble), pièce (filtre de la bibliothèque). Cotes, plages et dégagements : projet
+# OpenPlan Studio (CC0). Modèles 3D et vignettes : Kenney « Furniture Kit » (CC0 1.0), voir
+# assets/furniture/SOURCES.yaml et docs/licenses/README.md. Les onze identifiants d'origine sont
+# conservés : les projets existants restent valides.
+version: 2
+license_note: "Cotes : OpenPlan Studio (CC0 1.0). Modèles 3D et vignettes : Kenney, Furniture Kit (CC0 1.0, domaine public, attribution non obligatoire)."
+assets:
+  # ---------------------------------------------------------------- séjour
+  - id: sofa_2
+    category: sofa
+    label: "Canapé deux places"
+    room: sejour
+    width: {min: 1.40, default: 1.60, max: 1.90}
+    depth: {min: 0.80, default: 0.90, max: 1.00}
+    height: {min: 0.75, default: 0.85, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salon, assise]
+    model: models/loungeSofa.glb
+    preview: previews/loungeSofa.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: sofa_lounge
+    category: sofa_lounge
+    label: "Canapé avec méridienne"
+    room: sejour
+    width: {min: 2.00, default: 2.40, max: 3.00}
+    depth: {min: 1.40, default: 1.60, max: 1.90}
+    height: {min: 0.75, default: 0.85, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salon, assise]
+    model: models/loungeSofaLong.glb
+    preview: previews/loungeSofaLong.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: sofa_corner
+    category: sofa_corner
+    label: "Canapé d'angle"
+    room: sejour
+    width: {min: 2.00, default: 2.40, max: 3.00}
+    depth: {min: 1.80, default: 2.00, max: 2.60}
+    height: {min: 0.75, default: 0.85, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salon, assise]
+    model: models/loungeSofaCorner.glb
+    preview: previews/loungeSofaCorner.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Adossé à un mur ; le retour d'angle se place contre le mur voisin."
+  - id: armchair
+    category: armchair
+    label: "Fauteuil"
+    room: sejour
+    width: {min: 0.70, default: 0.85, max: 1.00}
+    depth: {min: 0.70, default: 0.85, max: 1.00}
+    height: {min: 0.70, default: 0.85, max: 1.00}
+    anchor: free
+    clearance: {front: 0.50, sides: 0.0, back: 0.0}
+    tags: [salon, assise]
+    model: models/loungeChair.glb
+    preview: previews/loungeChair.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: coffee_table
+    category: coffee_table
+    label: "Table basse"
+    room: sejour
+    width: {min: 0.80, default: 1.00, max: 1.40}
+    depth: {min: 0.50, default: 0.60, max: 0.80}
+    height: {min: 0.35, default: 0.42, max: 0.50}
+    anchor: free
+    clearance: {front: 0.40, sides: 0.0, back: 0.40}
+    tags: [salon]
+    model: models/tableCoffee.glb
+    preview: previews/tableCoffee.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: rug_rect
+    category: rug
+    label: "Tapis"
+    room: sejour
+    width: {min: 1.20, default: 2.00, max: 3.00}
+    depth: {min: 0.80, default: 1.40, max: 2.50}
+    height: {min: 0.005, default: 0.01, max: 0.03}
+    anchor: free
+    walkable: true
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [décor, traversable]
+    model: models/rugRectangle.glb
+    preview: previews/rugRectangle.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "on marche dessus et on pose des meubles dessus : aucune règle de chevauchement"
+  - id: rug_round
+    category: rug_round
+    label: "Tapis rond"
+    room: sejour
+    width: {min: 0.80, default: 1.60, max: 2.50}
+    depth: {min: 0.80, default: 1.60, max: 2.50}
+    height: {min: 0.005, default: 0.01, max: 0.03}
+    anchor: free
+    walkable: true
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [décor, traversable]
+    model: models/rugRound.glb
+    preview: previews/rugRound.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "on marche dessus et on pose des meubles dessus : aucune règle de chevauchement"
+  - id: tv_unit
+    category: tv_unit
+    label: "Meuble TV"
+    room: sejour
+    width: {min: 1.20, default: 1.60, max: 2.40}
+    depth: {min: 0.35, default: 0.45, max: 0.55}
+    height: {min: 0.40, default: 0.50, max: 0.70}
+    anchor: wall
+    clearance: {front: 0.50, sides: 0.0, back: 0.0}
+    tags: [salon, rangement]
+    model: models/cabinetTelevision.glb
+    preview: previews/cabinetTelevision.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: bookshelf_80
+    category: bookshelf
+    label: "Bibliothèque 80 × 30"
+    room: sejour
+    width: {min: 0.60, default: 0.80, max: 1.60}
+    depth: {min: 0.25, default: 0.30, max: 0.40}
+    height: {min: 1.00, default: 1.80, max: 2.20}
+    anchor: wall
+    clearance: {front: 0.50, sides: 0.0, back: 0.0}
+    tags: [bureau, salon, rangement]
+    model: models/bookcaseOpen.glb
+    preview: previews/bookcaseOpen.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: table_2
+    category: table
+    label: "Table et deux chaises"
+    room: sejour
+    width: {min: 0.70, default: 0.80, max: 1.20}
+    depth: {min: 0.70, default: 0.80, max: 1.20}
+    height: {min: 0.72, default: 0.75, max: 0.78}
+    anchor: free
+    clearance: {front: 0.60, sides: 0.60, back: 0.60}
+    tags: [salon, cuisine, repas]
+    model: models/table.glb
+    preview: previews/table.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Chaises comprises dans le dégagement de 0,60 m tout autour."
+  - id: dining_chair
+    category: dining_chair
+    label: "Chaise"
+    room: sejour
+    width: {min: 0.40, default: 0.45, max: 0.55}
+    depth: {min: 0.45, default: 0.50, max: 0.55}
+    height: {min: 0.80, default: 0.90, max: 1.00}
+    anchor: free
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [salon, cuisine, repas, assise]
+    model: models/chair.glb
+    preview: previews/chair.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: round_table
+    category: round_table
+    label: "Table ronde"
+    room: sejour
+    width: {min: 0.80, default: 1.00, max: 1.40}
+    depth: {min: 0.80, default: 1.00, max: 1.40}
+    height: {min: 0.72, default: 0.75, max: 0.78}
+    anchor: free
+    clearance: {front: 0.60, sides: 0.60, back: 0.60}
+    tags: [salon, cuisine, repas]
+    model: models/tableRound.glb
+    preview: previews/tableRound.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: floor_lamp
+    category: floor_lamp
+    label: "Lampadaire"
+    room: sejour
+    width: {min: 0.25, default: 0.35, max: 0.50}
+    depth: {min: 0.25, default: 0.35, max: 0.50}
+    height: {min: 1.40, default: 1.70, max: 1.90}
+    anchor: free
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [salon, lumiere]
+    model: models/lampRoundFloor.glb
+    preview: previews/lampRoundFloor.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  # ---------------------------------------------------------------- chambre
+  - id: bed_double_160
+    category: bed_double
+    label: "Lit double 160 × 200"
+    room: chambre
+    width: {min: 1.40, default: 1.60, max: 1.80}
+    depth: {min: 1.90, default: 2.00, max: 2.10}
+    height: {min: 0.40, default: 0.50, max: 0.60}
+    anchor: wall
+    clearance: {front: 0.0, sides: 0.60, back: 0.0}
+    tags: [chambre, couchage]
+    model: models/bedDouble.glb
+    preview: previews/bedDouble.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Tête de lit contre un mur ; accès sur les deux longs côtés (0,60 m)."
+  - id: bed_single_90
+    category: bed_single
+    label: "Lit simple 90 × 200"
+    room: chambre
+    width: {min: 0.80, default: 0.90, max: 1.20}
+    depth: {min: 1.90, default: 2.00, max: 2.10}
+    height: {min: 0.40, default: 0.50, max: 0.60}
+    anchor: wall
+    clearance: {front: 0.0, sides: 0.60, back: 0.0}
+    tags: [chambre, couchage, enfant]
+    model: models/bedSingle.glb
+    preview: previews/bedSingle.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Peut se coller à un mur latéral : un seul côté d'accès suffit."
+  - id: bed_builtin
+    category: bed_builtin
+    label: "Lit encastré sous pente"
+    room: chambre
+    width: {min: 0.90, default: 1.40, max: 1.60}
+    depth: {min: 2.05, default: 2.05, max: 2.05}
+    height: {min: 0.80, default: 0.80, max: 0.80}
+    anchor: wall
+    clearance: {front: 0.0, sides: 0.40, back: 0.0}
+    tags: [chambre, couchage, combles, encastre]
+    procedural: built_in_bed
+    preview: previews/bedBuiltin.png
+    license: cc0
+    author: "PlanDesign (meuble paramétrique, géométrie calculée)"
+    notes: "Coffre à tiroirs de 40 cm, matelas à 0,55 m, planche de tête ; tête vers la jambette. Largeurs 90, 140 ou 160 cm. Il faut 0,90 m libres au-dessus du matelas à l'oreiller."
+  - id: bed_bunk
+    category: bed_bunk
+    label: "Lits superposés"
+    room: chambre
+    width: {min: 0.80, default: 0.90, max: 1.00}
+    depth: {min: 1.90, default: 2.00, max: 2.10}
+    height: {min: 1.50, default: 1.65, max: 1.80}
+    anchor: wall
+    clearance: {front: 0.0, sides: 0.60, back: 0.0}
+    tags: [chambre, couchage, enfant]
+    model: models/bedBunk.glb
+    preview: previews/bedBunk.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Trop haut pour la zone basse d'un comble."
+  - id: nightstand
+    category: nightstand
+    label: "Table de chevet"
+    room: chambre
+    width: {min: 0.35, default: 0.45, max: 0.60}
+    depth: {min: 0.35, default: 0.40, max: 0.50}
+    height: {min: 0.40, default: 0.55, max: 0.70}
+    anchor: wall
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [chambre]
+    model: models/cabinetBedDrawer.glb
+    preview: previews/cabinetBedDrawer.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: wardrobe_150
+    category: wardrobe
+    label: "Armoire 150 × 60"
+    room: chambre
+    width: {min: 1.00, default: 1.50, max: 2.50}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 1.80, default: 2.00, max: 2.40}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [chambre, rangement]
+    model: models/bookcaseClosedDoors.glb
+    preview: previews/bookcaseClosedDoors.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Portes battantes : 0,60 m devant. Trop haute pour la zone basse d'un comble."
+  - id: chest_of_drawers
+    category: chest
+    label: "Commode 100 × 45"
+    room: chambre
+    width: {min: 0.80, default: 1.00, max: 1.40}
+    depth: {min: 0.40, default: 0.45, max: 0.55}
+    height: {min: 0.75, default: 0.85, max: 1.10}
+    anchor: wall
+    clearance: {front: 0.50, sides: 0.0, back: 0.0}
+    tags: [chambre, rangement]
+    model: models/cabinetTelevisionDoors.glb
+    preview: previews/cabinetTelevisionDoors.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: low_storage_eave
+    category: low_storage
+    label: "Rangement bas sous pente"
+    room: chambre
+    width: {min: 0.80, default: 1.20, max: 3.00}
+    depth: {min: 0.40, default: 0.50, max: 0.70}
+    height: {min: 0.45, default: 0.70, max: 0.90}
+    anchor: eave_wall
+    clearance: {front: 0.50, sides: 0.0, back: 0.0}
+    tags: [comble, rangement, sous_pente]
+    model: models/bookcaseOpenLow.glb
+    preview: previews/bookcaseOpenLow.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Meuble bas (≤ 0,90 m) adossé au mur d'égout : le meuble typique d'un comble."
+  # ---------------------------------------------------------------- bureau
+  - id: desk_140
+    category: desk
+    label: "Bureau 140 × 70"
+    room: bureau
+    width: {min: 1.00, default: 1.40, max: 1.80}
+    depth: {min: 0.55, default: 0.70, max: 0.80}
+    height: {min: 0.70, default: 0.75, max: 0.78}
+    anchor: wall
+    clearance: {front: 0.80, sides: 0.0, back: 0.0}
+    tags: [bureau, travail]
+    model: models/desk.glb
+    preview: previews/desk.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Recul de chaise 0,80 m devant."
+  - id: desk_corner
+    category: desk_corner
+    label: "Bureau d'angle"
+    room: bureau
+    width: {min: 1.20, default: 1.40, max: 1.80}
+    depth: {min: 1.20, default: 1.40, max: 1.80}
+    height: {min: 0.70, default: 0.75, max: 0.78}
+    anchor: wall
+    clearance: {front: 0.80, sides: 0.0, back: 0.0}
+    tags: [bureau, travail]
+    model: models/deskCorner.glb
+    preview: previews/deskCorner.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: office_chair
+    category: chair
+    label: "Chaise de bureau"
+    room: bureau
+    width: {min: 0.50, default: 0.60, max: 0.70}
+    depth: {min: 0.50, default: 0.60, max: 0.70}
+    height: {min: 0.80, default: 0.95, max: 1.20}
+    anchor: free
+    clearance: {front: 0.0, sides: 0.0, back: 0.0}
+    tags: [bureau]
+    model: models/chairDesk.glb
+    preview: previews/chairDesk.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  # ---------------------------------------------------------------- cuisine
+  - id: kitchen_base
+    category: kitchen_base
+    label: "Meuble bas de cuisine"
+    room: cuisine
+    width: {min: 0.40, default: 0.60, max: 1.20}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.85, default: 0.90, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, rangement]
+    model: models/kitchenCabinet.glb
+    preview: previews/kitchenCabinet.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Plan de travail compris ; 0,90 m devant pour travailler."
+  - id: kitchen_drawers
+    category: kitchen_drawers
+    label: "Meuble à tiroirs"
+    room: cuisine
+    width: {min: 0.40, default: 0.60, max: 1.20}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.85, default: 0.90, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, rangement]
+    model: models/kitchenCabinetDrawer.glb
+    preview: previews/kitchenCabinetDrawer.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: kitchen_sink
+    category: kitchen_sink
+    label: "Évier"
+    room: cuisine
+    width: {min: 0.60, default: 0.80, max: 1.20}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.85, default: 0.90, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, eau]
+    model: models/kitchenSink.glb
+    preview: previews/kitchenSink.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: stove
+    category: stove
+    label: "Cuisinière"
+    room: cuisine
+    width: {min: 0.50, default: 0.60, max: 0.90}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.85, default: 0.90, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, cuisson]
+    model: models/kitchenStove.glb
+    preview: previews/kitchenStove.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: fridge
+    category: fridge
+    label: "Réfrigérateur"
+    room: cuisine
+    width: {min: 0.55, default: 0.60, max: 0.90}
+    depth: {min: 0.60, default: 0.65, max: 0.75}
+    height: {min: 1.70, default: 1.85, max: 2.00}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, froid]
+    model: models/kitchenFridgeLarge.glb
+    preview: previews/kitchenFridgeLarge.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Trop haut pour la zone basse d'un comble."
+  - id: fridge_small
+    category: fridge_small
+    label: "Réfrigérateur sous plan"
+    room: cuisine
+    width: {min: 0.50, default: 0.60, max: 0.60}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.82, default: 0.85, max: 0.88}
+    anchor: wall
+    clearance: {front: 0.90, sides: 0.0, back: 0.0}
+    tags: [cuisine, froid]
+    model: models/kitchenFridgeSmall.glb
+    preview: previews/kitchenFridgeSmall.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  # ---------------------------------------------------------------- salle de bain
+  - id: toilet
+    category: toilet
+    label: "WC"
+    room: salle_de_bain
+    width: {min: 0.36, default: 0.40, max: 0.45}
+    depth: {min: 0.60, default: 0.70, max: 0.75}
+    height: {min: 0.75, default: 0.80, max: 0.85}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.15, back: 0.0}
+    tags: [salle_de_bain, eau]
+    model: models/toilet.glb
+    preview: previews/toilet.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Réservoir contre le mur ; 0,60 m devant, 0,15 m de chaque côté."
+  - id: shower
+    category: shower
+    label: "Douche"
+    room: salle_de_bain
+    width: {min: 0.80, default: 0.90, max: 1.20}
+    depth: {min: 0.80, default: 0.90, max: 1.20}
+    height: {min: 2.00, default: 2.10, max: 2.20}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, eau]
+    model: models/shower.glb
+    preview: previews/shower.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+    notes: "Cabine fermée ; trop haute pour la zone basse d'un comble."
+  - id: bathtub
+    category: bathtub
+    label: "Baignoire"
+    room: salle_de_bain
+    width: {min: 1.50, default: 1.70, max: 1.90}
+    depth: {min: 0.70, default: 0.75, max: 0.85}
+    height: {min: 0.50, default: 0.55, max: 0.60}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, eau]
+    model: models/bathtub.glb
+    preview: previews/bathtub.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: washbasin
+    category: washbasin
+    label: "Lavabo"
+    room: salle_de_bain
+    width: {min: 0.45, default: 0.60, max: 0.90}
+    depth: {min: 0.40, default: 0.45, max: 0.55}
+    height: {min: 0.80, default: 0.85, max: 0.95}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, eau]
+    model: models/bathroomSink.glb
+    preview: previews/bathroomSink.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: bathroom_cabinet
+    category: bathroom_cabinet
+    label: "Meuble vasque"
+    room: salle_de_bain
+    width: {min: 0.60, default: 0.80, max: 1.20}
+    depth: {min: 0.45, default: 0.50, max: 0.55}
+    height: {min: 0.80, default: 0.85, max: 0.90}
+    anchor: wall
+    clearance: {front: 0.60, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, eau, rangement]
+    model: models/bathroomCabinetDrawer.glb
+    preview: previews/bathroomCabinetDrawer.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: washer
+    category: washer
+    label: "Lave-linge"
+    room: salle_de_bain
+    width: {min: 0.60, default: 0.60, max: 0.60}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.82, default: 0.85, max: 0.90}
+    anchor: wall
+    clearance: {front: 0.70, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, buanderie, eau]
+    model: models/washer.glb
+    preview: previews/washer.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"
+  - id: dryer
+    category: dryer
+    label: "Sèche-linge"
+    room: salle_de_bain
+    width: {min: 0.60, default: 0.60, max: 0.60}
+    depth: {min: 0.55, default: 0.60, max: 0.65}
+    height: {min: 0.82, default: 0.85, max: 0.90}
+    anchor: wall
+    clearance: {front: 0.70, sides: 0.0, back: 0.0}
+    tags: [salle_de_bain, buanderie]
+    model: models/dryer.glb
+    preview: previews/dryer.png
+    license: cc0
+    author: "Kenney (modèle), OpenPlan Studio (cotes)"

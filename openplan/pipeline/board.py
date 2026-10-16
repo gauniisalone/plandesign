@@ -1,0 +1,538 @@
+"""Tableau du projet (B1) : lecture, écriture, mise en page de départ et synchronisation avec
+ce que le projet contient (photos, rendus, images d'inspiration sans plan, plan, demande), et
+fichiers joints.
+
+Le tableau vit dans `board.json`, les fichiers joints dans `media/` : jamais dans
+`project.json`, pour qu'aucune sauvegarde de la disposition n'écrase la géométrie (et
+inversement). Ce que le projet ajoute (une photo, un rendu) entre dans son cadre ; ce que
+l'utilisateur a retiré n'y revient pas (`dismissed`)."""
+
+from __future__ import annotations
+
+import io
+import json
+import re
+import zipfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from pydantic import TypeAdapter
+
+from openplan.pipeline.mainroom import main_room
+from openplan.pipeline.render import RenderEntry, list_renders
+from openplan.schemas.board import Board, BoardItem, BoardRole, MediaKind, MediaRef
+from openplan.schemas.common import now_utc
+from openplan.schemas.scene import Project
+
+BOARD_FILE = "board.json"
+MEDIA_DIR = "media"
+MEDIA_INDEX = "index.json"
+MAX_MEDIA_BYTES = 50 * 1024 * 1024
+MAX_VIDEO_BYTES = 200 * 1024 * 1024
+THUMB_SIDE = 480
+AUTO_KINDS = ("photo", "render", "plan", "file", "video", "pdf", "contextual")
+"""Ce que le projet fournit : retiré à la main, noté dans `dismissed`."""
+FIXED_FRAMES: dict[str, str] = {
+    "photos": "Photos de la pièce",
+    "inspirations": "Inspirations",
+    "renders": "Rendus",
+}
+"""Cadres toujours présents sur un tableau (T2), même vides : les photos réelles de la pièce
+(elles font le plan) et les images d'ambiance (jointes, cochées Référence). Retirés à la
+main, ils ne reviennent pas (`dismissed` : `frame:<rôle>`)."""
+
+# Mise en page de départ (pixels du tableau) : à gauche les cadres Photos et Rendus et la
+# note de la demande, à droite le plan, grand.
+GAP = 48.0
+PAD = 24.0
+CELL_W, CELL_H = 280.0, 190.0
+COLS = 2
+FRAME_W = PAD * 2 + COLS * CELL_W + (COLS - 1) * 16.0
+NOTE_W, NOTE_H = 300.0, 170.0
+REQUIREMENTS_W, REQUIREMENTS_H = 360.0, 640.0
+REQUIREMENTS_TITLE = "Exigences"
+PLAN_X, PLAN_W, PLAN_H = FRAME_W + 2 * GAP, 900.0, 700.0
+FILE_W, FILE_H = 220.0, 72.0
+INSPIRATION_DIR = "inspiration"
+
+_INLINE = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/gif": b"GIF8",
+    "image/webp": b"RIFF",
+}
+"""Images montrées telles quelles, si leurs premiers octets le confirment ; tout le reste
+est servi en pièce jointe, comme des octets."""
+
+
+class MediaError(ValueError):
+    """Fichier joint refusé (vide, trop gros) ou introuvable."""
+
+
+# ------------------------------------------------------------------ lecture, écriture
+def load_board(project_dir: Path) -> Board | None:
+    path = project_dir / BOARD_FILE
+    if not path.is_file():
+        return None
+    return Board.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+class StaleBoardError(ValueError):
+    """Un envoi parti d'une révision plus ancienne que celle enregistrée (deux onglets)."""
+
+    def __init__(self, sent: int, current: int) -> None:
+        super().__init__(
+            f"le tableau a changé ailleurs (révision {current}, envoyée {sent}) : rechargez-le"
+        )
+        self.current = current
+
+
+def save_board(project_dir: Path, board: Board, *, expect: int | None = None) -> Board:
+    """Écriture atomique ; la révision avance d'un cran à chaque sauvegarde. `expect` : la
+    révision sur laquelle l'envoi s'appuie, refusé si une autre sauvegarde est passée avant."""
+    current = load_board(project_dir)
+    revision = current.revision if current is not None else 0
+    if expect is not None and current is not None and expect != revision:
+        raise StaleBoardError(expect, revision)
+    board = board.model_copy(update={"updated_at": now_utc(), "revision": revision + 1})
+    project_dir.mkdir(parents=True, exist_ok=True)
+    tmp = project_dir / f"{BOARD_FILE}.{uuid4().hex}.tmp"
+    tmp.write_text(board.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    tmp.replace(project_dir / BOARD_FILE)
+    return board
+
+
+def replaced(before: Board | None, after: Board) -> Board:
+    """Un tableau reçu du client : ce qu'il a retiré parmi ce que le projet fournit (photo,
+    rendu, plan, note de la demande) est noté, pour que la synchronisation ne le remette pas."""
+    if before is None:
+        return after
+    kept = {_key(i) for i in after.items}
+    gone = [
+        _key(i)
+        for i in before.items
+        if (i.kind in AUTO_KINDS or i.role == "prompt" or _key(i).startswith("frame:"))
+        and _key(i) not in kept
+    ]
+    dismissed = list(dict.fromkeys([*after.dismissed, *(k for k in gone if k)]))
+    return after.model_copy(update={"dismissed": dismissed})
+
+
+def _key(item: BoardItem) -> str:
+    if item.role == "prompt":
+        return "prompt"
+    if item.kind == "frame" and item.role in FIXED_FRAMES:
+        return f"frame:{item.role}"
+    return f"{item.kind}:{item.ref}" if item.ref else ""
+
+
+# ------------------------------------------------------------------ ce que le projet fournit
+@dataclass(frozen=True)
+class Provided:
+    photos: list[str]
+    renders: list[tuple[str, str]]
+    """(run, titre) : le dernier rendu de chaque vue, du plus ancien au plus récent."""
+    inspirations: list[str]
+    """Images d'inspiration sans plan (rendu de secours, A2)."""
+    plans: list[tuple[str, str]]
+    """(niveau, nom)."""
+    prompt: str | None
+    latest: dict[str, str]
+    """Run → dernier run de la même vue (un rendu refait remplace l'ancien à sa place)."""
+    contextual: list[tuple[str, str]] = field(default_factory=list)
+    """(run:variante, titre) : rendus contextualisés (A1), du plus ancien au plus récent."""
+
+
+def provided(project: Project, runs_dir: Path) -> Provided:
+    from openplan.pipeline.contextual import VARIANT_LABELS, list_entries
+
+    contextual = [
+        (f"{e.run_id}:{e.variant}", f"{VARIANT_LABELS[e.variant]} · {e.source.label}".strip(" ·"))
+        for e in reversed(list_entries(runs_dir))
+    ]
+    entries = list_renders(runs_dir) if runs_dir.is_dir() else []
+    by_view: dict[str, RenderEntry] = {}
+    for entry in sorted(entries, key=lambda e: e.created_at):
+        by_view[str(entry.camera_id or entry.run_id)] = entry
+    latest = {str(e.run_id): str(by_view[str(e.camera_id or e.run_id)].run_id) for e in entries}
+    inspirations = sorted(
+        (
+            d.name
+            for d in (runs_dir.iterdir() if runs_dir.is_dir() else [])
+            if (d / INSPIRATION_DIR / "inspiration.png").is_file() and not (d / "blender").is_dir()
+        ),
+        key=lambda name: (runs_dir / name).stat().st_mtime,
+    )
+    room = None
+    for level in project.levels.values():
+        room = main_room(level)
+        if room is not None:
+            break
+    prompt = project.pending_instruction or (
+        room.intent.instruction if room is not None and room.intent is not None else None
+    )
+    return Provided(
+        photos=[str(i) for i in project.images],
+        renders=[(str(e.run_id), e.camera_name) for e in by_view.values()],
+        inspirations=inspirations,
+        plans=[(str(lid), level.name) for lid, level in project.levels.items()],
+        prompt=prompt or None,
+        latest=latest,
+        contextual=contextual,
+    )
+
+
+# ------------------------------------------------------------------ synchronisation
+def board_kind(media: MediaRef) -> str:
+    """L'élément du tableau d'un fichier joint (C1) : vidéo lisible, PDF, sinon carte."""
+    return {"video": "video", "pdf": "pdf"}.get(media.kind, "file")
+
+
+def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
+    board: Board | None, project: Project, runs_dir: Path, media: list[MediaRef] | None = None
+) -> tuple[Board, bool]:
+    """Le tableau à jour : mise en page de départ s'il n'existe pas ; sinon, un rendu refait
+    prend la place de l'ancien, ce qui a disparu du projet quitte le tableau, ce qui est
+    nouveau entre dans son cadre (sauf ce que l'utilisateur a retiré), fichiers joints compris
+    (C1 : joints par l'API, ils entrent dans le cadre Fichiers). Renvoie le tableau et s'il a
+    changé."""
+    have = provided(project, runs_dir)
+    joined = [(board_kind(m), str(m.id), m.name) for m in media or []]
+    fresh = board is None
+    current = board or Board()
+    items = list(current.items)
+    dismissed = set(current.dismissed)
+
+    # Un rendu refait remplace l'ancien, à la même place.
+    for index, item in enumerate(items):
+        if item.kind == "render" and item.role != "inspiration" and item.ref in have.latest:
+            newest = have.latest[item.ref]
+            if newest != item.ref:
+                items[index] = item.model_copy(update={"ref": newest})
+
+    # Ce qui a disparu du projet (photo supprimée, rendu mis à la corbeille) s'en va.
+    alive = (
+        {f"photo:{p}" for p in have.photos}
+        | {f"render:{r}" for r, _ in have.renders}
+        | {f"render:{r}" for r in have.inspirations}
+        | {f"plan:{lid}" for lid, _ in have.plans}
+        | {f"{kind}:{mid}" for kind, mid, _ in joined}
+        | {f"contextual:{ref}" for ref, _ in have.contextual}
+    )
+    items = [i for i in items if i.kind not in AUTO_KINDS or _key(i) in alive]
+
+    present = {_key(i) for i in items}
+    added = _Adder(items)
+    for lid, name in have.plans:
+        if f"plan:{lid}" not in present | dismissed:
+            added.plan(lid, name)
+    # T1 : la note Exigences est toujours là (une par tableau), même vide ; l'ancienne note de
+    # la demande (B1) devient cette note, à sa place.
+    for index, item in enumerate(added.items):
+        if item.kind == "note" and item.role == "prompt":
+            added.items[index] = item.model_copy(
+                update={"kind": "requirements", "text": REQUIREMENTS_TITLE, "h": REQUIREMENTS_H}
+            )
+    if "prompt" not in present and "prompt" not in dismissed:
+        added.requirements()
+    # T2 : les cadres Photos de la pièce et Inspirations existent dès le départ, même vides.
+    for role, title in FIXED_FRAMES.items():
+        if f"frame:{role}" not in present | dismissed:
+            added.frame(role, title)  # type: ignore[arg-type]
+    for photo in have.photos:
+        if f"photo:{photo}" not in present | dismissed:
+            added.into("photos", FIXED_FRAMES["photos"], "photo", photo, "")
+    for run, title in have.renders:
+        if f"render:{run}" not in present | dismissed:
+            added.into("renders", "Rendus", "render", run, title)
+    for run in have.inspirations:
+        if f"render:{run}" not in present | dismissed:
+            added.into("renders", "Rendus", "render", run, "inspiration, sans plan", "inspiration")
+    # Un fichier joint posé sur le tableau à la main garde sa place et sa sorte d'élément.
+    placed_media = {i.ref for i in added.items if i.kind in ("file", "video", "pdf")}
+    for kind, mid, name in joined:
+        if mid not in placed_media and f"{kind}:{mid}" not in dismissed:
+            added.into("files", "Fichiers", kind, mid, name)
+    # Rendus contextualisés (A1) : dans le cadre Moodboard, avec leur variante.
+    for ref, title in have.contextual:
+        if f"contextual:{ref}" not in present | dismissed:
+            added.into("moodboard", "Moodboard", "contextual", ref, title)
+
+    changed = fresh or added.items != list(current.items)
+    return current.model_copy(update={"items": added.items}), changed
+
+
+class _Adder:
+    """Pose les nouveaux éléments : dans leur cadre (créé au besoin, agrandi d'une rangée
+    quand il est plein), la note sous les cadres, le plan à droite."""
+
+    def __init__(self, items: list[BoardItem]) -> None:
+        self.items = items
+
+    def frame(self, role: BoardRole, title: str) -> None:
+        """Un cadre nommé, créé s'il manque (T2 : cadres fixes, même vides)."""
+        self._frame(role, title)
+
+    def _frame(self, role: BoardRole, title: str) -> BoardItem:
+        found = next((i for i in self.items if i.kind == "frame" and i.role == role), None)
+        if found is not None:
+            return found
+        if role == "renders":
+            # T4 (maquette) : les rendus à droite du plan, à sa hauteur.
+            plans = [i for i in self.items if i.kind == "plan"]
+            right = max((i.x + i.w for i in plans), default=PLAN_X + PLAN_W) + GAP
+            top = min((i.y for i in plans), default=0.0)
+            frame = BoardItem(
+                kind="frame", x=right, y=top, w=FRAME_W, h=PLAN_H, text=title, role=role, z=-1
+            )
+            self.items.append(frame)
+            return frame
+        frame = BoardItem(
+            kind="frame",
+            x=0.0,
+            y=self._left_bottom(),
+            w=FRAME_W,
+            h=PAD * 2 + CELL_H,
+            text=title,
+            role=role,
+            z=-1,
+        )
+        self.items.append(frame)
+        return frame
+
+    def _left_bottom(self) -> float:
+        left = [i for i in self.items if i.x < PLAN_X - GAP and i.frame is None]
+        return max((i.y + i.h for i in left), default=-GAP) + GAP
+
+    def into(
+        self,
+        role: BoardRole,
+        title: str,
+        kind: str,
+        ref: str,
+        text: str,
+        item_role: BoardRole | None = None,
+    ) -> None:
+        frame = self._frame(role, title)
+        inside = sum(1 for i in self.items if i.frame == frame.id)
+        row, col = divmod(inside, COLS)
+        x = frame.x + PAD + col * (CELL_W + 16.0)
+        y = frame.y + PAD + row * (CELL_H + 16.0)
+        need = PAD * 2 + (row + 1) * CELL_H + row * 16.0
+        if frame.h < need:
+            grown = frame.model_copy(update={"h": need})
+            self._push_below(frame, need - frame.h)
+            self.items[self.items.index(frame)] = grown
+            frame = grown
+        self.items.append(
+            BoardItem(
+                kind=kind,  # type: ignore[arg-type]
+                x=x,
+                y=y,
+                w=CELL_W,
+                h=CELL_H,
+                frame=frame.id,
+                ref=ref,
+                text=text,
+                role=item_role,
+            )
+        )
+
+    def _push_below(self, frame: BoardItem, dy: float) -> None:
+        """Un cadre qui grandit pousse ce qui est posé dessous, dans la même colonne."""
+        bottom = frame.y + frame.h
+        moved = {
+            i.id
+            for i in self.items
+            if i.id != frame.id and i.frame is None and i.y >= bottom and i.x < frame.x + frame.w
+        }
+        self.items[:] = [
+            i.model_copy(update={"y": i.y + dy}) if i.id in moved or i.frame in moved else i
+            for i in self.items
+        ]
+
+    def requirements(self) -> None:
+        """La note Exigences (T1), sous les cadres de gauche ; son contenu est dans le projet."""
+        self.items.append(
+            BoardItem(
+                kind="requirements",
+                x=0.0,
+                y=self._left_bottom(),
+                w=REQUIREMENTS_W,
+                h=REQUIREMENTS_H,
+                text=REQUIREMENTS_TITLE,
+                role="prompt",
+            )
+        )
+
+    def plan(self, level_id: str, name: str) -> None:
+        plans = [i for i in self.items if i.kind == "plan"]
+        y = max((i.y + i.h for i in plans), default=-GAP) + GAP
+        self.items.append(
+            BoardItem(kind="plan", x=PLAN_X, y=y, w=PLAN_W, h=PLAN_H, ref=level_id, text=name)
+        )
+
+
+# ------------------------------------------------------------------ fichiers joints
+_INDEX = TypeAdapter(list[MediaRef])
+
+
+def media_dir(project_dir: Path) -> Path:
+    return project_dir / MEDIA_DIR
+
+
+def list_media(project_dir: Path) -> list[MediaRef]:
+    path = media_dir(project_dir) / MEDIA_INDEX
+    if not path.is_file():
+        return []
+    return _INDEX.validate_json(path.read_text(encoding="utf-8"))
+
+
+def _write_index(project_dir: Path, refs: list[MediaRef]) -> None:
+    directory = media_dir(project_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    tmp = directory / f"{MEDIA_INDEX}.{uuid4().hex}.tmp"
+    tmp.write_text(json.dumps(_INDEX.dump_python(refs, mode="json"), indent=2) + "\n")
+    tmp.replace(directory / MEDIA_INDEX)
+
+
+def _safe_name(name: str) -> str:
+    base = Path(name.replace("\\", "/")).name
+    base = re.sub(r"[\x00-\x1f\x7f]", "", base).strip() or "fichier"
+    return base[:200]
+
+
+def media_type_of(data: bytes) -> str:
+    """Le type servi : une image courante, une vidéo (mp4, webm) ou un PDF si ses premiers
+    octets le confirment, sinon des octets (jamais du HTML, du SVG ni un script interprétés
+    par le navigateur)."""
+    for kind, magic in _INLINE.items():
+        if data.startswith(magic) and (kind != "image/webp" or data[8:12] == b"WEBP"):
+            return kind
+    if data[4:8] == b"ftyp":
+        return "video/mp4"
+    if data.startswith(b"\x1a\x45\xdf\xa3"):
+        return "video/webm"
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+    return "application/octet-stream"
+
+
+def media_kind_of(media_type: str) -> MediaKind:
+    if media_type.startswith("image/"):
+        return "image"
+    if media_type.startswith("video/"):
+        return "video"
+    return "pdf" if media_type == "application/pdf" else "file"
+
+
+def max_bytes(kind: MediaKind) -> int:
+    """Une vidéo jusqu'à 200 Mo (C1), tout autre fichier jusqu'à 50 Mo."""
+    return MAX_VIDEO_BYTES if kind == "video" else MAX_MEDIA_BYTES
+
+
+def _pdf_thumb(pdf: Path, out: Path) -> bool:
+    """Vignette de la première page d'un PDF, rendue sur la machine (pdfplumber, qui
+    s'appuie sur pypdfium2, BSD-3 / Apache-2.0). Faux si le fichier ne se lit pas."""
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(pdf) as doc:
+            if not doc.pages:
+                return False
+            page = doc.pages[0]
+            scale = THUMB_SIDE / max(float(page.width), float(page.height), 1.0)
+            image = page.to_image(resolution=max(10, int(72 * scale))).original
+            image.convert("RGB").save(out, format="PNG")
+        return True
+    except Exception:
+        return False
+
+
+def add_media(project_dir: Path, data: bytes, name: str) -> MediaRef:
+    if not data:
+        msg = "fichier vide"
+        raise MediaError(msg)
+    media_type = media_type_of(data)
+    kind = media_kind_of(media_type)
+    limit = max_bytes(kind)
+    if len(data) > limit:
+        msg = (
+            f"fichier trop gros ({len(data) // (1024 * 1024)} Mo, "
+            f"{limit // (1024 * 1024)} Mo au plus)"
+        )
+        raise MediaError(msg)
+    safe = _safe_name(name)
+    suffix = Path(safe).suffix.lower()
+    suffix = suffix if re.fullmatch(r"\.[a-z0-9]{1,10}", suffix) else ""
+    ref = MediaRef(name=safe, media_type=media_type, size=len(data), path="", kind=kind)
+    relative = f"{MEDIA_DIR}/{ref.id}{suffix}"
+    ref = ref.model_copy(update={"path": relative})
+    target = project_dir / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    if kind == "pdf":
+        thumb = f"{MEDIA_DIR}/{ref.id}.thumb.png"
+        if _pdf_thumb(target, project_dir / thumb):
+            ref = ref.model_copy(update={"thumb": thumb})
+    _write_index(project_dir, [*list_media(project_dir), ref])
+    return ref
+
+
+def media_thumb(project_dir: Path, media_id: UUID) -> Path:
+    ref, _ = media_file(project_dir, media_id)
+    path = project_dir / ref.thumb if ref.thumb else None
+    if path is None or not path.is_file():
+        msg = f"pas de vignette pour ce fichier : {media_id}"
+        raise MediaError(msg)
+    return path
+
+
+def media_file(project_dir: Path, media_id: UUID) -> tuple[MediaRef, Path]:
+    ref = next((m for m in list_media(project_dir) if m.id == media_id), None)
+    path = (project_dir / ref.path) if ref is not None else None
+    if ref is None or path is None or not path.is_file():
+        msg = f"fichier joint introuvable : {media_id}"
+        raise MediaError(msg)
+    return ref, path
+
+
+ARCHIVE_TOP = ("project.json", BOARD_FILE)
+ARCHIVE_DIRS = ("images", MEDIA_DIR)
+ARCHIVE_RUN_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".json")
+"""Des rendus, les images et leurs réglages ; pas les fichiers de travail (scènes,
+profondeurs, cartes) ni la corbeille."""
+
+
+def project_archive(project_dir: Path) -> bytes:
+    """Sauvegarde complète en zip, chemins relatifs au dossier du projet : `project.json`
+    (plan, historique), `board.json` (tableau), photos, fichiers joints, images des rendus."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name in ARCHIVE_TOP:
+            if (project_dir / name).is_file():
+                archive.write(project_dir / name, name)
+        for folder in ARCHIVE_DIRS:
+            for path in sorted((project_dir / folder).rglob("*")):
+                if path.is_file() and not path.name.endswith(".tmp"):
+                    archive.write(path, path.relative_to(project_dir).as_posix())
+        runs = project_dir / "runs"
+        for path in sorted(runs.rglob("*")) if runs.is_dir() else []:
+            relative = path.relative_to(project_dir)
+            if (
+                path.is_file()
+                and path.suffix.lower() in ARCHIVE_RUN_SUFFIXES
+                and not any(part.startswith(".") for part in relative.parts)
+                and not path.name.endswith(".tmp")
+            ):
+                archive.write(path, relative.as_posix())
+    return buffer.getvalue()
+
+
+def remove_media(project_dir: Path, media_id: UUID) -> None:
+    ref, path = media_file(project_dir, media_id)
+    path.unlink(missing_ok=True)
+    if ref.thumb:
+        (project_dir / ref.thumb).unlink(missing_ok=True)
+    _write_index(project_dir, [m for m in list_media(project_dir) if m.id != ref.id])

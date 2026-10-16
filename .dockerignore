@@ -1,0 +1,23 @@
+# Jamais dans l'image : données utilisateur, poids, secrets, environnements, artefacts.
+data/
+models/weights/
+.env
+.env.*
+!.env.example
+.venv/
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.e2e-data/
+apps/web/test-results/
+apps/web/playwright-report/
+dist/
+build/
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+**/__pycache__/
+.git/
+tests/
+docs/
+out/

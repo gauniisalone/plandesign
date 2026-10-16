@@ -1,0 +1,81 @@
+﻿# .github/workflows/deploy.yml (D2) : déploiement MANUEL par SHA sur le VPS.
+# Construit l'image à partir du commit choisi, l'envoie compressée par SSH au compte `deploy`
+# (clé restreinte à deploy-gate.sh), le VPS la charge, bascule, vérifie la santé et revient en
+# arrière seul si elle échoue. Aucun registre. Secrets : DEPLOY_SSH_KEY (clé privée ed25519) ;
+# variables (non secrètes) : VPS_HOST (adresse du serveur), VPS_HOST_KEY (ligne known_hosts du VPS, épinglée).
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "SHA complet (40 caractères) du commit à déployer, run ci vert exigé"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: vps            # environnement GitHub « vps » : journal des déploiements, protection possible
+    steps:
+      - name: Vérifier le SHA et le run ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "SHA invalide"; exit 1; }
+          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" -w ci -c "$SHA" -L 1 --json conclusion --jq '.[0].conclusion // "aucun"')
+          echo "run ci sur $SHA : $conclusion"
+          [ "$conclusion" = success ] || { echo "le run ci de ce SHA n'est pas vert"; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: openplan-studio:${{ inputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Retag court (12) et taille
+        run: |
+          short=${SHA:0:12}
+          docker tag openplan-studio:$SHA openplan-studio:$short
+          docker image inspect openplan-studio:$short --format '{{.Size}}' | awk '{printf "Image : %.0f Mo\n", $1/1048576}' | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          SHA: ${{ inputs.sha }}
+      - name: Clé SSH et hôte épinglé
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ vars.VPS_HOST_KEY }}" > ~/.ssh/known_hosts
+      - name: Envoyer et déployer (le VPS vérifie la santé et revient en arrière seul)
+        env:
+          SHA: ${{ inputs.sha }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          short=${SHA:0:12}
+          docker save openplan-studio:$short | zstd -T0 -3 \
+            | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+                  deploy@"$VPS_HOST" "deploy $SHA" | tee deploy_result.txt
+          grep -q '^OK ' deploy_result.txt
+      - name: Santé depuis l'extérieur
+        run: |
+          code=$(curl -s -o health.json -w '%{http_code}' --max-time 15 https://app.plandesign.fr/api/health)
+          echo "https://app.plandesign.fr/api/health → $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 200 ]
+          cat health.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

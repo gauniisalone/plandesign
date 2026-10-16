@@ -1,0 +1,95 @@
+version: 1
+sources:
+- id: kenney_furniture_kit
+  name: Kenney, Furniture Kit
+  url: https://kenney.nl/assets/furniture-kit
+  license: cc0
+  license_url: http://creativecommons.org/publicdomain/zero/1.0/
+  license_evidence:
+  - 'Page officielle de l''asset (lue le 2026-10-03) : « License: Creative Commons CC0 ».'
+  - 'Page d''aide de Kenney (https://kenney.nl/support, lue le 2026-10-03) : « public domain licensed
+    (CC0) », « Attribution is not required », usage commercial permis.'
+  - 'Fichier License.txt du zip (copié dans LICENSE-kenney-furniture-kit.txt) : « License: (Creative Commons
+    Zero, CC0) … This content is free to use in personal, educational and commercial projects. Support
+    us by crediting Kenney or www.kenney.nl (this is not mandatory) ».'
+  verified_on: '2026-10-03'
+  archive: https://kenney.nl/media/pages/assets/furniture-kit/440e0608a4-1677580847/kenney_furniture-kit.zip
+  archive_sha256: e67652d0932cee41683f74711c03d3e192a2af9979ef8e6b237711f5482d46b0
+  files:
+  - models/bathroomCabinetDrawer.glb
+  - models/bathroomSink.glb
+  - models/bathtub.glb
+  - models/bedBunk.glb
+  - models/bedDouble.glb
+  - models/bedSingle.glb
+  - models/bookcaseClosedDoors.glb
+  - models/bookcaseOpen.glb
+  - models/bookcaseOpenLow.glb
+  - models/books.glb
+  - models/cabinetBedDrawer.glb
+  - models/cabinetTelevision.glb
+  - models/cabinetTelevisionDoors.glb
+  - models/chair.glb
+  - models/chairDesk.glb
+  - models/desk.glb
+  - models/deskCorner.glb
+  - models/dryer.glb
+  - models/kitchenCabinet.glb
+  - models/kitchenCabinetDrawer.glb
+  - models/kitchenFridgeLarge.glb
+  - models/kitchenFridgeSmall.glb
+  - models/kitchenSink.glb
+  - models/kitchenStove.glb
+  - models/lampRoundFloor.glb
+  - models/lampRoundTable.glb
+  - models/loungeChair.glb
+  - models/loungeSofa.glb
+  - models/loungeSofaCorner.glb
+  - models/loungeSofaLong.glb
+  - models/pillow.glb
+  - models/plantSmall1.glb
+  - models/pottedPlant.glb
+  - models/rugRectangle.glb
+  - models/rugRound.glb
+  - models/shower.glb
+  - models/table.glb
+  - models/tableCoffee.glb
+  - models/tableRound.glb
+  - models/toilet.glb
+  - models/washer.glb
+  - previews/bathroomCabinetDrawer.png
+  - previews/bathroomSink.png
+  - previews/bathtub.png
+  - previews/bedBunk.png
+  - previews/bedDouble.png
+  - previews/bedSingle.png
+  - previews/bookcaseClosedDoors.png
+  - previews/bookcaseOpen.png
+  - previews/bookcaseOpenLow.png
+  - previews/cabinetBedDrawer.png
+  - previews/cabinetTelevision.png
+  - previews/cabinetTelevisionDoors.png
+  - previews/chair.png
+  - previews/chairDesk.png
+  - previews/desk.png
+  - previews/deskCorner.png
+  - previews/dryer.png
+  - previews/kitchenCabinet.png
+  - previews/kitchenCabinetDrawer.png
+  - previews/kitchenFridgeLarge.png
+  - previews/kitchenFridgeSmall.png
+  - previews/kitchenSink.png
+  - previews/kitchenStove.png
+  - previews/lampRoundFloor.png
+  - previews/loungeChair.png
+  - previews/loungeSofa.png
+  - previews/loungeSofaCorner.png
+  - previews/loungeSofaLong.png
+  - previews/rugRectangle.png
+  - previews/rugRound.png
+  - previews/shower.png
+  - previews/table.png
+  - previews/tableCoffee.png
+  - previews/tableRound.png
+  - previews/toilet.png
+  - previews/washer.png

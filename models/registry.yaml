@@ -1,0 +1,226 @@
+# Registre des modèles, algorithmes et outils disponibles pour les adaptateurs.
+# Chaque entrée est documentée dans docs/models/model_registry.md (même identifiant).
+# Les poids ne sont jamais commités (voir models/.gitignore) et ne se téléchargent
+# qu'à la demande : `openplan models pull <id>` (commande à venir).
+#
+# status : implemented | optional (outil externe) | planned
+# commercial_ok: false => refusé par défaut, opt-in explicite requis.
+# remote: true => envoie des données hors de la machine ; jamais sans consentement
+#   (privacy.allow_remote_models ET confirmation par projet). Vérifié par un test.
+
+schema_version: 1
+
+models:
+  - id: exif_camera@0.1
+    role: camera_estimator
+    kind: algorithm
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 0
+    device: cpu
+    status: implemented
+    module: openplan.adapters.exif_camera
+    notes: Focale depuis l'EXIF (équivalent 35 mm) sinon 0,8 × grand côté ; tangage et roulis supposés nuls.
+
+  - id: vp_camera@0.1
+    role: camera_estimator
+    kind: algorithm
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 0
+    device: cpu
+    status: implemented
+    module: openplan.adapters.heuristic.camera
+    notes: Segments LSD (OpenCV) → points de fuite RANSAC → repère Manhattan ; focale depuis deux points de fuite orthogonaux finis.
+
+  - id: heuristic_box@0.1
+    role: room_element_detector
+    kind: algorithm
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 0
+    device: cpu
+    status: implemented
+    module: openplan.adapters.heuristic.box_detector
+    notes: Arêtes sol-mur par famille de points de fuite et contraste avec la palette du sol. Propose un rectangle, source estimated.
+
+  - id: blender@4.2
+    role: renderer
+    kind: tool
+    license: GPL-3.0-or-later
+    commercial_ok: true
+    remote: false
+    memory_mb: 1500
+    device: cpu
+    status: optional
+    module: openplan.pipeline.blender_bridge
+    notes: Sous-processus externe ; le script blender/scripts/build_scene.py est sous GPL, le reste du dépôt n'importe pas bpy.
+
+  - id: depth_anything_v2_metric_indoor_small@1.0
+    role: depth_estimator
+    kind: weights
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 1200
+    weights_mb: 99
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.depth_anything
+    hf_repo: depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf
+    notes: Profondeur métrique intérieure (Hypersim), 24,8 M de paramètres, sortie bornée à 20 m. Seule la variante Small est Apache-2.0 ; Base/Large sont CC-BY-NC et exclues. Poids par `openplan models pull`.
+
+  - id: stable_diffusion_1_5@1.5
+    role: image_generator
+    kind: weights
+    license: CreativeML OpenRAIL-M
+    license_url: https://huggingface.co/spaces/CompVis/stable-diffusion-license
+    commercial_ok: true
+    remote: false
+    requires_license_acceptance: true
+    memory_mb: 3500
+    weights_mb: 2130
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.inspiration
+    hf_repo: stable-diffusion-v1-5/stable-diffusion-v1-5
+    sentinel: unet/diffusion_pytorch_model.fp16.safetensors
+    allow_patterns:
+      - model_index.json
+      - "*/config.json"
+      - scheduler/*.json
+      - tokenizer/*
+      - feature_extractor/*.json
+      - text_encoder/model.fp16.safetensors
+      - unet/diffusion_pytorch_model.fp16.safetensors
+      - vae/diffusion_pytorch_model.fp16.safetensors
+      - README.md
+      - LICENSE*
+    notes: Image d'inspiration (rôle 8e), miroir du modèle RunwayML retiré. OpenRAIL-M = gratuit, usage commercial permis, redistribution permise, mais restrictions d'usage (annexe A, pas de contenu haineux, trompeur, sexuel non consenti, ni d'usage nuisible) à respecter et à transmettre ; acceptation explicite par `openplan models pull --accept-license`. Variante fp16 seulement ; filtre de sécurité non téléchargé, sortie non filtrée et locale. La sortie est toujours de source generated.
+
+  - id: controlnet_depth_sd15@1.1
+    role: image_generator
+    kind: weights
+    license: CreativeML OpenRAIL-M
+    license_url: https://huggingface.co/spaces/CompVis/stable-diffusion-license
+    commercial_ok: true
+    remote: false
+    requires_license_acceptance: true
+    memory_mb: 800
+    weights_mb: 723
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.inspiration
+    hf_repo: lllyasviel/control_v11f1p_sd15_depth
+    sentinel: diffusion_pytorch_model.fp16.safetensors
+    allow_patterns:
+      - config.json
+      - diffusion_pytorch_model.fp16.safetensors
+      - README.md
+      - LICENSE*
+    notes: ControlNet 1.1 « profondeur » pour Stable Diffusion 1.5 (le code GitHub est Apache-2.0, les poids sont en OpenRAIL-M). Guide la génération par la carte de profondeur de la photo (proche = clair). Même acceptation de licence que stable_diffusion_1_5@1.5.
+
+  - id: controlnet_canny_sd15@1.1
+    role: image_finisher
+    kind: weights
+    license: CreativeML OpenRAIL-M
+    license_url: https://huggingface.co/spaces/CompVis/stable-diffusion-license
+    commercial_ok: true
+    remote: false
+    requires_license_acceptance: true
+    memory_mb: 800
+    weights_mb: 723
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.finish
+    hf_repo: lllyasviel/control_v11p_sd15_canny
+    sentinel: diffusion_pytorch_model.fp16.safetensors
+    allow_patterns:
+      - config.json
+      - diffusion_pytorch_model.fp16.safetensors
+      - README.md
+      - LICENSE*
+    notes: "ControlNet 1.1 « arêtes » (Canny) pour Stable Diffusion 1.5, même famille et même licence que controlnet_depth_sd15 (étiquette « openrail » sur la fiche). Finition IA (D5) : avec la profondeur, il tient les contours du rendu Blender pour que la diffusion ne déplace rien. Facultatif : sans lui, la finition se guide par la profondeur seule. Accord du PO du 4 oct. 2026 ; acceptation explicite par `openplan models pull --accept-license`."
+
+  - id: ip_adapter_sd15@1.0
+    role: image_finisher
+    kind: weights
+    license: Apache-2.0
+    license_url: https://huggingface.co/h94/IP-Adapter
+    commercial_ok: true
+    remote: false
+    requires_license_acceptance: false
+    memory_mb: 1300
+    weights_mb: 2573
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.finish
+    hf_repo: h94/IP-Adapter
+    sentinel: models/ip-adapter_sd15.safetensors
+    allow_patterns:
+      - models/ip-adapter_sd15.safetensors
+      - models/image_encoder/config.json
+      - models/image_encoder/model.safetensors
+      - README.md
+      - LICENSE*
+    notes: "IP-Adapter pour SD 1.5 (Tencent AI Lab, Apache-2.0, dépôt non protégé) : des images de référence (images du tableau cochées « référence ») guident le style de la génération contextualisée (A2), en plus du texte. L'adaptateur fait 45 Mo mais exige son encodeur d'images OpenCLIP ViT-H/14 (2,53 Go) : 2,6 Go au total, téléchargement accordé par augus le 14 oct. 2026. Chargé paresseusement, seulement quand une référence est cochée (≈ 1,3 Go de VRAM en plus). La sortie reste generated."
+
+  - id: owlv2_base@1.0
+    role: room_element_detector
+    kind: weights
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 1500
+    weights_mb: 620
+    device: cuda|cpu
+    status: implemented
+    module: openplan.adapters.neural.openings
+    hf_repo: google/owlv2-base-patch16-ensemble
+    allow_patterns:
+      - "*.json"
+      - "*.txt"
+      - model.safetensors
+      - README.md
+      - LICENSE*
+    notes: Portes et fenêtres par détection zéro-shot conditionnée par le texte (OWLv2, Google, 0,2 Md de paramètres). Requêtes « a door », « an open doorway », « a window » ; rectangles image avec score, projetés ensuite sur le mur hôte en source observed (2.4b). Décision PO du 25 sept. 2026 (docs/models/openings-candidates.md) ; repli Grounding DINO tiny (Apache-2.0) si le critère de la fixture n'est pas atteint. Poids par `openplan models pull owlv2_base@1.0`, jamais livrés.
+
+  - id: sam2_hiera_small@1.0
+    role: segmentation_model
+    kind: weights
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 2500
+    weights_mb: 185
+    device: cuda|cpu
+    status: planned
+    notes: Segmentation guidée par clics (sol, murs, ouvertures). Poids Meta, Apache-2.0.
+
+  - id: openai_compatible_vlm@0.1
+    role: vision_language_model
+    kind: remote_service
+    license: conditions du fournisseur
+    commercial_ok: false
+    remote: true
+    requires_consent: true
+    memory_mb: 0
+    device: remote
+    status: implemented
+    module: openplan.adapters.remote.openai_compatible
+    notes: API compatible OpenAI (ChatGPT, Gemini via son point d'entrée compatible, serveurs locaux Ollama/llama.cpp qui, eux, ne sont pas distants). Rôle Perception (openplan.adapters.remote.vlm_detector). Clé OPENAI_API_KEY, GEMINI_API_KEY ou OPENPLAN_AI_API_KEY dans .env. Essayé le 24 sept. 2026 avec Gemini palier gratuit, modèle gemini-3.5-flash-lite (6 à 8 s, fenêtre et mur exactement encadrés) ; les gemini-2.x sont retirés du service (404). Voir docs/evaluation/protocol.md §3 bis.
+
+  - id: gemini_vlm@0.1
+    role: vision_language_model
+    kind: remote_service
+    license: conditions du fournisseur
+    commercial_ok: false
+    remote: true
+    requires_consent: true
+    memory_mb: 0
+    device: remote
+    status: planned
+    notes: API Gemini native. Clé GEMINI_API_KEY dans .env. La photo part chez Google après consentement explicite par projet.
