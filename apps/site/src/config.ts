@@ -1,10 +1,7 @@
-// Liens vers l'application. Contrat de passage : voir README.md (« Contrat /nouveau »).
-export const APP_URL = "https://app.plandesign.fr/";
-export const NEW_PROJECT_URL = "https://app.plandesign.fr/nouveau";
-export const REPO_URL = "https://github.com/gauniisalone/plandesign";
-export const ISSUES_URL = "https://github.com/gauniisalone/plandesign/issues";
+// Aucun lien vers l'application ni vers le dépôt tant que les comptes ne sont pas ouverts
+// (décision d'augus, 16 oct. 2026). Contrat futur : voir README.md.
 
-// Limites du formulaire (doivent rester alignées avec la route /nouveau de l'app).
+// Limites du formulaire (à garder alignées avec l'app le jour où il sera branché).
 export const DESCRIPTION_MAX = 1000;
 export const SURFACE_MIN = 1;
 export const SURFACE_MAX = 1000;

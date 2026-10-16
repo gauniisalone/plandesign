@@ -1,11 +1,10 @@
 ---
 import Base from "../layouts/Base.astro";
-import { ISSUES_URL } from "../config";
 ---
 
 <Base
   title="Confidentialité · PlanDesign"
-  description="Comment PlanDesign traite vos données : hébergement en France, aucun cookie sur le site public, aucun traceur publicitaire, assistant externe seulement sur votre accord."
+  description="Comment PlanDesign traite vos données : hébergement en France, aucun cookie, aucun traceur publicitaire, assistant externe seulement sur votre accord."
   path="/confidentialite/"
 >
   <article class="wrap prose">
@@ -15,16 +14,15 @@ import { ISSUES_URL } from "../config";
     <h2>Responsable du traitement</h2>
     <p>
       L'éditeur de PlanDesign, projet personnel non professionnel (voir les <a href="/mentions-legales/">mentions
-      légales</a>). Nous écrire : <a href={ISSUES_URL} rel="noopener">ouvrir un ticket sur GitHub</a>.
+      légales</a>). Une adresse de contact sera publiée à l'ouverture des comptes.
     </p>
 
-    <h2>Le site plandesign.fr</h2>
+    <h2>Ce site</h2>
     <ul>
       <li>Aucun cookie, aucune mesure d'audience, aucun traceur publicitaire, aucun appel à un service tiers : les polices et les images sont servies par nos propres serveurs.</li>
       <li>
-        Le formulaire « Décrivez le projet » n'est pas enregistré par ce site. Au clic sur « Commencer », votre saisie
-        (type de pièce, surface, description) est transmise dans l'adresse de la page vers app.plandesign.fr, afin de
-        préremplir votre premier espace de travail après connexion.
+        Le formulaire « Décrivez le projet » ne s'envoie pas : tant que les comptes ne sont pas ouverts, rien de ce
+        que vous y saisissez n'est transmis ni conservé.
       </li>
       <li>
         Comme tout serveur web, le nôtre consigne des journaux techniques (adresse IP, date, page demandée, navigateur)
@@ -32,7 +30,7 @@ import { ISSUES_URL } from "../config";
       </li>
     </ul>
 
-    <h2>L'application app.plandesign.fr</h2>
+    <h2>À l'ouverture des comptes</h2>
     <ul>
       <li>Compte : votre adresse e-mail, utilisée pour vous envoyer un lien de connexion (sans mot de passe) et pour les messages liés au service.</li>
       <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>
@@ -63,10 +61,10 @@ import { ISSUES_URL } from "../config";
 
     <h2>Vos droits</h2>
     <p>
-      Vous pouvez accéder à vos données, les rectifier, les supprimer, en limiter le traitement, vous y opposer et en
-      demander la portabilité : <a href={ISSUES_URL} rel="noopener">ouvrez un ticket sur GitHub</a>. Ce ticket est
-      public : n'y indiquez aucune donnée personnelle, nous vous répondrons pour organiser la suite.
-      Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
+      Aujourd'hui, ce site ne collecte aucune donnée personnelle : pas de compte, pas de cookie, et le formulaire de
+      l'accueil n'est pas envoyé. À l'ouverture des comptes, vous pourrez accéder à vos données, les rectifier, les
+      supprimer, en limiter le traitement, vous y opposer et en demander la portabilité en écrivant à l'adresse de
+      contact qui sera publiée à ce moment-là. Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
     </p>
   </article>
 </Base>
