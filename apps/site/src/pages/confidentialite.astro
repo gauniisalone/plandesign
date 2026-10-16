@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { ISSUES_URL } from "../config";
 ---
 
 <Base
@@ -9,12 +10,12 @@ import Base from "../layouts/Base.astro";
 >
   <article class="wrap prose">
     <h1>Confidentialité</h1>
-    <p class="updated">Dernière mise à jour : <span class="todo">[À COMPLÉTER PAR AUGUS : date de mise en ligne]</span></p>
+    <p class="updated">Dernière mise à jour : 16 octobre 2026</p>
 
     <h2>Responsable du traitement</h2>
     <p>
-      <span class="todo">[À COMPLÉTER PAR AUGUS : nom ou dénomination de l'éditeur]</span>, joignable à
-      <span class="todo">[À COMPLÉTER PAR AUGUS : adresse e-mail de contact]</span>.
+      L'éditeur de PlanDesign, projet personnel non professionnel (voir les <a href="/mentions-legales/">mentions
+      légales</a>). Nous écrire : <a href={ISSUES_URL} rel="noopener">ouvrir un ticket sur GitHub</a>.
     </p>
 
     <h2>Le site plandesign.fr</h2>
@@ -27,8 +28,7 @@ import Base from "../layouts/Base.astro";
       </li>
       <li>
         Comme tout serveur web, le nôtre consigne des journaux techniques (adresse IP, date, page demandée, navigateur)
-        pour la sécurité et le diagnostic. Durée de conservation :
-        <span class="todo">[À COMPLÉTER PAR AUGUS : durée, par exemple 30 jours]</span>.
+        pour la sécurité et le diagnostic.
       </li>
     </ul>
 
@@ -36,25 +36,36 @@ import Base from "../layouts/Base.astro";
     <ul>
       <li>Compte : votre adresse e-mail, utilisée pour vous envoyer un lien de connexion (sans mot de passe) et pour les messages liés au service.</li>
       <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>
-      <li>Hébergement : chez Hostinger, sur des serveurs situés en France (Paris).</li>
+      <li>Hébergement : chez Hostinger, dans un centre de données à Paris (France).</li>
       <li>Vos photos ne sont transmises à aucun service tiers.</li>
       <li>
         Assistant externe : si, et seulement si, vous cochez la case prévue, le texte de vos demandes (jamais vos photos)
         est envoyé au modèle Gemini de Google pour être interprété.
       </li>
-      <li>Durée de conservation : tant que votre compte est actif, puis <span class="todo">[À COMPLÉTER PAR AUGUS : durée après suppression ou inactivité]</span>.</li>
+    </ul>
+
+    <h2>Durées de conservation</h2>
+    <ul>
+      <li>Journaux techniques du serveur web : quelques semaines au plus (rotation automatique).</li>
+      <li>Rapports d'erreur techniques : 30 jours.</li>
+      <li>
+        Données d'un compte supprimé : effacées du service dès la suppression ; elles peuvent subsister dans les
+        sauvegardes chiffrées jusqu'à 6 mois, puis sont effacées.
+      </li>
+      <li>Mesure d'audience : aucune.</li>
     </ul>
 
     <h2>Base légale</h2>
     <p>
       L'exécution du service que vous demandez (compte et projets), votre consentement (assistant externe) et notre
-      intérêt légitime à sécuriser le service (journaux techniques).
+      intérêt légitime à sécuriser le service (journaux techniques et rapports d'erreur).
     </p>
 
     <h2>Vos droits</h2>
     <p>
       Vous pouvez accéder à vos données, les rectifier, les supprimer, en limiter le traitement, vous y opposer et en
-      demander la portabilité en écrivant à <span class="todo">[À COMPLÉTER PAR AUGUS : adresse e-mail de contact]</span>.
+      demander la portabilité : <a href={ISSUES_URL} rel="noopener">ouvrez un ticket sur GitHub</a>. Ce ticket est
+      public : n'y indiquez aucune donnée personnelle, nous vous répondrons pour organiser la suite.
       Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
     </p>
   </article>

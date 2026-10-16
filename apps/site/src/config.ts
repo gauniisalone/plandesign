@@ -2,6 +2,7 @@
 export const APP_URL = "https://app.plandesign.fr/";
 export const NEW_PROJECT_URL = "https://app.plandesign.fr/nouveau";
 export const REPO_URL = "https://github.com/gauniisalone/plandesign";
+export const ISSUES_URL = "https://github.com/gauniisalone/plandesign/issues";
 
 // Limites du formulaire (doivent rester alignées avec la route /nouveau de l'app).
 export const DESCRIPTION_MAX = 1000;
