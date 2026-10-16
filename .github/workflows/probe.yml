@@ -4,7 +4,7 @@
 name: probe
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "3-59/15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -44,3 +44,4 @@ jobs:
           printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$TG_TOKEN" \
             | curl -s --max-time 15 -K - --data-urlencode "chat_id=$TG_CHAT" \
                 --data-urlencode "text=PlanDesign · sonde externe (GitHub) : injoignable depuis l'extérieur :$FAIL" > /dev/null
+
