@@ -39,6 +39,8 @@ Légende : ✅ en place et testé · 🟨 en place, non testé · ⬜ prévu · 
 | Sauvegardes ou synchronisation cloud du dossier de données | Hors du contrôle du logiciel ; à documenter pour l'utilisateur (choisir un `OPENPLAN_DATA_DIR` non synchronisé) | ⬜ | docs utilisateur |
 | Chiffrement au repos | Non prévu en 0.1 (repose sur le disque de l'utilisateur) | ❌ | — |
 
+Serveur en ligne : sauvegardes chiffrées quotidiennes, copie hors serveur, restauration testée chaque mois.
+
 ### Réseau et API
 
 | Menace | Mesure | État | Où |
