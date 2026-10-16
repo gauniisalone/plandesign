@@ -31,8 +31,8 @@ wsl -d Debian -- bash -lc "cd ~/plandesign && make start"
 
 La page d'arrivée est la **galerie de vos tableaux** (un projet = un tableau, avec sa
 vignette : son dernier rendu, sinon son plan). Cliquer **+ Nouveau projet** : le tableau du
-projet s'ouvre, avec la note **Exigences**, les cadres **Photos de la pièce**, **Inspirations**,
-**Plan** et **Rendus**. **Déposer la photo du grenier** dans le cadre « Photos de la pièce »
+projet s'ouvre : à gauche les cadres **Photos de la pièce** et **Inspirations**, au centre le
+**Plan**, à droite les **Rendus**, et en bas le **compositeur** (vos exigences et « Générer »). **Déposer la photo du grenier** dans le cadre « Photos de la pièce »
 (ou le bouton Importer de la colonne d'outils). La photo est importée et le plan se construit
 tout seul (bascule « Générer automatiquement au dépôt d'une photo », activée par défaut) ; la
 progression s'affiche dans le cadre Plan. Rien n'est demandé : l'appareil est supposé tenu à
@@ -53,13 +53,13 @@ estimés ; un plan **DXF**, **PDF vectoriel** ou **SVG** donne ses murs tout de 
 papier lue ou proposée). Pour corriger après coup les calques retenus ou l'échelle papier :
 bouton **Ajouter une source** en haut, bloc « Corriger la lecture du plan ». Sans photo ni
 plan, le cadre Plan vide propose **✎ Tracer moi-même** (les murs à la main) ou **Générer le
-plan** d'après la note Exigences ; le nom du projet se change d'un double-clic sur sa carte,
+plan** d'après vos exigences (le compositeur) ; le nom du projet se change d'un double-clic sur sa carte,
 dans la galerie.
 
 Si la bascule est activée, rien d'autre n'est à faire : le plan construit, les **rendus des
 vues** suivent tout seuls et arrivent dans le cadre Rendus (zéro geste après le dépôt).
-Bascule désactivée, **Générer maintenant** dans la barre du bas lance la même chaîne (un
-geste). Si le plan ne se construit pas, le projet, la photo et la note restent, avec un
+Bascule désactivée, **Générer maintenant** dans le compositeur lance la même chaîne (un
+geste). Si le plan ne se construit pas, le projet, la photo et vos exigences restent, avec un
 message qui dit pourquoi ; l'image d'inspiration de secours de l'ancien accueil se demande
 désormais depuis Paramètres avancés › Outils experts › Photos.
 
@@ -136,21 +136,23 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
 - **Ranger** : l'outil Cadre (F) trace un cadre nommé ; ce qui est lâché dedans lui
   appartient et bouge avec lui.
 - **Écrire** : l'outil Note (N), puis un clic ; double-clic sur une note pour la modifier.
-- **Exigences** : la note Exigences du tableau (une par projet) rassemble ce que vous voulez :
-  espace, surface, chambres, style, « plus d'options » (format, lumière, ambiance, meubles
-  voulus, à éviter), vos envies en texte libre, la case Gemini (texte seul) et la ligne
-  « compris : … ». Tout est gardé dans le projet et lu par le chemin automatique au prochain
-  plan ; « Nouvelle variante » envoie le texte à l'assistant.
+- **Exigences : le compositeur** flotte en bas du tableau. Onglet **Prompt libre** : vos
+  envies en texte libre ; onglet **Questions guidées** : espace, surface, chambres, style,
+  « plus d'options » (format, lumière, ambiance, meubles voulus, à éviter). La case Gemini
+  (texte seul) et la ligne « compris : … » sont communes. Tout est gardé dans le projet et
+  lu par le chemin automatique au prochain plan ; « Nouvelle variante » envoie le texte à
+  l'assistant. Le × le referme : plus rien de vos exigences sur le tableau, la pastille
+  **Générer** le rouvre.
 - **Importer** : glissez des photos ou des fichiers sur le tableau, collez-les (Ctrl+V),
   ou le bouton Importer. Une photo entre dans le projet ; un autre fichier est joint tel
   quel (50 Mo au plus) et se télécharge depuis sa carte.
 - **Le plan, à votre main ou généré** : tant qu'il est vide, le cadre Plan propose
   **✎ Tracer moi-même** (les outils du plan) ou **Générer le plan** : d'après la première
-  photo de la pièce, sinon d'après la note Exigences (logement décrit ou surface) ; la
+  photo de la pièce, sinon d'après vos exigences (logement décrit ou surface) ; la
   progression s'affiche dans le cadre, les rendus suivent si le chemin automatique est actif.
-- **Lancer** : tant qu'aucun rendu n'existe, la barre du bas propose « Générer
-  automatiquement au dépôt d'une photo » (activée : déposer une photo de la pièce suffit,
-  le plan puis les rendus suivent) et « Générer maintenant ».
+- **Lancer** : en bas du compositeur, « Générer automatiquement au dépôt d'une photo »
+  (activée : déposer une photo de la pièce suffit, le plan puis les rendus suivent) et
+  « Générer maintenant ».
 - **Deux cadres à remplir** : **Photos de la pièce** reçoit les photos réelles (elles font le
   plan) ; **Inspirations** reçoit vos images d'ambiance : jointes au projet, montrées sur le
   tableau et cochées Référence, leur allure guide les rendus contextualisés. Un fichier
@@ -275,7 +277,7 @@ change.
 | Sur votre machine (`make start`) | restent sur la machine | ne part pas, sauf case Gemini cochée : le texte seul part chez Google | jamais |
 | En ligne (app.plandesign.fr) | gardés sur le serveur PlanDesign, nulle part ailleurs | idem : seulement avec la case Gemini, texte seul | un plantage envoie un rapport technique (type d'erreur, ligne de code, route) sans vos textes, photos, noms de projet ni chemins |
 
-**Case Gemini** (Réglages de la galerie, ou note Exigences) : en palier gratuit, Google peut
+**Case Gemini** (Réglages de la galerie, ou compositeur) : en palier gratuit, Google peut
 utiliser le texte envoyé pour améliorer ses produits. Les photos, les plans et les noms de
 projet ne partent jamais par cette case. Décochée, le texte est lu par les phrases simples de
 PlanDesign, sans service extérieur.

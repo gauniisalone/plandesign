@@ -5447,26 +5447,29 @@ button.link.home-empty-link {
   width: 220px;
 }
 
-/* T4 : déclencheur du chemin automatique, en bas du tableau. */
-.board-trigger {
-  position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 6;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 12px;
+/* T7b : les cadres posés par le tableau (Photos, Inspirations, Rendus…) ont leur titre dans
+   un en-tête à filet, comme le plan ; leur contenu commence sous lui. */
+.board-item.kind-frame:has(.board-frame-head) {
   background: var(--panel);
   border: 1px solid var(--line);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
-  font-size: 13px;
-  max-width: calc(100% - 32px);
-  flex-wrap: wrap;
 }
 
+.board-item.kind-frame:has(.board-frame-head) .board-frame-hint {
+  top: calc(13px * max(1, var(--inv, 1)) * 2.4);
+}
+
+.board-frame-title.board-frame-head {
+  top: 0;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  padding: 0.45em 0.8em;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* T4 : case du déclencheur (dans le compositeur depuis T7b). */
 .board-trigger-toggle {
   display: inline-flex;
   gap: 6px;
@@ -5842,110 +5845,170 @@ button.link.home-empty-link {
   font-size: 13px;
 }
 
-/* ---- T1 : note Exigences du tableau ---- */
-.board-item.kind-requirements {
-  background: color-mix(in oklab, var(--primary) 18%, var(--panel));
-  border-color: color-mix(in oklab, var(--primary) 45%, var(--line));
-  display: flex;
-  flex-direction: column;
+/* ---- T7b : compositeur flottant (exigences + déclencheur), en bas du tableau ---- */
+.board-composer {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 6;
+  /* Entre la colonne d'outils (gauche) et le zoom (droite). */
+  width: max(320px, min(760px, calc(100% - 320px)));
+  max-height: min(60vh, 520px);
   overflow: auto;
-}
-
-.board-requirements {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 10px 10px;
-  /* Lisible à tout zoom (12 px à l'écran au moins), sans grossir plus que 1,6 fois. */
-  font-size: clamp(12px, calc(11px * var(--inv, 1)), 18px);
+  gap: 8px;
+  padding: 10px 14px 12px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+  font-size: 13px;
   cursor: default;
 }
 
-.board-requirements .board-media-head {
-  margin: 0 -10px 2px;
-  cursor: grab;
-}
-
-.board-requirements-body {
+.board-composer-head {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
 
-.board-requirements .home-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 10px;
-}
-
-.board-requirements .home-grid label {
-  display: flex;
-  flex-direction: column;
+.board-composer-tabs {
+  display: inline-flex;
   gap: 2px;
-  font-size: 0.92em;
-  color: var(--muted);
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
 }
 
-.board-requirements input,
-.board-requirements select,
-.board-requirements textarea {
+.board-composer-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+}
+
+.board-composer-tabs button.active {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.board-composer-close {
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.board-composer textarea {
   width: 100%;
+  min-height: 4.5em;
+  resize: vertical;
+}
+
+.board-composer input,
+.board-composer select,
+.board-composer textarea {
   box-sizing: border-box;
   font: inherit;
-  padding: 3px 6px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
+  border-radius: 8px;
+  background: var(--bg);
   color: var(--ink);
 }
 
-.board-requirements textarea {
-  resize: vertical;
-  min-height: 3.2em;
+.board-composer input[type="checkbox"] {
+  width: auto;
+  padding: 0;
 }
 
-.board-requirements .home-chips-row {
+.board-composer .home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 12px;
+}
+
+.board-composer .home-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+}
+
+.board-composer .home-chips-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  font-size: 0.9em;
 }
 
-.board-requirements .home-chips-row button {
-  padding: 1px 7px;
+.board-composer .home-chips-row button {
+  padding: 1px 8px;
   border-radius: 999px;
 }
 
-.board-requirements .home-chips-row button[aria-pressed="true"] {
+.board-composer .home-chips-row button[aria-pressed="true"] {
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-fg);
   border-color: var(--primary);
 }
 
-.board-requirements .home-options summary {
+.board-composer .home-options summary {
   cursor: pointer;
-  font-size: 1em;
-  color: var(--primary);
+  color: var(--accent-fg);
   margin: 2px 0;
 }
 
-.board-requirements-understood {
+.board-composer-understood {
   margin: 0;
-  color: var(--ok, var(--primary));
+  color: var(--ok, var(--accent-fg));
   font-weight: 600;
 }
 
-.board-requirements-gemini {
+.board-composer-gemini {
   display: flex;
   gap: 6px;
   align-items: flex-start;
-  font-size: 0.9em;
   color: var(--muted);
 }
 
-.board-requirements-note {
-  font-size: 0.88em;
+.board-composer-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.board-composer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.board-composer-sp {
+  flex: 1;
+}
+
+.board-composer-foot .primary {
+  border-radius: 999px;
+  padding: 8px 18px;
+}
+
+.board-composer-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 20px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
 }
 
 /* ---- A1 : rendu contextualisé ---- */

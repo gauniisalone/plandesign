@@ -48,7 +48,8 @@ async function project(page: Page, id: string): Promise<ApiProject> {
 
 const idOf = (page: Page) => /projects\/([0-9a-f-]{36})/.exec(page.url())![1]!;
 
-/** « + Nouveau projet » dans la galerie : le tableau s'ouvre ; renvoie la note Exigences. */
+/** « + Nouveau projet » dans la galerie : le tableau s'ouvre ; renvoie le compositeur (T7b),
+ *  ouvert d'office sur un projet sans rendu, sur l'onglet « Prompt libre ». */
 async function newBoard(page: Page): Promise<Locator> {
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau projet" }).click();
@@ -56,9 +57,7 @@ async function newBoard(page: Page): Promise<Locator> {
     timeout: 30_000,
   });
   await expectSpace(page, "board", { timeout: 30_000 });
-  const card = page
-    .getByRole("region", { name: "Tableau" })
-    .locator(".board-item.kind-requirements");
+  const card = page.getByRole("region", { name: "Compositeur" });
   await expect(card).toBeVisible();
   return card;
 }
@@ -343,6 +342,7 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
   await withAutoPath(page);
   const card = await newBoard(page);
   const id = idOf(page);
+  await card.getByRole("tab", { name: "Questions guidées" }).click();
   await card.getByLabel("Chambres").fill("2");
   await card.getByLabel("Style").selectOption("industriel");
   await card.getByText("Plus d'options").click();
@@ -351,6 +351,7 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
     .getByRole("group", { name: "À éviter" })
     .getByRole("button", { name: "tapis" })
     .click();
+  await card.getByRole("tab", { name: "Prompt libre" }).click();
   await card.getByLabel("Vos envies et contraintes").fill("avec une cheminée");
   await card.getByLabel("Vos envies et contraintes").blur();
   await expect(card).toContainText(/compris : .*2 chambres.*industriel/);

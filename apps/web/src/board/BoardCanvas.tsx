@@ -25,7 +25,7 @@ import { PHOTO_TYPES } from "../importFiles";
 import { walls } from "../model";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
-import { RequirementsCard } from "./RequirementsCard";
+import { Composer } from "./Composer";
 import {
   hostOf,
   linkFrom,
@@ -191,18 +191,22 @@ export function BoardCanvas(props: Props) {
     const maxX = Math.max(...items.map((i) => i.x + i.w));
     const maxY = Math.max(...items.map((i) => i.y + i.h));
     const rect = el.getBoundingClientRect();
+    // T7b : le compositeur ouvert couvre le bas du tableau ; on cadre au-dessus de lui.
+    const composer = el.querySelector(".board-composer");
+    const reserve = composer ? composer.getBoundingClientRect().height + 16 : 0;
+    const height = Math.max(200, rect.height - reserve);
     const zoom = Math.max(
       ZOOM_MIN,
       Math.min(
         1.5,
         (rect.width - 2 * FIT_MARGIN) / Math.max(1, maxX - minX),
-        (rect.height - 2 * FIT_MARGIN) / Math.max(1, maxY - minY),
+        (height - 2 * FIT_MARGIN) / Math.max(1, maxY - minY),
       ),
     );
     const next = {
       zoom,
       x: (rect.width - (maxX - minX) * zoom) / 2 - minX * zoom,
-      y: (rect.height - (maxY - minY) * zoom) / 2 - minY * zoom,
+      y: (height - (maxY - minY) * zoom) / 2 - minY * zoom,
     };
     if (persist) applyView(next);
     else setViewState(next);
@@ -389,7 +393,10 @@ export function BoardCanvas(props: Props) {
     size: [number, number],
   ): { x: number; y: number; frame: BoardItem } => {
     const pad = 24;
-    const cols = Math.max(1, Math.floor((frame.w - 2 * pad + 16) / (size[0] + 16)));
+    const cols = Math.max(
+      1,
+      Math.floor((frame.w - 2 * pad + 16) / (size[0] + 16)),
+    );
     const row = Math.floor(inside / cols);
     const col = inside % cols;
     const need = pad * 2 + (row + 1) * size[1] + row * 16;
@@ -928,13 +935,8 @@ export function BoardCanvas(props: Props) {
           <span className="board-missing">lien sans adresse</span>
         );
       case "requirements":
-        return (
-          <RequirementsCard
-            project={project}
-            onSettings={props.onSettings}
-            onVariant={props.onVariant}
-          />
-        );
+        // T7b : la note Exigences a quitté le tableau (compositeur) ; le serveur la retire.
+        return null;
       case "file": {
         const ref = media.find((m) => m.id === item.ref);
         // T2 : une image jointe (inspiration) se montre, avec son nom.
@@ -1010,29 +1012,38 @@ export function BoardCanvas(props: Props) {
                   {FRAME_HINTS[item.role ?? ""]}
                 </span>
               )}
-          <span className="board-frame-title">
-            {editing === item.id ? (
-              <input
-                autoFocus
-                aria-label="Nom du cadre"
-                defaultValue={item.text}
-                onPointerDown={(e) => e.stopPropagation()}
-                onBlur={(e) => {
-                  const text = e.target.value.trim().slice(0, 120) || "Cadre";
-                  setEditing(null);
-                  if (text !== item.text)
-                    commit(
-                      items.map((i) => (i.id === item.id ? { ...i, text } : i)),
-                    );
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-              />
-            ) : (
-              item.text
-            )}
-          </span>
+            <span
+              className={
+                item.role
+                  ? "board-frame-title board-frame-head"
+                  : "board-frame-title"
+              }
+            >
+              {editing === item.id ? (
+                <input
+                  autoFocus
+                  aria-label="Nom du cadre"
+                  defaultValue={item.text}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    const text = e.target.value.trim().slice(0, 120) || "Cadre";
+                    setEditing(null);
+                    if (text !== item.text)
+                      commit(
+                        items.map((i) =>
+                          i.id === item.id ? { ...i, text } : i,
+                        ),
+                      );
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      (e.target as HTMLInputElement).blur();
+                  }}
+                />
+              ) : (
+                item.text
+              )}
+            </span>
           </>
         );
     }
@@ -1392,48 +1403,16 @@ export function BoardCanvas(props: Props) {
           </div>
         )}
 
-        {!props.hasRenders && (
-          // T4 : le déclencheur du chemin « zéro geste », tant qu'aucun rendu n'existe.
-          <div
-            className="board-trigger"
-            role="group"
-            aria-label="Déclencheur"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {props.planProgress ? (
-              <span className="board-plan-progress" role="status">
-                <span className="spinner" aria-hidden="true" />
-                {props.planProgress}
-              </span>
-            ) : (
-              <>
-                <label className="board-trigger-toggle">
-                  <input
-                    type="checkbox"
-                    checked={project.render.auto_on_drop}
-                    onChange={(e) =>
-                      props.onSettings({
-                        render: {
-                          ...project.render,
-                          auto_on_drop: e.target.checked,
-                        },
-                      })
-                    }
-                  />
-                  Générer automatiquement au dépôt d'une photo
-                </label>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={props.onGenerateNow}
-                  title="Plan s'il manque (d'après les photos, sinon la note Exigences), puis ambiance, aménagement, vues et rendus"
-                >
-                  Générer maintenant
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        {/* T7b : le compositeur flottant (exigences + déclencheur du zéro geste). */}
+        <Composer
+          key={project.id}
+          project={project}
+          hasRenders={props.hasRenders}
+          planProgress={props.planProgress}
+          onSettings={props.onSettings}
+          onVariant={props.onVariant}
+          onGenerateNow={props.onGenerateNow}
+        />
 
         <div className="board-zoom" role="group" aria-label="Zoom du tableau">
           <button

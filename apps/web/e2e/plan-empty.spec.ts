@@ -19,21 +19,28 @@ test("cadre Plan vide : tracer ou générer, progression, plan de départ depuis
   const board = page.getByRole("region", { name: "Tableau" });
   const plan = board.locator(".board-item.kind-plan");
   await expect(plan).toContainText("Votre plan");
-  await expect(plan.getByRole("button", { name: "Tracer moi-même" })).toBeVisible();
+  await expect(
+    plan.getByRole("button", { name: "Tracer moi-même" }),
+  ).toBeVisible();
   const generate = plan.getByRole("button", { name: "Générer le plan" });
   await expect(generate).toBeVisible();
   await expect(plan).not.toContainText("Modifier le plan");
 
   // Rien à lire : l'écran le dit, rien ne part.
   await generate.click();
-  await expect(page.getByText(/Rien à lire pour générer le plan/)).toBeVisible();
+  await expect(
+    page.getByText(/Rien à lire pour générer le plan/),
+  ).toBeVisible();
 
-  // Une surface dans la note Exigences : le plan de départ se construit depuis le cadre.
-  const card = board.locator(".board-item.kind-requirements");
+  // Une surface dans le compositeur (T7b) : le plan de départ se construit depuis le cadre.
+  const card = page.getByRole("region", { name: "Compositeur" });
+  await card.getByRole("tab", { name: "Questions guidées" }).click();
   await card.getByLabel("Surface (m²)").fill("24");
   await expect
     .poll(async () => {
-      const p = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+      const p = (await (
+        await page.request.get(`/api/projects/${id}`)
+      ).json()) as {
         pending_answers: { area_m2: number } | null;
       };
       return p.pending_answers?.area_m2 ?? null;
@@ -43,7 +50,9 @@ test("cadre Plan vide : tracer ou générer, progression, plan de départ depuis
   await expect(plan.locator("img.board-plan")).toBeVisible({ timeout: 30_000 });
   await expect(plan).toContainText("Modifier le plan");
   await expect(plan).not.toContainText("Votre plan");
-  const project = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+  const project = (await (
+    await page.request.get(`/api/projects/${id}`)
+  ).json()) as {
     levels: Record<string, { elements: Record<string, { type: string }> }>;
   };
   const level = Object.values(project.levels)[0]!;

@@ -1,7 +1,7 @@
-"""T1 : la note Exigences du tableau. Le tableau porte toujours une note `requirements` (une
-seule, rôle `prompt`) ; son contenu vit dans le projet : `pending_answers` et
-`pending_instruction` par PATCH, lus par le chemin automatique, effacés quand il les applique ;
-l'ancienne note de la demande (B1) devient cette note à sa place."""
+"""T1, T7b : les exigences du projet. Depuis T7b elles se saisissent dans le compositeur
+flottant, plus sur le tableau : aucune note `requirements` ni note de la demande n'y reste ;
+leur contenu vit dans le projet : `pending_answers` et `pending_instruction` par PATCH, lus par
+le chemin automatique, effacés quand il les applique."""
 
 from __future__ import annotations
 
@@ -24,38 +24,29 @@ def _client(tmp_path: Path, project: Project) -> TestClient:
     return TestClient(create_app(store=store, settings=Settings(data_dir=tmp_path / "data")))
 
 
-def test_board_always_has_one_requirements_note(tmp_path: Path) -> None:
+def test_the_board_carries_no_requirements_note(tmp_path: Path) -> None:
     project = rect_room_project(4.0, 3.0)
     client = _client(tmp_path, project)
-    board = client.get(f"/api/projects/{project.id}/board").json()
-    notes = [i for i in board["items"] if i["kind"] == "requirements"]
-    assert len(notes) == 1 and notes[0]["role"] == "prompt" and notes[0]["text"] == "Exigences"
-    assert not any(i["kind"] == "note" and i["role"] == "prompt" for i in board["items"])
-    # Une consigne gardée ne crée pas de seconde note : le contenu est dans le projet.
     client.patch(f"/api/projects/{project.id}", json={"pending_instruction": "bois et lin"})
-    again = client.get(f"/api/projects/{project.id}/board").json()
-    assert sum(1 for i in again["items"] if i["role"] == "prompt") == 1
+    board = client.get(f"/api/projects/{project.id}/board").json()
+    assert not any(i["kind"] == "requirements" or i["role"] == "prompt" for i in board["items"])
+    assert client.get(f"/api/projects/{project.id}").json()["pending_instruction"] == "bois et lin"
 
 
-def test_old_prompt_note_becomes_the_requirements_note(tmp_path: Path) -> None:
+def test_old_notes_leave_the_board_and_keep_their_text_in_the_project(tmp_path: Path) -> None:
     project = rect_room_project(4.0, 3.0).model_copy(update={"pending_instruction": "deux lits"})
     old = Board(
         items=[
             BoardItem(
                 kind="note", x=10.0, y=20.0, w=300.0, h=170.0, text="deux lits", role="prompt"
-            )
+            ),
+            BoardItem(kind="requirements", x=10.0, y=240.0, w=360.0, h=640.0, role="prompt"),
         ]
     )
     synced, changed = sync_board(old, project, tmp_path / "runs")
     assert changed
-    prompt_items = [i for i in synced.items if i.role == "prompt"]
-    assert len(prompt_items) == 1
-    (note,) = prompt_items
-    assert (
-        note.kind == "requirements"
-        and note.text == "Exigences"
-        and (note.x, note.y) == (10.0, 20.0)
-    )
+    assert not any(i.role == "prompt" or i.kind == "requirements" for i in synced.items)
+    assert project.pending_instruction == "deux lits"
 
 
 def test_pending_answers_roundtrip_and_clearing(tmp_path: Path) -> None:

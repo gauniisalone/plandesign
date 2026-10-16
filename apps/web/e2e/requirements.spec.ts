@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
 
-/** T1 : la note Exigences du tableau. Une seule par tableau ; ses champs (questions guidées),
- *  son texte et la ligne « compris » ; le contenu est gardé dans le projet (réponses et
- *  consigne), relu à la réouverture ; le tableau garde sa place. Aucune requête externe. */
+/** T1, T7b : les exigences dans le compositeur flottant. Deux onglets (prompt libre, questions
+ *  guidées), la ligne « compris » ; le contenu est gardé dans le projet (réponses et
+ *  consigne), relu à la réouverture ; rien sur le tableau, et rien de visible quand le
+ *  compositeur est fermé (une pastille « Générer » le rouvre). Aucune requête externe. */
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
 
-test("note Exigences : champs guidés, texte, compris, gardés dans le projet", async ({
+test("compositeur : onglets, champs guidés, texte, compris, gardés dans le projet", async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -23,24 +24,37 @@ test("note Exigences : champs guidés, texte, compris, gardés dans le projet", 
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Tableau" });
-  const card = board.locator(".board-item.kind-requirements");
-  await expect(card).toHaveCount(1);
-  await expect(card).toContainText("Exigences");
-  await expect(card).toContainText("Rien n'est obligatoire");
+  await expect(board.locator(".board-item.kind-requirements")).toHaveCount(0);
+  const composer = page.getByRole("region", { name: "Compositeur" });
+  await expect(composer).toHaveCount(1);
+  await expect(composer).toContainText("Rien n'est obligatoire");
+  await expect(
+    composer.getByRole("tab", { name: "Prompt libre" }),
+  ).toHaveAttribute("aria-selected", "true");
 
-  // Les champs guidés et le texte : « compris » suit, le projet garde tout.
-  await card.getByLabel("Surface (m²)").fill("24");
-  await card.getByLabel("Chambres").fill("1");
-  await card.getByLabel("Style").selectOption("chalet");
-  await card.getByLabel("Vos envies et contraintes").fill("grenier chaleureux, bois et lin");
-  await card.getByLabel("Vos envies et contraintes").blur();
-  await expect(card).toContainText(/compris : .*24 m².*1 chambre.*chalet/);
-  await expect(card).toContainText("chaleureux");
+  // Les champs guidés puis le texte : « compris » suit, le projet garde tout.
+  await composer.getByRole("tab", { name: "Questions guidées" }).click();
+  await composer.getByLabel("Surface (m²)").fill("24");
+  await composer.getByLabel("Chambres").fill("1");
+  await composer.getByLabel("Style").selectOption("chalet");
+  await composer.getByRole("tab", { name: "Prompt libre" }).click();
+  await composer
+    .getByLabel("Vos envies et contraintes")
+    .fill("grenier chaleureux, bois et lin");
+  await composer.getByLabel("Vos envies et contraintes").blur();
+  await expect(composer).toContainText(/compris : .*24 m².*1 chambre.*chalet/);
+  await expect(composer).toContainText("chaleureux");
   await expect
     .poll(async () => {
-      const project = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+      const project = (await (
+        await page.request.get(`/api/projects/${id}`)
+      ).json()) as {
         pending_instruction: string | null;
-        pending_answers: { area_m2: number; bedrooms: number; style: string } | null;
+        pending_answers: {
+          area_m2: number;
+          bedrooms: number;
+          style: string;
+        } | null;
       };
       return [
         project.pending_instruction,
@@ -51,19 +65,31 @@ test("note Exigences : champs guidés, texte, compris, gardés dans le projet", 
     })
     .toEqual(["grenier chaleureux, bois et lin", 24, 1, "chalet"]);
 
-  // Réouverture : une seule note, mêmes valeurs ; « Nouvelle variante » envoie à l'assistant.
+  // Fermé : plus rien des exigences sur le tableau ; la pastille le rouvre, tout est là.
+  await composer.getByRole("button", { name: "Fermer le compositeur" }).click();
+  await expect(composer).toHaveCount(0);
+  await expect(board).not.toContainText("grenier chaleureux");
+  await page.getByRole("button", { name: "Ouvrir le compositeur" }).click();
+  await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(
+    "grenier chaleureux, bois et lin",
+  );
+
+  // Réouverture de la page : mêmes valeurs ; « Nouvelle variante » envoie à l'assistant.
   await page.reload();
   await expectSpace(page, "board");
-  await expect(card).toHaveCount(1);
-  await expect(card.getByLabel("Surface (m²)")).toHaveValue("24");
-  await expect(card.getByLabel("Style")).toHaveValue("chalet");
-  await expect(card.getByLabel("Vos envies et contraintes")).toHaveValue(
+  await expect(composer).toHaveCount(1);
+  await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(
     "grenier chaleureux, bois et lin",
   );
-  await card.getByRole("button", { name: "Nouvelle variante → assistant" }).click();
+  await composer.getByRole("tab", { name: "Questions guidées" }).click();
+  await expect(composer.getByLabel("Surface (m²)")).toHaveValue("24");
+  await expect(composer.getByLabel("Style")).toHaveValue("chalet");
+  await composer
+    .getByRole("button", { name: "Nouvelle variante → assistant" })
+    .click();
   await expect(page.getByLabel("Votre demande à l'assistant")).toBeVisible();
-  await expect(page.getByRole("complementary", { name: "Assistant" })).toContainText(
-    "grenier chaleureux, bois et lin",
-  );
+  await expect(
+    page.getByRole("complementary", { name: "Assistant" }),
+  ).toContainText("grenier chaleureux, bois et lin");
   expect(outside).toEqual([]);
 });

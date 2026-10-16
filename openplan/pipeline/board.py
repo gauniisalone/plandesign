@@ -42,16 +42,17 @@ FIXED_FRAMES: dict[str, str] = {
 (elles font le plan) et les images d'ambiance (jointes, cochées Référence). Retirés à la
 main, ils ne reviennent pas (`dismissed` : `frame:<rôle>`)."""
 
-# Mise en page de départ (pixels du tableau) : à gauche les cadres Photos et Rendus et la
-# note de la demande, à droite le plan, grand.
+# Mise en page de départ (pixels du tableau, maquette d'augus du 16 octobre) : à gauche les
+# cadres Photos de la pièce puis Inspirations, au centre le plan, grand, à droite les Rendus.
 GAP = 48.0
 PAD = 24.0
+PAD_TOP = 88.0
+"""T7b : le titre des cadres posés par le tableau est dans un en-tête, comme celui du plan ;
+leur contenu commence sous lui (l'en-tête grandit quand on dézoome)."""
 CELL_W, CELL_H = 280.0, 190.0
 COLS = 2
 FRAME_W = PAD * 2 + COLS * CELL_W + (COLS - 1) * 16.0
 NOTE_W, NOTE_H = 300.0, 170.0
-REQUIREMENTS_W, REQUIREMENTS_H = 360.0, 640.0
-REQUIREMENTS_TITLE = "Exigences"
 PLAN_X, PLAN_W, PLAN_H = FRAME_W + 2 * GAP, 900.0, 700.0
 FILE_W, FILE_H = 220.0, 72.0
 INSPIRATION_DIR = "inspiration"
@@ -227,15 +228,13 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     for lid, name in have.plans:
         if f"plan:{lid}" not in present | dismissed:
             added.plan(lid, name)
-    # T1 : la note Exigences est toujours là (une par tableau), même vide ; l'ancienne note de
-    # la demande (B1) devient cette note, à sa place.
-    for index, item in enumerate(added.items):
-        if item.kind == "note" and item.role == "prompt":
-            added.items[index] = item.model_copy(
-                update={"kind": "requirements", "text": REQUIREMENTS_TITLE, "h": REQUIREMENTS_H}
-            )
-    if "prompt" not in present and "prompt" not in dismissed:
-        added.requirements()
+    # T7b : les exigences vivent dans le compositeur flottant, plus sur le tableau. La note
+    # Exigences (T1) et l'ancienne note de la demande (B1) s'en vont ; ce qui était posé
+    # dessous, dans la colonne de gauche, remonte à leur place. Leur contenu reste dans le
+    # projet (`pending_instruction`, `pending_answers`).
+    for note in [i for i in added.items if i.kind == "requirements" or i.role == "prompt"]:
+        added.lift(note)
+    added.make_room_for_heads()
     # T2 : les cadres Photos de la pièce et Inspirations existent dès le départ, même vides.
     for role, title in FIXED_FRAMES.items():
         if f"frame:{role}" not in present | dismissed:
@@ -293,7 +292,7 @@ class _Adder:
             x=0.0,
             y=self._left_bottom(),
             w=FRAME_W,
-            h=PAD * 2 + CELL_H,
+            h=PAD_TOP + PAD + CELL_H,
             text=title,
             role=role,
             z=-1,
@@ -318,8 +317,8 @@ class _Adder:
         inside = sum(1 for i in self.items if i.frame == frame.id)
         row, col = divmod(inside, COLS)
         x = frame.x + PAD + col * (CELL_W + 16.0)
-        y = frame.y + PAD + row * (CELL_H + 16.0)
-        need = PAD * 2 + (row + 1) * CELL_H + row * 16.0
+        y = frame.y + PAD_TOP + row * (CELL_H + 16.0)
+        need = PAD_TOP + PAD + (row + 1) * CELL_H + row * 16.0
         if frame.h < need:
             grown = frame.model_copy(update={"h": need})
             self._push_below(frame, need - frame.h)
@@ -352,19 +351,43 @@ class _Adder:
             for i in self.items
         ]
 
-    def requirements(self) -> None:
-        """La note Exigences (T1), sous les cadres de gauche ; son contenu est dans le projet."""
-        self.items.append(
-            BoardItem(
-                kind="requirements",
-                x=0.0,
-                y=self._left_bottom(),
-                w=REQUIREMENTS_W,
-                h=REQUIREMENTS_H,
-                text=REQUIREMENTS_TITLE,
-                role="prompt",
-            )
-        )
+    def make_room_for_heads(self) -> None:
+        """Tableaux d'avant T7b : le contenu des cadres posés par le tableau commençait à 24 px
+        du haut ; il descend sous l'en-tête, le cadre grandit d'autant et pousse ce qui est
+        dessous."""
+        for frame in [i for i in self.items if i.kind == "frame" and i.role is not None]:
+            inside = [i for i in self.items if i.frame == frame.id]
+            if not inside:
+                continue
+            top = min(i.y for i in inside)
+            # Seulement la mise en page d'avant (contenu à 24 px du haut), jamais un élément
+            # qu'on aurait déplacé à la main.
+            if abs(top - (frame.y + PAD)) > 1.0:
+                continue
+            delta = PAD_TOP - PAD
+            self.items[:] = [
+                i.model_copy(update={"y": i.y + delta}) if i.frame == frame.id else i
+                for i in self.items
+            ]
+            grown = frame.model_copy(update={"h": frame.h + delta})
+            self._push_below(frame, delta)
+            self.items[self.items.index(frame)] = grown
+
+    def lift(self, gone: BoardItem) -> None:
+        """Retire `gone` ; ce qui était posé sous lui dans la même colonne (et le contenu des
+        cadres déplacés) remonte de sa hauteur."""
+        self.items[:] = [i for i in self.items if i.id != gone.id]
+        bottom = gone.y + gone.h
+        dy = gone.h + GAP
+        moved = {
+            i.id
+            for i in self.items
+            if i.frame is None and i.y >= bottom - 1e-6 and i.x < gone.x + gone.w
+        }
+        self.items[:] = [
+            i.model_copy(update={"y": i.y - dy}) if i.id in moved or i.frame in moved else i
+            for i in self.items
+        ]
 
     def plan(self, level_id: str, name: str) -> None:
         plans = [i for i in self.items if i.kind == "plan"]
