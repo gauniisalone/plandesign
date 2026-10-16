@@ -40,7 +40,7 @@ async function autoViews(page: Page, id: string): Promise<Cam[]> {
   );
 }
 
-test("vues automatiques : un clic, format 4:5, vues manquées dites, annuler", async ({
+test("vues automatiques : un clic, format 4:5, vues de secours distinctes, annuler", async ({
   page,
 }) => {
   const id = await createRoom(page, "E2E vues automatiques");
@@ -53,22 +53,24 @@ test("vues automatiques : un clic, format 4:5, vues manquées dites, annuler", a
   await section.getByLabel("Format des vues").selectOption("4:5");
   await section.getByRole("button", { name: "Poser les 3 vues" }).click();
 
-  // Pièce vide, sans porte : la vue d'ensemble est posée (dans l'axe), zone et détail
-  // manquent, et le panneau dit pourquoi.
+  // Pièce vide, sans porte : la vue d'ensemble est posée (dans l'axe) ; rien à cadrer pour la
+  // zone ni le détail, deux vues de secours distinctes prennent leur place (toujours 3 vues).
   await expect(page.locator(".viewpoints")).toContainText("Vue d'ensemble");
-  await expect(section.locator(".auto-report")).toContainText("vue de zone");
-  await expect(section.locator(".auto-report")).toContainText("détail");
-  await expect.poll(async () => (await autoViews(page, id)).length).toBe(1);
-  expect((await autoViews(page, id))[0]!.metadata!.aspect).toBe("4:5");
+  await expect(page.locator(".viewpoints")).toContainText(
+    /Contrechamp|Vers la lumière|Autre angle/,
+  );
+  await expect.poll(async () => (await autoViews(page, id)).length).toBe(3);
+  for (const cam of await autoViews(page, id))
+    expect(cam.metadata!.aspect).toBe("4:5");
   await expect(page.locator(".viewpoints")).toContainText("vue automatique");
   await expect(
     section.getByRole("button", { name: "Reposer les vues" }),
   ).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "v1_vues_automatiques.png") });
 
-  // Reposer ne double pas ; Annuler retire la vue posée.
+  // Reposer ne double pas ; Annuler retire les vues posées.
   await section.getByRole("button", { name: "Reposer les vues" }).click();
-  await expect.poll(async () => (await autoViews(page, id)).length).toBe(1);
+  await expect.poll(async () => (await autoViews(page, id)).length).toBe(3);
   await page.keyboard.press("Control+z");
   await page.keyboard.press("Control+z");
   await expect.poll(async () => (await autoViews(page, id)).length).toBe(0);

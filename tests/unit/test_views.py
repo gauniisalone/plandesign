@@ -5,6 +5,7 @@ des pentes selon le style."""
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import pytest
 from shapely.geometry import Point, Polygon
@@ -25,11 +26,15 @@ from openplan.pipeline.scene3d import bake_level
 from openplan.pipeline.views import (
     AUTO_KEY,
     DETAIL_FOCAL_MM,
+    DISTINCT_POS_M,
+    DISTINCT_YAW_DEG,
     ZONE_FOCAL_MM,
     ZONE_NAMES,
+    ViewPlan,
     _footprint,
     _head,
     apply_auto_views,
+    distinct,
     focal_px,
     views_to_render,
 )
@@ -351,6 +356,62 @@ def test_door_leaves_follow_the_style_and_double_leaves_leave_no_gap() -> None:
     room = next(e for e in level.elements.values() if isinstance(e, Room))
     scandi = apply_op(project, level.id, SetIntent(room_id=room.id, fields={"style": "scandinave"}))
     assert {x.finish for x in leaves(scandi) if x.z1 > level.elevation + 1e-6} == {"painted_wood"}
+
+
+def _pairwise_distinct(cams: list[Camera]) -> bool:
+    plans = [
+        ViewPlan(
+            role="overall",
+            name=c.name or "",
+            x=c.position.x,
+            y=c.position.y,
+            z=c.position.z,
+            yaw=c.yaw,
+            pitch=c.pitch,
+            focal_px=c.focal_px or 0.0,
+            note="",
+        )
+        for c in cams
+    ]
+    return all(distinct(a, b) for i, a in enumerate(plans) for b in plans[i + 1 :])
+
+
+def test_distinct_means_35_degrees_or_one_metre() -> None:
+    base = ViewPlan("overall", "a", 0.0, 0.0, 1.5, 0.0, 0.0, 500.0, "")
+    assert not distinct(base, replace(base, x=0.5, yaw=math.radians(20)))
+    assert distinct(base, replace(base, yaw=math.radians(DISTINCT_YAW_DEG)))
+    assert distinct(base, replace(base, x=DISTINCT_POS_M))
+    assert distinct(base, replace(base, yaw=math.radians(-170)))
+
+
+def test_an_empty_attic_still_gets_three_distinct_views() -> None:
+    """Petit volume sans zone ni détail à cadrer (vraie photo du grenier, T6) : la zone et le
+    détail manquants deviennent des vues de secours, à 35° au moins de chaque autre vue."""
+    project = attic_project(camera=False)
+    level_id = only_level(project).id
+    after, report = apply_auto_views(project, level_id, actor="user")
+    cams = _auto(after)
+    assert {c.metadata[AUTO_KEY] for c in cams} == {"overall", "zone", "detail"}, report
+    assert _pairwise_distinct(cams)
+    alternates = [c for c in cams if c.metadata[AUTO_KEY] != "overall"]
+    assert {c.name for c in alternates} <= {"Contrechamp", "Vers la lumière", "Autre angle"}
+    assert not any(s.startswith(("vue de zone", "détail")) for s in report.skipped)
+    level = only_level(after)
+    roofs = list(derived_roofs(level, WallGraph.from_level(level)).values())
+    polygon, _ = _room_shape(level)
+    assert polygon is not None
+    for cam in alternates:
+        p = (cam.position.x, cam.position.y)
+        assert polygon.buffer(-0.25).contains(Point(p))
+        assert cam.position.z <= clearance_at(p, roofs, level) - 0.25 + 1e-6, cam.name
+
+
+def test_a_furnished_attic_keeps_its_three_views_unchanged() -> None:
+    project = _furnished()
+    after, report = apply_auto_views(project, only_level(project).id, actor="user")
+    names = sorted(c.name or "" for c in _auto(after))
+    assert names == ["Détail : lit et chevet", "Vue d'ensemble", "Vue de zone : détente"]
+    assert _pairwise_distinct(_auto(after)), report
 
 
 def test_plank_textures_say_which_way_their_planks_run() -> None:

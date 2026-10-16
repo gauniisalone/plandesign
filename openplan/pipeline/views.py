@@ -25,7 +25,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-from openplan.geom.roof import derived_roofs
+from openplan.geom.roof import derived_roofs, roof_window_footprint
 from openplan.geom.stairs import stair_layout
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import BEDS, RUGS, SOFAS
@@ -48,7 +48,16 @@ from openplan.scene import history
 from openplan.scene.history import is_user
 from openplan.schemas.common import Point3, Provenance, Source, StrictModel
 from openplan.schemas.derived import DerivedRoof
-from openplan.schemas.elements import DOOR_KINDS, Camera, Furniture, Opening, Room, Stairs
+from openplan.schemas.elements import (
+    DOOR_KINDS,
+    GLAZED_KINDS,
+    Camera,
+    Furniture,
+    Opening,
+    RoofWindow,
+    Room,
+    Stairs,
+)
 from openplan.schemas.intent import DesignIntent, ViewsIntent, merge_intent
 from openplan.schemas.scene import Level, Project
 from openplan.validation.layout import clearance_at
@@ -688,6 +697,174 @@ def _detail(room: _Room, aspect: str, prefer: str | None = None) -> ViewPlan | N
     return None
 
 
+# ------------------------------------------------------------------ trois vues distinctes
+DISTINCT_YAW_DEG = 35.0
+DISTINCT_POS_M = 1.0
+"""Critère du PO (16 octobre) : deux vues automatiques diffèrent d'au moins 35° d'orientation
+ou de 1,0 m de position ; sinon elles donneraient deux images quasi identiques."""
+MIN_VIEWS = 3
+ALT_STEP_M = 0.5
+ALT_STEP_DEG = 15
+ALT_FOCAL_MM = 24.0
+ALT_MIN_DEPTH_M = 1.5
+"""Une vue de secours ne bute pas sur un mur proche : au moins 1,5 m visible sur tout le cadre."""
+CONTRECHAMP_COS = 0.7
+"""Au-delà de ~135° de la vue d'ensemble, la vue de secours est un contrechamp."""
+
+
+def _yaw_gap_deg(a: float, b: float) -> float:
+    d = a - b
+    return abs(math.degrees(math.atan2(math.sin(d), math.cos(d))))
+
+
+def distinct(a: ViewPlan, b: ViewPlan) -> bool:
+    """Deux vues assez différentes pour ne pas donner la même image (critère du PO)."""
+    return (
+        _yaw_gap_deg(a.yaw, b.yaw) >= DISTINCT_YAW_DEG
+        or math.hypot(a.x - b.x, a.y - b.y) >= DISTINCT_POS_M
+    )
+
+
+def _light_points(room: _Room) -> list[tuple[float, float]]:
+    """Au sol, devant chaque fenêtre (à 0,3 m du mur, côté pièce) et sous chaque velux."""
+    level = room.level
+    graph = WallGraph.from_level(level)
+    out: list[tuple[float, float]] = []
+    for e in level.elements.values():
+        if not (
+            isinstance(e, Opening)
+            and e.visible
+            and e.kind in GLAZED_KINDS
+            and e.host_wall in graph.walls
+        ):
+            continue
+        a, b = graph.wall_axis(e.host_wall)
+        length = math.hypot(b.x - a.x, b.y - a.y) or 1.0
+        ux, uy = (b.x - a.x) / length, (b.y - a.y) / length
+        t = e.offset + e.width / 2.0
+        cx, cy = a.x + ux * t, a.y + uy * t
+        for nx, ny in ((-uy, ux), (uy, -ux)):
+            p = (cx + nx * 0.3, cy + ny * 0.3)
+            if room.free.contains(Point(p)):
+                out.append(p)
+                break
+    roofs = derived_roofs(level, graph)
+    for e in level.elements.values():
+        if not (isinstance(e, RoofWindow) and e.visible and e.roof in roofs):
+            continue
+        r = roofs[e.roof]
+        ea, eb = r.eave
+        corners = roof_window_footprint(
+            (ea.x, ea.y),
+            (eb.x, eb.y),
+            (r.inward.x, r.inward.y),
+            r.pitch,
+            e.offset,
+            e.distance,
+            e.width,
+            e.length,
+        )
+        if corners:
+            out.append(
+                (
+                    sum(c[0] for c in corners) / len(corners),
+                    sum(c[1] for c in corners) / len(corners),
+                )
+            )
+    return out
+
+
+def _alternate(room: _Room, taken: list[ViewPlan], aspect: str, role: Role) -> ViewPlan | None:
+    """Vue de secours quand la zone ou le détail manque, ou se confond avec une autre vue (petit
+    volume, une seule zone) : à hauteur d'œil, au moins 35° de chaque vue déjà posée, de
+    préférence en contrechamp de la vue d'ensemble (depuis le fond de la pièce), sinon vers une
+    fenêtre ou un velux ; jamais face à un mur proche ni avec un meuble coupé au premier plan."""
+    if not taken or room.stand.is_empty:
+        return None
+    half = _half_fov(focal_px(ALT_FOCAL_MM), aspect)
+    lights = _light_points(room)
+    ref = taken[0]
+    minx, miny, maxx, maxy = room.stand.bounds
+    nx = int((maxx - minx) / ALT_STEP_M) + 1
+    ny = int((maxy - miny) / ALT_STEP_M) + 1
+    best: tuple[float, float, float, float, float, int] | None = None
+    for i in range(nx):
+        for j in range(ny):
+            x, y = minx + i * ALT_STEP_M, miny + j * ALT_STEP_M
+            if room.height_at(x, y, EYE_M) is None:
+                continue
+            for deg in range(0, 360, ALT_STEP_DEG):
+                a = math.radians(deg)
+                if any(_yaw_gap_deg(a, t.yaw) < DISTINCT_YAW_DEG for t in taken):
+                    continue
+                depth = room.cone(x, y, a, half, furniture=True)
+                if min(depth) < ALT_MIN_DEPTH_M:
+                    continue
+                back = max(0.0, -math.cos(a - ref.yaw))
+                lit = sum(
+                    1 for p in lights if _in_frame(x, y, a, half * 0.8, p) and room.sees((x, y), p)
+                )
+                score = sum(depth) / 5.0 + min(depth) + 2.0 * back + 1.5 * min(lit, 2)
+                score -= FOREGROUND_PENALTY * _foreground(room, x, y, a)
+                score -= EDGE_CUT_PENALTY * _edge_cut(room, x, y, a)
+                if best is None or score > best[0]:
+                    best = (score, x, y, a, back, lit)
+    if best is None:
+        return None
+    _, x, y, yaw, back, lit = best
+    if back >= CONTRECHAMP_COS:
+        name, note = "Contrechamp", "depuis le fond de la pièce, vers l'arrivée"
+    elif lit:
+        name, note = "Vers la lumière", "vers la fenêtre ou le velux"
+    else:
+        name, note = "Autre angle", "angle opposé, à hauteur d'œil"
+    return ViewPlan(
+        role=role,
+        name=name,
+        x=x,
+        y=y,
+        z=room.height_at(x, y, EYE_M) or EYE_M,
+        yaw=yaw,
+        pitch=math.radians(3.0) if room.roofs else 0.0,
+        focal_px=focal_px(ALT_FOCAL_MM),
+        note=f"{note}, {ALT_FOCAL_MM:.0f} mm (remplace une vue absente ou trop proche)",
+    )
+
+
+_SKIP_PREFIX: dict[str, str] = {"zone": "vue de zone", "detail": "détail"}
+
+
+def _ensure_distinct(
+    room: _Room,
+    views: list[ViewPlan],
+    skipped: list[str],
+    aspect: str,
+    wanted: ViewsIntent,
+) -> tuple[list[ViewPlan], list[str]]:
+    """Au moins trois vues deux à deux distinctes : une vue trop proche d'une précédente est
+    retirée, puis chaque vue voulue qui manque (zone, détail) reçoit une vue de secours."""
+    kept: list[ViewPlan] = []
+    for v in views:
+        twin = next((k for k in kept if not distinct(v, k)), None)
+        if twin is not None:
+            skipped.append(f"{v.name} : trop proche de « {twin.name} », remplacée")
+            continue
+        kept.append(v)
+    for role in ("zone", "detail"):
+        if len(kept) >= MIN_VIEWS:
+            break
+        if not getattr(wanted, role) or any(v.role == role for v in kept):
+            continue
+        alt = _alternate(room, kept, aspect, role)
+        if alt is None:
+            skipped.append("autre point de vue : aucune place assez différente des autres vues")
+            break
+        kept.append(alt)
+        skipped = [s for s in skipped if not s.startswith(_SKIP_PREFIX[role])]
+    kept.sort(key=lambda v: ROLES.index(v.role))
+    return kept, skipped
+
+
 MAX_RENDER_ALL = 8
 
 
@@ -788,8 +965,20 @@ def plan_views(
     aspect = aspect or wanted.aspect
     level = project.levels[level_id]
     if is_generated(level) and len(rooms_of(level)) > 1:
-        return _programme_views(project, level, aspect)
+        main = main_room(level)
+        views, skipped = _programme_views(project, level, aspect)
+        if main is None:
+            return views, skipped
+        return _ensure_distinct(_room(level, main), views, skipped, aspect, wanted)
     room = _room(level)
+    views, skipped = _single_room_views(project, level, room, wanted, aspect)
+    return _ensure_distinct(room, views, skipped, aspect, wanted)
+
+
+def _single_room_views(
+    project: Project, level: Level, room: _Room, wanted: ViewsIntent, aspect: str
+) -> tuple[list[ViewPlan], list[str]]:
+    """Ensemble, zone et détail d'une pièce seule, tels que voulus par l'intention."""
     out: list[ViewPlan] = []
     skipped: list[str] = []
     if wanted.overall:
