@@ -1,4 +1,4 @@
-# 17 · Comptes Google, sessions, droits et stockage (B1)
+# 17 · Comptes, sessions, droits et stockage (B1)
 
 Décisions d'augus du 16 octobre 2026 (02:04), relayées par le PO ; elles **remplacent le § 5
 de la note 14** (comptes). Cette note décrit comment les appliquer. **Validée par augus le
@@ -6,45 +6,69 @@ de la note 14** (comptes). Cette note décrit comment les appliquer. **Validée 
 augus a écarté le tableau d'exemple, § 13). Le mode local (sans compte, sur le 8000 de la machine d'augus) ne
 change pas.
 
+**Avenant du 16 octobre (~15:10) : e-mail seulement.** Décision d'augus relayée par le
+PO : la connexion se fait par un lien envoyé par e-mail, sans Google pour l'instant. Le § 2
+est réécrit, le lot B1b et le § 13 sont mis à jour ; session, contrôles côté serveur,
+Postgres, `Storage`, rôles et invitations ne changent pas. La note reste validée. Le nom
+du fichier garde « google » pour ne pas casser les liens.
+
 ## 1. Les décisions
 
 1. **Pas de projet sans compte.** Un visiteur anonyme ne voit que la page de connexion :
-   « Se connecter avec Google », une courte présentation et la mention de confidentialité.
+   « Recevoir un lien de connexion » (e-mail), une courte présentation et la mention de
+   confidentialité.
    Ni vitrine ni tableau public (décision d'augus du 16 octobre, ~14:00).
-2. **Google est le seul moyen de connexion**, en OpenID Connect (portées `openid email
-   profile`), dans l'application (Authlib). Pas de Keycloak, pas de mot de passe, pas de lien
-   magique. Les invitations restent des liens à copier (note 14, pas de SMTP).
+2. **Connexion par e-mail seulement** (avenant du 16 octobre) : un lien magique, sans mot
+   de passe, envoyé par SMTP. Pas de Keycloak, pas de Google pour l'instant (rattachement
+   possible plus tard). Les invitations restent des liens à copier ; elles peuvent aussi
+   partir par e-mail une fois le SMTP en place.
 3. **Postgres pour les métadonnées** (`users`, `sessions`, `members`, `invitations`,
    `board_items`, `comments`, `activity`, `jobs`). **Les fichiers restent sur le disque**,
    servis par l'API après contrôle des droits, derrière une seule couche de stockage
    (`Storage`) pour pouvoir passer à un S3 plus tard. Pas de MinIO.
 
-## 2. Le flux Google
+## 2. La connexion par e-mail (avenant du 16 octobre)
 
-- Côté Google (Google Cloud Console, à faire par augus, au nom de PlanDesign) : un client
-  OAuth « application Web », origine `https://app.plandesign.fr`, **URI de redirection
-  `https://app.plandesign.fr/api/auth/google/callback`**, écran de consentement en mode
-  « Production » avec les portées `openid email profile` (non sensibles : pas de validation
-  Google). L'identifiant et le secret du client vont dans le `.env` du VPS
-  (`OPENPLAN_GOOGLE_CLIENT_ID`, `OPENPLAN_GOOGLE_CLIENT_SECRET`), jamais dans le dépôt.
-- `GET /api/auth/google/login?next=/…` : génère `state` (32 octets aléatoires), `nonce` et un
-  vérificateur **PKCE** (S256) ; les garde dans un cookie de transit chiffré (HttpOnly,
-  Secure, SameSite=Lax, 10 min, Path=/api/auth) ; redirige vers Google. `next` n'accepte
-  qu'un chemin relatif de l'application (pas d'URL : pas de redirection ouverte).
-- `GET /api/auth/google/callback?code&state` : vérifie `state` (temps constant) contre le
-  cookie de transit, échange le code avec le vérificateur PKCE, valide le jeton d'identité
-  (signature par les clés publiques de Google, `iss`, `aud` = notre client, `exp`, `nonce`),
-  exige **`email_verified = true`**, puis :
-  - cherche l'utilisateur par **`sub`** (identifiant Google stable) ; l'adresse e-mail n'est
-    qu'une donnée affichée et mise à jour, jamais la clé ;
-  - absent : le crée (`sub`, e-mail, nom, avatar si fourni) ;
-  - **premier compte administrateur** : l'adresse de `OPENPLAN_ADMIN_EMAIL` (le `.env` du
-    VPS, déjà présent pour Let's Encrypt) devient `is_admin` à sa première connexion, et
-    seulement elle ; aucun autre moyen de devenir administrateur que par un administrateur ;
-  - ouvre une session (§ 3), efface le cookie de transit, redirige vers `next`.
-- Échecs (state invalide, e-mail non vérifié, refus de l'utilisateur) : page « Connexion
-  impossible » avec la raison en clair, rien de créé.
+- **Lien de connexion envoyé par e-mail, sans mot de passe.** Page de connexion : un seul
+  champ « Votre adresse e-mail » et « Recevoir un lien de connexion ».
+- `POST /api/auth/email/start` (`email`, `next`) : normalise l'adresse (minuscules, espaces
+  retirés), crée un jeton aléatoire de **32 octets**, **à usage unique**, **valable 15 min**,
+  dont la base ne garde que l'empreinte (SHA-256, table `login_tokens`), et envoie le lien
+  `https://app.plandesign.fr/api/auth/email/callback?token=…`. **La réponse est identique que
+  l'adresse ait un compte ou non** (« Si cette adresse peut se connecter, un lien vient de
+  partir ») : la page ne révèle jamais qui a un compte. `next` n'accepte qu'un chemin relatif
+  de l'application, gardé avec le jeton (pas de redirection ouverte).
+- `GET /api/auth/email/callback?token=…` : cherche l'empreinte (temps constant), refuse un
+  jeton expiré, déjà utilisé ou révoqué, le marque utilisé **avant** d'ouvrir la session, puis :
+  - cherche l'utilisateur par son **adresse normalisée** (clé unique) ; cliquer le lien prouve
+    que la personne lit cette boîte ;
+  - absent : le crée **seulement si l'inscription est ouverte** ou si une invitation en
+    attente vise cette adresse (B1e) ; sinon « Connexion impossible : PlanDesign est pour
+    l'instant sur invitation », rien de créé. Réglage `OPENPLAN_SIGNUP` = `invite` (défaut,
+    tant que B1 n'est pas éprouvé) ou `open` ;
+  - **premier administrateur** : l'adresse de `OPENPLAN_ADMIN_EMAIL` (le `.env` du VPS) peut
+    toujours se connecter et devient `is_admin` à sa première connexion, et seulement elle ;
+    aucun autre moyen de devenir administrateur que par un administrateur ;
+  - ouvre une session (§ 3) et redirige vers `next`.
+- Un lien ouvert par un aperçu de messagerie (robot qui suit les liens) ne doit pas consommer
+  le jeton : le `GET` affiche « Se connecter à PlanDesign » avec un bouton, et c'est le `POST`
+  de ce bouton qui consomme le jeton et ouvre la session.
+- **Limitation de débit** sur l'envoi : 3 liens par adresse et par 15 min, 10 demandes par IP
+  et par heure, en plus de la limite générale de `/api/auth/*` (§ 3). Au-delà, la même réponse
+  neutre, sans envoi.
+- **Envoi** : SMTP d'un service gratuit (Brevo pressenti, 300 e-mails par jour), expéditeur
+  `connexion@plandesign.fr` ; hôte, port, identifiant et clé dans le `.env` du VPS
+  (`OPENPLAN_SMTP_HOST`, `OPENPLAN_SMTP_PORT`, `OPENPLAN_SMTP_USER`, `OPENPLAN_SMTP_PASSWORD`,
+  `OPENPLAN_MAIL_FROM`), jamais dans le dépôt. Le message ne contient que le lien, sa durée
+  et « si vous n'avez rien demandé, ignorez ce message » ; il est en texte et en HTML simple.
+  SPF, DKIM et DMARC de plandesign.fr : côté infra.
+- **Tests et e2e** : une **fausse boîte aux lettres locale** (classe `Mailer` remplacée, les
+  messages gardés en mémoire et lisibles par le test) ; aucun envoi réel hors du VPS.
+- Échecs (lien expiré, déjà utilisé, inscription fermée) : page « Connexion impossible » avec
+  la raison en clair et « Recevoir un nouveau lien ».
 - Déconnexion : `POST /api/auth/logout` révoque la session et efface le cookie.
+- **Plus tard** : rattacher un compte Google à un compte existant (même adresse vérifiée),
+  sans changer les sessions ni les droits.
 
 ## 3. La session
 
@@ -83,8 +107,8 @@ change pas.
 
 ## 5. Côté navigateur : du confort, pas de la sécurité
 
-- Garde de route : sans session, la page de connexion ; une 401 renvoie vers « Se connecter avec
-  Google » puis revient à la page demandée (`next`).
+- Garde de route : sans session, la page de connexion ; une 401 renvoie vers la page de connexion
+  (« Recevoir un lien de connexion ») puis revient à la page demandée (`next`).
 - Les boutons qu'un rôle ne peut pas utiliser sont masqués ou désactivés (un `viewer` ne voit
   ni outils ni « Générer »).
 - **Tout cela n'est que du confort** : chaque action est de toute façon refusée par le
@@ -103,15 +127,16 @@ de ces tâches et déposer leurs résultats. Pas de session, pas d'accès aux co
 sans base, sans session**, avec les projets en fichiers comme aujourd'hui. Le code des
 comptes ne s'active que si `OPENPLAN_DATABASE_URL` est défini (le conteneur de
 app.plandesign.fr). Les e2e actuels tournent en mode local et ne changent pas ; une suite
-e2e « comptes » dédiée tourne contre un Postgres jetable et un faux fournisseur OIDC.
+e2e « comptes » dédiée tourne contre un Postgres jetable et une fausse boîte aux lettres locale.
 
 ## 8. Données : Postgres et migrations
 
 - Postgres 16 en conteneur sur le VPS (volume persistant, sauvegardé par `pg_dump` dans
   l'archive nocturne de B0), accès réseau Docker interne seulement.
 - Tables (B1 puis B2) :
-  - `users` (id, google_sub unique, email, name, avatar_url, is_admin, created_at,
-    last_seen_at) ;
+  - `users` (id, email unique normalisé, name, is_admin, created_at, last_seen_at) ;
+  - `login_tokens` (id, email, token_hash unique, next, created_at, expires_at, used_at,
+    ip court) : purgés après 24 h ;
   - `sessions` (id, user_id, token_hash unique, created_at, last_used_at, expires_at,
     revoked_at, user_agent court) ;
   - `projects` (id = l'id de `project.json`, owner_id, name, created_at, storage_key) ;
@@ -156,8 +181,8 @@ Mesures locales (PO, 16 octobre) : projet médian 15 Mo, 90 % des projets sous 9
 ## 11. Confidentialité
 
 - Mention sur la page de connexion et dans le pied de page de app.plandesign.fr : « La
-  connexion passe par Google : PlanDesign reçoit votre nom, votre adresse e-mail et votre
-  photo de profil, rien d'autre ; Google sait que vous vous connectez à PlanDesign. Vos
+  connexion se fait par un lien envoyé à votre adresse e-mail ; PlanDesign ne garde que cette
+  adresse (et le nom que vous donnez), et l'e-mail part par notre service d'envoi (Brevo). Vos
   projets sont stockés sur plandesign.fr (Hostinger, France) et visibles de leurs membres. »
 - Le mode local garde sa mention actuelle (« sur cette machine »).
 - Page « Mes données » : exporter mes projets (archive), supprimer mon compte (révoque les
@@ -169,21 +194,23 @@ Mesures locales (PO, 16 octobre) : projet médian 15 Mo, 90 % des projets sous 9
 | Lot | Contenu | Estimation |
 |---|---|---|
 | B1a | Postgres + Alembic + `Storage` disque ; tables users/sessions/projects/members ; mode local inchangé (activation par `OPENPLAN_DATABASE_URL`) | 1 journée |
-| B1b | Flux Google OIDC (Authlib, state/nonce/PKCE, e-mail vérifié, `sub`, premier administrateur), sessions 30 j glissantes et révocables, contrôle d'origine, limitation de débit, faux fournisseur OIDC pour les tests | 1 ½ journée |
+| B1b | Connexion par lien e-mail (jeton 32 octets, usage unique, 15 min, empreinte ; réponse neutre ; page de confirmation contre les aperçus de messagerie ; inscription `invite`/`open` ; premier administrateur), envoi SMTP, sessions 30 j glissantes et révocables, contrôle d'origine, limitation de débit par adresse et par IP, fausse boîte aux lettres pour les tests | 1 ½ journée |
 | B1c | Dépendances `current_user` / `project_member(role)` sur toutes les routes, test qui parcourt les routes, tests par rôle, fichiers via `Storage` | 1 journée |
 | B1d | Front : page de connexion (présentation courte, mention de confidentialité), connexion, garde de route, « mes projets » (la galerie de T5), boutons selon le rôle, mention de confidentialité, « Mes données » | 1 journée |
 | B1e | Invitations par lien (rôle, expiration, révocation), menu Partager, import des projets d'augus | 1 journée |
 
 Total B1 : 5 ½ journées. Dépendances : T5 (galerie) avant B1d ; infra (D2/D3) pour le
-conteneur Postgres, le `.env` Google et la sauvegarde `pg_dump`. Coût : 0 € (Google OIDC
-gratuit, Postgres et Authlib libres).
+conteneur Postgres, le `.env` SMTP, les enregistrements SPF/DKIM/DMARC et la sauvegarde
+`pg_dump`. Coût : 0 € (palier gratuit de Brevo, 300 e-mails par jour ; Postgres libre).
 
 ## 13. Ce qu'augus doit faire ou décider
 
-1. Créer le client OAuth Google (ou nous laisser le guider pas à pas) et mettre l'identifiant
-   et le secret dans le `.env` du VPS (par l'infra, jamais dans un message).
-2. ~~Valider l'URI de redirection `https://app.plandesign.fr/api/auth/google/callback`.~~
-   Validée le 16 octobre.
+1. Créer le compte du service d'envoi (Brevo pressenti, gratuit) au nom de PlanDesign, ou
+   nous laisser le guider pas à pas ; la clé SMTP va dans le `.env` du VPS (par l'infra,
+   jamais dans un message). L'infra ajoute SPF, DKIM et DMARC au domaine.
+2. Choisir l'inscription : sur invitation seulement (défaut proposé tant que B1 n'est pas
+   éprouvé) ou ouverte. ~~Client OAuth Google et URI de redirection~~ : sans objet depuis
+   l'avenant du 16 octobre.
 3. ~~Confirmer : l'adresse administrateur = celle déjà dans le `.env` du VPS.~~ Confirmée le
    16 octobre.
 4. ~~Choisir le tableau d'exemple montré aux anonymes.~~ Tranché le 16 octobre (~14:00) :
