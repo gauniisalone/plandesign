@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from openplan.adapters.neural.idle import IdleRelease
 from openplan.adapters.neural.weights import DEFAULT_WEIGHTS_ROOT, require_installed
 from openplan.adapters.protocols import AdapterUnavailableError, DepthMap, ImageArray
 
@@ -37,6 +38,15 @@ class DepthAnythingMetric:
         self.device = device
         self._model: Any = None
         self._processor: Any = None
+        self.idle = IdleRelease(self._unload)
+
+    def _unload(self) -> None:
+        self._model = None
+        self._processor = None
+
+    def predict(self, image: ImageArray) -> DepthMap:
+        with self.idle.use():
+            return self._predict(image)
 
     def _load(self) -> None:
         try:
@@ -57,7 +67,7 @@ class DepthAnythingMetric:
             raise AdapterUnavailableError(msg) from exc
         self._model = model.to(self.device).eval()
 
-    def predict(self, image: ImageArray) -> DepthMap:
+    def _predict(self, image: ImageArray) -> DepthMap:
         if self._model is None:
             self._load()
         import torch

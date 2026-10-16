@@ -20,6 +20,7 @@ from typing import Any
 
 import numpy as np
 
+from openplan.adapters.neural.idle import IdleRelease
 from openplan.adapters.neural.weights import DEFAULT_WEIGHTS_ROOT, require_installed
 from openplan.adapters.protocols import (
     AdapterUnavailableError,
@@ -58,6 +59,14 @@ class DepthGuidedDiffusion:
         self.requested_device = device
         self.device = device
         self._pipe: Any = None
+        self.idle = IdleRelease(self._unload)
+
+    def _unload(self) -> None:
+        self._pipe = None
+
+    def generate(self, request: ImageGenerationRequest) -> GeneratedImage:
+        with self.idle.use():
+            return self._generate(request)
 
     def _load(self) -> None:
         try:
@@ -94,7 +103,7 @@ class DepthGuidedDiffusion:
             pipe.enable_attention_slicing()
         self._pipe = pipe
 
-    def generate(self, request: ImageGenerationRequest) -> GeneratedImage:
+    def _generate(self, request: ImageGenerationRequest) -> GeneratedImage:
         if self._pipe is None:
             self._load()
         import torch

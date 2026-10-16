@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from openplan.adapters.neural.idle import IdleRelease
 from openplan.adapters.neural.inspiration import (
     CONTROLNET_MODEL_ID,
     CONTROLNET_SENTINEL,
@@ -73,6 +74,22 @@ class ControlledRefiner:
         self._pipe: Any = None
         self._txt2img: Any = None
         self._references_loaded = False
+        self.idle = IdleRelease(self._unload)
+
+    def _unload(self) -> None:
+        """Relâche les pipelines (SD, ControlNet, IP-Adapter) : rechargés au calcul suivant."""
+        self._pipe = None
+        self._txt2img = None
+        self._references_loaded = False
+
+    def finish(self, request: FinishRequest) -> GeneratedImage:
+        with self.idle.use():
+            return self._finish(request)
+
+    def inspire(self, request: InspirationRequest) -> GeneratedImage:
+        """Sortie B d'une vue (V1) : voir `_inspire`."""
+        with self.idle.use():
+            return self._inspire(request)
 
     def _set_references(self, references: list[np.ndarray], scale: float) -> list[Any]:
         """Charge l'IP-Adapter (paresseusement, ≈ 1,3 Go de plus) pour une demande avec
@@ -154,7 +171,7 @@ class ControlledRefiner:
             pipe.enable_attention_slicing()
         self._pipe = pipe
 
-    def finish(self, request: FinishRequest) -> GeneratedImage:
+    def _finish(self, request: FinishRequest) -> GeneratedImage:
         if self._pipe is None:
             self._load()
         import torch
@@ -205,7 +222,7 @@ class ControlledRefiner:
             peak_vram_mb=peak,
         )
 
-    def inspire(self, request: InspirationRequest) -> GeneratedImage:
+    def _inspire(self, request: InspirationRequest) -> GeneratedImage:
         """Sortie B d'une vue (V1) : mêmes poids que la finition ; txt2img (pipeline refait
         avec les mêmes composants, sans mémoire de plus) ou img2img à forte force, guidés
         par la profondeur et les arêtes au poids `control_scale`."""

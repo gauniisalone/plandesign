@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from openplan.adapters.neural.idle import IdleRelease
 from openplan.adapters.neural.weights import DEFAULT_WEIGHTS_ROOT, require_installed
 from openplan.adapters.protocols import (
     AdapterUnavailableError,
@@ -120,6 +121,11 @@ class OwlV2OpeningDetector:
         self.device = device
         self._model: Any = None
         self._processor: Any = None
+        self.idle = IdleRelease(self._unload)
+
+    def _unload(self) -> None:
+        self._model = None
+        self._processor = None
 
     def _load(self) -> None:
         try:
@@ -144,6 +150,12 @@ class OwlV2OpeningDetector:
         return [e for e in found if e.category == "roof_window"]
 
     def _detect(
+        self, image: ImageArray, mapping: dict[str, DetectedCategory]
+    ) -> list[DetectedElement]:
+        with self.idle.use():
+            return self._detect_loaded(image, mapping)
+
+    def _detect_loaded(
         self, image: ImageArray, mapping: dict[str, DetectedCategory]
     ) -> list[DetectedElement]:
         if self._model is None:

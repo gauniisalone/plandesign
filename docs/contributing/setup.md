@@ -96,7 +96,9 @@ la route de profondeur répond 409 avec la commande à lancer. `OPENPLAN_DEVICE`
 défaut : le GPU est pris dès que torch le voit (profondeur 0,1 s, inspiration ≈ 10 s), sinon
 processeur (profondeur quelques secondes, inspiration plusieurs minutes). `cpu` force le
 processeur, `cuda` retombe sur `cpu` sans GPU. Le périphérique retenu est affiché au démarrage
-de `openplan serve` et par `GET /api/device`. L'image d'inspiration est une tâche de fond
+de `openplan serve` et par `GET /api/device`. Les modèles chargés sur la carte graphique sont
+relâchés après `OPENPLAN_GPU_IDLE_S` secondes sans calcul (600 par défaut, 0 pour les garder) ;
+le calcul suivant les recharge (quelques secondes de plus). L'image d'inspiration est une tâche de fond
 (`POST …/inspire` répond 202, suivi par `GET /projects/{id}/jobs/{job}`).
 
 ## 2 ter. Assistant IA (optionnel)
