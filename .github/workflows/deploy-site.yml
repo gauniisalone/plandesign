@@ -1,0 +1,74 @@
+# .github/workflows/deploy-site.yml : déploiement MANUEL du site public (apps/site) par SHA.
+# Indépendant de l'app : construit dist/, l'envoie au compte deploy (ordre « site <sha> ») ;
+# le VPS l'extrait dans une nouvelle version, bascule le lien « current », vérifie, et revient seul
+# à la version précédente en cas d'échec. Retour arrière manuel : ordres « site-rollback » ou
+# « site-bientot » (page « bientôt »).
+name: deploy-site
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "SHA complet (40 caractères) du commit à publier ; run ci vert exigé"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy-site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: vps
+    steps:
+      - name: Vérifier le SHA et le run ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "SHA invalide"; exit 1; }
+          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" -w ci -c "$SHA" -L 1 --json conclusion --jq '.[0].conclusion // "aucun"')
+          echo "run ci sur $SHA : $conclusion"
+          [ "$conclusion" = success ] || { echo "le run ci de ce SHA n'est pas vert"; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+      - name: Construire (check-dist compris)
+        working-directory: apps/site
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          du -sh dist | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Clé SSH et hôte épinglé
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ vars.VPS_HOST_KEY }}" > ~/.ssh/known_hosts
+      - name: Envoyer et publier (le VPS vérifie et revient en arrière seul)
+        env:
+          SHA: ${{ inputs.sha }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          tar -C apps/site/dist -cf - . | zstd -T0 -10 \
+            | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+                  deploy@"$VPS_HOST" "site $SHA" | tee site_result.txt
+          grep -q '^OK ' site_result.txt
+      - name: Contrôle depuis l'extérieur
+        run: |
+          h=$(curl -s -D - -o page.html --max-time 15 https://plandesign.fr/ | tr -d '\r')
+          echo "$h" | grep -qi '^content-security-policy:' || { echo "CSP absente"; exit 1; }
+          grep -o '<title>[^<]*' page.html | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

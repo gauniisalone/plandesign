@@ -101,3 +101,24 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+  site:
+    name: site public (astro build + check-dist)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/site
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site-dist
+          path: apps/site/dist/
+          retention-days: 7
