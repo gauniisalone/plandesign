@@ -228,6 +228,54 @@ p {
   border-radius: var(--radius);
 }
 
+/* Boutons « Ouverture prochaine » : inactifs (aria-disabled), atténués mais lisibles.
+   Contrastes : #8E3026 sur #EAD8CC = 5,8:1 ; #5C5047 sur fond = 6,9:1 ;
+   sombre : #E3A595 sur #3A2622 = 6,8:1 ; #B9AC99 sur fond = 7,8:1. */
+.btn-soon {
+  flex-direction: column;
+  gap: 3px;
+  min-height: 48px;
+  padding: 6px 18px;
+  cursor: not-allowed;
+  line-height: 1.1;
+}
+
+.btn-soon .btn-sub {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.btn-soon-primary {
+  background: #ead8cc;
+  color: #8e3026;
+  border: 1px dashed var(--pd-ocre);
+}
+
+.btn-soon-outline {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn-soon-primary {
+    background: #3a2622;
+    color: #e3a595;
+    border-color: #e3a595;
+  }
+}
+
+.btn-soon.btn-block {
+  min-height: 64px;
+}
+
+.btn-soon.btn-block .btn-label {
+  font-size: 1.125rem;
+}
+
 /* ---- En-tête ---- */
 .site-header {
   position: sticky;
@@ -292,7 +340,7 @@ p {
 }
 
 @media (max-width: 520px) {
-  .header-actions .btn-outline {
+  .header-actions .btn-soon-outline {
     display: none;
   }
   .brand {

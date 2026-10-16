@@ -10,9 +10,32 @@ npm run build   # → dist/, puis scripts/check-dist.mjs (CSP stricte, aucun hô
 
 `dist/` est servi tel quel (Caddy `file_server`, page d'erreur `404.html`).
 
-## Contrat /nouveau (site → app)
+## État actuel (16 oct. 2026) : aucun lien vers l'app
 
-Le formulaire de l'accueil envoie le visiteur, en `GET`, vers
+Tant que les comptes ne sont pas ouverts, le site ne contient aucun lien vers
+l'application ni vers le dépôt (`check-dist` échoue sinon). Les boutons « Se lancer »,
+« Commencer » et « Ouvrir mon espace » sont des `<button type="button" aria-disabled="true"
+data-action="login">` marqués « Ouverture prochaine » (`src/components/SoonButton.astro`).
+Le formulaire de l'accueil n'est pas un `<form>` : il ne s'envoie pas.
+
+## Fenêtre de connexion (à venir, non codée)
+
+Les boutons `data-action="login"` ouvriront une fenêtre « Se connecter » sur le site :
+saisie de l'e-mail, puis envoi du lien magique par l'API de l'app (note 17, lot B1b).
+Cela demandera :
+
+- un script sur le site (fichier externe, pas de script en ligne) ;
+- `connect-src 'self' https://app.plandesign.fr` dans la CSP de plandesign.fr ;
+- CORS côté app : origine `https://plandesign.fr` autorisée sur la route d'envoi du lien,
+  sans cookie tiers ; réponse neutre (même message que l'adresse existe ou non).
+
+## Contrat /nouveau (site → app) — SUSPENDU
+
+Ce contrat n'est plus utilisé depuis le 16 oct. 2026 (formulaire débranché). Il est
+gardé comme référence pour le jour où le formulaire préremplira le premier espace de
+travail.
+
+Le formulaire de l'accueil envoyait le visiteur, en `GET`, vers
 `https://app.plandesign.fr/nouveau` avec les paramètres suivants
 (encodage `application/x-www-form-urlencoded`, UTF-8 : espace = `+`,
 retours à la ligne = `%0D%0A`) :

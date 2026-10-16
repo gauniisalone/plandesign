@@ -1,0 +1,20 @@
+---
+// Bouton d'accès à l'application, inactif tant que les comptes ne sont pas ouverts.
+// Point d'accroche futur : data-action="login" ouvrira la fenêtre « Se connecter »
+// (e-mail + lien magique). Voir README.md, « Fenêtre de connexion (à venir) ».
+interface Props {
+  label: string;
+  variant?: "primary" | "outline";
+  block?: boolean;
+}
+const { label, variant = "primary", block = false } = Astro.props;
+---
+<button
+  type="button"
+  class:list={["btn", "btn-soon", `btn-soon-${variant}`, { "btn-block": block }]}
+  aria-disabled="true"
+  data-action="login"
+>
+  <span class="btn-label">{label}</span>
+  <span class="btn-sub">Ouverture prochaine</span>
+</button>

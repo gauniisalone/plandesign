@@ -1,9 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
+import SoonButton from "../components/SoonButton.astro";
 import {
-  APP_URL,
-  NEW_PROJECT_URL,
-  REPO_URL,
   DESCRIPTION_MAX,
   SURFACE_MIN,
   SURFACE_MAX,
@@ -24,7 +22,6 @@ const jsonLd = {
   operatingSystem: "Web",
   inLanguage: "fr",
   license: "https://www.apache.org/licenses/LICENSE-2.0",
-  sameAs: [REPO_URL],
   featureList: [
     "Plan construit depuis la photo d'une pièce ou un plan 2D (PDF, DXF)",
     "Rendus réalistes sous plusieurs points de vue",
@@ -43,19 +40,18 @@ const jsonLd = {
         De la photo de la pièce au plan, puis aux rendus — décrivez le projet, l'espace de travail fait le reste.
       </p>
 
-      <form
+      {/* Pas de <form> tant que les comptes ne sont pas ouverts : rien ne peut être envoyé
+          (même la touche Entrée). Contrat futur : voir README.md. */}
+      <div
         id="projet"
         class="project-form"
-        action={NEW_PROJECT_URL}
-        method="get"
-        accept-charset="utf-8"
+        role="group"
+        aria-labelledby="projet-titre"
         aria-describedby="projet-aide"
       >
-        <input type="hidden" name="v" value="1" />
-        <input type="hidden" name="source" value="site" />
         <div class="form-meta">
-          <span>Votre projet</span>
-          <strong>Connexion par e-mail, sans mot de passe</strong>
+          <span id="projet-titre">Votre projet</span>
+          <strong>Ouverture prochaine · connexion par e-mail, sans mot de passe</strong>
         </div>
         <div class="form-grid">
           <div class="field">
@@ -87,18 +83,18 @@ const jsonLd = {
               id="description"
               name="description"
               rows="4"
-              required
               maxlength={DESCRIPTION_MAX}
               placeholder="Ex. : transformer les combles en chambre d'amis, avec un coin bureau sous la fenêtre de toit. Ambiance bois clair et lin."
             ></textarea>
           </div>
         </div>
-        <button class="btn btn-primary btn-block" type="submit">Commencer</button>
+        <SoonButton label="Commencer" block />
         <p id="projet-aide" class="form-hint">
-          *Obligatoire. Vous vous connecterez ensuite par e-mail ; votre saisie préremplira votre premier espace de travail.
-          Ce site ne la conserve pas. Inscription sur invitation pendant la version d'essai.
+          Ouverture prochaine : ce formulaire ne s'envoie pas encore, rien n'est transmis ni conservé.
+          À l'ouverture des comptes, vous vous connecterez par e-mail et votre description préremplira votre premier
+          espace de travail. *Champ obligatoire.
         </p>
-      </form>
+      </div>
     </div>
   </section>
 
@@ -215,7 +211,7 @@ const jsonLd = {
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M10 8l-6 6 6 6 M18 8l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           <h3>Code ouvert</h3>
-          <p>Le code est public sous licence Apache-2.0 : <a href={REPO_URL} rel="noopener">voir sur GitHub</a>.</p>
+          <p>Code ouvert sous licence Apache-2.0.</p>
         </li>
       </ul>
     </div>
@@ -238,10 +234,10 @@ const jsonLd = {
   <section class="section cta" aria-labelledby="titre-cta">
     <div class="wrap">
       <h2 id="titre-cta">Prêt à dessiner votre pièce ?</h2>
-      <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail, et déposez votre première photo.</p>
+      <p class="intro">À l'ouverture : décrivez le projet en deux lignes, connectez-vous par e-mail, puis déposez votre première photo.</p>
       <div class="cta-actions">
-        <a class="btn btn-primary" href="#projet">Commencer</a>
-        <a class="btn btn-outline" href={APP_URL}>Ouvrir mon espace</a>
+        <SoonButton label="Commencer" />
+        <SoonButton label="Ouvrir mon espace" variant="outline" />
       </div>
     </div>
   </section>

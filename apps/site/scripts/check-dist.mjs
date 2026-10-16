@@ -6,8 +6,6 @@ import { join, extname } from "node:path";
 const DIST = new URL("../dist/", import.meta.url).pathname;
 const ALLOWED_HOSTS = new Set([
   "plandesign.fr",
-  "app.plandesign.fr",
-  "github.com",
   "schema.org",
   "www.apache.org",
   "www.w3.org",
@@ -46,6 +44,10 @@ function check(file) {
     }
     if (/\son[a-z]+\s*=/i.test(text)) problems.push(`${rel} : gestionnaire d'événement en ligne`);
   }
+  // Décision d'augus (16 oct. 2026) : ni lien ni mention de l'app ou du dépôt tant que
+  // les comptes ne sont pas ouverts.
+  if (/app\.plandesign/i.test(text)) problems.push(`${rel} : mention de app.plandesign.fr`);
+  if (/github/i.test(text)) problems.push(`${rel} : mention de GitHub`);
   for (const m of text.matchAll(/https?:\/\/([a-z0-9.-]+)/gi)) {
     if (!ALLOWED_HOSTS.has(m[1].toLowerCase())) problems.push(`${rel} : hôte externe ${m[1]}`);
   }
