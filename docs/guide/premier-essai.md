@@ -33,7 +33,7 @@ La page d'arrivée est la **galerie de vos espaces de travail** (un projet = un 
 vignette : son dernier rendu, sinon son plan). Cliquer **+ Nouveau projet** : l'espace de travail du
 projet s'ouvre : à gauche les cadres **Photos de la pièce** et **Inspirations**, au centre le
 **Plan**, à droite les **Rendus**, et en bas le **compositeur** (vos exigences et « Générer »). **Déposer la photo du grenier** dans le cadre « Photos de la pièce »
-(ou le bouton Importer de la colonne d'outils). La photo est importée et le plan se construit
+(ou **Importer › Photo ou plan de la pièce** dans la colonne d'outils de gauche). La photo est importée et le plan se construit
 tout seul (bascule « Générer automatiquement au dépôt d'une photo », activée par défaut) ; la
 progression s'affiche dans le cadre Plan. Rien n'est demandé : l'appareil est supposé tenu à
 1,50 m du sol, et tout se corrige après.
@@ -51,7 +51,8 @@ image) est redressée, son échelle devinée (cotes lues si Tesseract est instal
 des murs ou largeur de porte : le bandeau le dit) et ses traits épais deviennent des murs
 estimés ; un plan **DXF**, **PDF vectoriel** ou **SVG** donne ses murs tout de suite (échelle
 papier lue ou proposée). Pour corriger après coup les calques retenus ou l'échelle papier :
-bouton **Ajouter une source** en haut, bloc « Corriger la lecture du plan ». Sans photo ni
+**Importer › Photo ou plan de la pièce** (colonne de gauche ; dans le plan, **Ajouter une
+source** en haut), bloc « Corriger la lecture du plan ». Sans photo ni
 plan, le cadre Plan vide propose **✎ Tracer moi-même** (les murs à la main) ou **Générer le
 plan** d'après vos exigences (le compositeur) ; le nom du projet se change d'un double-clic sur sa carte,
 dans la galerie.
@@ -143,7 +144,8 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
   l'assistant. Le × le referme : plus rien de vos exigences dans l'espace de travail, la pastille
   **Générer** le rouvre.
 - **Importer** : glissez des photos ou des fichiers dans l'espace de travail, collez-les (Ctrl+V),
-  ou le bouton Importer. Une photo entre dans le projet ; un autre fichier est joint tel
+  ou **Importer** dans la colonne de gauche : « Photo ou plan de la pièce » (le plan se
+  construit) ou « Fichiers dans l'espace de travail ». Une photo entre dans le projet ; un autre fichier est joint tel
   quel (50 Mo au plus) et se télécharge depuis sa carte.
 - **Le plan, à votre main ou généré** : tant qu'il est vide, le cadre Plan propose
   **✎ Tracer moi-même** (les outils du plan) ou **Générer le plan** : d'après la première
@@ -185,8 +187,8 @@ rendu y entre tout seul ; un rendu refait prend la place de l'ancien.
   variante retenue (étoile, contour), 💬 **Commenter** attache une remarque à la carte
   (enregistrée avec l'espace de travail), ⧉ **Dupliquer** en pose une copie à côté. Un commentaire ne
   modifie rien d'autre.
-- **Ordonner, verrouiller, dupliquer, supprimer** : la barre qui apparaît au-dessus de la
-  sélection, ou ] et [, Ctrl+L, Ctrl+D, Suppr. Le plan ne se supprime pas de l'espace de travail.
+- **Ordonner, verrouiller, dupliquer, supprimer** : la barre qui apparaît en bas, au-dessus du compositeur, dès qu'un élément est
+  sélectionné, ou ] et [, Ctrl+L, Ctrl+D, Suppr. Le plan ne se supprime pas de l'espace de travail.
 - **Se déplacer** : molette pour faire défiler, Ctrl + molette pour zoomer, espace + glisser
   ou l'outil Main (H) ; Ctrl+0 montre tout.
 - **Aller plus loin** : double-clic sur le plan (ou « Modifier le plan ») : la vue zoome dans

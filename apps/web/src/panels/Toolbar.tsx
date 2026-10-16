@@ -217,15 +217,18 @@ export function TopBar({
         )}
         {tab && <span className="space-name">{SPACE_LABEL[tab]}</span>}
       </nav>
-      <button
-        type="button"
-        className={`add-source${sourceOpen ? " active" : ""}`}
-        aria-pressed={sourceOpen}
-        onClick={onSource}
-        title="Photos ou plan (image, DXF, PDF, SVG) : le plan se construit ou se complète"
-      >
-        <IconPlus /> <span className="lbl">Ajouter une source</span>
-      </button>
+      {/* T7c : dans l'espace de travail, l'import est dans la barre d'outils de gauche. */}
+      {tab !== "board" && (
+        <button
+          type="button"
+          className={`add-source${sourceOpen ? " active" : ""}`}
+          aria-pressed={sourceOpen}
+          onClick={onSource}
+          title="Photos ou plan (image, DXF, PDF, SVG) : le plan se construit ou se complète"
+        >
+          <IconPlus /> <span className="lbl">Ajouter une source</span>
+        </button>
+      )}
       <IconButton
         label="Assistant"
         shortcut="/"

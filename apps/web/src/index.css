@@ -5774,10 +5774,12 @@ button.link.home-empty-link {
   margin: 2px 0;
 }
 
+/* T7c : en bas au centre, au-dessus du compositeur, seulement avec une sélection. */
 .board-context {
-  position: absolute;
-  z-index: 6;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
   gap: 4px;
   padding: 4px;
   background: var(--panel);
@@ -5789,6 +5791,8 @@ button.link.home-empty-link {
 .board-context button {
   font-size: 12.5px;
   padding: 4px 8px;
+  /* « Supprimer » (button.danger) garde sinon sa marge haute de formulaire. */
+  margin: 0;
 }
 
 .board-zoom {
@@ -5846,14 +5850,29 @@ button.link.home-empty-link {
 }
 
 /* ---- T7b : compositeur flottant (exigences + déclencheur), en bas du tableau ---- */
-.board-composer {
+/* T7c : la barre de la sélection et le compositeur, empilés en bas au centre, entre la
+   colonne d'outils (gauche) et le zoom (droite). */
+.board-bottom {
   position: absolute;
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
   z-index: 6;
-  /* Entre la colonne d'outils (gauche) et le zoom (droite). */
   width: max(320px, min(760px, calc(100% - 320px)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.board-bottom > * {
+  pointer-events: auto;
+}
+
+.board-composer {
+  width: 100%;
+  box-sizing: border-box;
   max-height: min(60vh, 520px);
   overflow: auto;
   display: flex;
@@ -5998,11 +6017,6 @@ button.link.home-empty-link {
 }
 
 .board-composer-pill {
-  position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 6;
   display: inline-flex;
   gap: 8px;
   align-items: center;
@@ -6192,4 +6206,51 @@ button.link.home-empty-link {
 .contextual-job {
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* T7c : menu « Importer » de la barre d'outils de gauche ; ouvert, il passe devant le
+   compositeur. */
+.board-import {
+  position: relative;
+}
+
+.board-rail:has(.board-import-menu) {
+  z-index: 9;
+}
+
+.board-import-menu {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 300px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
+
+.board-import-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+}
+
+.board-import-menu button:hover {
+  background: var(--accent-soft);
+}
+
+.board-import-menu .muted {
+  font-size: 12px;
 }

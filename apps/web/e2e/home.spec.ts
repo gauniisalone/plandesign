@@ -363,8 +363,15 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
       (p.pending_answers as { style?: string; aspect?: string } | null)
         ?.aspect === "4:5",
   );
-  // Le plan DXF par « Ajouter une source » : le chemin automatique enchaîne.
-  await page.getByRole("button", { name: /Ajouter une source/ }).click();
+  // Le plan DXF par « Importer › Photo ou plan de la pièce » (T7c, barre de gauche) : le
+  // chemin automatique enchaîne.
+  await page
+    .getByRole("toolbar", { name: "Outils de l'espace de travail" })
+    .getByRole("button", { name: "Importer" })
+    .click();
+  await page
+    .getByRole("menuitem", { name: /Photo ou plan de la pièce/ })
+    .click();
   await page
     .locator(".import-screen .dropzone input[type=file]")
     .setInputFiles(PLAN_DXF);

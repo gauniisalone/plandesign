@@ -56,10 +56,6 @@ const FIT_MARGIN = 60;
 /** Entrée dans le plan : marge autour du cadre et durée du zoom (B3). */
 const ENTER_MARGIN = 24;
 const ENTER_MS = 280;
-/** Hauteur de la barre d'actions de la sélection, pour la poser au-dessus. */
-const CONTEXT_H = 44;
-/** Hauteur à l'écran du titre d'un cadre (posé au-dessus du cadre), pour ne pas le couvrir. */
-const FRAME_TITLE_H = 30;
 
 interface Props {
   project: Project;
@@ -95,6 +91,8 @@ interface Props {
   onGenerateNow: () => void;
   /** T4 : il y a déjà des rendus (la barre du déclencheur se retire). */
   hasRenders: boolean;
+  /** T7c : « Importer › Photo ou plan de la pièce » ouvre « Ajouter une source ». */
+  onAddSource: () => void;
   /** A1 : « Rendu contextualisé… » depuis une photo, un rendu ou le plan. */
   onContextual: (pick: {
     kind: "photo" | "render" | "plan";
@@ -106,7 +104,7 @@ interface Props {
 /** T2 : ce qu'un cadre fixe attend, tant qu'il est vide. */
 const FRAME_HINTS: Record<string, string> = {
   photos:
-    "Déposez ici les photos réelles de la pièce : elles font le plan (ou collez, ou « Ajouter une source » : plan DXF, PDF, image).",
+    "Déposez ici les photos réelles de la pièce : elles font le plan (ou collez, ou « Importer » à gauche : plan DXF, PDF, image).",
   inspirations:
     "Déposez ici vos images d'ambiance : leur allure guidera les rendus (cochées Référence).",
   renders: "Les rendus arrivent ici dès qu'un plan existe.",
@@ -148,6 +146,8 @@ export function BoardCanvas(props: Props) {
     url: string;
     title: string;
   } | null>(null);
+  /** T7c : le menu « Importer » de la barre de gauche (source du plan, ou fichiers). */
+  const [importMenu, setImportMenu] = useState(false);
   const dark = useDarkTheme();
   const space = useRef(false);
   const items = live ?? board.items;
@@ -1108,25 +1108,6 @@ export function BoardCanvas(props: Props) {
           bottom: Math.max(...selection.map((i) => i.y + i.h)),
         }
       : null;
-  // La barre d'actions se pose au-dessus de la sélection, jamais dessus ; en dessous si
-  // elle sortirait de l'écran par le haut, ou si elle recouvrirait le titre du cadre qui
-  // contient la sélection (titre posé juste au-dessus du cadre).
-  const barTop = box
-    ? (() => {
-        const above = view.y + box.y * view.zoom - CONTEXT_H - 10;
-        const parent = selection
-          .map((i) => items.find((f) => f.id === i.frame))
-          .find((f): f is BoardItem => !!f);
-        const frameTop = parent ? view.y + parent.y * view.zoom : null;
-        const coversTitle =
-          frameTop !== null &&
-          above < frameTop &&
-          above + CONTEXT_H > frameTop - FRAME_TITLE_H;
-        return above >= 8 && !coversTitle
-          ? above
-          : view.y + box.bottom * view.zoom + 10;
-      })()
-    : 0;
   const marquee =
     drag && (drag.kind === "marquee" || drag.kind === "frame") ? drag : null;
 
@@ -1170,15 +1151,53 @@ export function BoardCanvas(props: Props) {
         >
           🔗
         </button>
-        <button
-          type="button"
-          className="icon"
-          aria-label="Importer"
-          title="Importer des photos ou des fichiers (aussi : glisser-déposer, coller)"
-          onClick={() => fileRef.current?.click()}
-        >
-          ⤓
-        </button>
+        <span className="board-import">
+          <button
+            type="button"
+            className={`icon${importMenu ? " active" : ""}`}
+            aria-label="Importer"
+            aria-haspopup="menu"
+            aria-expanded={importMenu}
+            title="Importer : photo ou plan de la pièce (DXF, PDF, image), ou des fichiers (aussi : glisser-déposer, coller)"
+            onClick={() => setImportMenu((o) => !o)}
+          >
+            ⤓
+          </button>
+          {importMenu && (
+            <span
+              className="board-import-menu"
+              role="menu"
+              aria-label="Importer"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setImportMenu(false);
+                  props.onAddSource();
+                }}
+              >
+                <strong>Photo ou plan de la pièce</strong>
+                <span className="muted">
+                  photos, plan DXF, PDF, SVG ou image : le plan se construit
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setImportMenu(false);
+                  fileRef.current?.click();
+                }}
+              >
+                <strong>Fichiers dans l'espace de travail</strong>
+                <span className="muted">
+                  images d'ambiance, vidéos, PDF, documents joints
+                </span>
+              </button>
+            </span>
+          )}
+        </span>
         <input
           ref={fileRef}
           type="file"
@@ -1302,121 +1321,122 @@ export function BoardCanvas(props: Props) {
           )}
         </div>
 
-        {box && !drag && (
-          <div
-            className="board-context"
-            role="toolbar"
-            aria-label="Actions de la sélection"
-            style={{
-              left: Math.max(8, view.x + box.x * view.zoom),
-              top: barTop,
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {single?.kind === "plan" && single.ref && (
-              <button type="button" onClick={() => enterPlan(single)}>
-                Modifier le plan
-              </button>
-            )}
-            {single &&
-              single.ref &&
-              (single.kind === "photo" ||
-                single.kind === "plan" ||
-                (single.kind === "render" &&
-                  single.role !== "inspiration")) && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    props.onContextual({
-                      kind: single.kind as "photo" | "render" | "plan",
-                      id: single.ref ?? "",
-                      label:
-                        single.text ||
-                        (single.kind === "photo"
-                          ? "Photo"
-                          : single.kind === "plan"
-                            ? "Plan"
-                            : "Vue"),
-                    })
-                  }
-                  title="Une image guidée par cette source et enrichie par le plan (le plan et la 3D ne bougent pas)"
-                >
-                  Rendu contextualisé…
+        {/* T7c : en bas au centre, la barre des actions de la sélection (seulement avec une
+            sélection), puis le compositeur ; l'une au-dessus de l'autre, jamais l'une sur
+            l'autre. */}
+        <div className="board-bottom">
+          {box && !drag && (
+            <div
+              className="board-context"
+              role="toolbar"
+              aria-label="Actions de la sélection"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {single?.kind === "plan" && single.ref && (
+                <button type="button" onClick={() => enterPlan(single)}>
+                  Modifier le plan
                 </button>
               )}
-            {single?.kind === "render" &&
-              single.ref &&
-              single.role !== "inspiration" && (
+              {single &&
+                single.ref &&
+                (single.kind === "photo" ||
+                  single.kind === "plan" ||
+                  (single.kind === "render" &&
+                    single.role !== "inspiration")) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      props.onContextual({
+                        kind: single.kind as "photo" | "render" | "plan",
+                        id: single.ref ?? "",
+                        label:
+                          single.text ||
+                          (single.kind === "photo"
+                            ? "Photo"
+                            : single.kind === "plan"
+                              ? "Plan"
+                              : "Vue"),
+                      })
+                    }
+                    title="Une image guidée par cette source et enrichie par le plan (le plan et la 3D ne bougent pas)"
+                  >
+                    Rendu contextualisé…
+                  </button>
+                )}
+              {single?.kind === "render" &&
+                single.ref &&
+                single.role !== "inspiration" && (
+                  <button
+                    type="button"
+                    onClick={() => props.onOpenRender(single.ref ?? "")}
+                  >
+                    Ouvrir dans les résultats
+                  </button>
+                )}
+              {referenceable.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => props.onOpenRender(single.ref ?? "")}
+                  onClick={toggleReference}
+                  aria-pressed={referenceable.every((i) => !!i.reference)}
+                  title="Référence : l'allure de cette image (matières, ambiance) guide les rendus contextualisés, pas sa géométrie"
                 >
-                  Ouvrir dans les résultats
+                  {referenceable.every((i) => i.reference)
+                    ? "Retirer la référence"
+                    : "Référence"}
                 </button>
               )}
-            {referenceable.length > 0 && (
               <button
                 type="button"
-                onClick={toggleReference}
-                aria-pressed={referenceable.every((i) => !!i.reference)}
-                title="Référence : l'allure de cette image (matières, ambiance) guide les rendus contextualisés, pas sa géométrie"
+                onClick={duplicate}
+                title="Dupliquer (Ctrl+D)"
               >
-                {referenceable.every((i) => i.reference)
-                  ? "Retirer la référence"
-                  : "Référence"}
+                Dupliquer
               </button>
-            )}
-            <button
-              type="button"
-              onClick={duplicate}
-              title="Dupliquer (Ctrl+D)"
-            >
-              Dupliquer
-            </button>
-            <button
-              type="button"
-              onClick={toggleLock}
-              title="Verrouiller (Ctrl+L)"
-            >
-              {selection.every((i) => i.locked)
-                ? "Déverrouiller"
-                : "Verrouiller"}
-            </button>
-            <button
-              type="button"
-              onClick={() => order(true)}
-              title="Devant (])"
-            >
-              Devant
-            </button>
-            <button
-              type="button"
-              onClick={() => order(false)}
-              title="Derrière ([)"
-            >
-              Derrière
-            </button>
-            <button
-              type="button"
-              className="danger"
-              onClick={remove}
-              title="Supprimer (Suppr)"
-            >
-              Supprimer
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={toggleLock}
+                title="Verrouiller (Ctrl+L)"
+              >
+                {selection.every((i) => i.locked)
+                  ? "Déverrouiller"
+                  : "Verrouiller"}
+              </button>
+              <button
+                type="button"
+                onClick={() => order(true)}
+                title="Devant (])"
+              >
+                Devant
+              </button>
+              <button
+                type="button"
+                onClick={() => order(false)}
+                title="Derrière ([)"
+              >
+                Derrière
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={remove}
+                title="Supprimer (Suppr)"
+              >
+                Supprimer
+              </button>
+            </div>
+          )}
 
-        {/* T7b : le compositeur flottant (exigences + déclencheur du zéro geste). */}
-        <Composer
-          key={project.id}
-          project={project}
-          hasRenders={props.hasRenders}
-          planProgress={props.planProgress}
-          onSettings={props.onSettings}
-          onVariant={props.onVariant}
-          onGenerateNow={props.onGenerateNow}
-        />
+          {/* T7b : le compositeur flottant (exigences + déclencheur du zéro geste). */}
+          <Composer
+            key={project.id}
+            project={project}
+            hasRenders={props.hasRenders}
+            planProgress={props.planProgress}
+            onSettings={props.onSettings}
+            onVariant={props.onVariant}
+            onGenerateNow={props.onGenerateNow}
+          />
+        </div>
 
         <div
           className="board-zoom"

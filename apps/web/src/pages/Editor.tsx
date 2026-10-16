@@ -1065,6 +1065,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
                   : null
             }
+            onAddSource={() => goStep("import")}
             onContextual={(pick) => {
               setContextualPick(pick);
               setPanelOpen(true);
@@ -1625,7 +1626,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                     references={(board.board?.items ?? [])
                       .filter((i) => i.reference && i.ref)
                       .map((i) => ({
-                        kind: i.kind as "photo" | "render" | "contextual" | "file",
+                        kind: i.kind as
+                          "photo" | "render" | "contextual" | "file",
                         ref: i.ref ?? "",
                         label:
                           i.text ||
