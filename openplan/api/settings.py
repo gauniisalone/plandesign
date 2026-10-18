@@ -85,13 +85,16 @@ class Settings:
     """OPENPLAN_SIGNUP : `invite` (défaut : une adresse inconnue ne crée pas de compte) ou
     `open` ; « invitation » et « ouvert » sont acceptés."""
     mailer: str = "console"
-    """OPENPLAN_MAILER : `console` (le lien de connexion va dans le journal du serveur, pour le
-    développement), `fake` (boîte en mémoire, tests) ou `smtp_api` (Brevo, pas encore branché)."""
+    """OPENPLAN_MAILER : `console` (le code de connexion va dans le journal du serveur, pour le
+    développement), `fake` (boîte en mémoire, tests) ou `smtp_api` (API de Brevo, texte seul)."""
     public_url: str = DEFAULT_PUBLIC_URL
-    """OPENPLAN_PUBLIC_URL : adresse publique de l'application ; base des liens de connexion et
-    seule origine acceptée sur les mutations quand les comptes sont actifs."""
+    """OPENPLAN_PUBLIC_URL : adresse publique de l'application ; seule origine acceptée sur les
+    mutations quand les comptes sont actifs."""
     mail_from: str = DEFAULT_MAIL_FROM
-    """OPENPLAN_MAIL_FROM : expéditeur des liens de connexion."""
+    """OPENPLAN_MAIL_FROM : expéditeur des codes de connexion."""
+    brevo_api_key: str | None = field(default=None, repr=False)
+    """OPENPLAN_BREVO_API_KEY : clé de l'API de Brevo (avec OPENPLAN_MAILER=smtp_api) ; posée
+    par l'infra dans le `.env` du serveur, jamais dans le dépôt, jamais affichée ni journalisée."""
 
     @property
     def local_only(self) -> bool:
@@ -142,6 +145,7 @@ class Settings:
             mailer=parse_mailer(merged.get("OPENPLAN_MAILER")),
             public_url=(merged.get("OPENPLAN_PUBLIC_URL") or DEFAULT_PUBLIC_URL).rstrip("/"),
             mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,
+            brevo_api_key=merged.get("OPENPLAN_BREVO_API_KEY", "").strip() or None,
         )
 
     @property

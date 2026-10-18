@@ -7,6 +7,23 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (B1b2, avenant à la note 17)
+
+- **Connexion par code à 6 chiffres**, avec les comptes seulement : l'e-mail ne porte plus de
+  lien, seulement un code, « Ce code expire dans 15 minutes. » et « merci de ne pas
+  répondre ». La fenêtre « Se connecter » (servie par l'API en attendant le front, B1d,
+  `/api/auth/login`, sans script) demande l'adresse, puis le code. Code à usage unique, gardé
+  en empreinte salée, comparé en temps constant ; 5 essais faux au plus, puis il est révoqué.
+  Code faux, expiré ou déjà servi : un seul message, « ce code n'est pas bon, ou il a
+  expiré ». Limites (3 codes par adresse par 15 min, 10 demandes par IP par heure) et réponse
+  neutre inchangées. Pour le front : `POST /api/auth/email/verify` (`email`, `code`).
+  `/api/auth/email/callback` disparaît. Migration `b1b2_0002` (`openplan accounts migrate`).
+- **Envoi par Brevo** (`OPENPLAN_MAILER=smtp_api` + `OPENPLAN_BREVO_API_KEY`, jamais dans le
+  dépôt) : API transactionnelle HTTPS, texte seul (pas de HTML, donc ni pixel ni lien
+  réécrit), `contactPixelTrackingConsent: false`, aucun en-tête `X-Mailin-*`, expéditeur
+  `connexion@plandesign.fr`. Sans clé, l'API refuse de démarrer en `smtp_api` ; `console`
+  reste le défaut.
+
 ### 18 octobre 2026 (branche comptes, note 17)
 
 - **Base des comptes et couche de stockage (B1a)** : nouvel extra `comptes` (SQLAlchemy 2,

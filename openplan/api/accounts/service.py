@@ -1,10 +1,14 @@
-"""Connexion par lien envoyé par e-mail et sessions (note 17, § 2 et § 3, avenant du 16 oct.).
+"""Connexion par code envoyé par e-mail et sessions (note 17, § 2 et § 3 ; avenants du
+16 oct. et B1b2 du 18 oct.).
 
-- Lien : 32 octets aléatoires, usage unique, 15 minutes, gardé en empreinte SHA-256 ; la
-  réponse à la demande est la même que l'adresse ait un compte ou non ; 3 liens par adresse
-  par 15 min et 10 demandes par IP par heure, au-delà rien ne part (même réponse).
-- Le lien ouvre une page « Se connecter » : c'est son bouton (POST) qui consomme le jeton, pas
-  l'ouverture du lien (les aperçus de messagerie suivent les liens).
+- Code : 6 chiffres tirés par `secrets`, usage unique, 15 minutes, gardé en empreinte SHA-256
+  salée par l'identifiant (aléatoire) de la ligne et l'adresse ; comparé en temps constant ;
+  5 essais faux au plus par code, puis il est révoqué. Plus de lien : Brevo peut réécrire et
+  journaliser les liens d'un e-mail, un code tapé dans la fenêtre « Se connecter » ne voyage
+  dans aucune URL.
+- La réponse à la demande est la même que l'adresse ait un compte ou non ; 3 codes par adresse
+  par 15 min et 10 demandes par IP par heure, au-delà rien ne part (même réponse) ; la
+  vérification d'un code répond pareil qu'il soit faux, expiré, épuisé ou déjà servi.
 - Compte : retrouvé par l'adresse normalisée ; créé seulement si l'inscription est ouverte
   (`OPENPLAN_SIGNUP=open`), pour l'adresse administrateur, ou (B1e) sur invitation.
 - Session : 32 octets aléatoires en cookie `pd_session`, empreinte en base, 30 jours
@@ -21,7 +25,7 @@ import secrets
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from enum import StrEnum
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import Engine, and_, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -36,15 +40,18 @@ from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 
 TOKEN_BYTES = 32
+"""Sessions : 32 octets aléatoires."""
+CODE_DIGITS = 6
 LOGIN_TTL = timedelta(minutes=15)
+MAX_ATTEMPTS = 5
+"""Essais faux par code ; au-delà, le code est révoqué."""
 ADDRESS_LIMIT = 3
-"""Liens par adresse sur la durée de vie d'un lien (15 min)."""
+"""Codes par adresse sur la durée de vie d'un code (15 min)."""
 IP_LIMIT = 10
 IP_WINDOW_S = 3600.0
 TOKEN_PURGE_AFTER = timedelta(hours=24)
 SESSION_TTL = timedelta(seconds=SESSION_MAX_AGE_S)
 SESSION_RENEW_EVERY = timedelta(hours=1)
-CALLBACK_PATH = "/api/auth/email/callback"
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s.][^@\s]*\.[^@\s]+$")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 MAX_NEXT = 512
@@ -62,9 +69,10 @@ class LoginRefusal(StrEnum):
 
 
 REFUSAL_TEXT = {
-    LoginRefusal.INVALID: "ce lien de connexion n'est pas valable.",
-    LoginRefusal.EXPIRED: "ce lien de connexion a expiré (il vaut 15 minutes).",
-    LoginRefusal.USED: "ce lien de connexion a déjà servi (il ne sert qu'une fois).",
+    # Un seul texte pour un code faux, expiré, épuisé ou déjà servi : rien n'est trahi.
+    LoginRefusal.INVALID: "ce code n'est pas bon, ou il a expiré.",
+    LoginRefusal.EXPIRED: "ce code n'est pas bon, ou il a expiré.",
+    LoginRefusal.USED: "ce code n'est pas bon, ou il a expiré.",
     LoginRefusal.CLOSED: "PlanDesign est pour l'instant sur invitation.",
 }
 
@@ -81,6 +89,23 @@ def hash_token(raw: str) -> str:
 
 def new_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
+
+
+def new_code() -> str:
+    """6 chiffres, zéros de tête compris (000000 à 999999), tirés par `secrets`."""
+    return f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
+
+
+def hash_code(row_id: UUID, email: str, code: str) -> str:
+    """Empreinte d'un code : salée par l'identifiant aléatoire de sa ligne et par l'adresse ;
+    deux codes égaux n'ont jamais la même empreinte."""
+    return hashlib.sha256(f"{row_id}:{email}:{code}".encode()).hexdigest()
+
+
+def clean_code(value: str) -> str | None:
+    """Le code tapé, sans espaces ; None s'il n'a pas la forme de 6 chiffres."""
+    code = re.sub(r"\s+", "", value or "")
+    return code if re.fullmatch(rf"\d{{{CODE_DIGITS}}}", code) else None
 
 
 def checked_email(email: str) -> str:
@@ -152,13 +177,14 @@ class AccountService(AccountsRepo):
         return False
 
     def start_login(self, email: str, next_path: str | None, ip: str | None) -> MailMessage | None:
-        """Le message à envoyer, ou None quand rien ne doit partir (adresse qui ne peut pas se
-        connecter, limite atteinte). L'appelant répond pareil dans les deux cas."""
+        """Le message à envoyer (le code), ou None quand rien ne doit partir (adresse qui ne
+        peut pas se connecter, limite atteinte). L'appelant répond pareil dans les deux cas."""
         address = checked_email(email)
         if not self.ip_limiter.allow(ip or "-"):
             return None
         now = self.clock()
-        raw = new_token()
+        code = new_code()
+        row_id = uuid4()
         with self.session() as db, db.begin():
             db.execute(delete(LoginToken).where(LoginToken.created_at < now - TOKEN_PURGE_AFTER))
             if not self._may_sign_in(db, address):
@@ -172,50 +198,78 @@ class AccountService(AccountsRepo):
                 return None
             db.add(
                 LoginToken(
+                    id=row_id,
                     email=address,
-                    token_hash=hash_token(raw),
+                    token_hash=hash_code(row_id, address, code),
                     next=safe_next(next_path),
                     created_at=now,
                     expires_at=now + LOGIN_TTL,
                     ip=short_ip(ip),
+                    attempts=0,
                 )
             )
-        link = f"{self.settings.public_url}{CALLBACK_PATH}?token={raw}"
-        return login_message(address, link, int(LOGIN_TTL.total_seconds() // 60))
+        return login_message(address, code, int(LOGIN_TTL.total_seconds() // 60))
 
-    # --- lien ouvert, puis bouton « Se connecter » ------------------------------------
+    # --- code tapé dans la fenêtre « Se connecter » -----------------------------------
 
-    def _token_row(self, db: Session, raw: str) -> LoginToken:
-        digest = hash_token(raw)
-        row = db.scalar(select(LoginToken).where(LoginToken.token_hash == digest))
-        if row is None or not hmac.compare_digest(row.token_hash, digest):
-            raise LoginRefusedError(LoginRefusal.INVALID)
-        if row.used_at is not None or row.revoked_at is not None:
-            raise LoginRefusedError(LoginRefusal.USED)
-        if aware(row.expires_at) <= self.clock():
-            raise LoginRefusedError(LoginRefusal.EXPIRED)
-        return row
-
-    def check_login(self, raw: str) -> None:
-        """Ouverture du lien (GET) : dit s'il est encore bon, **sans** le consommer."""
-        with self.session() as db:
-            self._token_row(db, raw)
-
-    def complete_login(self, raw: str, user_agent: str = "") -> tuple[AuthUser, str, str]:
-        """Bouton « Se connecter » (POST) : consomme le jeton (marqué utilisé avant tout),
-        trouve ou crée le compte, ouvre une session. Renvoie (utilisateur, session, next)."""
+    def complete_login(
+        self, email: str, typed: str, user_agent: str = ""
+    ) -> tuple[AuthUser, str, str]:
+        """Vérifie le code de cette adresse (tous ses codes encore valables, comparés en temps
+        constant) ; juste : le consomme (marqué utilisé avant tout), trouve ou crée le compte,
+        ouvre une session ; faux : un essai de plus sur chacun, révoqué au 5e. Renvoie
+        (utilisateur, session, next) ; refus : toujours la même raison (INVALID)."""
         now = self.clock()
+        try:
+            address = checked_email(email)
+        except InvalidEmailError:
+            raise LoginRefusedError(LoginRefusal.INVALID) from None
+        code = clean_code(typed)
+        refused = False
+        next_path = "/"
         with self.session() as db, db.begin():
-            row = self._token_row(db, raw)
-            done = db.execute(
-                update(LoginToken)
-                .where(and_(LoginToken.id == row.id, LoginToken.used_at.is_(None)))
-                .values(used_at=now)
+            rows = list(
+                db.scalars(
+                    select(LoginToken).where(
+                        LoginToken.email == address,
+                        LoginToken.used_at.is_(None),
+                        LoginToken.revoked_at.is_(None),
+                        LoginToken.attempts < MAX_ATTEMPTS,
+                    )
+                )
             )
-            if getattr(done, "rowcount", 0) != 1:  # deux clics simultanés : un seul passe
-                raise LoginRefusedError(LoginRefusal.USED)
-            email, next_path = row.email, row.next
-        user = self._user_for_login(email, now)
+            live = [r for r in rows if aware(r.expires_at) > now]
+            matched: LoginToken | None = None
+            for row in live:  # chaque empreinte est calculée et comparée, juste ou non
+                digest = hash_code(row.id, address, code or "")
+                if hmac.compare_digest(row.token_hash, digest) and code is not None:
+                    matched = row
+            if matched is None:
+                # Les essais sont comptés et enregistrés (transaction validée) ; le refus est
+                # levé hors de la transaction, qui sinon serait annulée.
+                for row in live:
+                    row.attempts += 1
+                    if row.attempts >= MAX_ATTEMPTS:
+                        row.revoked_at = now
+                refused = True
+            else:
+                done = db.execute(
+                    update(LoginToken)
+                    .where(
+                        and_(
+                            LoginToken.id == matched.id,
+                            LoginToken.used_at.is_(None),
+                            LoginToken.revoked_at.is_(None),
+                        )
+                    )
+                    .values(used_at=now)
+                )
+                # Deux envois simultanés du même code : un seul passe.
+                refused = getattr(done, "rowcount", 0) != 1
+                next_path = matched.next
+        if refused:
+            raise LoginRefusedError(LoginRefusal.INVALID)
+        user = self._user_for_login(address, now)
         session_raw = new_token()
         with self.session() as db, db.begin():
             db.add(

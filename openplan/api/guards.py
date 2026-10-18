@@ -170,8 +170,10 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("GET", "/api/health"): "public",
     ("POST", "/api/auth/email/start"): "public",
-    ("GET", "/api/auth/email/callback"): "public",
-    ("POST", "/api/auth/email/callback"): "public",
+    ("POST", "/api/auth/email/verify"): "public",
+    ("GET", "/api/auth/login"): "public",
+    ("POST", "/api/auth/login/code"): "public",
+    ("POST", "/api/auth/login/verify"): "public",
     ("POST", "/api/auth/logout"): "public",
     ("GET", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",

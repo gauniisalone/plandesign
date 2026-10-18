@@ -19,12 +19,12 @@ def open_accounts(settings: Settings, mailer: Mailer | None = None) -> AccountSe
     if not settings.database_url:  # pragma: no cover - appelé seulement avec l'URL
         msg = "OPENPLAN_DATABASE_URL absent"
         raise RuntimeError(msg)
-    mailer = mailer or build_mailer(settings.mailer, settings.mail_from)
+    mailer = mailer or build_mailer(settings.mailer, settings.mail_from, settings.brevo_api_key)
     engine = make_engine(settings.database_url)
     check_schema(engine)
     if settings.mailer == "console" and not settings.local_only:
         log.warning(
-            "comptes : envoi « console » sur un serveur exposé, les liens de connexion vont "
-            "dans le journal du serveur (service d'envoi pas encore branché)"
+            "comptes : envoi « console » sur un serveur exposé, les codes de connexion vont "
+            "dans le journal du serveur (OPENPLAN_MAILER=smtp_api avec la clé Brevo pour envoyer)"
         )
     return AccountService(engine, settings, mailer)

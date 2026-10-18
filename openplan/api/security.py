@@ -178,7 +178,15 @@ def with_security_headers(response: Response, path: str) -> Response:
 
 
 ACCOUNTS_PUBLIC = frozenset(
-    {"/api/health", "/api/auth/email/start", "/api/auth/email/callback", "/api/auth/logout"}
+    {
+        "/api/health",
+        "/api/auth/email/start",
+        "/api/auth/email/verify",
+        "/api/auth/login",
+        "/api/auth/login/code",
+        "/api/auth/login/verify",
+        "/api/auth/logout",
+    }
 )
 """Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
 AUTH_PREFIX = "/api/auth/"

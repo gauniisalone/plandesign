@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
@@ -40,19 +39,19 @@ def accounts_client(
     return client, service, service.mailer
 
 
-def token_of(link: str) -> str:
-    return parse_qs(urlparse(link).query)["token"][0]
+def code_of(mailer: FakeMailer, email: str) -> str:
+    message = mailer.last_to(email)
+    assert message is not None, f"aucun code pour {email}"
+    return message.code
 
 
 def sign_in(client: TestClient, mailer: FakeMailer, email: str, next_path: str = "/") -> str:
-    """Parcours complet (demande, lien, bouton) ; renvoie la valeur du cookie de session."""
+    """Parcours complet (demande, code tapé) ; renvoie la valeur du cookie de session."""
     done = client.post("/api/auth/email/start", json={"email": email, "next": next_path})
     assert done.status_code == 202, done.text
-    message = mailer.last_to(email)
-    assert message is not None, f"aucun lien pour {email}"
     confirm = client.post(
-        "/api/auth/email/callback",
-        data={"token": token_of(message.link)},
+        "/api/auth/login/verify",
+        data={"email": email, "code": code_of(mailer, email)},
         follow_redirects=False,
     )
     assert confirm.status_code == 303, confirm.text

@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
     String,
     Uuid,
@@ -54,7 +55,9 @@ class User(Base):
 
 
 class LoginToken(Base):
-    """Lien de connexion envoyé par e-mail : 32 octets aléatoires, usage unique, 15 min."""
+    """Code de connexion envoyé par e-mail (B1b2 ; un lien avant) : 6 chiffres, usage unique,
+    15 min, 5 essais au plus ; gardé en empreinte salée par l'identifiant de la ligne et
+    l'adresse (`token_hash`)."""
 
     __tablename__ = "login_tokens"
     __table_args__ = (Index("ix_login_tokens_email_created", "email", "created_at"),)
@@ -69,6 +72,8 @@ class LoginToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     """Adresse IP tronquée (/24 en IPv4, /48 en IPv6) : assez pour comprendre un abus."""
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """B1b2 : essais de code faux ; au 5e, le code est révoqué."""
 
 
 class AuthSession(Base):

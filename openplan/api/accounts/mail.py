@@ -1,16 +1,21 @@
-"""Envoi des liens de connexion (note 17, § 2) derrière une seule interface `Mailer`.
+"""Envoi des codes de connexion (note 17, § 2 ; avenant B1b2) derrière une seule interface
+`Mailer`.
 
-- `console` : le lien est écrit dans le journal du serveur (développement, essai local) ;
+- `console` : le code est écrit dans le journal du serveur (développement, essai local) ;
 - `fake` : boîte aux lettres en mémoire, lue par les tests et les e2e ;
-- `smtp_api` : squelette pour l'API HTTPS de Brevo (service pressenti, non choisi) : il sait
-  construire la requête mais **n'envoie rien** tant que le service n'est pas choisi et branché.
+- `smtp_api` : l'API transactionnelle HTTPS de Brevo (`POST /v3/smtp/email`).
 
-Aucune clé n'est dans le dépôt : celle du service ira dans le `.env` du VPS.
+B1b2 (décision PO du 18 oct.) : Brevo peut réécrire et journaliser les liens d'un e-mail, et
+son API ne permet pas de couper le suivi message par message ; le secret ne voyage donc plus
+dans un lien. L'e-mail ne porte qu'un code à 6 chiffres, en TEXTE SEUL (pas de HTML : pas de
+pixel d'ouverture, rien à réécrire), avec `contactPixelTrackingConsent: false` pour le
+destinataire (événements anonymisés si le consentement par contact est actif sur le compte).
+
+Aucune clé n'est dans le dépôt : OPENPLAN_BREVO_API_KEY vient du `.env` du VPS (infra).
 """
 
 from __future__ import annotations
 
-import html
 import logging
 from dataclasses import dataclass, field
 from threading import Lock
@@ -21,10 +26,15 @@ from openplan.brand import APP_NAME
 log = logging.getLogger("openplan.mail")
 
 BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"
+BREVO_TIMEOUT_S = 10.0
 
 
 class MailerNotConfiguredError(RuntimeError):
-    """Le service d'envoi choisi n'est pas encore branché."""
+    """Le service d'envoi choisi n'est pas configuré (clé absente)."""
+
+
+class MailSendError(RuntimeError):
+    """Le service d'envoi a refusé le message (le code HTTP seul, jamais la clé)."""
 
 
 @dataclass(frozen=True)
@@ -32,9 +42,8 @@ class MailMessage:
     to: str
     subject: str
     text: str
-    html: str
-    link: str = field(repr=False)
-    """Le lien seul, pour la console et la boîte des tests ; jamais journalisé ailleurs."""
+    code: str = field(repr=False)
+    """Le code seul, pour la console et la boîte des tests ; jamais journalisé ailleurs."""
 
 
 class Mailer(Protocol):
@@ -48,13 +57,13 @@ def mask_address(address: str) -> str:
 
 
 class ConsoleMailer:
-    """Développement : le lien part dans le journal du serveur, rien ne sort de la machine."""
+    """Développement : le code part dans le journal du serveur, rien ne sort de la machine."""
 
     def send(self, message: MailMessage) -> None:
         log.warning(
-            "lien de connexion (envoi « console », rien n'est parti) pour %s : %s",
+            "code de connexion (envoi « console », rien n'est parti) pour %s : %s",
             mask_address(message.to),
-            message.link,
+            message.code,
         )
 
 
@@ -76,56 +85,62 @@ class FakeMailer:
 
 
 class BrevoApiMailer:
-    """Squelette : la requête HTTPS de l'API transactionnelle de Brevo, sans envoi."""
+    """API transactionnelle de Brevo : texte seul, suivi par contact refusé, clé en en-tête."""
 
     def __init__(self, sender: str, api_key: str | None = None) -> None:
         self.sender = sender
         self.api_key = api_key
 
     def payload(self, message: MailMessage) -> dict[str, object]:
+        """Le corps JSON envoyé : jamais de `htmlContent` (B1b2)."""
         return {
             "sender": {"name": APP_NAME, "email": self.sender},
-            "to": [{"email": message.to}],
+            "to": [{"email": message.to, "contactPixelTrackingConsent": False}],
             "subject": message.subject,
             "textContent": message.text,
-            "htmlContent": message.html,
         }
 
     def send(self, message: MailMessage) -> None:
-        del message
-        msg = "envoi par Brevo pas encore branché (service d'envoi à choisir, note 17 § 13)"
-        raise MailerNotConfiguredError(msg)
+        if not self.api_key:
+            msg = "OPENPLAN_BREVO_API_KEY absent : l'envoi par Brevo n'est pas configuré"
+            raise MailerNotConfiguredError(msg)
+        import httpx
+
+        response = httpx.post(
+            BREVO_ENDPOINT,
+            json=self.payload(message),
+            headers={"api-key": self.api_key, "accept": "application/json"},
+            timeout=BREVO_TIMEOUT_S,
+        )
+        if response.status_code >= 300:
+            msg = f"Brevo a refusé l'envoi (HTTP {response.status_code})"
+            raise MailSendError(msg)
 
 
-def build_mailer(kind: str, sender: str) -> Mailer:
+def build_mailer(kind: str, sender: str, api_key: str | None = None) -> Mailer:
     if kind == "console":
         return ConsoleMailer()
     if kind == "fake":
         return FakeMailer()
     if kind == "smtp_api":
-        msg = (
-            "OPENPLAN_MAILER=smtp_api : l'envoi par l'API de Brevo n'est pas encore branché ; "
-            "garder « console » tant que le service d'envoi n'est pas choisi"
-        )
-        raise MailerNotConfiguredError(msg)
+        if not api_key:
+            msg = (
+                "OPENPLAN_MAILER=smtp_api : OPENPLAN_BREVO_API_KEY est absent ; garder "
+                "« console » tant que la clé n'est pas posée sur le serveur"
+            )
+            raise MailerNotConfiguredError(msg)
+        return BrevoApiMailer(sender, api_key)
     msg = f"OPENPLAN_MAILER inconnu : {kind}"
     raise ValueError(msg)
 
 
-def login_message(to: str, link: str, minutes: int) -> MailMessage:
-    """Le message ne contient que le lien, sa durée et la phrase « ignorez ce message »."""
-    subject = f"Votre lien de connexion à {APP_NAME}"
+def login_message(to: str, code: str, minutes: int) -> MailMessage:
+    """Le message ne contient que le code, sa durée et « ne pas répondre » : aucun lien."""
+    subject = f"Votre code de connexion à {APP_NAME} : {code}"
     text = (
-        f"Bonjour,\n\nPour vous connecter à {APP_NAME}, ouvrez ce lien (valable {minutes} "
-        f"minutes, une seule fois) :\n\n{link}\n\n"
+        f"Bonjour,\n\nVotre code de connexion à {APP_NAME} :\n\n    {code}\n\n"
+        f"Ce code expire dans {minutes} minutes.\n\n"
         "Si vous n'avez rien demandé, ignorez ce message.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
     )
-    safe = html.escape(link, quote=True)
-    body = (
-        '<!doctype html><html lang="fr"><body style="font-family:sans-serif">'
-        f"<p>Bonjour,</p><p>Pour vous connecter à {APP_NAME}, ouvrez ce lien (valable "
-        f"{minutes} minutes, une seule fois) :</p>"
-        f'<p><a href="{safe}">Se connecter à {APP_NAME}</a></p>'
-        "<p>Si vous n'avez rien demandé, ignorez ce message.</p></body></html>"
-    )
-    return MailMessage(to=to, subject=subject, text=text, html=body, link=link)
+    return MailMessage(to=to, subject=subject, text=text, code=code)

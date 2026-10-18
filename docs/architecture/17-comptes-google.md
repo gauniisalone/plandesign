@@ -12,6 +12,9 @@ est réécrit, le lot B1b et le § 13 sont mis à jour ; session, contrôles cô
 Postgres, `Storage`, rôles et invitations ne changent pas. La note reste validée. Le nom
 du fichier garde « google » pour ne pas casser les liens.
 
+**Avenant B1b2 du 18 octobre : un code au lieu du lien.** L'e-mail (Brevo, texte seul, `contactPixelTrackingConsent: false`, expéditeur `connexion@plandesign.fr`) ne porte plus de lien mais un code à 6 chiffres tapé dans « Se connecter » (adresse, puis code) : 15 min, usage unique, empreinte salée, 5 essais puis révoqué ; limites et réponse neutre inchangées.
+Routes : `POST /api/auth/email/start` puis `POST /api/auth/email/verify` (front), page sans script `/api/auth/login` ; `/api/auth/email/callback` disparaît ; migration `b1b2_0002` (colonne `attempts`). Le § 2 ci-dessous décrit encore le lien : lire « code » partout où il dit « lien ».
+
 ## 1. Les décisions
 
 1. **Pas de projet sans compte.** Un visiteur anonyme ne voit que la page de connexion :
