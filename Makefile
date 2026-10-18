@@ -6,6 +6,11 @@
 
 SHELL := /bin/bash
 UV    ?= uv
+# Extras du venv partagé (le serveur local et les vérifications) : `uv run` les installe
+# s'ils manquent, sans retirer les autres (synchronisation non exacte). « comptes » y est
+# pour que les tests des comptes tournent toujours ; le mode local ne l'importe jamais.
+EXTRAS := --extra api --extra vision --extra ai --extra monitoring --extra comptes
+RUN   := $(UV) run $(EXTRAS)
 WEB   := apps/web
 HAS_WEB := $(wildcard $(WEB)/package.json)
 
@@ -30,14 +35,14 @@ help:
 
 ## Installation (sans torch : voir setup-neural)
 setup:
-	$(UV) sync --extra api --extra vision --extra ai --extra monitoring
+	$(UV) sync $(EXTRAS)
 ifneq ($(HAS_WEB),)
 	cd $(WEB) && if [ -f package-lock.json ]; then npm ci; else npm install; fi
 endif
 
 ## Modèles neuronaux locaux : torch + transformers (plusieurs Go), puis poids à la demande
 setup-neural:
-	$(UV) sync --extra api --extra vision --extra ai --extra monitoring --extra neural
+	$(UV) sync $(EXTRAS) --extra neural
 	@echo "Poids : uv run openplan models list ; uv run openplan models pull <id>"
 
 ## Tout-en-un pour essayer : front construit puis servi par l'API sur un seul port (boucle
@@ -47,11 +52,11 @@ start:
 	@export PATH="$$HOME/.local/bin:$$PATH"; \
 	if [ -s "$$HOME/.nvm/nvm.sh" ]; then . "$$HOME/.nvm/nvm.sh"; fi; \
 	if [ ! -d $(WEB)/node_modules ]; then (cd $(WEB) && npm ci); fi; \
-	(cd $(WEB) && npm run build) && $(UV) run openplan serve --web
+	(cd $(WEB) && npm run build) && $(RUN) openplan serve --web
 
 ## Développement
 api:
-	$(UV) run openplan serve --reload
+	$(RUN) openplan serve --reload
 
 dev:
 	@echo "API : make api (127.0.0.1:8000) — Web : cd $(WEB) && npm run dev (127.0.0.1:5173)"
@@ -59,35 +64,35 @@ dev:
 
 ## Types TypeScript générés depuis les JSON Schema Pydantic
 web-types:
-	$(UV) run openplan schemas $(WEB)/schemas
+	$(RUN) openplan schemas $(WEB)/schemas
 	cd $(WEB) && npm run gen-types
 
 ## Tests
 test:
-	$(UV) run pytest
+	$(RUN) pytest
 
 ## Lint
 lint-imports:
-	$(UV) run lint-imports
+	$(RUN) lint-imports
 
 lint: lint-imports
-	$(UV) run ruff check .
-	$(UV) run ruff format --check .
+	$(RUN) ruff check .
+	$(RUN) ruff format --check .
 ifneq ($(HAS_WEB),)
 	cd $(WEB) && npm run lint
 endif
 
 ## Types
 typecheck:
-	$(UV) run mypy
+	$(RUN) mypy
 ifneq ($(HAS_WEB),)
 	cd $(WEB) && npm run typecheck
 endif
 
 ## Formatage
 format:
-	$(UV) run ruff format .
-	$(UV) run ruff check --fix .
+	$(RUN) ruff format .
+	$(RUN) ruff check --fix .
 
 ## Build : front, puis wheel/sdist avec le front et les ressources embarqués (openplan/_bundled)
 build:

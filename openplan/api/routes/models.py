@@ -6,8 +6,7 @@ import re
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Response
 from pydantic import Field
 
 from openplan.adapters.neural.weights import is_installed, license_accepted
@@ -21,6 +20,7 @@ from openplan.api.deps import (
     SettingsDep,
     StoreDep,
 )
+from openplan.api.files import served_file
 from openplan.api.jobs import JobStatus
 from openplan.pipeline.attic import AtticRun, run_attic
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic
@@ -171,24 +171,20 @@ def running_job(jobs: JobsDep, actor: ActorDep) -> dict[str, object]:
 @router.get("/projects/{project_id}/jobs/{job_id}")
 def job_status(job_id: UUID, project: ProjectDep, jobs: JobsDep) -> JobStatus:
     """État d'une tâche de fond lancée pour ce projet (queued avec sa place dans la file,
-    running, done avec résultat, failed, cancelled)."""
-    del project  # vérifie seulement que le projet existe
-    return jobs.get(job_id)
+    running, done avec résultat, failed, cancelled). 404 pour la tâche d'un autre projet."""
+    return jobs.get(job_id, project.id)
 
 
 @router.delete("/projects/{project_id}/jobs/{job_id}")
 def cancel_job(job_id: UUID, project: ProjectDep, jobs: JobsDep, actor: ActorDep) -> JobStatus:
     """Annule une tâche en attente de cet utilisateur (elle ne démarrera pas) ; 409 si elle a
-    déjà démarré, 404 si elle est inconnue ou d'un autre utilisateur."""
-    del project  # vérifie seulement que le projet existe
-    return jobs.cancel(job_id, actor)
+    déjà démarré, 404 si elle est inconnue, d'un autre utilisateur ou d'un autre projet."""
+    return jobs.cancel(job_id, actor, project.id)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/inspiration/{name}")
-def inspiration_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "inspiration", name))
+def inspiration_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "inspiration", name))
 
 
 @router.post("/projects/{project_id}/images/{image_id}/depth")
@@ -206,8 +202,8 @@ def depth(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/depth/{name}")
-def depth_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "depth", name))
+def depth_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "depth", name))
 
 
 class AtticRequest(StrictModel):
@@ -235,8 +231,8 @@ def attic(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/attic/{name}")
-def attic_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "attic", name))
+def attic_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "attic", name))
 
 
 class AtticApplyResult(StrictModel):

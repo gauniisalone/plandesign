@@ -51,7 +51,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   updated_at: string;
-  path: string;
+  /** Dossier sur la machine ; absent quand l'API est exposée ou les comptes actifs. */
+  path: string | null;
   created_at: string | null;
   image_count: number;
   wall_count: number;

@@ -32,9 +32,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
+from openplan.api.access import (
+    LOGIN_REQUIRED,
+    SESSION_COOKIE,
+    SESSION_MAX_AGE_S,
+    AccountsBackend,
+)
+from openplan.api.guards import route_guard
+from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 from openplan.scene.history import USER_ACTOR, user_actor
 from openplan.schemas.common import StrictModel
@@ -168,8 +177,40 @@ def with_security_headers(response: Response, path: str) -> Response:
     return response
 
 
+ACCOUNTS_PUBLIC = frozenset(
+    {"/api/health", "/api/auth/email/start", "/api/auth/email/callback", "/api/auth/logout"}
+)
+"""Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
+AUTH_PREFIX = "/api/auth/"
+AUTH_RATE_EXEMPT = frozenset({"/api/auth/me"})
+"""`/api/auth/me` est lu à chaque chargement du front : hors de la limite des tentatives."""
+AUTH_RATE_LIMIT = 10
+AUTH_RATE_WINDOW_S = 60.0
+MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+ACCOUNTS_REFERRER_POLICY = "same-origin"
+"""Avec `no-referrer`, le navigateur envoie `Origin: null` sur un POST (formulaire ou fetch) :
+le contrôle d'origine refuserait l'application elle-même. `same-origin` n'envoie rien aux
+autres sites."""
+
+
+def request_origin(request: Request) -> str | None:
+    """L'origine déclarée : `Origin`, à défaut celle du `Referer` ; None si aucune."""
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.strip().lower()
+    referer = request.headers.get("referer", "")
+    scheme, sep, rest = referer.partition("://")
+    if not sep:
+        return None
+    return f"{scheme.lower()}://{rest.split('/', 1)[0].lower()}"
+
+
 def install_security(app: FastAPI, settings: Settings) -> None:
-    """Un seul intergiciel : jeton → acteur, journal des accès, en-têtes de sécurité."""
+    """Un seul intergiciel : jeton (ou session) → acteur, journal des accès, en-têtes."""
+    accounts: AccountsBackend | None = getattr(app.state, "accounts", None)
+    if accounts is not None:
+        _install_accounts_guard(app, settings, accounts)
+        return
     tokens = settings.tokens
     exposed = not settings.local_only
     if exposed and not tokens:
@@ -181,7 +222,7 @@ def install_security(app: FastAPI, settings: Settings) -> None:
     log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
     secret = read_secret(settings.data_dir) if exposed else b""
 
-    @app.post("/api/session", tags=["security"])
+    @app.post("/api/session", tags=["security"], dependencies=[Depends(route_guard)])
     def open_session(request: Request, response: Response) -> SessionState:
         """Pose le cookie de lecture (API exposée ; l'intergiciel a déjà exigé le Bearer) :
         les images, téléchargements et le GLB du front passent ensuite sans en-tête, en lecture
@@ -203,7 +244,9 @@ def install_security(app: FastAPI, settings: Settings) -> None:
         )
         return SessionState(exposed=True, cookie=True, name=name, expires_in_s=READ_COOKIE_MAX_AGE)
 
-    @app.delete("/api/session", tags=["security"], status_code=204)
+    @app.delete(
+        "/api/session", tags=["security"], status_code=204, dependencies=[Depends(route_guard)]
+    )
     def close_session() -> Response:
         """Efface le cookie de lecture (déconnexion de l'onglet)."""
         gone = Response(status_code=204)
@@ -248,3 +291,77 @@ def install_security(app: FastAPI, settings: Settings) -> None:
                 ms=(time.perf_counter() - started) * 1000,
             )
         return with_security_headers(response, path)
+
+
+def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: AccountsBackend) -> None:
+    """Comptes actifs (note 17, § 3) : la session `pd_session` remplace le jeton et le cookie
+    de lecture ; contrôle de l'origine sur toute mutation ; 401 sans session hors des routes
+    publiques ; limite des tentatives sur `/api/auth/*`. Les droits par projet sont vérifiés
+    ensuite, route par route (`openplan.api.guards`)."""
+    exposed = not settings.local_only
+    log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
+    allowed_origin = settings.public_origin
+    limiter = SlidingWindowLimiter(AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_S)
+
+    def finish(response: Response, request: Request, actor: str, started: float) -> Response:
+        path = request.url.path
+        if log is not None and logged_path(path):
+            log.write(
+                actor=actor,
+                method=request.method,
+                path=path,
+                status=response.status_code,
+                ms=(time.perf_counter() - started) * 1000,
+            )
+        response.headers["Referrer-Policy"] = ACCOUNTS_REFERRER_POLICY
+        return with_security_headers(response, path)
+
+    @app.middleware("http")
+    async def _session_guard(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        started = time.perf_counter()
+        path = request.url.path
+        request.state.user = None
+        if not path.startswith("/api/"):
+            return finish(await call_next(request), request, "-", started)
+        if request.method in MUTATING and request_origin(request) != allowed_origin:
+            refused = JSONResponse(status_code=403, content={"detail": "origine refusée"})
+            return finish(refused, request, "-", started)
+        if path.startswith(AUTH_PREFIX) and path not in AUTH_RATE_EXEMPT:
+            client = request.client.host if request.client else "-"
+            if not limiter.allow(client):
+                slow = JSONResponse(
+                    status_code=429,
+                    content={"detail": "trop de tentatives, réessayer dans une minute"},
+                    headers={"Retry-After": str(int(AUTH_RATE_WINDOW_S))},
+                )
+                return finish(slow, request, "-", started)
+        raw = request.cookies.get(SESSION_COOKIE, "")
+        resolved = await run_in_threadpool(accounts.resolve_session, raw) if raw else None
+        actor = "-"
+        if resolved is not None:
+            request.state.user = resolved.user
+            actor = user_actor(str(resolved.user.id))
+            request.state.actor = actor
+        elif path not in ACCOUNTS_PUBLIC:
+            refused = JSONResponse(status_code=401, content={"detail": LOGIN_REQUIRED})
+            if raw:  # cookie expiré ou révoqué : il s'efface
+                refused.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
+            return finish(refused, request, "-", started)
+        response = await call_next(request)
+        if (
+            resolved is not None
+            and resolved.renewed
+            and SESSION_COOKIE not in str(response.headers.get("set-cookie", ""))
+        ):
+            response.set_cookie(
+                SESSION_COOKIE,
+                raw,
+                max_age=SESSION_MAX_AGE_S,
+                path="/",
+                secure=True,
+                httponly=True,
+                samesite="lax",
+            )
+        return finish(response, request, actor, started)

@@ -6,8 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from openplan.adapters.gateway import ModelGateway
 from openplan.adapters.registry import resolve_device
@@ -21,6 +20,7 @@ from openplan.api.deps import (
     get_depth_estimator,
     get_image_finisher,
 )
+from openplan.api.files import served_file
 from openplan.api.jobs import JobStatus
 from openplan.pipeline import contextual as c
 from openplan.pipeline import home_settings
@@ -137,9 +137,9 @@ def contextual_list(project: ProjectDep, store: StoreDep) -> list[c.ContextualEn
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/contextual/{name}")
-def contextual_image(run_id: UUID, name: str, project: ProjectDep, store: StoreDep) -> FileResponse:
+def contextual_image(run_id: UUID, name: str, project: ProjectDep, store: StoreDep) -> Response:
     try:
         path = c.image_path(store.runs_dir(project.id), run_id, name)
     except ContextualError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return FileResponse(path, media_type="image/png")
+    return served_file(store, path, media_type="image/png")

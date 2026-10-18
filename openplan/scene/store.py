@@ -23,6 +23,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from openplan.scene.migrate import load_project
+from openplan.scene.storage import DiskStorage, Storage
 from openplan.schemas.common import StrictModel
 from openplan.schemas.elements import Wall
 from openplan.schemas.scene import Project
@@ -54,7 +55,8 @@ class ProjectSummary(StrictModel):
     id: UUID
     name: str
     updated_at: datetime
-    path: Path
+    path: Path | None
+    """Dossier du projet sur la machine ; None quand l'API est exposée ou les comptes actifs."""
     created_at: datetime | None = None
     image_count: int = 0
     wall_count: int = 0
@@ -62,8 +64,11 @@ class ProjectSummary(StrictModel):
 
 
 class ProjectStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, storage: Storage | None = None) -> None:
         self.root = root
+        self.storage: Storage = storage or DiskStorage(root)
+        """Porte unique des fichiers servis par l'API (note 17) ; le dossier racine est le
+        dossier des données, dont les projets sont un sous-dossier avec les comptes."""
         self._locks: dict[UUID, threading.Lock] = {}
         self._locks_guard = threading.Lock()
         self.root.mkdir(parents=True, exist_ok=True)

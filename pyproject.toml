@@ -53,6 +53,13 @@ neural = [
     "diffusers>=0.30",
     "accelerate>=0.30",
 ]
+# Comptes, sessions et droits (note 17, B1) : chargés seulement avec OPENPLAN_DATABASE_URL ;
+# le mode local ne les importe jamais. Postgres par psycopg 3, migrations Alembic.
+comptes = [
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0.30",
+]
 
 [dependency-groups]
 dev = [

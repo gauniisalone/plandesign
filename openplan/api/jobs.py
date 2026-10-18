@@ -265,11 +265,16 @@ class JobRegistry:
             dedup=dedup,
         )
 
-    def cancel(self, job_id: UUID, owner: str) -> JobStatus:
-        """Annule une tâche en attente de cet utilisateur ; elle ne démarrera pas."""
+    def cancel(self, job_id: UUID, owner: str, project_id: UUID | None = None) -> JobStatus:
+        """Annule une tâche en attente de cet utilisateur (et, avec `project_id`, de ce
+        projet) ; elle ne démarrera pas."""
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None or job.owner != owner:
+            if (
+                job is None
+                or job.owner != owner
+                or (project_id is not None and job.project_id != project_id)
+            ):
                 raise JobNotFoundError(str(job_id))
             if not job.queued or not job.future.cancel():
                 msg = "seul un calcul en attente s'annule : celui-ci a déjà démarré"
@@ -287,10 +292,12 @@ class JobRegistry:
     def _position(self, job: _Job) -> int:
         return sum(1 for j in self._jobs.values() if j.queued and j.seq <= job.seq)
 
-    def get(self, job_id: UUID) -> JobStatus:
+    def get(self, job_id: UUID, project_id: UUID | None = None) -> JobStatus:
+        """État d'une tâche ; avec `project_id`, seulement si elle appartient à ce projet (une
+        tâche d'un autre projet répond comme inconnue : 404, rien d'elle n'est dit)."""
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or (project_id is not None and job.project_id != project_id):
                 raise JobNotFoundError(str(job_id))
             return self._status(job_id, job)
 

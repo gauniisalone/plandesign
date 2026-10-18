@@ -146,7 +146,39 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_journal_parser(sub)
     _add_diagnostic_parsers(sub)
+    _add_accounts_parser(sub)
     return parser
+
+
+def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    accounts = sub.add_parser(
+        "accounts", help="base des comptes (OPENPLAN_DATABASE_URL, extra comptes) : migrations"
+    )
+    accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
+    accounts_sub.add_parser("migrate", help="applique les migrations (alembic upgrade head)")
+    accounts_sub.add_parser("status", help="révision de la base et dernière migration")
+
+
+def _accounts(args: argparse.Namespace) -> int:
+    """`openplan accounts migrate|status` : jamais l'URL de la base sur la sortie."""
+    settings = Settings.from_env()
+    if not settings.database_url:
+        print("OPENPLAN_DATABASE_URL n'est pas défini : mode local, sans base des comptes.")
+        return 2
+    try:
+        from openplan.api.accounts import db
+    except ImportError:
+        print("extra « comptes » absent : uv sync --extra comptes")
+        return 2
+    engine = db.make_engine(settings.database_url)
+    try:
+        if args.accounts_command == "migrate":
+            db.upgrade(engine)
+        current, head = db.current_revision(engine), db.head_revision()
+    finally:
+        engine.dispose()
+    print(f"base des comptes : révision {current or 'vide'} (dernière migration : {head})")
+    return 0 if current == head else 1
 
 
 def _add_diagnostic_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -234,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         "doctor": _doctor,
         "journal": _journal,
         "sentry-test": _sentry_test,
+        "accounts": _accounts,
     }
     return commands[args.command](args)
 
@@ -417,8 +450,9 @@ def serve_settings(args: argparse.Namespace, base: Settings | None = None) -> Se
         host=args.host or base.host,
         port=args.port or base.port,
     )
-    if not settings.local_only and not settings.tokens:
+    if not settings.local_only and not settings.tokens and not settings.accounts_enabled:
         # Hors boucle locale, jamais sans jeton, et jamais un jeton improvisé : refus dit.
+        # Avec les comptes (note 17), la session remplace le jeton.
         msg = (
             f"API exposée sur {settings.host} sans jeton : refusé. Générer un jeton nommé avec "
             "`openplan token <nom>` puis le mettre dans OPENPLAN_API_TOKENS (.env) et relancer."
@@ -455,7 +489,14 @@ def _serve(args: argparse.Namespace) -> int:
     from openplan.adapters.registry import resolve_device
 
     print(f"Périphérique de calcul des modèles locaux : {resolve_device(settings.device)[1]}")
-    if not settings.local_only:
+    if settings.accounts_enabled:
+        print(
+            f"Comptes actifs : connexion par lien e-mail (envoi « {settings.mailer} », "
+            f"inscription « {settings.signup} »), sessions pd_session ; origine acceptée "
+            f"{settings.public_origin}."
+        )
+        os.environ["OPENPLAN_HOST"] = settings.host
+    elif not settings.local_only:
         names = ", ".join(sorted(settings.tokens))
         print(
             f"API exposée sur {settings.host} : jeton d'accès exigé (en-tête Authorization) ; "

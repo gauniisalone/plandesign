@@ -8,9 +8,9 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
 
 from openplan.api.deps import ProjectDep, StoreDep
+from openplan.api.files import served_file
 from openplan.pipeline import board as b
 from openplan.pipeline.board import MediaError
 from openplan.schemas.board import Board, MediaRef
@@ -88,17 +88,19 @@ async def media_upload(file: UploadFile, project: ProjectDep, store: StoreDep) -
 
 
 @router.get("/projects/{project_id}/media/{media_id}/thumb")
-def media_thumb(media_id: UUID, project: ProjectDep, store: StoreDep) -> FileResponse:
+def media_thumb(media_id: UUID, project: ProjectDep, store: StoreDep) -> Response:
     """Vignette d'un fichier joint (première page d'un PDF), rendue sur la machine."""
     try:
         path = b.media_thumb(store.project_dir(project.id), media_id)
     except MediaError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return FileResponse(path, media_type="image/png", headers={"X-Content-Type-Options": "nosniff"})
+    return served_file(
+        store, path, media_type="image/png", headers={"X-Content-Type-Options": "nosniff"}
+    )
 
 
 @router.get("/projects/{project_id}/media/{media_id}/file")
-def media_download(media_id: UUID, project: ProjectDep, store: StoreDep) -> FileResponse:
+def media_download(media_id: UUID, project: ProjectDep, store: StoreDep) -> Response:
     """Une image courante, une vidéo (mp4, webm) ou un PDF, reconnus à leurs premiers octets,
     sont montrés ; tout autre fichier part en pièce jointe, comme des octets, sans que le
     navigateur l'interprète."""
@@ -107,7 +109,8 @@ def media_download(media_id: UUID, project: ProjectDep, store: StoreDep) -> File
     except MediaError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     inline = ref.media_type != "application/octet-stream"
-    return FileResponse(
+    return served_file(
+        store,
         path,
         media_type=ref.media_type,
         filename=ref.name,

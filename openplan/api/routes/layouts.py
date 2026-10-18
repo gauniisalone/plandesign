@@ -5,8 +5,7 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Response
 
 from openplan.adapters.gateway import NETWORK_LOG, ModelGateway
 from openplan.adapters.registry import resolve_device
@@ -18,6 +17,7 @@ from openplan.api.deps import (
     SettingsDep,
     StoreDep,
 )
+from openplan.api.files import served_file
 from openplan.api.jobs import JobStatus
 from openplan.api.routes.scene import EditResult, _result
 from openplan.api.routes.scene3d import BlenderRun
@@ -244,7 +244,7 @@ def render_variant(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/layout/{name}")
-def layout_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
+def layout_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise DetectionError(msg)
@@ -252,4 +252,4 @@ def layout_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDe
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise DetectionError(msg)
-    return FileResponse(path)
+    return served_file(store, path)

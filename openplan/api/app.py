@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +29,7 @@ from openplan.adapters.remote.intention import IntentionParseError
 from openplan.adapters.remote.openai_compatible import ModelCallError
 from openplan.adapters.remote.vlm_detector import VlmParseError
 from openplan.api.doctor import DoctorReport, diagnose
+from openplan.api.guards import route_guard
 from openplan.api.jobs import (
     JobBusyError,
     JobNotCancellableError,
@@ -59,7 +60,7 @@ from openplan.api.routes import (
 from openplan.api.routes import settings as settings_routes
 from openplan.api.routes.gallery import purge_all
 from openplan.api.security import TokenMissingError, install_security
-from openplan.api.settings import Settings
+from openplan.api.settings import Settings, project_root
 from openplan.brand import APP_NAME
 from openplan.geom.scale import CalibrationError
 from openplan.geom.wallgraph import GeometryError
@@ -74,6 +75,7 @@ from openplan.scene.catalog import CatalogError
 from openplan.scene.history import HistoryError, PatchRejectedError
 from openplan.scene.migrate import UnsupportedSchemaVersionError
 from openplan.scene.ops import OpError
+from openplan.scene.storage import DiskStorage
 from openplan.scene.store import ProjectNotFoundError, ProjectStore
 
 _DEV_ORIGINS = [
@@ -132,7 +134,15 @@ def create_app(
     init_monitoring()
     app = FastAPI(title=f"{APP_NAME} API", version=__version__, lifespan=_lifespan)
     app.state.settings = settings
-    app.state.store = store or ProjectStore(settings.data_dir)
+    # Une seule porte pour les fichiers (note 17) : le disque sous le dossier des données.
+    app.state.storage = DiskStorage(settings.data_dir)
+    app.state.accounts = None
+    if settings.accounts_enabled:
+        # Comptes (note 17) : importés seulement ici ; le mode local n'en charge rien.
+        from openplan.api.accounts.setup import open_accounts
+
+        app.state.accounts = open_accounts(settings)
+    app.state.store = store or ProjectStore(project_root(settings), storage=app.state.storage)
     app.state.language_model = language_model or build_language_model(settings.ai)
     app.state.depth_estimator = depth_estimator
     app.state.image_generator = image_generator
@@ -223,7 +233,10 @@ def create_app(
             detail = public_detail(exc, exposed=not settings.local_only)
             return JSONResponse(status_code=409, content={"detail": detail})
 
-    @app.get("/api/health")
+    # Droits route par route (note 17, § 4) : sans comptes, la garde ne refuse rien.
+    guarded = [Depends(route_guard)]
+
+    @app.get("/api/health", dependencies=guarded)
     def health() -> dict[str, object]:
         """Public, sans jeton : ce qui marche sur cette installation, sans rien de sensible
         (ni noms de jetons, ni chemins, ni adresses)."""
@@ -247,7 +260,7 @@ def create_app(
             "web": settings.web_dir is not None,
         }
 
-    @app.get("/api/doctor")
+    @app.get("/api/doctor", dependencies=guarded)
     def doctor() -> DoctorReport:
         """Bilan de l'installation (même contenu que `openplan doctor`) : ce qui marche et la
         commande pour chaque manque. Derrière le jeton quand l'API est exposée."""
@@ -274,7 +287,11 @@ def create_app(
         board.router,
         contextual.router,
     ):
-        app.include_router(router, prefix="/api")
+        app.include_router(router, prefix="/api", dependencies=guarded)
+    if app.state.accounts is not None:
+        from openplan.api.accounts.routes import router as auth_router
+
+        app.include_router(auth_router, prefix="/api", dependencies=guarded)
     if settings.web_dir is not None:
         _mount_web(app, settings.web_dir)
     return app

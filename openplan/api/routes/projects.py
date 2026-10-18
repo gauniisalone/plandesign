@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Response
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Request, Response
 from pydantic import Field
 
 from openplan.adapters.gateway import ModelGateway
 from openplan.api.deps import LanguageModelDep, ProjectDep, SettingsDep, StoreDep
+from openplan.api.files import served_file
+from openplan.api.guards import forget_project, register_project, visible_summaries
 from openplan.pipeline import home_settings
 from openplan.pipeline.cover import project_cover
 from openplan.pipeline.generated import generate_plan
@@ -45,10 +46,13 @@ class ProjectCreate(StrictModel):
 
 
 @router.post("/projects", status_code=201)
-def create_project(body: ProjectCreate, store: StoreDep, settings: SettingsDep) -> Project:
+def create_project(
+    body: ProjectCreate, store: StoreDep, settings: SettingsDep, request: Request
+) -> Project:
+    """Avec les comptes, l'utilisateur en devient propriétaire (`owner`)."""
     project = new_project(body.name or NEW_PROJECT).model_copy(update={"name_auto": False})
     if body.name_auto or body.name is None:
-        taken = [s.name for s in store.list()]
+        taken = [s.name for s in visible_summaries(request, store)]
         project = project.model_copy(update={"name_auto": True})
         project = project.model_copy(update={"name": auto_name(project, taken)})
     if not settings.auto_path:
@@ -61,17 +65,20 @@ def create_project(body: ProjectCreate, store: StoreDep, settings: SettingsDep) 
             update={"allow_remote_models": True, "remote_consent": True, "remote_text_only": True}
         )
         project = project.model_copy(update={"privacy": privacy})
+    register_project(request, project.id, project.name)
     store.save(project)
     return project
 
 
 @router.get("/projects")
-def list_projects(store: StoreDep) -> list[ProjectSummary]:
-    """Projets du plus récent au plus ancien. Les anciens noms de fichier (« WhatsApp
-    Image… ») deviennent « Grenier · 25 août » à l'affichage, une fois pour toutes."""
-    summaries = store.list()
+def list_projects(store: StoreDep, request: Request) -> list[ProjectSummary]:
+    """Projets du plus récent au plus ancien (avec les comptes : ceux dont l'utilisateur est
+    membre). Les anciens noms de fichier (« WhatsApp Image… ») deviennent « Grenier · 25 août »
+    à l'affichage, une fois pour toutes. API exposée ou comptes actifs : sans le chemin du
+    dossier sur le serveur (`path` vide), qui ne regarde que la machine locale."""
+    summaries = visible_summaries(request, store)
     if not any(looks_like_file_name(s.name) for s in summaries):
-        return summaries
+        return _without_server_path(request, summaries)
     taken = [s.name for s in summaries]
     for summary in summaries:
         if not looks_like_file_name(summary.name):
@@ -89,7 +96,16 @@ def list_projects(store: StoreDep) -> list[ProjectSummary]:
             taken[taken.index(project.name)] = named.name
         else:
             taken.append(named.name)
-    return store.list()
+    return _without_server_path(request, visible_summaries(request, store))
+
+
+def _without_server_path(request: Request, summaries: list[ProjectSummary]) -> list[ProjectSummary]:
+    """Correctif a (intégration des comptes) : le chemin du dossier sur le serveur ne sort pas
+    quand l'API est exposée ou que les comptes sont actifs."""
+    settings = request.app.state.settings
+    if settings.local_only and not settings.accounts_enabled:
+        return summaries
+    return [s.model_copy(update={"path": None}) for s in summaries]
 
 
 @router.get("/projects/{project_id}")
@@ -98,11 +114,11 @@ def get_project(project: ProjectDep) -> Project:
 
 
 @router.post("/projects/{project_id}/name/auto")
-def auto_rename(project: ProjectDep, store: StoreDep) -> Project:
+def auto_rename(project: ProjectDep, store: StoreDep, request: Request) -> Project:
     """À l'ouverture (L1a) : un nom automatique suit le type de la pièce ; un ancien nom
     encore tiré d'un fichier (« WhatsApp Image… ») devient « Grenier · 6 oct. ». Un nom donné
     à la main ne change jamais. Un pas d'historique attribué au pipeline, s'il y a lieu."""
-    taken = [s.name for s in store.list() if s.id != project.id]
+    taken = [s.name for s in visible_summaries(request, store) if s.id != project.id]
     # Sous le verrou du projet : deux ouvertures simultanées ne renomment qu'une fois.
     with store.lock(project.id):
         current = store.load(project.id)
@@ -232,13 +248,13 @@ def area_guard_undo(level_id: UUID, project: ProjectDep, store: StoreDep) -> Pro
 
 
 @router.get("/projects/{project_id}/thumbnail")
-def project_thumbnail(project: ProjectDep, store: StoreDep) -> FileResponse:
+def project_thumbnail(project: ProjectDep, store: StoreDep) -> Response:
     """Vignette (première photo réduite) pour la liste des projets ; 404 sans photo."""
     path = store.thumbnail_path(project.id)
     if not path.is_file():
         msg = "ce projet n'a pas de vignette (aucune photo importée)"
         raise ImageNotFoundError(msg)
-    return FileResponse(path, media_type="image/jpeg")
+    return served_file(store, path, media_type="image/jpeg")
 
 
 @router.get("/projects/{project_id}/cover")
@@ -257,12 +273,16 @@ def project_cover_image(
     )
     headers = {"Cache-Control": "private, max-age=60", "X-Cover-Kind": cover.kind}
     if cover.path is not None:
-        return FileResponse(cover.path, media_type=cover.media_type, headers=headers)
+        return served_file(store, cover.path, media_type=cover.media_type, headers=headers)
     return Response(content=cover.content or b"", media_type=cover.media_type, headers=headers)
 
 
 @router.delete("/projects/{project_id}", status_code=204)
-def delete_project(project_id: UUID, store: StoreDep) -> Response:
-    """Supprime la scène, les images et les runs : rien ne subsiste sur disque."""
-    store.delete(project_id)
+def delete_project(project_id: UUID, store: StoreDep, request: Request) -> Response:
+    """Supprime la scène, les images et les runs : rien ne subsiste sur disque ; avec les
+    comptes, la ligne du projet et ses membres aussi (propriétaire seulement)."""
+    try:
+        store.delete(project_id)
+    finally:
+        forget_project(request, project_id)
     return Response(status_code=204)

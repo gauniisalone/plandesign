@@ -7,6 +7,54 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (branche comptes, note 17)
+
+- **Base des comptes et couche de stockage (B1a)** : nouvel extra `comptes` (SQLAlchemy 2,
+  psycopg 3, Alembic). Les comptes ne s'activent que si `OPENPLAN_DATABASE_URL` est défini :
+  sans elle, rien ne change (aucune base, aucun compte, SQLAlchemy jamais importé, projets au
+  même endroit). Avec elle : tables `users`, `login_tokens`, `sessions`, `projects`, `members`
+  (une migration Alembic, `b1a_0001`), projets rangés sous `<données>/projects/<id>/`, et
+  l'API refuse de démarrer sur une base non migrée. `openplan accounts migrate` applique les
+  migrations, `openplan accounts status` dit où en est la base (jamais son adresse). Une seule
+  couche `Storage` pour les fichiers (disque aujourd'hui, stockage objet possible plus tard) :
+  clés relatives sûres, écriture atomique, rien hors du dossier des données, lien symbolique
+  compris. Tests sur SQLite et sur un Postgres 16 jetable.
+- **Connexion par lien envoyé par e-mail (B1b)**, avec les comptes seulement :
+  `POST /api/auth/email/start` envoie un lien de 32 octets aléatoires, valable 15 minutes et
+  une seule fois, dont la base ne garde que l'empreinte ; la réponse est la même que l'adresse
+  ait un compte ou non, et l'envoi part après la réponse. Ouvrir le lien affiche « Se connecter
+  à PlanDesign » avec un bouton : c'est le bouton qui consomme le jeton, pas l'ouverture (les
+  aperçus de messagerie ne connectent personne). Lien expiré, déjà servi ou inscription fermée :
+  page « Connexion impossible » avec la raison et « Recevoir un nouveau lien ». Inscription
+  `OPENPLAN_SIGNUP` sur invitation (défaut) ou ouverte ; `OPENPLAN_ADMIN_EMAIL` devient
+  administrateur à sa première connexion, et seule elle. Session : cookie `pd_session`
+  HttpOnly, Secure, SameSite=Lax, 30 jours prolongés à l'usage (au plus une fois par heure),
+  empreinte en base, révocable (`/api/auth/logout`, « me déconnecter partout »
+  `/api/auth/logout-all`, révocation par un administrateur). Toute modification exige
+  l'origine de `OPENPLAN_PUBLIC_URL` (en-tête Origin, ou Referer), sinon 403 ; la politique de
+  référent devient `same-origin` avec les comptes (avec `no-referrer`, le navigateur enverrait
+  `Origin: null`). Limites : 3 liens par adresse par 15 min, 10 demandes par IP par heure (au
+  delà, même réponse, rien ne part), 10 tentatives par minute et par IP sur `/api/auth/*`
+  (429). Envoi derrière une interface `Mailer` : « console » (le lien va dans le journal du
+  serveur), « fake » (boîte en mémoire des tests) et un squelette Brevo par API HTTPS qui
+  n'envoie rien (service d'envoi pas encore choisi). Le journal des accès note `user:<id>`,
+  jamais l'adresse. Avec les comptes, le jeton Bearer et le cookie de lecture ne servent plus.
+- **Droits par projet sur toutes les routes (B1c)**, avec les comptes seulement : chaque route
+  `/api` passe par une garde unique qui la cherche dans une table explicite ; une route de
+  projet déclare son rôle minimal (`viewer` < `commenter` < `editor` < `owner` : lecture,
+  modification du plan, de l'espace de travail et rendus, suppression et confidentialité), les
+  autres sont publiques (santé, connexion), réservées aux personnes connectées ou aux
+  administrateurs (réglages du serveur, bilan de l'installation). Une route absente des tables
+  est refusée. Un non-membre reçoit la même 404 qu'un projet inexistant ; un rôle insuffisant,
+  403. La liste des projets ne montre que ceux dont on est membre, la création fait de vous le
+  propriétaire, la suppression retire aussi les droits ; changer l'accord pour un modèle
+  distant demande le propriétaire. Les photos, rendus, fichiers joints et artefacts passent
+  tous par la couche `Storage` (`served_file`), jamais par un chemin statique. Deux dépendances
+  pour les routes à venir : `current_user` et `project_member(rôle)`. Un test parcourt toutes
+  les routes (routeurs inclus) et échoue s'il en trouve une sans garde, une absente des tables
+  ou une entrée de table sans route ; un autre essaie chaque rôle sur un échantillon de routes.
+  Sans comptes, la garde ne refuse rien : le mode local ne change pas.
+
 ### 4 octobre 2026
 
 - **Charpente apparente (C1)** : sous chaque pente, chevrons (8 × 16 cm, entraxe 60 cm),
@@ -58,6 +106,7 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 - **Suivi des erreurs du serveur en ligne (D4, GlitchTip)** : nouvel extra `monitoring` (sentry-sdk), inclus dans `app`. Il ne s'active qu'avec `OPENPLAN_SENTRY_DSN` ; sans elle, rien n'est importé et rien ne part, donc l'application installée sur une machine n'envoie jamais rien. Quand il est actif, seul part ce qui aide à corriger un plantage : type d'exception, pile d'appels sans variables locales, message filtré et tronqué à 200 caractères, méthode et route de la requête, User-Agent. Un filtre unique retire le corps, les cookies, les autres en-têtes, les paramètres, l'utilisateur, les contextes libres, les journaux et les messages des fils d'Ariane, les chemins personnels et ceux des projets, les noms d'images, les jetons, les identifiants et le texte cité (consignes, noms de projet). `openplan doctor` affiche « Suivi des erreurs : actif, vers <hôte> » ou « inactif ». `openplan sentry-test` envoie une erreur volontaire pour vérifier la réception après un déploiement. Release `openplan@<version>+<SHA>` (OPENPLAN_GIT_SHA), environnement OPENPLAN_ENV, « production » par défaut.
 - **Mentions de confidentialité justes, en local comme en ligne (T6)** : la mention de la galerie, de la bande des photos et de « Ajouter une source » dit où sont vraiment les photos et les plans : « restent sur cette machine » en local, « gardés sur le serveur PlanDesign » en ligne (lu dans `/api/health`, qui dit aussi si des rapports d'erreur filtrés partent). La case Gemini ajoute « votre texte part chez Google (Gemini), jamais les photos ». Tant que l'hébergement n'est pas connu, la mention n'affirme rien. Les panneaux d'inspiration, de rendu contextualisé et le lien à copier ne disent plus « sur cette machine » ; plus aucun texte ne parle d'un « onglet Plan ». Guide : parcours zéro geste depuis le tableau, image d'inspiration de secours, nouvelle section « Ce qui part, et où ». Note 17 : pas de vitrine ni de tableau d'exemple pour les anonymes (décision d'augus du 16 octobre), seulement la page de connexion. Mesure à froid sur le tableau (serveur neuf, GPU, 16 octobre) : photo 2, plan en 38 s et trois vues rendues en 130 s sans aucun geste après le dépôt (bascule activée), 124 s avec un geste (« Générer maintenant ») ; vraie photo du grenier, plan en 35 s et deux vues en 71 s (0 geste) ou 66 s (1 geste) : sur ce petit grenier, le chemin automatique ne pose que la vue d'ensemble et le détail du lit. Aucune requête n'est sortie de la machine.
 - **Toujours trois vues distinctes** : le chemin automatique pose au moins trois vues qui diffèrent deux à deux d'au moins 35° d'orientation ou de 1 m de position (critère du PO). Une vue trop proche d'une autre est retirée ; quand la vue de zone ou le détail manque (petit volume, une seule zone, rien à cadrer), une vue de secours prend sa place : un **contrechamp** depuis le fond de la pièce, sinon une vue **vers la lumière** (fenêtre ou velux), sinon un **autre angle**, à hauteur d'œil, à 35° au moins de chaque autre vue, jamais face à un mur proche ni avec un meuble coupé au premier plan. Une vue que vous n'avez pas voulue (intention de la pièce) n'est pas remplacée. Un projet qui avait déjà ses trois vues ne change pas. Limites connues (PO, 16 octobre), pour un prochain lot de cadrage : sur la vraie photo du grenier, la vue d'ensemble et le contrechamp montrent surtout la charpente (environ deux tiers de l'image) et presque pas le sol, alors qu'un rendu soigné met l'horizon vers le tiers supérieur avec le sol visible ; et le « lit encastré » se lit comme un lit posé contre le mur de pierre, pas comme un lit encastré.
+- **Intégration des comptes (B1a à B1c) dans main** : la branche des comptes rejoint la file d'attente, les plans multiples et le cadrage. Correctifs de l'intégration : la liste des projets ne donne plus le chemin du dossier sur le serveur quand l'API est exposée ou que les comptes sont actifs ; l'état et l'annulation d'une tâche (`GET` et `DELETE /projects/{id}/jobs/{job_id}`) ne répondent que pour une tâche de ce projet (sinon 404, rien n'en est dit) ; l'annulation d'un calcul en attente entre dans la table des droits (membre éditeur). L'extra « comptes » (SQLAlchemy, Alembic, psycopg) est désormais installé durablement : une seule liste d'extras sert `make setup` et chaque commande du Makefile (`make start`, `make check`…), qui l'ajoute sans rien retirer ; les tests des comptes échouent s'il manque, au lieu d'être ignorés (seuls les tests Postgres restent conditionnés à OPENPLAN_TEST_DATABASE_URL). Le mode local n'importe toujours ni SQLAlchemy ni Alembic.
 - **Correctif du contrechamp sous les combles (18 octobre)** : sur le vrai grenier, la caméra du contrechamp tombait dans la charpente apparente (chevrons et pannes pendent de 16 à 38 cm sous la pente), que la mesure du cadrage ignorait : un grand plan de bois flou bouchait l'image. La mesure compte maintenant l'habillage réel que le rendu bâtit (chevrons, pannes, faîtière, et le décor debout : plantes, lampes, suspension, rideaux, livres) et garde, pour chaque rayon, la distance de la première surface touchée. Une place de caméra est écartée si plus de 10 % de l'image est occupée par une surface à moins de 1,20 m, quelle qu'elle soit (pente, mur, panne, meuble, décor) ; si toutes l'étaient, la moins bouchée resterait. Une vue large baisse aussi l'objectif tant que le sol fait moins de 15 % ; le détail du lit encastré passe à 24 mm quand aucune place libre ne cadre tout à 28 mm, et, trop proche d'une autre vue, il cherche une autre place au lieu d'être remplacé. Sur le vrai grenier : vue d'ensemble et détail inchangés, contrechamp déplacé, premier plan dégagé.
 - **Cadrage sous les combles mesuré sans rendu** (18 octobre) : une mesure géométrique (`openplan.geom.framing`, sans GPU ni Blender) lance un rayon par case d'une grille posée sur l'image et donne la part de toit (pentes et plafond), de sol, de murs et de meubles, et la hauteur de l'horizon. Sous une pente, les vues larges (vue d'ensemble, contrechamp, vers la lumière, autre angle) se posent à 1,30 m au lieu de 1,50 m, là où la caméra tient sous la pente avec 25 cm de marge, objectif baissé pour mettre l'horizon à 36 % du haut de l'image (vers le tiers supérieur), puis encore baissé jusqu'à 28 % si le toit dépasse 40 % de l'image ; parmi les places les mieux notées, celle qui laisse le moins de toit au-delà de 40 % l'emporte. La vue d'architecte qui tient lieu de vue d'ensemble ne se pose plus au-dessus d'un meuble (le lit encastré contre le pignon) : elle avance dans l'axe, depuis le bout le plus proche d'une place libre. Le détail du lit encastré cadre le lit entier et le rampant au-dessus de l'oreiller (toit entre 12 et 40 % de l'image), de trois quarts. Une pièce seule n'a plus de vue de zone autour d'un lit encastré que le détail cadre déjà. Sans pente, rien ne change. Mesure sur le vrai grenier (sans rendu) : vue d'ensemble toit 62 % → 35 %, sol 3 % → 29 %, horizon 58 % → 36 % ; contrechamp toit 57 % → 36 %, sol 2 % → 28 %. Les rendus de vérification restent à faire sur un créneau GPU.
 - **Compositeur flottant et nouvelle disposition du tableau (T7b, maquette d'augus)** : la note Exigences quitte le tableau. Vos exigences se donnent dans un **compositeur** qui flotte en bas : onglets **Prompt libre** et **Questions guidées** (mêmes champs qu'avant), case Gemini (texte seul), ligne « compris », case « Générer automatiquement au dépôt d'une photo » et **Générer maintenant**, qui étaient dans la barre du bas. Le × le referme : plus rien de vos exigences sur le tableau, la pastille **Générer** le rouvre ; il est ouvert d'office tant qu'aucun rendu n'existe. Le contenu reste dans le projet, lu par le chemin automatique comme avant. Le tableau se range comme la maquette : Photos de la pièce puis Inspirations à gauche, le plan au centre, les Rendus à droite ; sur un tableau existant, la note s'en va et la colonne de gauche remonte à sa place. Le cadrage de départ laisse la place du compositeur.

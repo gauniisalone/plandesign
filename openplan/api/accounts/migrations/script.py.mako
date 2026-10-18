@@ -1,0 +1,24 @@
+"""${message}
+
+Révision : ${up_revision} ; précédente : ${down_revision | comma,n}
+Une migration publiée n'est jamais modifiée (note 17, § 8).
+"""
+
+from __future__ import annotations
+
+import sqlalchemy as sa
+from alembic import op
+
+${imports if imports else ""}
+revision = ${repr(up_revision)}
+down_revision = ${repr(down_revision)}
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    ${downgrades if downgrades else "pass"}

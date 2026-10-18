@@ -8,7 +8,6 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import FileResponse
 from pydantic import Field
 
 from openplan.adapters.gateway import ModelGateway
@@ -22,6 +21,8 @@ from openplan.api.deps import (
     StoreDep,
     get_image_finisher,
 )
+from openplan.api.files import served_file
+from openplan.api.guards import visible_ids
 from openplan.api.jobs import JobStatus
 from openplan.api.routes.scene import EditResult, _result
 from openplan.pipeline import journal
@@ -221,8 +222,12 @@ def autopilot(
             text, load_catalog().categories, model=model, gateway=gateway, project=current
         )
 
+    visible = visible_ids(request)  # avec les comptes : les noms des projets de l'utilisateur
+
     def taken() -> list[str]:
-        return [s.name for s in store.list() if s.id != pid]
+        return [
+            s.name for s in store.list() if s.id != pid and (visible is None or s.id in visible)
+        ]
 
     def work(stage: Callable[..., None]) -> AutopilotRun:
         run = run_autopilot(
@@ -625,7 +630,7 @@ def catalogue(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/blender/{name}")
-def run_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
+def run_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise OpError(msg)
@@ -633,4 +638,4 @@ def run_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) 
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise BlenderError(msg)
-    return FileResponse(path)
+    return served_file(store, path)
