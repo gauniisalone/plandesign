@@ -7,6 +7,27 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (B2a, présence en temps réel)
+
+- **Qui est là** (comptes) : dans un projet partagé, les avatars des autres membres présents
+  s'affichent dans la barre du haut (initiale et couleur, nom au survol). Plusieurs onglets
+  d'une même personne comptent pour une présence. Le nom montré est celui du compte, sinon le
+  début de l'adresse avant le @ : jamais l'adresse complète.
+- **« Votre nom »** : à la première connexion, une ligne facultative pour le nom que verront les
+  autres membres.
+- **Ce que les autres changent se voit** : quand un membre modifie le projet ou l'espace de
+  travail, les autres onglets ouverts le relisent tout seuls (l'onglet qui a fait le geste
+  n'est pas dérangé).
+- **Coupure et retour** : si la connexion tombe (redémarrage du serveur, déploiement, réseau),
+  un bandeau « Reconnexion… » paraît ; l'application se reconnecte toute seule avec un délai
+  croissant et aléatoire, puis relit tout (présence, projet, espace de travail).
+- Sécurité : un WebSocket par projet (`/ws/projects/{id}`), qui ne sert qu'à recevoir ; il
+  exige la session, l'origine de l'application et l'appartenance au projet ; les écritures
+  restent en REST. Un membre retiré du projet (ou un projet supprimé) est déconnecté tout de
+  suite et n'entend plus rien ; une session révoquée l'est à la revérification suivante (toutes
+  les 30 s). La politique de contenu nomme l'origine `wss://` de l'application quand les
+  comptes sont actifs ou l'API exposée (anciens Safari) ; le mode local ne change pas.
+
 ### 19 octobre 2026 (stabilité)
 
 - **Le plan ne saute plus pendant qu'on trace des murs** : si la zone du plan changeait de

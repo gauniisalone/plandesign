@@ -1,4 +1,10 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Browser,
+  type Page,
+  type WebSocketRoute,
+} from "@playwright/test";
 
 /** B1d-a : comptes actifs. Sans session, la page de connexion et rien d'autre ; connexion en
  *  deux temps (adresse, puis code) ; galerie ; « Me déconnecter » ; arrivée par /nouveau
@@ -32,6 +38,23 @@ async function signIn(page: Page, email: string): Promise<void> {
     .toMatch(/^\d{6}$/);
   await page.getByLabel("Code à 6 chiffres").fill(code);
   await page.getByRole("button", { name: "Se connecter" }).click();
+  await passNameStep(page);
+}
+
+/** B2a : un compte tout juste créé se voit proposer « Votre nom » ; on passe (ou on le donne). */
+async function passNameStep(page: Page, name?: string): Promise<void> {
+  const field = page.getByLabel("Votre nom (facultatif)");
+  const inside = page
+    .getByRole("heading", { name: "Vos espaces de travail" })
+    .or(page.locator(".editor"));
+  await expect(field.or(inside)).toBeVisible({ timeout: 30_000 });
+  if (!(await field.isVisible())) return;
+  if (name) {
+    await field.fill(name);
+    await page.getByRole("button", { name: "Continuer" }).click();
+  } else {
+    await page.getByRole("button", { name: "Passer" }).click();
+  }
 }
 
 test("sans session : la page de connexion seule, au plus une réponse 401", async ({
@@ -278,6 +301,7 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
     .toMatch(/^\d{6}$/);
   await guest.getByLabel("Code à 6 chiffres").fill(code);
   await guest.getByRole("button", { name: "Se connecter" }).click();
+  await passNameStep(guest);
   await expect(guest).toHaveURL(new RegExp(`#/projects/${id}(/board)?$`));
   await expect(guest.locator(".editor.read-only")).toBeVisible({
     timeout: 30_000,
@@ -302,4 +326,109 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
   await expect(
     owner.getByRole("list", { name: "Membres" }).getByText("lea@example.org"),
   ).toBeVisible();
+});
+
+test("B2a : présence, puis coupure, reconnexion et resynchronisation", async ({
+  browser,
+}) => {
+  // Le propriétaire passe par une route WebSocket que le test peut couper (comme un
+  // redémarrage du serveur) et tenir fermée un moment avant de la rouvrir.
+  const owner = await person(browser, "198.51.100.31");
+  let allow = true;
+  const sockets: WebSocketRoute[] = [];
+  await owner.routeWebSocket(/\/ws\/projects\//, (ws) => {
+    if (!allow) {
+      void ws.close({ code: 1012, reason: "redémarrage" });
+      return;
+    }
+    ws.connectToServer();
+    sockets.push(ws);
+  });
+  await owner.goto("/");
+  await owner.getByLabel("Adresse e-mail").fill("alice@example.org");
+  await owner.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(owner.getByText("un code vient de partir")).toBeVisible();
+  let code = "";
+  await expect
+    .poll(async () => {
+      const r = await owner.request.get(
+        "/api/test/mail/last-code?email=alice@example.org",
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
+  await owner.getByLabel("Code à 6 chiffres").fill(code);
+  await owner.getByRole("button", { name: "Se connecter" }).click();
+  await passNameStep(owner, "Alice");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Salon partagé" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invite = await owner.request.post(`/api/projects/${id}/invitations`, {
+    data: { role: "editor" },
+    headers: origin,
+  });
+  const { token } = (await invite.json()) as { token: string };
+  await owner.goto(`/#/projects/${id}`);
+
+  // L'invité arrive par le lien, se nomme ; chacun voit l'avatar de l'autre.
+  const guest = await person(browser, "198.51.100.32");
+  await guest.goto(`/#/invitation/${token}`);
+  await guest.getByLabel("Adresse e-mail").fill("bruno@example.org");
+  await guest.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(guest.getByText("un code vient de partir")).toBeVisible();
+  await expect
+    .poll(async () => {
+      const r = await guest.request.get(
+        "/api/test/mail/last-code?email=bruno@example.org",
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
+  await guest.getByLabel("Code à 6 chiffres").fill(code);
+  await guest.getByRole("button", { name: "Se connecter" }).click();
+  await passNameStep(guest, "Bruno");
+  await expect(guest.locator(".editor")).toBeVisible({ timeout: 30_000 });
+  const ownerPresence = owner.getByRole("list", {
+    name: "Présents sur le projet",
+  });
+  await expect(ownerPresence.getByLabel("Bruno")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    guest
+      .getByRole("list", { name: "Présents sur le projet" })
+      .getByLabel("Alice"),
+  ).toBeVisible();
+  await shot(owner, "9-presence");
+
+  // Coupure : la connexion du propriétaire tombe et ne peut pas revenir tout de suite.
+  allow = false;
+  for (const ws of sockets.splice(0))
+    await ws.close({ code: 1012, reason: "redémarrage" });
+  await expect(
+    owner.getByRole("status").filter({ hasText: "Reconnexion" }),
+  ).toBeVisible();
+  // Pendant la coupure, l'invité renomme le projet puis s'en va.
+  const renamed = await guest.request.patch(`/api/projects/${id}`, {
+    data: { name: "Salon de Bruno" },
+    headers: { Origin: new URL(guest.url()).origin },
+  });
+  expect(renamed.ok()).toBe(true);
+  await guest.context().close();
+  // Retour du « serveur » : reconnexion, puis état complet relu.
+  allow = true;
+  await expect(
+    owner.getByRole("status").filter({ hasText: "Reconnexion" }),
+  ).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect(owner.locator(".topbar .project-name")).toHaveText(
+    "Salon de Bruno",
+  );
+  await expect(ownerPresence.getByLabel("Bruno")).toHaveCount(0);
 });

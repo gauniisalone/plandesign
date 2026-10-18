@@ -1,3 +1,4 @@
+import type { Peer } from "../state/live";
 import { useEffect, useRef, useState } from "react";
 import { useReadOnly } from "../state/account";
 import { api } from "../api/client";
@@ -147,8 +148,11 @@ export function TopBar({
   onRetrySave,
   onNewPlan,
   onShare,
+  peers = [],
   planName,
 }: {
+  /** B2a : les autres membres présents sur le projet (avatars). */
+  peers?: Peer[];
   /** B1e : ouvre le menu « Partager » (propriétaire, comptes actifs) ; absent sinon. */
   onShare?: () => void;
   /** T7e : ouvre « + Nouveau plan » (dans l'espace de travail). */
@@ -235,6 +239,27 @@ export function TopBar({
         >
           <IconPlus /> <span className="lbl">Ajouter une source</span>
         </button>
+      )}
+      {peers.length > 0 && (
+        <ul className="presence" aria-label="Présents sur le projet">
+          {peers.slice(0, 5).map((p) => (
+            <li
+              key={p.user_id}
+              className="avatar"
+              title={p.name}
+              aria-label={p.name}
+              data-color={p.color}
+              ref={(el) => el?.style.setProperty("--avatar", p.color)}
+            >
+              {p.name.slice(0, 1).toUpperCase()}
+            </li>
+          ))}
+          {peers.length > 5 && (
+            <li className="avatar more" title={`${peers.length - 5} de plus`}>
+              +{peers.length - 5}
+            </li>
+          )}
+        </ul>
       )}
       {onShare && (
         <button

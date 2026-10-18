@@ -1209,6 +1209,21 @@ export function useProject(projectId: string) {
     );
   }, [state.project]);
 
+  /** B2a : relire le projet et ses rendus (un autre membre l'a changé, ou retour après une
+   *  coupure). La règle « jamais en arrière » d'`applyProject` garde l'écran cohérent. */
+  const reload = useCallback(() => {
+    if (!state.project) return;
+    const id = state.project.id;
+    api.getProject(id).then(
+      (project) => void applyProject(project),
+      () => undefined,
+    );
+    renderApi.list(id).then(
+      (renders) => setState((s) => ({ ...s, renders })),
+      () => undefined,
+    );
+  }, [state.project, applyProject]);
+
   /** Rendu Blender depuis un point de vue : tâche de fond côté serveur, suivie toutes les
    *  2 s ; la page reste utilisable ; le résultat rejoint la galerie. */
   const startRender = useCallback(
@@ -1660,6 +1675,7 @@ export function useProject(projectId: string) {
       adoptView,
       rotateView,
       refreshRenders,
+      reload,
       finishRender,
       addArchitectView,
       addAutoViews,

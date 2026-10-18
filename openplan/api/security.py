@@ -169,6 +169,42 @@ def logged_path(path: str) -> bool:
     return path.startswith("/api/") and path != "/api/health" and "/jobs/" not in path
 
 
+def csp_for(settings: Settings) -> str:
+    """B2a : avec les comptes ou l'API exposée, `connect-src` nomme aussi l'origine wss://
+    de l'application (les anciens Safari ne la couvrent pas par 'self'). Mode local : inchangé."""
+    if not settings.accounts_enabled and settings.local_only:
+        return CSP
+    scheme, _, host = settings.public_origin.partition("://")
+    socket = f"{'wss' if scheme == 'https' else 'ws'}://{host}"
+    return CSP.replace("connect-src 'self'", f"connect-src 'self' {socket}")
+
+
+def _site_cors(response: Response, site_origin: str, path: str) -> None:
+    """En-têtes CORS pour l'origine du site : avec cookies sur la connexion seulement."""
+    response.headers["Access-Control-Allow-Origin"] = site_origin
+    if path in SITE_CREDENTIALS:
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Vary"] = "Origin"
+
+
+def _site_preflight() -> Response:
+    preflight = Response(status_code=204)
+    preflight.headers["Access-Control-Allow-Methods"] = "GET, POST"
+    preflight.headers["Access-Control-Allow-Headers"] = "content-type"
+    preflight.headers["Access-Control-Max-Age"] = str(SITE_PREFLIGHT_MAX_AGE_S)
+    return preflight
+
+
+def _with_csp(response: Response, path: str, csp: str) -> Response:
+    if not path.startswith(_NO_CSP_PREFIXES):
+        response.headers["Content-Security-Policy"] = csp
+    return response
+
+
+LIVE_PROJECT = re.compile(r"^/api/projects/([0-9a-f-]{36})(/|$)")
+"""Mutations d'un projet : diffusées aux autres membres connectés (« le projet a changé »)."""
+
+
 def with_security_headers(response: Response, path: str) -> Response:
     for key, value in SECURITY_HEADERS.items():
         if key == "Content-Security-Policy" and path.startswith(_NO_CSP_PREFIXES):
@@ -240,6 +276,7 @@ def install_security(app: FastAPI, settings: Settings) -> None:
         raise TokenMissingError(msg)
     log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
     secret = read_secret(settings.data_dir) if exposed else b""
+    csp = csp_for(settings)
 
     @app.post("/api/session", tags=["security"], dependencies=[Depends(route_guard)])
     def open_session(request: Request, response: Response) -> SessionState:
@@ -297,7 +334,7 @@ def install_security(app: FastAPI, settings: Settings) -> None:
                         status=401,
                         ms=(time.perf_counter() - started) * 1000,
                     )
-                return with_security_headers(refused, path)
+                return with_security_headers(_with_csp(refused, path, csp), path)
             actor = user_actor(name)
         request.state.actor = actor
         response = await call_next(request)
@@ -309,7 +346,7 @@ def install_security(app: FastAPI, settings: Settings) -> None:
                 status=response.status_code,
                 ms=(time.perf_counter() - started) * 1000,
             )
-        return with_security_headers(response, path)
+        return with_security_headers(_with_csp(response, path, csp), path)
 
 
 def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: AccountsBackend) -> None:
@@ -321,6 +358,7 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
     log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
     allowed_origin = settings.public_origin
     site_origin = settings.site_origin
+    csp = csp_for(settings)
     limiter = SlidingWindowLimiter(AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_S)
 
     def from_site(request: Request) -> bool:
@@ -331,10 +369,7 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
     def finish(response: Response, request: Request, actor: str, started: float) -> Response:
         path = request.url.path
         if site_origin is not None and from_site(request):
-            response.headers["Access-Control-Allow-Origin"] = site_origin
-            if path in SITE_CREDENTIALS:
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Vary"] = "Origin"
+            _site_cors(response, site_origin, path)
         if log is not None and logged_path(path):
             log.write(
                 actor=actor,
@@ -344,7 +379,7 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
                 ms=(time.perf_counter() - started) * 1000,
             )
         response.headers["Referrer-Policy"] = ACCOUNTS_REFERRER_POLICY
-        return with_security_headers(response, path)
+        return with_security_headers(_with_csp(response, path, csp), path)
 
     @app.middleware("http")
     async def _session_guard(
@@ -356,11 +391,7 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         if not path.startswith("/api/"):
             return finish(await call_next(request), request, "-", started)
         if request.method == "OPTIONS" and from_site(request):
-            preflight = Response(status_code=204)
-            preflight.headers["Access-Control-Allow-Methods"] = "GET, POST"
-            preflight.headers["Access-Control-Allow-Headers"] = "content-type"
-            preflight.headers["Access-Control-Max-Age"] = str(SITE_PREFLIGHT_MAX_AGE_S)
-            return finish(preflight, request, "-", started)
+            return finish(_site_preflight(), request, "-", started)
         site_mutation = from_site(request) and path in SITE_MUTATIONS | {CONTACT_PATH}
         if request.method in MUTATING and (
             (path == CONTACT_PATH and not site_mutation)
@@ -390,6 +421,8 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
                 refused.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
             return finish(refused, request, "-", started)
         response = await call_next(request)
+        if resolved is not None and request.method in MUTATING and response.status_code < 400:
+            await _announce(request, path)
         if (
             resolved is not None
             and resolved.renewed
@@ -405,3 +438,21 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
                 samesite="lax",
             )
         return finish(response, request, actor, started)
+
+
+async def _announce(request: Request, path: str) -> None:
+    """B2a : une écriture réussie sur un projet est annoncée aux autres membres connectés ;
+    la connexion de l'onglet qui l'a faite (`X-Live-Conn`) n'est pas prévenue."""
+    match = LIVE_PROJECT.match(path)
+    if match is None:
+        return
+    from uuid import UUID
+
+    from openplan.api.accounts.live import hub_of
+
+    scope = "board" if "/board" in path else "project"
+    await hub_of(request.app).publish(
+        UUID(match.group(1)),
+        {"type": "changed", "scope": scope},
+        exclude=request.headers.get("x-live-conn"),
+    )

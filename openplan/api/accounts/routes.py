@@ -18,6 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import Field
+from starlette.requests import HTTPConnection
 
 from openplan.api.access import (
     SESSION_COOKIE,
@@ -50,7 +51,8 @@ LOGIN_PAGE = "/api/auth/login"
 MINUTES = int(LOGIN_TTL.total_seconds() // 60)
 
 
-def service(request: Request) -> AccountService:
+def service(request: HTTPConnection) -> AccountService:
+    """Le service des comptes (requête HTTP ou WebSocket)."""
     accounts: AccountService = request.app.state.accounts
     return accounts
 
@@ -102,6 +104,13 @@ class Me(StrictModel):
     email: str
     name: str
     is_admin: bool
+    first_login: bool = False
+    """B2a : compte créé par cette connexion (la fenêtre propose « Votre nom »)."""
+
+
+class NameBody(StrictModel):
+    name: str = Field(max_length=80)
+    """Nom montré aux autres membres (présence) ; vide : le début de l'adresse."""
 
 
 class Revoked(StrictModel):
@@ -259,7 +268,13 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
         status = 403 if exc.reason is LoginRefusal.CLOSED else 400
         raise HTTPException(status_code=status, detail=REFUSAL_TEXT[exc.reason]) from exc
     set_session_cookie(response, raw)
-    return Me(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+    return Me(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.is_admin,
+        first_login=user.first_login,
+    )
 
 
 @router.post("/auth/invitation/accept")
@@ -276,6 +291,14 @@ def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> 
 @router.get("/auth/me")
 def me(user: SignedInDep) -> Me:
     return Me(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+
+
+@router.patch("/auth/me")
+def rename_me(body: NameBody, request: Request, user: SignedInDep) -> Me:
+    """« Votre nom » (B2a) : une ligne, facultative ; c'est ce que voient les autres membres."""
+    name = " ".join(body.name.split())[:80]
+    service(request).set_name(user.id, name)
+    return Me(id=user.id, email=user.email, name=name, is_admin=user.is_admin)
 
 
 @router.post("/auth/logout", status_code=204)

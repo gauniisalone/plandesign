@@ -24,6 +24,7 @@ import ipaddress
 import re
 import secrets
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -304,14 +305,23 @@ class AccountService(AccountsRepo, SharingMixin):
                             raise LoginRefusedError(LoginRefusal.CLOSED)
                         user = User(email=email, name="", is_admin=False, created_at=now)
                         db.add(user)
+                        created = True
+                    else:
+                        created = False
                     if is_admin_address and not user.is_admin:
                         user.is_admin = True
                     user.last_seen_at = now
                     db.flush()
-                    return _auth_user(user)
+                    return replace(_auth_user(user), first_login=created)
             except IntegrityError:
                 continue
         raise LoginRefusedError(LoginRefusal.INVALID)  # pragma: no cover - course improbable
+
+    def set_name(self, user_id: UUID, name: str) -> None:
+        with self.session() as db, db.begin():
+            user = db.get(User, user_id)
+            if user is not None:
+                user.name = name
 
     # --- sessions ---------------------------------------------------------------------
 

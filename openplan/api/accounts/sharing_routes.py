@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from anyio import from_thread
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import Field
 
@@ -100,6 +101,13 @@ def change_member_role(
     return [_member(m, user.id) for m in accounts.members(project_id)]
 
 
+def _evict(request: Request, project_id: UUID, user_id: UUID | None) -> None:
+    """B2a : les connexions de présence de la personne retirée sont fermées tout de suite."""
+    from openplan.api.accounts.live import hub_of
+
+    from_thread.run(hub_of(request.app).evict, project_id, user_id)
+
+
 @router.delete("/projects/{project_id}/members/{user_id}")
 def remove_member(
     project_id: UUID, user_id: UUID, request: Request, user: SignedInDep
@@ -111,4 +119,5 @@ def remove_member(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not found:
         raise HTTPException(status_code=404, detail="ce compte n'est pas membre du projet")
+    _evict(request, project_id, user_id)
     return [_member(m, user.id) for m in accounts.members(project_id)]

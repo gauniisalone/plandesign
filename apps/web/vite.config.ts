@@ -69,6 +69,12 @@ export default defineConfig({
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: false,
       },
+      // B2a : présence (WebSocket par projet, avec les comptes).
+      "/ws": {
+        target: `http://127.0.0.1:${apiPort}`,
+        changeOrigin: false,
+        ws: true,
+      },
     },
   },
 });

@@ -29,7 +29,10 @@ export function Login({
   /** Jeton d'un lien d'invitation (lu dans l'ancre). */
   invitation?: string;
 }) {
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"email" | "code" | "name">("email");
+  /** B2a : compte tout juste créé ; « Votre nom » est proposé avant d'entrer. */
+  const [fresh, setFresh] = useState<Me | null>(null);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,10 +62,30 @@ export function Login({
     setBusy(true);
     setError(null);
     try {
-      onSignedIn(await authApi.verify(email.trim(), code, invitation));
+      const me = await authApi.verify(email.trim(), code, invitation);
+      if (me.first_login) {
+        setFresh(me);
+        setStep("name");
+        setBusy(false);
+        return;
+      }
+      onSignedIn(me);
     } catch (err) {
       setError(`Connexion impossible : ${message(err)}`);
       setBusy(false);
+    }
+  };
+
+  const finish = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!fresh) return;
+    const typed = name.trim();
+    if (!typed) return onSignedIn(fresh);
+    setBusy(true);
+    try {
+      onSignedIn(await authApi.setName(typed));
+    } catch {
+      onSignedIn(fresh); // le nom se redonne plus tard ; on entre quand même
     }
   };
 
@@ -73,7 +96,33 @@ export function Login({
           <IconPlan />
         </span>
         <h1>Se connecter à {APP_NAME}</h1>
-        {step === "email" ? (
+        {step === "name" ? (
+          <form onSubmit={(e) => void finish(e)}>
+            <p className="muted">
+              C'est ce que verront les autres membres de vos projets. Sans nom,
+              le début de votre adresse.
+            </p>
+            <label htmlFor="login-name">Votre nom (facultatif)</label>
+            <input
+              id="login-name"
+              autoComplete="name"
+              maxLength={80}
+              value={name}
+              autoFocus
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button type="submit" className="primary" disabled={busy}>
+              Continuer
+            </button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => fresh && onSignedIn(fresh)}
+            >
+              Passer
+            </button>
+          </form>
+        ) : step === "email" ? (
           <form onSubmit={(e) => void ask(e)}>
             {invitation ? (
               <p className="login-invite" role="status">

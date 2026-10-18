@@ -43,6 +43,7 @@ import {
   ThemeSwitch,
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
+import { useLive } from "../state/live";
 import {
   ReadOnlyContext,
   canEdit,
@@ -178,7 +179,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   const role = useRole(projectId);
   const readOnly = !canEdit(role);
   // B1e : « Partager » pour le propriétaire, avec les comptes seulement.
-  const canShare = useAccount() !== null && role === "owner";
+  const account = useAccount();
+  const canShare = account !== null && role === "owner";
   const [shareOpen, setShareOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
@@ -340,7 +342,24 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     null,
   );
   const [contextualTick, setContextualTick] = useState(0);
-  const board = useBoard(projectId, `${boardSync}|${contextualTick}`);
+  // B2a : l'espace de travail relu quand un autre membre l'a changé, ou après une coupure.
+  const [liveTick, setLiveTick] = useState(0);
+  const board = useBoard(
+    projectId,
+    `${boardSync}|${contextualTick}|${liveTick}`,
+  );
+  const live = useLive(projectId, account !== null, {
+    onChanged: (scope) => {
+      if (scope === "board") setLiveTick((n) => n + 1);
+      else actions.reload();
+    },
+    onResync: () => {
+      actions.reload();
+      setLiveTick((n) => n + 1);
+    },
+    // Session perdue : la prochaine requête répond 401 et ramène à la connexion.
+    onSignedOut: () => actions.reload(),
+  });
   // T7e : le plan ouvert (celui qu'on édite, visé par le chemin automatique) ; le premier
   // par défaut.
   const level = state.project
@@ -1293,12 +1312,18 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onRetrySave={board.save === "error" ? board.retry : undefined}
             onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
             onShare={canShare ? () => setShareOpen(true) : undefined}
+            peers={live.peers}
             planName={
               Object.keys(state.project.levels).length > 1
                 ? level.name
                 : undefined
             }
           />
+          {live.status === "reconnecting" && (
+            <div className="live-banner" role="status">
+              <span className="spinner" aria-hidden="true" /> Reconnexion…
+            </div>
+          )}
           {shareOpen && (
             <ShareDialog
               projectId={projectId}

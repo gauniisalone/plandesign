@@ -27,6 +27,8 @@ class AuthUser:
     email: str
     name: str
     is_admin: bool
+    first_login: bool = False
+    """Compte créé par la connexion en cours (B2a : proposer « Votre nom »)."""
 
 
 @dataclass(frozen=True)

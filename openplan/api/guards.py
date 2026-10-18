@@ -188,6 +188,7 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # Formulaire de contact du site (origine du site seulement, voir security.py)
     ("POST", "/api/contact"): "public",
     ("GET", "/api/auth/me"): "user",
+    ("PATCH", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
     ("POST", "/api/auth/invitation/accept"): "user",
     ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
@@ -339,3 +340,9 @@ def forget_project(request: Request, project_id: UUID) -> None:
     accounts = accounts_of(request)
     if accounts is not None:
         accounts.remove_project(project_id)
+        # B2a : plus personne ne reste connecté à un projet supprimé.
+        from anyio import from_thread
+
+        from openplan.api.accounts.live import hub_of
+
+        from_thread.run(hub_of(request.app).evict, project_id, None)

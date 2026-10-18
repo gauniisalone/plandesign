@@ -162,6 +162,13 @@ export const sessionApi = {
  *  session » : l'application revient à la page de connexion, sans demander de jeton. */
 let accountsMode = false;
 let signedOutHandler: (() => void) | null = null;
+/** B2a : la connexion de présence de cet onglet ; envoyée avec chaque requête, pour que le
+ *  serveur ne nous annonce pas nos propres changements. */
+let liveConn: string | null = null;
+
+export function setLiveConn(conn: string | null): void {
+  liveConn = conn;
+}
 
 export function setAccountsMode(on: boolean, onSignedOut: () => void): void {
   accountsMode = on;
@@ -176,6 +183,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const token = readToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (liveConn) headers.set("X-Live-Conn", liveConn);
   let response = await fetch(BASE + path, { ...init, headers });
   if (response.status === 401 && accountsMode) {
     signedOutHandler?.();
@@ -217,6 +225,8 @@ export interface Me {
   email: string;
   name: string;
   is_admin: boolean;
+  /** Compte créé par cette connexion : la fenêtre propose « Votre nom ». */
+  first_login?: boolean;
 }
 
 export type Role = "viewer" | "commenter" | "editor" | "owner";
@@ -296,6 +306,12 @@ export const authApi = {
       );
     return (await response.json()) as Me;
   },
+  /** « Votre nom » (B2a) : ce que voient les autres membres ; vide, le début de l'adresse. */
+  setName: (name: string) =>
+    request<Me>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   logoutAll: () => request<void>("/auth/logout-all", { method: "POST" }),
   role: (pid: string) => request<{ role: Role }>(`/projects/${pid}/role`),
