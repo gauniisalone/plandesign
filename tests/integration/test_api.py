@@ -505,8 +505,9 @@ def test_token_required_outside_loopback(tmp_path: Path) -> None:
         create_app(settings=Settings(data_dir=tmp_path / "data", host="0.0.0.0"))
 
 
-def test_second_heavy_task_is_refused_with_429(tmp_path: Path) -> None:
-    """Une tâche lourde à la fois par utilisateur : la seconde répond 429 avec Retry-After."""
+def test_second_heavy_task_waits_in_queue_then_starts(tmp_path: Path) -> None:
+    """File d'attente : la seconde tâche lourde n'est plus refusée ; elle attend (`queued`, place
+    1), s'annule, ou démarre seule quand la première finit."""
     import threading
 
     from tests.unit.test_depth_step import GradientDepth
@@ -534,20 +535,30 @@ def test_second_heavy_task_is_refused_with_429(tmp_path: Path) -> None:
         ).json()["image"]
         first = c.post(f"/api/projects/{pid}/images/{image['id']}/inspire", json={"steps": 12})
         assert first.status_code == 202, first.text
-        second = c.post(f"/api/projects/{pid}/images/{image['id']}/inspire", json={"steps": 12})
-        assert second.status_code == 429, second.text
-        assert "une tâche lourde à la fois" in second.json()["detail"]
-        assert int(second.headers["retry-after"]) >= 1
+        assert first.json()["status"] == "running"
+        url = f"/api/projects/{pid}/images/{image['id']}/inspire"
+        second = c.post(url, json={"steps": 12})
+        assert second.status_code == 202, second.text
+        assert second.json()["status"] == "queued" and second.json()["queue_position"] == 1
+        third = c.post(url, json={"steps": 12}).json()
+        assert third["queue_position"] == 2
+        running = c.get("/api/jobs/running").json()
+        assert running["running"] is True and running["kind"] == "inspiration"
+        assert running["queued"] == 2
+        # Annuler une tâche en attente ; une tâche lancée ne s'annule pas (409).
+        cancelled = c.delete(f"/api/projects/{pid}/jobs/{third['id']}")
+        assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+        assert c.delete(f"/api/projects/{pid}/jobs/{first.json()['id']}").status_code == 409
         gate.set()
-        job = first.json()
-        for _ in range(300):
+        job = second.json()
+        for _ in range(500):
             job = c.get(f"/api/projects/{pid}/jobs/{job['id']}").json()
-            if job["status"] != "running":
+            if job["status"] in {"done", "failed"}:
                 break
             time.sleep(0.02)
-        assert job["status"] == "done"
-        third = c.post(f"/api/projects/{pid}/images/{image['id']}/inspire", json={"steps": 12})
-        assert third.status_code == 202
+        assert job["status"] == "done", job
+        assert c.get(f"/api/projects/{pid}/jobs/{first.json()['id']}").json()["status"] == "done"
+        assert c.get(f"/api/projects/{pid}/jobs/{third['id']}").json()["status"] == "cancelled"
 
 
 def test_render_views_routes(tmp_path: Path) -> None:

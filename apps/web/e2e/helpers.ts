@@ -14,15 +14,17 @@ export async function createEmptyProject(
 }
 
 /** T7d1 (isolation des e2e lourds, PO du 18 oct.) : à la fin d'un test qui lance le chemin
- *  automatique, attendre que le serveur n'ait plus de tâche lourde ; un échec ne peut plus
- *  faire refuser (« une tâche lourde à la fois ») le lancement du test suivant. */
+ *  automatique, attendre que le serveur n'ait plus de tâche lourde, ni en cours ni en
+ *  attente : le test suivant ne démarre pas derrière le calcul du précédent. */
 export async function waitNoHeavyJob(page: Page): Promise<void> {
   await expect
     .poll(
       async () => {
         const r = await page.request.get("/api/jobs/running");
         if (!r.ok()) return false;
-        return ((await r.json()) as { running: boolean }).running;
+        // File d'attente : rien ne calcule et rien n'attend son tour.
+        const body = (await r.json()) as { running: boolean; queued?: number };
+        return body.running || (body.queued ?? 0) > 0;
       },
       { timeout: 300_000, intervals: [1000, 2000, 5000] },
     )

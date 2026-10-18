@@ -218,8 +218,9 @@ def render_variant(
     proposal, gpu, daylight = body.proposal, body.gpu, body.daylight
 
     def work() -> BlenderRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         result = render_proposal(
-            project,
+            store.load(project.id),
             level_id,
             proposal,
             out_dir,
@@ -232,7 +233,13 @@ def render_variant(
         return BlenderRun(run_id=run_id, result=result)
 
     return jobs.submit(
-        "render", work, device=device, expected_s=expected, message=message, owner=actor
+        "render",
+        work,
+        device=device,
+        expected_s=expected,
+        message=message,
+        owner=actor,
+        project_id=project.id,
     )
 
 

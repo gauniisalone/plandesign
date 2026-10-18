@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   api,
+  jobActive,
   type AutoPlanResult,
   type JobStatus,
   type PlanImportPreview,
@@ -74,7 +75,8 @@ export function ImportScreen({
   const online = Boolean(useHosting()?.online);
   const images = Object.values(project.images);
   const wallCount = walls(level).length;
-  const running = autoJob?.status === "running";
+  // File d'attente : une construction qui attend son tour se suit comme une en cours.
+  const running = jobActive(autoJob);
   const blocked = busy || running;
 
   const take = (file: File) => {
@@ -184,7 +186,13 @@ export function ImportScreen({
           <section className="auto-progress" role="status">
             <p className="job-status">
               <span className="spinner" aria-hidden="true" />{" "}
-              <strong>Construction du plan</strong> : {jobSentence(autoJob)}
+              {autoJob.status === "queued" ? (
+                jobSentence(autoJob)
+              ) : (
+                <>
+                  <strong>Construction du plan</strong> : {jobSentence(autoJob)}
+                </>
+              )}
             </p>
             <p className="muted">
               Vous pouvez déjà passer au plan : le plan apparaîtra dès qu'il est

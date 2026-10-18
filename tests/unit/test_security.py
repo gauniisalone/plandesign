@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from openplan.api.app import TokenMissingError, create_app
-from openplan.api.jobs import JobBusyError, JobRegistry
+from openplan.api.jobs import MAX_QUEUED_PER_OWNER, JobBusyError, JobRegistry
 from openplan.api.security import (
     COOKIE_DENIED,
     CSP,
@@ -72,7 +72,9 @@ class _Done(BaseModel):
     ok: bool = True
 
 
-def test_one_heavy_job_at_a_time_per_owner() -> None:
+def test_queue_per_owner_is_bounded() -> None:
+    """La file remplace le refus, mais reste bornée par utilisateur (API exposée) : au-delà de
+    `MAX_QUEUED_PER_OWNER` tâches en attente, 429 ; un autre utilisateur n'est pas bloqué."""
     registry = JobRegistry()
     gate = threading.Event()
 
@@ -80,20 +82,23 @@ def test_one_heavy_job_at_a_time_per_owner() -> None:
         gate.wait(5)
         return _Done()
 
-    first = registry.submit("render", slow, device="cpu", expected_s=30, message="", owner="user:a")
-    with pytest.raises(JobBusyError, match="une tâche lourde à la fois") as exc:
-        registry.submit("render", slow, device="cpu", expected_s=30, message="", owner="user:a")
+    def submit(owner: str) -> str:
+        return registry.submit(
+            "render", slow, device="cpu", expected_s=30, message="", owner=owner
+        ).status
+
+    assert submit("user:a") == "running"
+    assert all(submit("user:a") == "queued" for _ in range(MAX_QUEUED_PER_OWNER))
+    with pytest.raises(JobBusyError, match="file d'attente pleine") as exc:
+        submit("user:a")
     assert exc.value.retry_after_s > 0
-    # Un autre utilisateur n'est pas bloqué (il attend le fil, sans refus).
-    other = registry.submit("render", slow, device="cpu", expected_s=30, message="", owner="user:b")
+    assert submit("user:b") == "queued"
     gate.set()
-    for _ in range(200):
-        if registry.get(first.id).status == "done" and registry.get(other.id).status == "done":
+    for _ in range(300):
+        if not registry.queued_for("user:a") and not registry.queued_for("user:b"):
             break
         time.sleep(0.01)
-    assert registry.get(first.id).status == "done"
-    again = registry.submit("render", slow, device="cpu", expected_s=30, message="", owner="user:a")
-    assert again.kind == "render"
+    assert not registry.queued_for("user:a")
     registry.shutdown()
 
 

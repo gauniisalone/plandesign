@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import time
 from pathlib import Path
 from uuid import UUID
 
@@ -130,8 +129,9 @@ def inspire(
     project_dir, runs_dir = store.project_dir(project.id), store.runs_dir(project.id)
 
     def work() -> InspirationRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         return run_inspiration(
-            project,
+            store.load(project.id),
             project_dir,
             image_id,
             runs_dir,
@@ -141,30 +141,47 @@ def inspire(
         )
 
     return jobs.submit(
-        "inspiration", work, device=device, expected_s=expected, message=message, owner=actor
+        "inspiration",
+        work,
+        device=device,
+        expected_s=expected,
+        message=message,
+        owner=actor,
+        project_id=project.id,
     )
 
 
 @router.get("/jobs/running")
 def running_job(jobs: JobsDep, actor: ActorDep) -> dict[str, object]:
-    """La tâche lourde en cours de cet utilisateur, s'il y en a une : sa sorte et depuis quand,
-    rien d'autre. Sert à isoler les e2e lourds (aucun test ne démarre tant que le précédent
-    calcule) et, plus tard, à une file d'attente."""
+    """La tâche lourde en cours de cet utilisateur, s'il y en a une : sa sorte et depuis quand ;
+    `queued` : le nombre de ses tâches en attente, seulement s'il y en a. Sert à isoler les e2e
+    lourds (aucun test ne démarre tant que le précédent calcule ou attend)."""
     job = jobs.running_for(actor)
-    if job is None:
-        return {"running": False}
-    return {
-        "running": True,
-        "kind": job.kind,
-        "elapsed_s": round(time.perf_counter() - job.started, 1),
-    }
+    body: dict[str, object] = (
+        {"running": False}
+        if job is None
+        else {"running": True, "kind": job.kind, "elapsed_s": round(jobs.elapsed(job), 1)}
+    )
+    queued = jobs.queued_for(actor)
+    if queued:
+        body["queued"] = len(queued)
+    return body
 
 
 @router.get("/projects/{project_id}/jobs/{job_id}")
 def job_status(job_id: UUID, project: ProjectDep, jobs: JobsDep) -> JobStatus:
-    """État d'une tâche de fond lancée pour ce projet (running, done avec résultat, failed)."""
+    """État d'une tâche de fond lancée pour ce projet (queued avec sa place dans la file,
+    running, done avec résultat, failed, cancelled)."""
     del project  # vérifie seulement que le projet existe
     return jobs.get(job_id)
+
+
+@router.delete("/projects/{project_id}/jobs/{job_id}")
+def cancel_job(job_id: UUID, project: ProjectDep, jobs: JobsDep, actor: ActorDep) -> JobStatus:
+    """Annule une tâche en attente de cet utilisateur (elle ne démarrera pas) ; 409 si elle a
+    déjà démarré, 404 si elle est inconnue ou d'un autre utilisateur."""
+    del project  # vérifie seulement que le projet existe
+    return jobs.cancel(job_id, actor)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/inspiration/{name}")

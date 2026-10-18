@@ -8,6 +8,7 @@ import {
   autoplanApi,
   type AutoPlanResult,
   inspirationApi,
+  jobActive,
   type InspirationRun,
   type IntentionBody,
   type IntentionPreview,
@@ -288,7 +289,7 @@ export function useProject(projectId: string) {
     (op: Op) => {
       const { project, levelId } = state;
       if (!project || !levelId) return;
-      if (state.autoJob?.status === "running") {
+      if (jobActive(state.autoJob)) {
         setState((s) => ({
           ...s,
           error:
@@ -384,12 +385,12 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(pid, jobId);
         setState((s) => ({ ...s, pilotJob: job }));
-        if ((job.stage ?? "") !== stage && job.status === "running") {
+        if ((job.stage ?? "") !== stage && jobActive(job)) {
           stage = job.stage ?? "";
           const renders = await renderApi.list(pid);
           setState((s) => ({ ...s, renders }));
         }
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
           return;
         }
@@ -402,7 +403,7 @@ export function useProject(projectId: string) {
             pilotRun: job.result as unknown as AutopilotRun,
             pilotArrival: s.pilotArrival + 1,
           }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Chemin automatique : ${job.error ?? "échec"}`,
@@ -439,7 +440,7 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(pid, jobId);
         setState((s) => ({ ...s, autoJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 1000);
         } else if (job.status === "done") {
           const result = job.result as AutoPlanResult;
@@ -459,7 +460,7 @@ export function useProject(projectId: string) {
             result.run.project.render.auto_path
           )
             startAutopilot(pid, lid);
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Construction du plan : ${job.error ?? "échec"}`,
@@ -549,7 +550,7 @@ export function useProject(projectId: string) {
     (file: File) => {
       const { project, levelId } = state;
       if (!project || !levelId) return;
-      if (state.autoJob?.status === "running") return;
+      if (jobActive(state.autoJob)) return;
       if (isPlanFile(file)) {
         importPlan(file);
         return;
@@ -581,11 +582,7 @@ export function useProject(projectId: string) {
   const generatePlan = useCallback(() => {
     const { project, levelId } = state;
     if (!project || !levelId) return;
-    if (
-      state.autoJob?.status === "running" ||
-      state.pilotJob?.status === "running"
-    )
-      return;
+    if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
     const photo = Object.keys(project.images)[0];
     if (photo) {
       autoplan(project.id, levelId, photo, project.history_cursor);
@@ -623,11 +620,7 @@ export function useProject(projectId: string) {
       if (!levelId || !project.render.auto_on_drop) return;
       const level = project.levels[levelId];
       if (!level || walls(level).length > 0) return;
-      if (
-        state.autoJob?.status === "running" ||
-        state.pilotJob?.status === "running"
-      )
-        return;
+      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       autoplan(project.id, levelId, imageId, project.history_cursor);
     },
     [state, autoplan],
@@ -638,11 +631,7 @@ export function useProject(projectId: string) {
   const generateNow = useCallback(() => {
     const { project, levelId } = state;
     if (!project || !levelId) return;
-    if (
-      state.autoJob?.status === "running" ||
-      state.pilotJob?.status === "running"
-    )
-      return;
+    if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
     const level = project.levels[levelId];
     if (!level || walls(level).length === 0) generatePlan();
     else startAutopilot(project.id, levelId);
@@ -655,7 +644,7 @@ export function useProject(projectId: string) {
     (kind: "photo" | "plan") => {
       const { project, levelId, lastAuto, autoBase } = state;
       if (!project || !levelId || !lastAuto || autoBase === null) return;
-      if (state.autoJob?.status === "running") return;
+      if (jobActive(state.autoJob)) return;
       void run(async () => {
         if (project.history_cursor !== lastAuto.run.project.history_cursor)
           throw new ApiError(
@@ -900,19 +889,19 @@ export function useProject(projectId: string) {
    *  reste utilisable (pas de `busy`) et rien n'attend des minutes dans une requête. */
   const inspire = useCallback(
     (imageId: string, prompt: string, seed: number, steps: number) => {
-      if (!state.project || state.inspirationJob?.status === "running") return;
+      if (!state.project || jobActive(state.inspirationJob)) return;
       const id = state.project.id;
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(id, jobId);
         setState((s) => ({ ...s, inspirationJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
         } else if (job.status === "done") {
           setState((s) => ({
             ...s,
             lastInspiration: job.result as InspirationRun,
           }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Image d'inspiration : ${job.error ?? "échec"}`,
@@ -1038,7 +1027,7 @@ export function useProject(projectId: string) {
     label: string,
     start: () => Promise<JobStatus>,
   ): void {
-    if (state.renderJob?.status === "running") return;
+    if (jobActive(state.renderJob)) return;
     let stage = "";
     const fail = (e: unknown) =>
       setState((s) => ({
@@ -1049,12 +1038,12 @@ export function useProject(projectId: string) {
     const poll = async (jobId: string): Promise<void> => {
       const job = await inspirationApi.job(id, jobId);
       setState((s) => ({ ...s, renderJob: job }));
-      if ((job.stage ?? "") !== stage || job.status !== "running") {
+      if ((job.stage ?? "") !== stage || !jobActive(job)) {
         stage = job.stage ?? "";
         const renders = await renderApi.list(id);
         setState((s) => ({ ...s, renders }));
       }
-      if (job.status === "running") {
+      if (jobActive(job)) {
         window.setTimeout(() => void poll(jobId).catch(fail), 2000);
       } else if (job.status === "failed") {
         setState((s) => ({
@@ -1100,7 +1089,7 @@ export function useProject(projectId: string) {
   const finishRender = useCallback(
     (runId: string, strength: number, style: FinishStyle | null) => {
       const { project } = state;
-      if (!project || state.renderJob?.status === "running") return;
+      if (!project || jobActive(state.renderJob)) return;
       const id = project.id;
       const fail = (e: unknown) =>
         setState((s) => ({
@@ -1111,12 +1100,12 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(id, jobId);
         setState((s) => ({ ...s, renderJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
         } else if (job.status === "done") {
           const renders = await renderApi.list(id);
           setState((s) => ({ ...s, renders }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Finition IA : ${job.error ?? "échec"}`,
@@ -1139,7 +1128,7 @@ export function useProject(projectId: string) {
   const catalogueRender = useCallback(
     (runId: string) => {
       const { project } = state;
-      if (!project || state.renderJob?.status === "running") return;
+      if (!project || jobActive(state.renderJob)) return;
       const id = project.id;
       const fail = (e: unknown) =>
         setState((s) => ({
@@ -1150,12 +1139,12 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(id, jobId);
         setState((s) => ({ ...s, renderJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
         } else if (job.status === "done") {
           const renders = await renderApi.list(id);
           setState((s) => ({ ...s, renders }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Version catalogue : ${job.error ?? "échec"}`,
@@ -1193,7 +1182,7 @@ export function useProject(projectId: string) {
       section: { axis: string; value: number } | null = null,
     ) => {
       const { project, levelId } = state;
-      if (!project || !levelId || state.renderJob?.status === "running") return;
+      if (!project || !levelId || jobActive(state.renderJob)) return;
       const id = project.id;
       const fail = (e: unknown) =>
         setState((s) => ({
@@ -1204,12 +1193,12 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(id, jobId);
         setState((s) => ({ ...s, renderJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
         } else if (job.status === "done") {
           const renders = await renderApi.list(id);
           setState((s) => ({ ...s, renders }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Rendu : ${job.error ?? "échec"}`,
@@ -1232,7 +1221,7 @@ export function useProject(projectId: string) {
   const renderProposal = useCallback(
     (proposal: LayoutProposal, samples = 32) => {
       const { project, levelId } = state;
-      if (!project || !levelId || state.renderJob?.status === "running") return;
+      if (!project || !levelId || jobActive(state.renderJob)) return;
       const id = project.id;
       const fail = (e: unknown) =>
         setState((s) => ({
@@ -1243,12 +1232,12 @@ export function useProject(projectId: string) {
       const poll = async (jobId: string): Promise<void> => {
         const job = await inspirationApi.job(id, jobId);
         setState((s) => ({ ...s, renderJob: job }));
-        if (job.status === "running") {
+        if (jobActive(job)) {
           window.setTimeout(() => void poll(jobId).catch(fail), 2000);
         } else if (job.status === "done") {
           const renders = await renderApi.list(id);
           setState((s) => ({ ...s, renders }));
-        } else {
+        } else if (job.status === "failed") {
           setState((s) => ({
             ...s,
             error: `Vignette : ${job.error ?? "échec"}`,
@@ -1560,9 +1549,36 @@ export function useProject(projectId: string) {
     });
   }, [state, run, applyProject]);
 
+  /** File d'attente : annule ce qui attend son tour (construction du plan, chemin
+   *  automatique, rendus, image d'inspiration) ; ce qui calcule déjà continue. */
+  const cancelQueued = useCallback(() => {
+    const { project } = state;
+    if (!project) return;
+    const waiting = [
+      state.autoJob,
+      state.pilotJob,
+      state.renderJob,
+      state.inspirationJob,
+    ].filter((j): j is JobStatus => j?.status === "queued");
+    for (const job of waiting)
+      void inspirationApi.cancel(project.id, job.id).then(
+        (cancelled) =>
+          setState((s) => ({
+            ...s,
+            autoJob: s.autoJob?.id === job.id ? cancelled : s.autoJob,
+            pilotJob: s.pilotJob?.id === job.id ? cancelled : s.pilotJob,
+            renderJob: s.renderJob?.id === job.id ? cancelled : s.renderJob,
+            inspirationJob:
+              s.inspirationJob?.id === job.id ? cancelled : s.inspirationJob,
+          })),
+        () => undefined, // déjà démarrée : elle se suit comme avant
+      );
+  }, [state]);
+
   return {
     state,
     actions: {
+      cancelQueued,
       adoptProject: applyProject,
       undoAreaGuard,
       apply,

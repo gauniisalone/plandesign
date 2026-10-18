@@ -29,7 +29,12 @@ from openplan.adapters.remote.intention import IntentionParseError
 from openplan.adapters.remote.openai_compatible import ModelCallError
 from openplan.adapters.remote.vlm_detector import VlmParseError
 from openplan.api.doctor import DoctorReport, diagnose
-from openplan.api.jobs import JobBusyError, JobNotFoundError, JobRegistry
+from openplan.api.jobs import (
+    JobBusyError,
+    JobNotCancellableError,
+    JobNotFoundError,
+    JobRegistry,
+)
 from openplan.api.public_errors import public_detail
 from openplan.api.routes import (
     ai,
@@ -151,6 +156,10 @@ def create_app(
             content={"detail": str(exc)},
             headers={"Retry-After": str(int(exc.retry_after_s) + 1)},
         )
+
+    @app.exception_handler(JobNotCancellableError)
+    async def _not_cancellable(_: Request, exc: JobNotCancellableError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(ProjectNotFoundError)
     async def _not_found(_: Request, exc: ProjectNotFoundError) -> JSONResponse:

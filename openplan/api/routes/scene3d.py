@@ -280,6 +280,8 @@ def autopilot(
         expected_s=expected,
         message=f"Chemin automatique : environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
+        dedup=(project.id, level_id),
     )
 
 
@@ -325,12 +327,14 @@ def render_all(
     blender_bin = settings.blender_bin
 
     def work(stage: Callable[[str], None]) -> RenderAllRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
+        fresh = store.load(project.id)
         runs: list[BlenderRun] = []
         for i, camera in enumerate(cameras, start=1):
             stage(f"Vue {i}/{len(cameras)} : {camera.name or 'point de vue'}")
             run_id, out_dir = new_run_dir(runs_dir)
             result = render_camera_view(
-                project,
+                fresh,
                 level_id,
                 camera.id,
                 out_dir,
@@ -350,6 +354,8 @@ def render_all(
         expected_s=expected,
         message=f"{len(cameras)} vues à rendre, environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
+        dedup=(project.id, level_id),
     )
 
 
@@ -400,8 +406,9 @@ def render_views(
     images = any(p.finish is not None or p.inspiration is not None for p in plans)
 
     def work(stage: Callable[[str], None]) -> RerenderRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         return rerender(
-            project,
+            store.load(project.id),
             level_id,
             plans,
             runs_dir,
@@ -418,6 +425,7 @@ def render_views(
         expected_s=expected,
         message=f"{count} vue{'s' if count > 1 else ''} à re-rendre, environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
     )
 
 
@@ -451,8 +459,9 @@ def render_camera(  # noqa: PLR0913, PLR0917 - paramètres de requête FastAPI
     blender_bin = settings.blender_bin
 
     def work() -> BlenderRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         result = render_camera_view(
-            project,
+            store.load(project.id),
             level_id,
             camera_id,
             out_dir,
@@ -468,7 +477,13 @@ def render_camera(  # noqa: PLR0913, PLR0917 - paramètres de requête FastAPI
         return BlenderRun(run_id=run_id, result=result)
 
     return jobs.submit(
-        "render", work, device=device, expected_s=expected, message=message, owner=actor
+        "render",
+        work,
+        device=device,
+        expected_s=expected,
+        message=message,
+        owner=actor,
+        project_id=project.id,
     )
 
 
@@ -553,7 +568,9 @@ def finish(
     finisher = get_image_finisher(request)
 
     def work() -> FinishEntry:
-        return finish_render(project, render_dir, run_id, body, finisher=finisher)
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
+        fresh = store.load(project.id)
+        return finish_render(fresh, render_dir, run_id, body, finisher=finisher)
 
     return jobs.submit(
         "finish",
@@ -562,6 +579,7 @@ def finish(
         expected_s=25.0,
         message="Finition IA, environ 25 s",
         owner=actor,
+        project_id=project.id,
     )
 
 
@@ -585,8 +603,9 @@ def catalogue(
     model = get_image_finisher(request)
 
     def work() -> InspirationEntry:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         return inspire_render(
-            project,
+            store.load(project.id),
             render_dir,
             run_id,
             InspirationOptions(mode=CATALOGUE_OPTIONS_MODE, control_scale=DEFAULT_SCALE),
@@ -601,6 +620,7 @@ def catalogue(
         expected_s=45.0,
         message="Version catalogue, environ 45 s",
         owner=actor,
+        project_id=project.id,
     )
 
 

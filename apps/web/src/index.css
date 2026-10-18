@@ -5779,6 +5779,26 @@ button.link.home-empty-link {
   height: 1.2em;
 }
 
+/* File d'attente : une ligne en bas du cadre Rendus (par-dessus les rendus s'il y en a),
+   avec « Annuler ». */
+.board-item.kind-frame .board-frame-hint.board-frame-queued {
+  inset: auto 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.6em;
+  color: var(--text);
+  background: color-mix(in oklab, var(--panel) 88%, transparent);
+}
+
+.board-frame-queued button {
+  pointer-events: auto;
+  font-size: inherit;
+  padding: 0.15em 0.7em;
+}
+
 .board-item.kind-note {
   background: color-mix(in oklab, var(--primary) 22%, var(--panel));
   border-color: color-mix(in oklab, var(--primary) 45%, var(--line));

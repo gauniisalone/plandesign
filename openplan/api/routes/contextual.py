@@ -105,8 +105,9 @@ def contextual_generate(
     ) * len(body.variants)
 
     def work(stage: object) -> c.ContextualRun:
+        # File d'attente : relu au démarrage, pas l'état lu au clic.
         return c.generate(
-            project,
+            store.load(project.id),
             level_id,
             project_dir,
             runs_dir,
@@ -125,6 +126,7 @@ def contextual_generate(
         expected_s=expected,
         message=f"Rendu contextualisé, {len(body.variants)} variante(s), environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
     )
 
 

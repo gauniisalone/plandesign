@@ -91,6 +91,16 @@ Protocole « poste de calcul » :
   connexion sortante seulement (rien d'ouvert chez augus) ; HTTPS.
 ```
 
+État avant B3 (file d'attente locale, 18 octobre) : `openplan/api/jobs.py` met déjà en file au
+lieu de refuser. Ses états (`queued`, `running`, `done`, `failed`, `cancelled`) et ce que porte
+une tâche (projet, utilisateur, sorte, clé de doublon, ordre d'arrivée) sont ceux de la table
+`jobs` du § 6 ; l'API (`queue_position`, `DELETE …/jobs/{id}`) et l'écran (« En attente ») ne
+changeront pas. B3 ajoutera l'état `claimed` (un poste a pris la tâche, avec son bail), la
+persistance (aujourd'hui en mémoire : l'attente est perdue au redémarrage) et une charge utile
+sérialisable à la place de la fonction Python exécutée par le fil local, qui deviendra le repli
+CPU du VPS. La règle du doublon reste : une demande identique remplace celle qui attend encore,
+jamais celle qu'un poste a prise.
+
 ### 3.3 Option (3) : GPU à la demande
 
 Le VPS envoie les tâches d'images à un GPU loué à la seconde : RunPod (serverless ou pod,
