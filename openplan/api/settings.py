@@ -17,6 +17,8 @@ from openplan.adapters.registry import AiConfig
 
 DOTENV = Path(".env")
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+DEFAULT_PUBLIC_URL = "https://app.plandesign.fr"
+DEFAULT_MAIL_FROM = "connexion@plandesign.fr"
 DOTENV_VAR = "OPENPLAN_DOTENV"
 """Chemin du fichier `.env` à lire ; vide = n'en lire aucun (tests, serveurs jetables), pour
 qu'une configuration personnelle (clé d'API distante) ne s'invite pas dans un environnement
@@ -76,6 +78,20 @@ class Settings:
     """Base des comptes (note 17) : OPENPLAN_DATABASE_URL (`postgresql://…`). Absente = mode
     local inchangé, sans compte, sans base, sans session ; présente = comptes, sessions et
     droits par projet, projets sous `<data>/projects/`. Jamais affichée ni journalisée."""
+    admin_email: str | None = None
+    """OPENPLAN_ADMIN_EMAIL : la seule adresse qui devient administrateur, à sa première
+    connexion ; elle peut toujours se connecter, même sur invitation (note 17, § 2)."""
+    signup: str = "invite"
+    """OPENPLAN_SIGNUP : `invite` (défaut : une adresse inconnue ne crée pas de compte) ou
+    `open` ; « invitation » et « ouvert » sont acceptés."""
+    mailer: str = "console"
+    """OPENPLAN_MAILER : `console` (le lien de connexion va dans le journal du serveur, pour le
+    développement), `fake` (boîte en mémoire, tests) ou `smtp_api` (Brevo, pas encore branché)."""
+    public_url: str = DEFAULT_PUBLIC_URL
+    """OPENPLAN_PUBLIC_URL : adresse publique de l'application ; base des liens de connexion et
+    seule origine acceptée sur les mutations quand les comptes sont actifs."""
+    mail_from: str = DEFAULT_MAIL_FROM
+    """OPENPLAN_MAIL_FROM : expéditeur des liens de connexion."""
 
     @property
     def local_only(self) -> bool:
@@ -121,10 +137,39 @@ class Settings:
             auto_path=merged.get("OPENPLAN_AUTO_PATH", "1").strip().lower()
             not in ("0", "false", "non", "no"),
             database_url=merged.get("OPENPLAN_DATABASE_URL", "").strip() or None,
+            admin_email=merged.get("OPENPLAN_ADMIN_EMAIL", "").strip() or None,
+            signup=parse_signup(merged.get("OPENPLAN_SIGNUP")),
+            mailer=parse_mailer(merged.get("OPENPLAN_MAILER")),
+            public_url=(merged.get("OPENPLAN_PUBLIC_URL") or DEFAULT_PUBLIC_URL).rstrip("/"),
+            mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,
         )
+
+    @property
+    def public_origin(self) -> str:
+        """`https://hôte[:port]` de l'adresse publique (contrôle de l'en-tête Origin)."""
+        scheme, _, rest = self.public_url.partition("://")
+        return f"{scheme.lower()}://{rest.split('/', 1)[0].lower()}"
 
 
 ACCOUNTS_PROJECTS_DIR = "projects"
+SIGNUP_VALUES = {"invite": "invite", "invitation": "invite", "open": "open", "ouvert": "open"}
+MAILERS = frozenset({"console", "fake", "smtp_api"})
+
+
+def parse_signup(text: str | None) -> str:
+    value = (text or "invite").strip().lower()
+    if value not in SIGNUP_VALUES:
+        msg = "OPENPLAN_SIGNUP : « invite » (ou « invitation ») ou « open » (ou « ouvert »)"
+        raise ValueError(msg)
+    return SIGNUP_VALUES[value]
+
+
+def parse_mailer(text: str | None) -> str:
+    value = (text or "console").strip().lower()
+    if value not in MAILERS:
+        msg = "OPENPLAN_MAILER : « console », « fake » ou « smtp_api »"
+        raise ValueError(msg)
+    return value
 
 
 def project_root(settings: Settings) -> Path:

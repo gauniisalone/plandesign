@@ -450,8 +450,9 @@ def serve_settings(args: argparse.Namespace, base: Settings | None = None) -> Se
         host=args.host or base.host,
         port=args.port or base.port,
     )
-    if not settings.local_only and not settings.tokens:
+    if not settings.local_only and not settings.tokens and not settings.accounts_enabled:
         # Hors boucle locale, jamais sans jeton, et jamais un jeton improvisé : refus dit.
+        # Avec les comptes (note 17), la session remplace le jeton.
         msg = (
             f"API exposée sur {settings.host} sans jeton : refusé. Générer un jeton nommé avec "
             "`openplan token <nom>` puis le mettre dans OPENPLAN_API_TOKENS (.env) et relancer."
@@ -488,7 +489,14 @@ def _serve(args: argparse.Namespace) -> int:
     from openplan.adapters.registry import resolve_device
 
     print(f"Périphérique de calcul des modèles locaux : {resolve_device(settings.device)[1]}")
-    if not settings.local_only:
+    if settings.accounts_enabled:
+        print(
+            f"Comptes actifs : connexion par lien e-mail (envoi « {settings.mailer} », "
+            f"inscription « {settings.signup} »), sessions pd_session ; origine acceptée "
+            f"{settings.public_origin}."
+        )
+        os.environ["OPENPLAN_HOST"] = settings.host
+    elif not settings.local_only:
         names = ", ".join(sorted(settings.tokens))
         print(
             f"API exposée sur {settings.host} : jeton d'accès exigé (en-tête Authorization) ; "

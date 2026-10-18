@@ -275,6 +275,10 @@ def create_app(
         contextual.router,
     ):
         app.include_router(router, prefix="/api")
+    if app.state.accounts is not None:
+        from openplan.api.accounts.routes import router as auth_router
+
+        app.include_router(auth_router, prefix="/api")
     if settings.web_dir is not None:
         _mount_web(app, settings.web_dir)
     return app

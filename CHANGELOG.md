@@ -19,6 +19,26 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   couche `Storage` pour les fichiers (disque aujourd'hui, stockage objet possible plus tard) :
   clés relatives sûres, écriture atomique, rien hors du dossier des données, lien symbolique
   compris. Tests sur SQLite et sur un Postgres 16 jetable.
+- **Connexion par lien envoyé par e-mail (B1b)**, avec les comptes seulement :
+  `POST /api/auth/email/start` envoie un lien de 32 octets aléatoires, valable 15 minutes et
+  une seule fois, dont la base ne garde que l'empreinte ; la réponse est la même que l'adresse
+  ait un compte ou non, et l'envoi part après la réponse. Ouvrir le lien affiche « Se connecter
+  à PlanDesign » avec un bouton : c'est le bouton qui consomme le jeton, pas l'ouverture (les
+  aperçus de messagerie ne connectent personne). Lien expiré, déjà servi ou inscription fermée :
+  page « Connexion impossible » avec la raison et « Recevoir un nouveau lien ». Inscription
+  `OPENPLAN_SIGNUP` sur invitation (défaut) ou ouverte ; `OPENPLAN_ADMIN_EMAIL` devient
+  administrateur à sa première connexion, et seule elle. Session : cookie `pd_session`
+  HttpOnly, Secure, SameSite=Lax, 30 jours prolongés à l'usage (au plus une fois par heure),
+  empreinte en base, révocable (`/api/auth/logout`, « me déconnecter partout »
+  `/api/auth/logout-all`, révocation par un administrateur). Toute modification exige
+  l'origine de `OPENPLAN_PUBLIC_URL` (en-tête Origin, ou Referer), sinon 403 ; la politique de
+  référent devient `same-origin` avec les comptes (avec `no-referrer`, le navigateur enverrait
+  `Origin: null`). Limites : 3 liens par adresse par 15 min, 10 demandes par IP par heure (au
+  delà, même réponse, rien ne part), 10 tentatives par minute et par IP sur `/api/auth/*`
+  (429). Envoi derrière une interface `Mailer` : « console » (le lien va dans le journal du
+  serveur), « fake » (boîte en mémoire des tests) et un squelette Brevo par API HTTPS qui
+  n'envoie rien (service d'envoi pas encore choisi). Le journal des accès note `user:<id>`,
+  jamais l'adresse. Avec les comptes, le jeton Bearer et le cookie de lecture ne servent plus.
 
 ### 4 octobre 2026
 
