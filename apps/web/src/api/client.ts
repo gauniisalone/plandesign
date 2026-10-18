@@ -121,7 +121,9 @@ let readSessionTimer: number | null = null;
 /** Cookie de lecture (API exposée) : `POST /api/session` avec le jeton pose un cookie
  *  HttpOnly limité à GET/HEAD, qui porte les `<img src>`, `<a download>` et le GLB ; 12 h,
  *  renouvelé toutes les 6 h tant que l'onglet vit. Sans jeton (boucle locale) : rien. */
-export async function openReadSession(token: string | null = readToken()): Promise<void> {
+export async function openReadSession(
+  token: string | null = readToken(),
+): Promise<void> {
   if (!token) return;
   try {
     await fetch(`${BASE}/session`, {
@@ -1363,7 +1365,9 @@ export type UiEvent =
   | "tab_changed"
   | "refine_clicked"
   | "render_requested"
-  | "generate_clicked";
+  | "generate_clicked"
+  /** T7d2 : visionneuse des rendus ouverte (ce n'est pas un geste). */
+  | "viewer_opened";
 
 /** Ce qu'un clic sur un rendu désigne (P4). */
 export interface PickResult {

@@ -56,6 +56,8 @@ const FIT_MARGIN = 60;
 /** Entrée dans le plan : marge autour du cadre et durée du zoom (B3). */
 const ENTER_MARGIN = 24;
 const ENTER_MS = 280;
+/** Deux appuis sur le même élément en moins de ce délai : un double-clic (T7d2). */
+const DOUBLE_MS = 450;
 
 interface Props {
   project: Project;
@@ -75,6 +77,7 @@ interface Props {
   onDismissNotice: () => void;
   /** Une photo importée sur le tableau entre dans le projet : le projet à jour. */
   onProjectChanged: (project: Project) => void;
+  /** T7d2 : un rendu en grand dans la visionneuse ; "" = la première vue. */
   onOpenRender: (runId: string) => void;
   onEditPlan: (levelId: string) => void;
   onVariant: (text: string) => void;
@@ -144,6 +147,7 @@ export function BoardCanvas(props: Props) {
   const { project, board, renders, active } = props;
   const stage = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const lastDown = useRef<{ id: string; t: number } | null>(null);
   const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -581,6 +585,17 @@ export function BoardCanvas(props: Props) {
       stage.current?.setPointerCapture(e.pointerId);
       setDrag({ kind: "pan", x: e.clientX, y: e.clientY, view });
       return;
+    }
+    // T7d2 : double-clic reconnu ici. La capture du pointeur (déplacement) envoie le clic au
+    // canevas : l'événement dblclick n'arrivait jamais à un élément déplaçable.
+    if (e.button === 0 && !e.shiftKey) {
+      const last = lastDown.current;
+      lastDown.current = { id: item.id, t: e.timeStamp };
+      if (last && last.id === item.id && e.timeStamp - last.t < DOUBLE_MS) {
+        lastDown.current = null;
+        onDouble(item);
+        return;
+      }
     }
     let next = selected;
     if (e.shiftKey) {
@@ -1072,8 +1087,8 @@ export function BoardCanvas(props: Props) {
                 item.text
               )}
               {item.role === "renders" && (
-                // T7d1 : ce que portait l'écran Résultats pour les rendus : les vues
-                // périmées à refaire, et le volet Rendus (réglages, vues, galerie).
+                // T7d1–T7d2 : ce que portait l'ancien écran de résultats : les vues
+                // périmées à refaire, la visionneuse, le volet Rendus (réglages, galerie).
                 <span
                   className="board-frame-actions"
                   onPointerDown={(e) => e.stopPropagation()}
@@ -1088,6 +1103,15 @@ export function BoardCanvas(props: Props) {
                       Re-rendre {props.stale.size} vue
                       {props.stale.size > 1 ? "s" : ""} périmée
                       {props.stale.size > 1 ? "s" : ""}
+                    </button>
+                  )}
+                  {props.hasRenders && (
+                    <button
+                      type="button"
+                      onClick={() => props.onOpenRender("")}
+                      title="Les rendus en grand, un par un : télécharger, affiner, désigner un meuble (← → pour passer de l'un à l'autre)"
+                    >
+                      Voir en grand
                     </button>
                   )}
                   <button
@@ -1339,7 +1363,6 @@ export function BoardCanvas(props: Props) {
               data-kind={item.kind}
               aria-label={`${item.kind === "frame" ? "Cadre" : item.kind} ${item.text}`.trim()}
               onPointerDown={(e) => onItemDown(e, item)}
-              onDoubleClick={() => onDouble(item)}
             >
               {body(item)}
               {item.reference && (
@@ -1425,8 +1448,9 @@ export function BoardCanvas(props: Props) {
                   <button
                     type="button"
                     onClick={() => props.onOpenRender(single.ref ?? "")}
+                    title="Ce rendu en grand, dans la visionneuse"
                   >
-                    Ouvrir dans les résultats
+                    Voir en grand
                   </button>
                 )}
               {referenceable.length > 0 && (

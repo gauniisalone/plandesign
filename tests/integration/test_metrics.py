@@ -153,6 +153,23 @@ def test_b3_space_moves_are_split(scene: tuple[ProjectStore, Project, TestClient
     assert (m["results_editor_trips"], m["plan_entries"], m["view_changes"]) == (2, 2, 1)
 
 
+def test_t7d2_viewer_is_counted_apart(scene: tuple[ProjectStore, Project, TestClient]) -> None:
+    """T7d2 : ouvrir la visionneuse des rendus n'est ni un geste ni un passage d'espace ; la
+    mesure le compte à part (`viewer_opens`)."""
+    _, project, client = scene
+    pid = str(project.id)
+    before = client.get(f"/api/projects/{pid}/metrics").json()
+    for detail in ("premiere", "3f2a6b1c-0d4e-4f5a-8b6c-7d8e9f0a1b2c"):
+        r = client.post(
+            f"/api/projects/{pid}/journal/ui", json={"event": "viewer_opened", "detail": detail}
+        )
+        assert r.status_code == 200 and r.json() == {"recorded": True}
+    m = client.get(f"/api/projects/{pid}/metrics").json()
+    assert m["viewer_opens"] == 2
+    for key in ("gestures_before_first_render", "tab_changes", "results_editor_trips"):
+        assert m[key] == before[key], key
+
+
 @pytest.mark.parametrize(
     "body",
     [

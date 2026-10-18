@@ -1611,7 +1611,7 @@ function CameraPanel({
         <h2>Point de vue « {camera.name ?? "libre"} »</h2>
         <p className="muted">
           Glissez le rond dans le plan pour le déplacer, la pointe pour viser.
-          Le rendu se lance dans l'onglet Rendus.
+          Le rendu se lance depuis le cadre Rendus de l'espace de travail.
         </p>
         <NumberField
           label="Hauteur"

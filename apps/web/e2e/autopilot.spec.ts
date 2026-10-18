@@ -6,6 +6,7 @@ import {
   expectSpace,
   goSpace,
   openRendersPane,
+  openViewer,
   waitNoHeavyJob,
 } from "./helpers";
 
@@ -117,13 +118,27 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(
     rendersFrame.getByRole("button", { name: "Réglages et galerie" }),
   ).toBeVisible();
-  // Écran Résultats (P1), encore là jusqu'à T7d2 : les images au centre, une par vue.
-  await goSpace(page, "renders");
-  const stage = page.locator(".renders-stage");
-  await expect(stage.locator(".renders-grid img")).toHaveCount(views);
+  // T7d2 : la visionneuse plein écran (ex-écran Résultats) : une vue à la fois, chacune
+  // rendue ; ← → passent de l'une à l'autre, Échap ferme.
+  let stage = await openViewer(page);
+  await expect(stage.locator(".renders-grid img")).toHaveCount(1);
+  await expect(stage).toContainText(`1 / ${views}`);
   await expect(stage.locator(".badge.stale")).toHaveCount(0);
-  expect(elements.find((e) => e.type === "room")?.intent).toBeTruthy();
+  // La place des commentaires reste masquée tant que B2 n'existe pas (décision PO).
+  await expect(
+    stage.getByRole("complementary", { name: "Commentaires de la vue" }),
+  ).toHaveCount(0);
   await page.screenshot({ path: path.join(SHOTS, "v1_arrivee.png") });
+  for (let i = 2; i <= views; i++) {
+    await page.keyboard.press("ArrowRight");
+    await expect(stage).toContainText(`${i} / ${views}`);
+    await expect(stage.locator(".renders-grid img")).toHaveCount(1);
+  }
+  await stage.getByRole("button", { name: "Vue suivante" }).click();
+  await expect(stage).toContainText(`1 / ${views}`);
+  expect(elements.find((e) => e.type === "room")?.intent).toBeTruthy();
+  await page.keyboard.press("Escape");
+  await expect(stage).toHaveCount(0);
 
   // « Changer l'ambiance » : retour au plan, fiche de la pièce ouverte.
   await arrival.getByRole("button", { name: "Changer l'ambiance" }).click();
@@ -131,22 +146,31 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(card).toBeVisible();
   await expectSpace(page, "plan");
 
-  // Une retouche après les rendus : de retour sur Rendus, chaque vue est « périmée » (P1).
+  // Une retouche après les rendus : dans la visionneuse, chaque vue est « périmée » (P1),
+  // et l'en-tête les refait toutes.
   await card.getByLabel(/^Ambiance : /).selectOption("chalet");
   await expect(card.locator(".intent-tag").first()).toHaveText("choisi");
-  await goSpace(page, "renders");
-  await expect(stage.locator(".badge.stale")).toHaveCount(views);
-  await expect(stage.getByRole("status")).toContainText("périmée");
+  const label = `Re-rendre les ${views} vues`;
+  stage = await openViewer(page);
+  for (let i = 1; i <= views; i++) {
+    await expect(stage.locator(".badge.stale")).toHaveCount(1);
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(stage.getByRole("button", { name: label })).toBeVisible();
+  await expect(stage.getByRole("button", { name: label })).toHaveAttribute(
+    "title",
+    /changé/,
+  );
   await page.screenshot({ path: path.join(SHOTS, "p1_rendus_perimes.png") });
+  await page.keyboard.press("Escape");
 
-  // P2 : la bande de rendus, dans chaque onglet, dit les vues périmées et les refait en un
-  // clic sans changer d'onglet ; elle ne chevauche ni la barre du bas ni la bande des photos.
+  // P2 : la bande de rendus, sous le plan, dit les vues périmées et les refait en un clic
+  // sans quitter le plan ; elle ne chevauche ni la barre du bas ni la bande des photos.
+  await goSpace(page, "plan");
   const strip = page.getByRole("navigation", { name: "Bande de rendus" });
   await expect(strip.locator("li")).toHaveCount(views);
   await expect(strip.locator(".dot")).toHaveCount(views);
-  const label = `Re-rendre les ${views} vues`;
-  await expect(stage.getByRole("button", { name: label })).toBeVisible();
-  await goSpace(page, "plan");
+  await expect(strip.getByRole("button", { name: label })).toBeVisible();
   await expect(strip.locator(".dot")).toHaveCount(views);
   const overlap = async (a: string, b: string) => {
     const x = await page.locator(a).boundingBox();
@@ -189,32 +213,42 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(
     rendersFrame.getByRole("button", { name: "Re-rendre 1 vue périmée" }),
   ).toBeVisible();
-  await goSpace(page, "renders");
-  await expect(stage.locator(".badge.stale")).toHaveCount(1);
+  stage = await openViewer(page);
+  let staleSeen = 0;
+  for (let i = 1; i <= views; i++) {
+    staleSeen += await stage.locator(".badge.stale").count();
+    await page.keyboard.press("ArrowRight");
+  }
+  expect(staleSeen).toBe(1);
+  await expect(
+    stage.getByRole("button", { name: "Re-rendre la vue" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await goSpace(page, "plan");
   await expect(
     strip.getByRole("button", { name: "Re-rendre la vue" }),
   ).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "p2_bande.png") });
 
-  // Raccourcis 1 à 4 dans Rendus : ils ouvrent l'onglet 3D au point de vue demandé.
+  // Raccourcis 1 à 4 depuis le plan : la 3D s'ouvre au point de vue demandé.
   await page.keyboard.press("1");
-  await expectSpace(page, "3d");
   await expect(page.locator(".viewer3d")).toHaveAttribute("data-preset", "top");
 
-  // P3 : « Affiner cette vue » sous une image ouvre l'onglet 3D à la caméra du rendu, la
-  // pièce regardée choisie et sa fiche ouverte.
-  await goSpace(page, "renders");
+  // P3 : « Affiner cette vue » sous l'image ferme la visionneuse et ouvre la 3D à la
+  // caméra du rendu, la pièce regardée choisie et sa fiche ouverte.
+  stage = await openViewer(page);
   await stage
     .getByRole("button", { name: "Affiner cette vue" })
     .first()
     .click();
+  await expect(stage).toHaveCount(0);
   await expectSpace(page, "3d");
   await expect(page.getByLabel("Fiche Ambiance")).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "p3_affiner.png") });
 
   // P4b : désigner un meuble dans le rendu. On cherche par l'API un point où se voit un
   // meuble, puis on clique l'image à cet endroit.
-  await goSpace(page, "renders");
+  stage = await openViewer(page);
   const frame = stage.locator(".pick-frame").first();
   const picture = frame.locator("img").first();
   const src = (await picture.getAttribute("src")) ?? "";
@@ -240,8 +274,10 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(pickCard).toContainText("Meuble :");
   await expect(frame.locator(".pick-outline")).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "p4b_designer.png") });
+  // Échap ferme d'abord la carte de désignation, pas la visionneuse.
   await page.keyboard.press("Escape");
   await expect(pickCard).toHaveCount(0);
+  await expect(stage).toBeVisible();
 
   // « Remplacer » : un modèle de la même famille, un seul pas d'historique.
   const historyLength = async () =>
@@ -260,21 +296,28 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await models.getByRole("button").last().click();
   await expect.poll(historyLength).toBe(before + 1);
 
-  // « Retirer » : la vue de ce rendu devient périmée ; annulable.
+  // « Retirer » : la vue de ce rendu devient périmée, sous les yeux (la visionneuse reste
+  // ouverte) ; annulable.
   await clickAt();
   await pickCard.getByRole("button", { name: "Retirer" }).click();
   await expect.poll(historyLength).toBe(before + 2);
-  await expect(stage.locator(".badge.stale")).toHaveCount(views);
+  await expect(stage).toBeVisible();
+  await expect(stage.locator(".badge.stale")).toHaveCount(1);
+  await expect(
+    stage.getByRole("button", { name: `Re-rendre les ${views} vues` }),
+  ).toBeVisible();
   await page.keyboard.press("Control+z");
   await expect.poll(historyLength).toBe(before + 1);
 
-  // P5b : « Demander… » sur un meuble désigné ouvre l'assistant dans l'onglet Rendus, ce
-  // meuble en contexte ; une phrase y change l'ambiance de sa pièce, « / » ferme et rouvre.
+  // P5b : « Demander… » sur un meuble désigné ferme la visionneuse et ouvre l'assistant
+  // dans l'espace de travail, ce meuble en contexte ; une phrase y change l'ambiance de sa
+  // pièce, « / » ferme et rouvre.
   await clickAt();
   await pickCard.getByRole("button", { name: "Demander…" }).click();
   const assistant = page.locator("aside.assistant");
   await expect(assistant).toBeVisible();
-  await expectSpace(page, "renders");
+  await expect(stage).toHaveCount(0);
+  await expectSpace(page, "board");
   await expect(assistant.locator(".assistant-context")).toContainText(/\w/);
   const ask = page.getByLabel("Votre demande à l'assistant");
   await ask.fill("plus chaleureux, lumière du soir");
@@ -298,10 +341,18 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
     }),
   ).toBeVisible();
 
-  // Zéro geste à l'arrivée : la mesure le confirme ; le clic « Affiner » est compté.
+  // Zéro geste à l'arrivée : la mesure le confirme ; le clic « Affiner » est compté ; la
+  // visionneuse est comptée à part (ce n'est pas un geste), sans aller-retour (T7d2).
   const m = (await (
     await page.request.get(`/api/projects/${id}/metrics`)
-  ).json()) as { gestures_before_first_render: number; refine_clicks: number };
+  ).json()) as {
+    gestures_before_first_render: number;
+    refine_clicks: number;
+    viewer_opens: number;
+    results_editor_trips: number;
+  };
   expect(m.gestures_before_first_render).toBe(0);
   expect(m.refine_clicks).toBeGreaterThanOrEqual(2);
+  expect(m.viewer_opens).toBeGreaterThanOrEqual(5);
+  expect(m.results_editor_trips).toBe(0);
 });

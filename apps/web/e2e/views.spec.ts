@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject, goSpace } from "./helpers";
+import { createEmptyProject, goSpace, openRendersPane } from "./helpers";
 
 /** V1 (note 10, point 4) : vues automatiques posées en un clic dans Rendre, format 4:5,
  *  vues manquées expliquées, annulables ; « Rendre toutes les vues » proposé. */
@@ -44,7 +44,7 @@ test("vues automatiques : un clic, format 4:5, vues de secours distinctes, annul
   page,
 }) => {
   const id = await createRoom(page, "E2E vues automatiques");
-  await goSpace(page, "renders");
+  await openRendersPane(page);
   const section = page.locator("section.auto-views");
   await expect(section).toBeVisible();
   await expect(
@@ -71,6 +71,9 @@ test("vues automatiques : un clic, format 4:5, vues de secours distinctes, annul
   // Reposer ne double pas ; Annuler retire les vues posées.
   await section.getByRole("button", { name: "Reposer les vues" }).click();
   await expect.poll(async () => (await autoViews(page, id)).length).toBe(3);
+  // T7d2 : dans l'espace de travail, Ctrl+Z annule dans l'espace ; l'historique du plan
+  // (où les vues sont posées) s'annule depuis le plan.
+  await goSpace(page, "plan");
   await page.keyboard.press("Control+z");
   await page.keyboard.press("Control+z");
   await expect.poll(async () => (await autoViews(page, id)).length).toBe(0);

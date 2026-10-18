@@ -1,6 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject, expectSpace, goSpace, showPanel } from "./helpers";
+import {
+  createEmptyProject,
+  expectSpace,
+  openRendersPane,
+  showPanel,
+} from "./helpers";
 
 /** Barres compactes (étape b) : raccourcis, infobulles, aucune fonction perdue, poignée du
  *  panneau, thème sombre sur le canevas, le plan, la 3D et les cartes. */
@@ -323,9 +328,10 @@ test("thème sombre : canevas, plan, 3D et cartes", async ({ page }) => {
   });
   expect((pixel[0]! + pixel[1]! + pixel[2]!) / 765).toBeLessThan(0.3);
   await page.screenshot({ path: path.join(SHOTS, "barres_sombre.png") });
-  // Rendus : la carte du panneau et le fond des images restent sombres.
-  await goSpace(page, "renders");
-  for (const sel of [".side-card", ".renders-stage"]) {
+  // Rendus : la carte du volet Rendus et le cadre Rendus de l'espace restent sombres (la
+  // visionneuse, elle, est vérifiée dans viewer.spec, avec des rendus).
+  await openRendersPane(page);
+  for (const sel of [".side-card", ".board-item.kind-frame.role-renders"]) {
     const bg = await page
       .locator(sel)
       .evaluate((el) => getComputedStyle(el).backgroundColor);

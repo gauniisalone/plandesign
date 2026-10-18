@@ -50,7 +50,12 @@ class ProjectMetrics(StrictModel):
     tab_changes: int
     """Passages d'un espace à l'autre faits à la main (tous), et vues du plan changées."""
     results_editor_trips: int = 0
-    """B3 : allers et retours entre l'écran de résultats et l'éditeur (le tableau)."""
+    """B3 : allers et retours entre l'écran de résultats et l'éditeur. Ancien : l'écran de
+    résultats n'existe plus depuis T7d2 (visionneuse) ; toujours 0 pour les projets récents,
+    gardé pour relire les journaux d'avant."""
+    viewer_opens: int = 0
+    """T7d2 : visionneuse des rendus ouverte (double-clic, « Voir en grand », bande) ; ce n'est
+    pas un geste."""
     plan_entries: int = 0
     """B3 : entrées dans le plan (depuis son cadre du tableau ou depuis les résultats)."""
     view_changes: int = 0
@@ -130,6 +135,7 @@ def project_metrics(project: Project, project_dir: Path, runs_dir: Path) -> Proj
             1 for m in moves if m.endswith((">plan", ">3d")) and not m.startswith(PLAN_SPACES)
         ),
         view_changes=sum(1 for m in moves if m.startswith("vue:")),
+        viewer_opens=count("viewer_opened"),
         refine_clicks=count("refine_clicked"),
         generate_clicks=count("generate_clicked"),
         render_requests=count("render_requested"),

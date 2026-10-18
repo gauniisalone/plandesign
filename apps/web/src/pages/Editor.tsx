@@ -45,7 +45,7 @@ import {
   ViewBar,
   type ViewMode,
 } from "../panels/Toolbar";
-import { RendersStage } from "../panels/RendersStage";
+import { RenderViewer } from "../panels/RenderViewer";
 import { RenderStrip } from "../panels/RenderStrip";
 import { LevelBar } from "../panels/LevelBar";
 import type { PickAction } from "../panels/PickCard";
@@ -79,7 +79,6 @@ interface Props {
 
 /** Onglet affiché ; null quand « Ajouter une source » est ouvert par-dessus. */
 function tabOf(step: Step, viewMode: ViewMode): Tab | null {
-  if (step === "render") return "renders";
   if (step === "board") return "board";
   if (step === "edit") return viewMode === "3d" ? "3d" : "plan";
   return null;
@@ -141,7 +140,7 @@ type SidePane =
   | "assistant"
   | "advanced"
   | "contextual"
-  /** T7d1 : réglages, vues, points de vue et galerie des rendus (ex-écran Résultats). */
+  /** T7d1 : réglages, vues, points de vue et galerie des rendus (ex-écran de résultats). */
   | "renders";
 
 const PANE_TITLE: Record<Exclude<SidePane, "inspector">, string> = {
@@ -294,11 +293,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     id: number;
   } | null>(null);
   const [loadedToken, setLoadedToken] = useState(0);
-  /** Vue choisie dans la bande de rendus : amenée à l'écran dans Rendus. */
-  const [focusView, setFocusView] = useState<{
-    cameraId: string;
-    token: number;
-  } | null>(null);
+  /** T7d2 : vue montrée dans la visionneuse plein écran (sa caméra) ; null = fermée. */
+  const [viewerCam, setViewerCam] = useState<string | null>(null);
+  const openViewer = useCallback(
+    (cameraId: string) => {
+      // Regarder ses rendus n'est pas un geste (journal à part, hors du compte des gestes).
+      journalApi.ui(projectId, "viewer_opened", cameraId || "premiere");
+      setViewerCam(cameraId);
+    },
+    [projectId],
+  );
   const viewerRef = useRef<Viewer3DHandle>(null);
   const boardSync = [
     Object.keys(state.project?.images ?? {}).join(","),
@@ -370,21 +374,19 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       window.history.replaceState(null, "", wanted);
   }, [projectId, step]);
 
-  /** « import » = « Ajouter une source » par-dessus le projet ; « edit » = onglet Plan ;
-   *  « render » = onglet Rendus (les images au centre, la 3D montée dessous pour les vignettes
-   *  des points de vue, le panneau Rendus à droite). */
+  /** « import » = « Ajouter une source » par-dessus le projet ; « edit » = le plan (2D, 3D
+   *  ou les deux) ; « board » = l'espace de travail. Les rendus se regardent dans la
+   *  visionneuse (T7d2), par-dessus l'un ou l'autre. */
   const goStep = useCallback((next: Step) => {
     setStep(next);
-    if (next === "render") setViewMode("3d");
-    else if (next === "board") setViewMode("2d");
+    if (next === "board") setViewMode("2d");
     else if (next === "edit") setViewMode((m) => (m === "3d" ? "2d" : m));
     else setViewMode("2d");
   }, []);
-  /** Onglets du projet (P1) : Rendus · Plan · 3D. */
+  /** Espaces du projet : l'espace de travail, le plan, la 3D. */
   const goTab = useCallback(
     (next: Tab) => {
-      if (next === "renders") goStep("render");
-      else if (next === "board") goStep("board");
+      if (next === "board") goStep("board");
       else if (next === "plan") goStep("edit");
       else {
         setStep("edit");
@@ -616,7 +618,6 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // travail, n'est montée que pour les vignettes des points de vue, volet ouvert.
   const rendersPane = step === "board" && panelOpen && pane === "renders";
   const show3d = viewMode !== "2d" || rendersPane;
-  const rendering = step === "render";
   const tab = tabOf(step, viewMode);
   const stale = staleCameraIds(state.project, state.renders);
   const renderRunning = state.renderJob?.status === "running";
@@ -723,8 +724,6 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     // Chiffres et signes : pris tels quels (Maj est souvent nécessaire sur AZERTY).
     const asked = KEY_PRESETS[key];
     if (asked) {
-      // Dans Rendus, la 3D est sous les images : le point de vue s'ouvre dans l'onglet 3D.
-      if (rendering) goTab("3d");
       choosePreset(asked);
       return true;
     }
@@ -872,7 +871,6 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       onUndo={actions.undoAssistant}
       onShowProposals={(m) => {
         actions.showAssistantProposals(m);
-        if (rendering) goTab("plan");
         togglePane("amenager");
       }}
       context={
@@ -1083,23 +1081,32 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             </div>
           )}
         </div>
-        {rendering && (
-          <RendersStage
+        {viewerCam !== null && (
+          <RenderViewer
             project={state.project}
             level={level}
             renders={state.renders}
             stale={stale}
             busy={state.busy || renderRunning}
             running={renderRunning}
-            focus={focusView}
+            cameraId={viewerCam}
+            onNavigate={setViewerCam}
+            onClose={() => setViewerCam(null)}
             onRerender={rerenderViews}
-            onRefine={(cameraId) => refineView(cameraId)}
-            onPickAction={pickAction}
-            onCatalogue={actions.catalogueRender}
-            onEditPlan={() => {
-              journalApi.ui(projectId, "tab_changed", "renders>plan");
-              goTab("plan");
+            onRefine={(cameraId) => {
+              setViewerCam(null);
+              refineView(cameraId);
             }}
+            onPickAction={(cameraId, action) => {
+              // Retirer ou remplacer un meuble se voit d'ici (la vue devient périmée) ;
+              // le reste mène au plan, à la 3D ou à l'assistant : la visionneuse se ferme.
+              if (action.kind !== "remove" && action.kind !== "replace")
+                setViewerCam(null);
+              pickAction(cameraId, action);
+            }}
+            onCatalogue={actions.catalogueRender}
+            onUndo={actions.undo}
+            onRedo={actions.redo}
           />
         )}
         {step !== "import" && step !== "board" && (
@@ -1110,12 +1117,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             stale={stale}
             running={renderRunning}
             stage={state.renderJob?.stage ?? null}
-            onOpen={(cameraId) => {
-              if (tab !== "renders")
-                journalApi.ui(projectId, "tab_changed", `${tab}>renders`);
-              goTab("renders");
-              setFocusView((f) => ({ cameraId, token: (f?.token ?? 0) + 1 }));
-            }}
+            onOpen={openViewer}
             onRerender={rerenderViews}
           />
         )}
@@ -1138,13 +1140,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onProjectChanged={(p) => void actions.adoptProject(p)}
             onOpenRender={(runId) => {
               const entry = state.renders.find((r) => r.run_id === runId);
-              journalApi.ui(projectId, "tab_changed", "board>renders");
-              goTab("renders");
-              if (entry?.camera_id)
-                setFocusView((f) => ({
-                  cameraId: entry.camera_id ?? "",
-                  token: (f?.token ?? 0) + 1,
-                }));
+              openViewer(entry?.camera_id ?? "");
             }}
             onEditPlan={() => {
               journalApi.ui(projectId, "tab_changed", "board>plan");
@@ -1527,8 +1523,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           conversation) gardent leur état d'un repli à l'autre. */}
       {step !== "import" && (
         <div
-          // T7d1 : sur l'écran Résultats (jusqu'à T7d2), le panneau Rendus en est la moitié.
-          className={`side${panelOpen || rendering ? "" : " closed"}`}
+          className={`side${panelOpen ? "" : " closed"}`}
           style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
         >
           <SideHandle
@@ -1537,24 +1532,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onCommit={(w) => saveSideWidth(w)}
           />
           <div className="side-card">
-            {rendering && pane === "assistant" ? (
-              <>
-                <div className="side-head">
-                  <h2>{PANE_TITLE.assistant}</h2>
-                  <button
-                    className="icon"
-                    onClick={showInspector}
-                    aria-label={`Fermer ${PANE_TITLE.assistant}`}
-                    title="Revenir au panneau Rendus"
-                  >
-                    <IconClose />
-                  </button>
-                </div>
-                {assistantPanel}
-              </>
-            ) : rendering ? (
-              renderPanel
-            ) : (
+            {
               <>
                 {/* Recalibrer : la carte se range dans le panneau, hors du plan à cliquer. */}
                 {showScaleCard && panelOpen && (
@@ -1795,7 +1773,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   </>
                 )}
               </>
-            )}
+            }
           </div>
         </div>
       )}

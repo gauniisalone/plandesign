@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject, goSpace } from "./helpers";
+import { createEmptyProject, goSpace, openRendersPane } from "./helpers";
 
 /** E3 (aperçu 3D) : plan de coupe déplaçable, maison de poupée, rayons X, état mémorisé. */
 
@@ -95,7 +95,7 @@ test("aperçu 3D : coupe horizontale et verticale, maison de poupée, rayons X, 
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".viewer3d")).toHaveAttribute("data-xray", "on");
   // Le rendu Blender suit le même plan de coupe.
-  await goSpace(page, "renders");
+  await openRendersPane(page);
   await expect(
     page.getByText(/Rendus en coupe \(verticale x = /),
   ).toBeVisible();
@@ -103,7 +103,14 @@ test("aperçu 3D : coupe horizontale et verticale, maison de poupée, rayons X, 
   // E3b : la perspective de coupe s'ajoute aux points de vue, une seule fois.
   const sectionView = page.getByRole("button", { name: "Vue de coupe" });
   await sectionView.click();
-  await expect(page.getByText(/Coupe x = \d/).first()).toBeVisible();
+  // Dans la liste des points de vue (le plan, caché sous l'espace de travail, porte aussi
+  // ce nom dans son SVG).
+  await expect(
+    page
+      .locator(".viewpoints")
+      .getByText(/Coupe x = \d/)
+      .first(),
+  ).toBeVisible();
   await expect(sectionView).toBeDisabled();
   await page.screenshot({ path: path.join(SHOTS, "e3b_vue_de_coupe.png") });
   expect(errors).toEqual([]);

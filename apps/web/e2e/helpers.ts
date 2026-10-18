@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /** Projet vide au nom choisi, ouvert sur « Ajouter une source ». Depuis US1, l'accueil ne propose
  *  plus de champ de nom (« Commencer par un plan vide » donne un nom automatique, testé dans
@@ -43,6 +43,7 @@ export async function showPanel(page: Page): Promise<void> {
 /** T7d1 : le volet Rendus (ex-écran Résultats : « Vos rendus », vues automatiques, points de
  *  vue, galerie) s'ouvre par « Réglages et galerie » dans l'en-tête du cadre Rendus. */
 export async function openRendersPane(page: Page): Promise<void> {
+  await goSpace(page, "board");
   await page
     .locator(".board-item.kind-frame.role-renders")
     .getByRole("button", { name: "Réglages et galerie" })
@@ -52,9 +53,22 @@ export async function openRendersPane(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-/** Espaces de l'atelier (B3, plus d'onglets) : résultats, éditeur (le tableau), plan en 2D
- *  ou en 3D, et « Ajouter une source ». */
-export type Space = "renders" | "board" | "plan" | "3d" | "source";
+/** T7d2 : la visionneuse plein écran (ex-écran Résultats), ouverte par « Voir en grand » dans
+ *  l'en-tête du cadre Rendus ; elle montre la première vue. */
+export async function openViewer(page: Page): Promise<Locator> {
+  await goSpace(page, "board");
+  await page
+    .locator(".board-item.kind-frame.role-renders")
+    .getByRole("button", { name: "Voir en grand" })
+    .click();
+  const viewer = page.getByRole("dialog", { name: "Visionneuse des rendus" });
+  await expect(viewer).toBeVisible();
+  return viewer;
+}
+
+/** Espaces de l'atelier (B3, plus d'onglets ; T7d2, plus d'écran de résultats) : l'espace de
+ *  travail, le plan en 2D ou en 3D, et « Ajouter une source ». */
+export type Space = "board" | "plan" | "3d" | "source";
 
 const spaceOf = async (page: Page) =>
   (await page.locator(".editor").getAttribute("data-space")) ?? "";
@@ -71,14 +85,13 @@ export async function expectSpace(
   );
 }
 
-/** Va dans un espace par l'interface, comme on le ferait à la main : « Ouvrir l'éditeur »,
- *  « ← Résultats », « ← Tableau », « Modifier le plan » sur le cadre du plan, puis la vue
- *  3D de la barre des vues. */
+/** Va dans un espace par l'interface, comme on le ferait à la main : « ← Espace de travail »,
+ *  « Modifier le plan » sur le cadre du plan, puis la vue 3D de la barre des vues. */
 export async function goSpace(page: Page, space: Space): Promise<void> {
   // L'atelier choisit d'abord son espace d'arrivée (rendus chargés).
   await expect(page.locator(".editor")).toHaveAttribute(
     "data-space",
-    /^(renders|board|plan|3d|source)$/,
+    /^(board|plan|3d|source)$/,
     { timeout: 30_000 },
   );
   for (let step = 0; step < 5; step++) {

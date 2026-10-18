@@ -5,6 +5,7 @@ import {
   createEmptyProject,
   expectSpace,
   goSpace,
+  openRendersPane,
   showPanel,
   waitNoHeavyJob,
 } from "./helpers";
@@ -747,8 +748,8 @@ test("importer un plan DXF : murs observés tout de suite, correction des calque
   await expect(page.getByText(/4 murs dans le plan/)).toBeVisible();
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   await expect(page.locator("polygon.wall")).toHaveCount(4);
-  // Onglet Rendus (P1) : les images au centre ; à droite les points de vue, le rendu, la galerie.
-  await goSpace(page, "renders");
+  // T7d2 : le volet Rendus de l'espace de travail : points de vue, rendu, galerie.
+  await openRendersPane(page);
   await expect(page.locator("canvas")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Points de vue" }),
@@ -966,8 +967,8 @@ test("bibliothèque 1366 × 768 : cartes lisibles, vignettes chargées, fantôme
   });
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("placing-ghost")).toHaveCount(0);
-  // D3 : dans Rendus, la vue d'architecte se propose en un clic et rejoint les points de vue.
-  await goSpace(page, "renders");
+  // D3 : dans le volet Rendus, la vue d'architecte se propose en un clic et rejoint les points de vue.
+  await openRendersPane(page);
   await page.getByRole("button", { name: "Vue d'architecte" }).click();
   await expect(page.locator(".viewpoints")).toContainText("Vue d'architecte");
   await expect(

@@ -51,8 +51,11 @@ EventKind = Literal[
     "render_requested",
     "render_picked",
     "generate_clicked",
+    "viewer_opened",
 ]
-UiEvent = Literal["tab_changed", "refine_clicked", "render_requested", "generate_clicked"]
+UiEvent = Literal[
+    "tab_changed", "refine_clicked", "render_requested", "generate_clicked", "viewer_opened"
+]
 """Mesure du parcours (P0) : gestes d'interface sans effet sur le plan, envoyés par l'atelier
 (`POST /projects/{id}/journal/ui`) ; le détail est un mot d'un vocabulaire fermé."""
 EVENT_LABELS: dict[str, str] = {
@@ -70,6 +73,7 @@ EVENT_LABELS: dict[str, str] = {
     "render_requested": "rendu demandé",
     "render_picked": "élément désigné dans un rendu",
     "generate_clicked": "« Générer » cliqué (plan ou chemin automatique lancé à la main)",
+    "viewer_opened": "visionneuse des rendus ouverte (T7d2 ; ce n'est pas un geste)",
 }
 _lock = threading.Lock()
 

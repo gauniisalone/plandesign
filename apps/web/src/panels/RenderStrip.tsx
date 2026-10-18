@@ -3,9 +3,9 @@ import type { Level, Project } from "../api/types.gen";
 import { allCameras } from "../model";
 import { latestRenders, rerenderLabel } from "../staleViews";
 
-/** Bande de rendus (P2) : le dernier rendu de chaque vue en vignette, dans les trois onglets ;
- *  une vue périmée porte un point ; « Re-rendre les n vues » les refait en un clic, sans
- *  changer d'onglet. Un clic sur une vignette ouvre Rendus sur cette vue. */
+/** Bande de rendus (P2) : le dernier rendu de chaque vue en vignette, sous le plan ; une vue
+ *  périmée porte un point ; « Re-rendre les n vues » les refait en un clic, sans quitter le
+ *  plan. Un clic sur une vignette ouvre la visionneuse sur cette vue (T7d2). */
 export function RenderStrip({
   project,
   level,
@@ -47,7 +47,7 @@ export function RenderStrip({
                 className={isStale ? "stale" : undefined}
                 onClick={() => onOpen(cam.id)}
                 aria-label={`${name}${isStale ? " (périmée)" : ""}`}
-                title={`${name}${isStale ? " : périmée depuis son rendu" : ""} ; ouvrir dans Rendus`}
+                title={`${name}${isStale ? " : périmée depuis son rendu" : ""} ; voir en grand`}
               >
                 <img
                   src={

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { createEmptyProject, goSpace } from "./helpers";
+import { createEmptyProject, openRendersPane } from "./helpers";
 
 /** US2 : galerie des rendus du projet. Les rendus sont posés directement dans le dossier du
  *  projet (comme les écrirait Blender : `render.json` et images à côté), pour tester la
@@ -90,7 +90,7 @@ test("US2 : galerie groupée par vue, favori et filtre, renommer, supprimer et a
   const b = seedRender(id, "Vue B", { minutesAgo: 5 });
   seedRender(id, "Vue C", { minutesAgo: 9 });
   await page.goto(`/#/projects/${id}`);
-  await goSpace(page, "renders");
+  await openRendersPane(page);
   const gallery = page.getByRole("region", { name: "Galerie des rendus" });
   await expect(gallery).toBeVisible();
 

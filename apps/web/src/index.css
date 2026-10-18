@@ -4999,26 +4999,78 @@ button.link.home-empty-link {
   border-color: var(--primary);
 }
 
-.renders-stage {
-  position: absolute;
+/* ---- T7d2 : visionneuse plein écran des rendus (remplace l'écran de résultats) ---- */
+.render-viewer {
+  position: fixed;
   inset: 0;
-  z-index: 3;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in oklab, var(--canvas) 94%, black);
+}
+
+.render-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.render-viewer-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.render-viewer-sp {
+  flex: 1;
+}
+
+.render-viewer-stale {
+  color: var(--warn);
+  border-color: var(--warn);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.render-viewer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 12px 12px 8px;
+}
+
+.render-viewer-nav {
+  align-self: center;
+  font-size: 1.8rem;
+  width: 40px;
+  height: 56px;
+  flex: none;
+}
+
+.render-viewer-main {
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
-  background: var(--canvas);
-  padding: 76px 24px 84px;
+  display: flex;
+  justify-content: center;
 }
 
-.renders-stage .renders-grid {
+.render-viewer-one {
   list-style: none;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
-  max-width: 1200px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
-  gap: 18px;
+  width: 100%;
+  max-width: 1400px;
 }
 
-.renders-stage .renders-grid > li {
+.render-viewer-one > li {
   background: var(--panel);
   border-radius: 14px;
   box-shadow: var(--shadow-sm);
@@ -5028,28 +5080,47 @@ button.link.home-empty-link {
   gap: 6px;
 }
 
-.renders-stage .renders-grid > li > a > img,
-.renders-stage .renders-grid .pick-frame > img:first-child {
-  width: 100%;
-  height: auto;
-  border-radius: 10px;
+/* L'image tient dans la fenêtre (en-tête, actions de la vue sous l'image). */
+.render-viewer-one > li > a > img,
+.render-viewer-one .pick-frame > img:first-child {
   display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 230px);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 10px;
+  object-fit: contain;
 }
 
-.renders-stage .renders-grid > li.stale .pick-frame > img:first-child,
-.renders-stage .renders-grid > li.stale > a > img {
+.render-viewer-one > li.stale .pick-frame > img:first-child,
+.render-viewer-one > li.stale > a > img {
   opacity: 0.6;
 }
 
-.renders-stale,
-.renders-empty {
-  max-width: 1200px;
-  margin: 0 auto 14px;
+/* « agrandir » (l'image dans un onglet) est redondant en plein écran (retour PO). */
+.render-viewer .pick-open {
+  display: none;
 }
 
-.renders-stale {
-  color: var(--warn);
-  font-weight: 600;
+.render-viewer-comments {
+  flex: none;
+  width: 260px;
+  background: var(--panel);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+}
+
+.render-viewer-comments h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 900px) {
+  .render-viewer-comments {
+    display: none;
+  }
 }
 
 .badge.stale {
@@ -5137,19 +5208,7 @@ button.link.home-empty-link {
   text-overflow: ellipsis;
 }
 
-.renders-stale {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.renders-stale button.primary {
-  font-weight: 600;
-}
-
 /* ---- A3 : statut du plan (jamais un relevé certifié) ---- */
-.renders-plan,
 .plan-status-line {
   display: flex;
   align-items: center;

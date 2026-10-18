@@ -44,12 +44,12 @@ import type { CameraPreset } from "../viewer3d/Viewer3D";
 
 export type ViewMode = "2d" | "split" | "3d";
 /** État de l'atelier : « import » = écran « Ajouter une source » par-dessus le projet,
- *  « edit » = onglets Plan ou 3D (selon la vue), « render » = onglet Rendus. */
-export type Step = "import" | "edit" | "render" | "board";
-/** Espaces du projet (B3, maquette validée le 13 oct.) : l'écran de résultats, l'éditeur
- *  (le tableau), et le plan édité depuis son cadre (en 2D, en 3D ou les deux). Plus
- *  d'onglets : on passe de l'un à l'autre par un seul bouton. */
-export type Tab = "renders" | "board" | "plan" | "3d";
+ *  « edit » = le plan en 2D ou en 3D (selon la vue), « board » = l'espace de travail. */
+export type Step = "import" | "edit" | "board";
+/** Espaces du projet (B3, maquette validée le 13 oct.) : l'espace de travail, et le plan
+ *  édité depuis son cadre (en 2D, en 3D ou les deux). L'écran de résultats a laissé place à
+ *  la visionneuse plein écran (T7d2), ouverte depuis les rendus. */
+export type Tab = "board" | "plan" | "3d";
 
 /* Barres compactes (maquette validée par augus, 6 oct.) : rangée du haut de 36 px (retour,
    titre tronqué, étapes, panneau, réglages), colonne d'outils à deux colonnes à gauche, barre
@@ -123,8 +123,7 @@ const SAVE_LABEL: Record<SaveState, string> = {
 
 /** Nom de l'espace affiché, à côté du bouton de navigation (B3). */
 const SPACE_LABEL: Record<Tab, string> = {
-  renders: "Résultats",
-  board: "Éditeur",
+  board: "Espace de travail",
   plan: "Plan",
   "3d": "Plan · 3D",
 };
@@ -184,28 +183,9 @@ export function TopBar({
           </button>
         )}
       </span>
-      {/* B3 : plus d'onglets. Les résultats ouvrent l'éditeur (le tableau) ; le tableau
-          revient aux résultats ; le plan, édité depuis son cadre, revient au tableau. */}
+      {/* B3 : plus d'onglets ; T7d2 : plus d'écran de résultats (les rendus s'ouvrent en
+          grand dans la visionneuse). Le plan, édité depuis son cadre, revient à l'espace. */}
       <nav className="spaces" aria-label="Espaces du projet">
-        {tab === "renders" && (
-          <button
-            type="button"
-            className="primary"
-            onClick={() => onTab("board")}
-            title="L'espace de travail : photos, demande, rendus, plan et fichiers sur un même espace"
-          >
-            Ouvrir l'éditeur →
-          </button>
-        )}
-        {tab === "board" && (
-          <button
-            type="button"
-            onClick={() => onTab("renders")}
-            title="Les rendus en grand : agrandir, télécharger, affiner, désigner un meuble"
-          >
-            ← Résultats
-          </button>
-        )}
         {(tab === "plan" || tab === "3d") && (
           <button
             type="button"

@@ -65,9 +65,10 @@ message qui dit pourquoi ; l'image d'inspiration de secours de l'ancien accueil 
 désormais depuis Paramètres avancés › Outils experts › Photos.
 
 Un projet s'ouvre sur son **espace de travail** (voir plus bas), cadré sur le cadre **Rendus**
-dès qu'un rendu existe ; le **plan** s'édite depuis son cadre. L'écran de **résultats** existe
-encore pour un temps (il sera remplacé par une visionneuse plein écran). On passe de l'un à l'autre par un seul bouton en haut : **Ouvrir l'éditeur →**
-sur les résultats, **← Résultats** dans l'espace de travail, **← Espace de travail** dans le plan. Dans le plan :
+dès qu'un rendu existe ; le **plan** s'édite depuis son cadre, et **← Espace de travail**, en
+haut, y ramène. Les rendus se regardent en grand dans la **visionneuse** : **Voir en grand**
+dans l'en-tête du cadre Rendus, un double-clic sur un rendu ou une vignette de la bande sous
+le plan ; ← → passent d'une vue à l'autre, Échap ferme. Dans le plan :
 un canevas quadrillé plein écran ; en haut le nom du projet, **Ajouter une source** (photos ou plan), le bouton qui replie le panneau de droite et l'engrenage
 **Paramètres avancés** ; dessous la palette (sélection, main, mur, porte, fenêtre,
 **Recalibrer**, pièces, **Meuble**, **Aménager**, annuler, rétablir, supprimer) ; en bas à
@@ -115,7 +116,7 @@ logiciel de dessin, **JSON à partager** une copie du projet sans historique ni 
 Ce que vous devez voir : le PDF s'ouvre dans le navigateur ou se télécharge, avec le rectangle
 des combles et ses cotes.
 
-Écran de **résultats** : vos images en grand au centre (une vue dont le plan, l'ambiance ou le point de vue ont changé depuis son rendu est marquée **périmée** ; la **bande de rendus**, en bas des résultats et du plan, les refait d'un clic : **Re-rendre les n vues** ; **Affiner cette vue**, sous une image, ouvre la 3D depuis sa caméra avec la pièce choisie) et, à droite, vos **points de vue** (la caméra de chaque photo,
+**Rendus** : vos images en grand dans la **visionneuse**, une à la fois (une vue dont le plan, l'ambiance ou le point de vue ont changé depuis son rendu est marquée **périmée** ; l'en-tête du cadre Rendus, celui de la visionneuse et la **bande de rendus** sous le plan les refont d'un clic : **Re-rendre les n vues** ; **Affiner cette vue**, sous l'image, ouvre la 3D depuis sa caméra avec la pièce choisie) et, dans le volet **Rendus** (**Réglages et galerie** sur le cadre), vos **points de vue** (la caméra de chaque photo,
 plus les points de vue que vous ajoutez et placez au glisser dans le plan : le rond déplace, la
 pointe vise), une vignette 3D pour chacun, le bouton **Rendre** (qualité rapide / normale /
 fine ; la durée et le périphérique sont annoncés avant de lancer ; le rendu tourne en fond, la

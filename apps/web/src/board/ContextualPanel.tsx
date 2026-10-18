@@ -203,8 +203,8 @@ export function ContextualPanel({
           </p>
           {views.length === 0 ? (
             <p className="warn">
-              Aucune vue rendue : Résultats › « Rendre toutes les vues », puis
-              revenez.
+              Aucune vue rendue : cadre Rendus › « Réglages et galerie » › «
+              Rendre toutes les vues », puis revenez.
             </p>
           ) : (
             <ul className="contextual-views">
@@ -283,8 +283,9 @@ export function ContextualPanel({
           </ul>
           {views.length === 0 && (
             <p className="muted">
-              Aucune vue 3D rendue : Résultats › « Rendre toutes les vues » pour
-              un aménagement ; en attendant, la photo est restylée telle quelle.
+              Aucune vue 3D rendue : cadre Rendus › « Réglages et galerie » › «
+              Rendre toutes les vues » pour un aménagement ; en attendant, la
+              photo est restylée telle quelle.
             </p>
           )}
         </>

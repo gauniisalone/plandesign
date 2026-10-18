@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createEmptyProject, expectSpace } from "./helpers";
 
-/** P0 (B3) : les passages d'un espace à l'autre faits à la main (plan → tableau → résultats)
+/** P0 (B3) : les passages d'un espace à l'autre faits à la main (plan → espace → plan)
  *  arrivent au journal local et dans les indicateurs du parcours ; l'arrivée automatique
  *  ne compte pas. */
 test("P0 : passages d'espace mesurés au journal local, sans réseau extérieur", async ({
@@ -21,6 +21,8 @@ test("P0 : passages d'espace mesurés au journal local, sans réseau extérieur"
     (await (await page.request.get(`/api/projects/${id}/metrics`)).json()) as {
       tab_changes: number;
       ttfr_s: number | null;
+      results_editor_trips: number;
+      viewer_opens: number;
     };
   expect((await metrics()).tab_changes).toBe(0);
 
@@ -29,10 +31,17 @@ test("P0 : passages d'espace mesurés au journal local, sans réseau extérieur"
   await expectSpace(page, "plan");
   await nav.getByRole("button", { name: "← Espace de travail" }).click();
   await expectSpace(page, "board");
-  await nav.getByRole("button", { name: "← Résultats" }).click();
-  await expectSpace(page, "renders");
+  // T7d2 : plus d'écran de résultats ; on revient au plan par son cadre (vide ici).
+  await expect(nav.getByRole("button", { name: "← Résultats" })).toHaveCount(0);
+  await page
+    .getByRole("region", { name: "Espace de travail" })
+    .getByRole("button", { name: "✎ Tracer moi-même" })
+    .click();
+  await expectSpace(page, "plan");
   await expect.poll(async () => (await metrics()).tab_changes).toBe(2);
   const m = await metrics();
   expect(m.ttfr_s).toBeNull();
+  expect(m.results_editor_trips).toBe(0);
+  expect(m.viewer_opens).toBe(0);
   expect(outside).toEqual([]);
 });
