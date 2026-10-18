@@ -1193,6 +1193,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   : null
             }
             onAddSource={() => goStep("import")}
+            onImportPlan={(file) => {
+              goStep("import");
+              actions.importFile(file);
+            }}
             focusRenders={rendersFocus}
             onRerender={rerenderViews}
             onOpenRendersPane={(levelId) => {

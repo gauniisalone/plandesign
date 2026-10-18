@@ -179,6 +179,57 @@
   --plan-thumb-wall: #b8b8c4;
 }
 
+/* T7a : accents à comparer (Réglages › Accent), Indigo par défaut tant qu'augus n'a pas
+   tranché. Violet : celui de la maquette du 16 oct. (#A100FF, texte blanc 5,3:1 ; en sombre,
+   texte violet #C05CFF). Provence : terre cuite (texte blanc ≥ 4,5:1 en clair). En sombre,
+   le fond de bouton est un peu plus clair, comme l'indigo (compromis texte blanc / texte
+   coloré sur fond sombre). */
+:root[data-accent="violet"] {
+  --primary: #a100ff;
+  --primary-hover: #8800d9;
+  --primary-fg: #ffffff;
+  --accent-soft: #f4e9ff;
+  --accent-fg: #7600bd;
+}
+
+:root[data-accent="provence"] {
+  --primary: #b0502c;
+  --primary-hover: #964224;
+  --primary-fg: #ffffff;
+  --accent-soft: #f8ece5;
+  --accent-fg: #8a3b1f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="violet"]:not([data-theme="light"]) {
+    --primary: #b04aff;
+    --primary-hover: #c05cff;
+    --accent-soft: #2f1c42;
+    --accent-fg: #c98aff;
+  }
+
+  :root[data-accent="provence"]:not([data-theme="light"]) {
+    --primary: #c4623c;
+    --primary-hover: #d0764f;
+    --accent-soft: #3b271f;
+    --accent-fg: #eda283;
+  }
+}
+
+:root[data-accent="violet"][data-theme="dark"] {
+  --primary: #b04aff;
+  --primary-hover: #c05cff;
+  --accent-soft: #2f1c42;
+  --accent-fg: #c98aff;
+}
+
+:root[data-accent="provence"][data-theme="dark"] {
+  --primary: #c4623c;
+  --primary-hover: #d0764f;
+  --accent-soft: #3b271f;
+  --accent-fg: #eda283;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -3613,6 +3664,28 @@ input:disabled {
   min-width: 90px;
 }
 
+/* T7a : pastille de chaque accent, sa couleur fixe (indépendante de l'accent choisi). */
+.accent-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.accent-dot.accent-indigo {
+  background: oklch(51.1% 0.245 277.1);
+}
+
+.accent-dot.accent-violet {
+  background: #a100ff;
+}
+
+.accent-dot.accent-provence {
+  background: #b0502c;
+}
+
 /* ---- T5 : galerie de tableaux (« / ») ---- */
 .boards {
   min-height: 100vh;
@@ -5576,14 +5649,39 @@ button.link.home-empty-link {
   color: var(--warn);
 }
 
+/* T7a : en-tête sur une ligne : le nom se tronque, les boutons gardent leur place. */
+.board-frame-actions {
+  flex: none;
+}
+
+.board-frame-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-frame-actions .board-frame-icon {
+  width: auto;
+  height: auto;
+  padding: 0.25em;
+  line-height: 0;
+}
+
+.board-frame-actions .board-frame-icon svg {
+  width: 1.6em;
+  height: 1.6em;
+}
+
 .board-item.kind-frame:has(.board-frame-head) .board-frame-hint {
   top: calc(min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 2.4);
 }
 
 .board-frame-title.board-frame-head {
   font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
-  flex-wrap: wrap;
-  white-space: normal;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 0.6em;
@@ -5657,6 +5755,28 @@ button.link.home-empty-link {
   font-size: min(calc(13px * max(1, var(--inv, 1))), 7cqw);
   color: var(--muted);
   pointer-events: none;
+}
+
+/* T7a : « Importer » sous la ligne du cadre vide (Photos, Inspirations), à la même échelle. */
+.board-frame-import {
+  position: absolute;
+  left: 50%;
+  /* La ligne du cadre est centrée sous l'en-tête (≈ 2,4 em) : le bouton se pose dessous. */
+  top: calc(50% + 2.6em);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.3em 0.9em;
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+  white-space: nowrap;
+  border-radius: 999px;
+}
+
+.board-frame-import svg {
+  width: 1.2em;
+  height: 1.2em;
 }
 
 .board-item.kind-note {

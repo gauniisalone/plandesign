@@ -21,8 +21,9 @@ import {
   type RenderEntry,
 } from "../api/client";
 import type { Project } from "../api/types.gen";
-import { PHOTO_TYPES } from "../importFiles";
+import { IMPORT_ACCEPT, isPlanFile, PHOTO_TYPES } from "../importFiles";
 import { walls } from "../model";
+import { IconPlus, IconSliders, IconUpload } from "../ui/icons";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
@@ -96,6 +97,8 @@ interface Props {
   hasRenders: boolean;
   /** T7c : « Importer › Photo ou plan de la pièce » ouvre « Ajouter une source ». */
   onAddSource: () => void;
+  /** T7a : un plan (DXF, PDF, SVG) importé dans le cadre Photos : lu comme un plan. */
+  onImportPlan?: (file: File) => void;
   /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
   focusRenders?: number;
   /** T7d1 : « Re-rendre » les vues périmées depuis l'en-tête du cadre Rendus (T7e : sur le
@@ -125,6 +128,15 @@ const FRAME_HINTS: Record<string, string> = {
   photos: "Déposez vos photos",
   inspirations: "Déposez vos images d'ambiance",
   renders: "Les rendus apparaîtront ici",
+};
+/** T7a (demande d'augus, 18 oct.) : importer droit dans un cadre ; le sélecteur de fichiers
+ *  ne propose que ce que le cadre attend. */
+const FRAME_IMPORT: Record<string, { accept: string; tip: string }> = {
+  photos: { accept: IMPORT_ACCEPT, tip: "Ajouter des photos" },
+  inspirations: {
+    accept: PHOTO_TYPES.join(","),
+    tip: "Ajouter des images d'ambiance",
+  },
 };
 const FRAME_TIPS: Record<string, string> = {
   photos:
@@ -194,12 +206,15 @@ function RendersFrameActions({
           Voir en grand
         </button>
       )}
+      {/* T7a : en icône seule, le nom dans l'infobulle et pour les lecteurs d'écran. */}
       <button
         type="button"
+        className="icon board-frame-icon"
+        aria-label="Réglages et galerie"
         onClick={() => onOpenRendersPane(levelId)}
-        title="Vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
+        title="Réglages et galerie : vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
       >
-        Réglages et galerie
+        <IconSliders />
       </button>
     </span>
   );
@@ -493,17 +508,20 @@ export function BoardCanvas(props: Props) {
     size: [number, number],
   ): { x: number; y: number; frame: BoardItem } => {
     const pad = 24;
+    // T7a : sous l'en-tête des cadres posés par le tableau (88 px, comme `PAD_TOP` côté
+    // serveur) ; sinon le contenu couvrait le titre.
+    const top = frame.role ? 88 : pad;
     const cols = Math.max(
       1,
       Math.floor((frame.w - 2 * pad + 16) / (size[0] + 16)),
     );
     const row = Math.floor(inside / cols);
     const col = inside % cols;
-    const need = pad * 2 + (row + 1) * size[1] + row * 16;
+    const need = top + pad + (row + 1) * size[1] + row * 16;
     const grown = frame.h < need ? { ...frame, h: need } : frame;
     return {
       x: frame.x + pad + col * (size[0] + 16),
-      y: frame.y + pad + row * (size[1] + 16),
+      y: frame.y + top + row * (size[1] + 16),
       frame: grown,
     };
   };
@@ -512,17 +530,27 @@ export function BoardCanvas(props: Props) {
    *  jointe cochée Référence (son allure guidera les rendus) ; ailleurs, une photo entre dans
    *  le projet (elle fait le plan) et un autre fichier est joint. Déposé dans un cadre,
    *  l'élément y prend sa place. */
-  const importFiles = async (files: File[], at: { x: number; y: number }) => {
+  const importFiles = async (
+    files: File[],
+    at: { x: number; y: number },
+    into?: BoardItem,
+  ) => {
     const added: BoardItem[] = [];
     let changed: Project | null = null;
     let firstPhoto: string | null = null;
     let offset = 0;
-    let target = frameAt(at);
+    let target = into ?? frameAt(at);
     let inside = target
       ? items.filter((i) => i.frame === target?.id).length
       : 0;
     const inspirations = target?.role === "inspirations";
     for (const file of files) {
+      // T7a : un plan (DXF, PDF, SVG) mis dans le cadre Photos se lit comme un plan, comme
+      // « Importer › Photo ou plan de la pièce ».
+      if (target?.role === "photos" && isPlanFile(file) && props.onImportPlan) {
+        props.onImportPlan(file);
+        continue;
+      }
       try {
         const isImage = PHOTO_TYPES.includes(file.type);
         let item: BoardItem;
@@ -588,6 +616,28 @@ export function BoardCanvas(props: Props) {
       if (changed) props.onProjectChanged(changed);
       if (changed && firstPhoto) props.onPhotoDropped(changed, firstPhoto);
     }
+  };
+
+  /** T7a : « Importer » (cadre vide) ou « + » (cadre rempli) : le sélecteur de fichiers du
+   *  cadre ; les fichiers choisis y entrent comme s'ils y avaient été déposés. */
+  const frameFileRef = useRef<HTMLInputElement>(null);
+  const frameTarget = useRef<string | null>(null);
+  const pickInto = (frame: BoardItem) => {
+    const input = frameFileRef.current;
+    if (!input) return;
+    frameTarget.current = frame.id;
+    input.accept = FRAME_IMPORT[frame.role ?? ""]?.accept ?? "";
+    input.click();
+  };
+  const onFramePicked = (files: File[]) => {
+    const frame = items.find((i) => i.id === frameTarget.current);
+    frameTarget.current = null;
+    if (!frame || !files.length) return;
+    void importFiles(
+      files,
+      { x: frame.x + frame.w / 2, y: frame.y + frame.h / 2 },
+      frame,
+    );
   };
 
   // ------------------------------------------------------------ pointeur
@@ -1126,6 +1176,20 @@ export function BoardCanvas(props: Props) {
                   {FRAME_HINTS[item.role ?? ""]}
                 </span>
               )}
+            {/* T7a (demande d'augus) : importer droit dans le cadre Photos ou Inspirations ;
+                même effet qu'un dépôt dans ce cadre. */}
+            {FRAME_IMPORT[item.role ?? ""] &&
+              !items.some((i) => i.frame === item.id) && (
+                <button
+                  type="button"
+                  className="board-frame-import"
+                  title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => pickInto(item)}
+                >
+                  <IconUpload aria-hidden="true" /> Importer
+                </button>
+              )}
             <span
               className={
                 item.role
@@ -1154,9 +1218,34 @@ export function BoardCanvas(props: Props) {
                       (e.target as HTMLInputElement).blur();
                   }}
                 />
+              ) : item.role ? (
+                // T7a : un nom long (« Rendus · Variante bureau ») se tronque sur une ligne,
+                // en entier dans l'infobulle.
+                <span className="board-frame-name" title={item.text}>
+                  {item.text}
+                </span>
               ) : (
                 item.text
               )}
+              {FRAME_IMPORT[item.role ?? ""] &&
+                items.some((i) => i.frame === item.id) &&
+                editing !== item.id && (
+                  // T7a : cadre rempli : un petit « + » dans l'en-tête.
+                  <span
+                    className="board-frame-actions"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="icon board-frame-icon"
+                      aria-label={FRAME_IMPORT[item.role ?? ""]!.tip}
+                      title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                      onClick={() => pickInto(item)}
+                    >
+                      <IconPlus />
+                    </button>
+                  </span>
+                )}
               {item.role === "renders" && (
                 // T7d1–T7d2 : ce que portait l'ancien écran de résultats : les vues
                 // périmées à refaire, la visionneuse, le volet Rendus (réglages, galerie).
@@ -1373,6 +1462,19 @@ export function BoardCanvas(props: Props) {
         </button>
       </div>
 
+      {/* T7a : le sélecteur des boutons « Importer » / « + » des cadres. */}
+      <input
+        ref={frameFileRef}
+        type="file"
+        multiple
+        hidden
+        data-testid="frame-file-input"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          onFramePicked(files);
+        }}
+      />
       <div
         ref={stage}
         className={`board-stage tool-${tool}${drag?.kind === "pan" ? " panning" : ""}`}

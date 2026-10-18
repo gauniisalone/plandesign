@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { startPwa } from "./pwa";
-import { applyTheme, loadTheme } from "./theme";
+import { applyAccent, applyTheme, loadAccent, loadTheme } from "./theme";
 import { UpdateBanner } from "./UpdateBanner";
 import "./index.css";
 
@@ -11,6 +11,8 @@ document.documentElement.dataset.build =
   import.meta.env.VITE_OPENPLAN_BUILD ?? "dev";
 // Thème choisi dans Réglages (Système par défaut), posé avant le premier affichage.
 applyTheme(loadTheme());
+// T7a : accent choisi dans Réglages (Indigo par défaut).
+applyAccent(loadAccent());
 startPwa();
 
 const root = document.getElementById("root");

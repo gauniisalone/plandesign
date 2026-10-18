@@ -8,7 +8,14 @@ import {
 } from "../api/client";
 import type { Op } from "../api/ops";
 import type { Level, Project } from "../api/types.gen";
-import { loadTheme, saveTheme, type ThemeChoice } from "../theme";
+import {
+  loadAccent,
+  loadTheme,
+  saveAccent,
+  saveTheme,
+  type AccentChoice,
+  type ThemeChoice,
+} from "../theme";
 import { DoctorBlock } from "./DoctorBlock";
 
 /** Nord du plan : angle depuis +X, 90 = en haut du plan. */
@@ -103,7 +110,8 @@ export function SettingsPanel({
               })
             }
           />
-          Une photo déposée dans l'espace de travail d'un projet sans plan lance la construction du plan
+          Une photo déposée dans l'espace de travail d'un projet sans plan lance
+          la construction du plan
         </label>
         <label className="check">
           <input
@@ -151,9 +159,59 @@ const THEMES: { id: ThemeChoice; label: string }[] = [
   { id: "system", label: "Système" },
 ];
 
-/** Thème de l'interface (b2) : Clair, Sombre ou Système (défaut), retenu par ce navigateur. */
+const ACCENTS: { id: AccentChoice; label: string }[] = [
+  { id: "indigo", label: "Indigo" },
+  { id: "violet", label: "Violet" },
+  { id: "provence", label: "Provence" },
+];
+
+/** Thème de l'interface (b2) : Clair, Sombre ou Système (défaut), retenu par ce navigateur ;
+ *  T7a : l'accent juste dessous (Indigo par défaut), à comparer en un clic. */
 export function ThemeSwitch() {
   const [theme, setTheme] = useState<ThemeChoice>(loadTheme);
+  const [accent, setAccent] = useState<AccentChoice>(loadAccent);
+  return (
+    <>
+      <ThemeField theme={theme} setTheme={setTheme} />
+      <div className="field theme-field">
+        <span id="accent-label">Accent</span>
+        <div
+          className="segmented"
+          role="group"
+          aria-labelledby="accent-label"
+          title="Retenu par ce navigateur"
+        >
+          {ACCENTS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={accent === a.id ? "active" : ""}
+              aria-pressed={accent === a.id}
+              onClick={() => {
+                setAccent(a.id);
+                saveAccent(a.id);
+              }}
+            >
+              <span
+                className={`accent-dot accent-${a.id}`}
+                aria-hidden="true"
+              />
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ThemeField({
+  theme,
+  setTheme,
+}: {
+  theme: ThemeChoice;
+  setTheme: (t: ThemeChoice) => void;
+}) {
   return (
     <div className="field theme-field">
       <span id="theme-label">Thème</span>
