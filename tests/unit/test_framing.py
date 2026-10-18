@@ -23,6 +23,7 @@ from openplan.pipeline.views import (
     FRAME_EDGE,
     HEADROOM_M,
     HORIZON_MIN,
+    NEAR_MAX,
     ROOF_MAX,
     ROOF_MIN_DETAIL,
     SIZES,
@@ -186,6 +187,35 @@ def test_low_attic_detail_frames_the_whole_built_in_bed_under_its_slope() -> Non
     s = plan_shares(room, detail)
     assert ROOF_MIN_DETAIL <= s.roof <= ROOF_MAX, s
     assert s.furniture >= 0.15, s
+
+
+def test_the_reverse_shot_inside_a_purlin_is_now_refused() -> None:
+    """Correctif du contrechamp (vrai grenier, 18 oct.) : la caméra du contrechamp choisi avant
+    le correctif (1,38 ; 4,38 ; 1,30 m, lacet 315°, objectif baissé de 9°) tombait dans la
+    charpente apparente, que la mesure ignorait : le rendu montrait un grand plan de bois
+    flou. La mesure voit maintenant la charpente : presque toute l'image à moins de 1,20 m,
+    place écartée ; et aucune vue choisie n'a plus de 10 % de premier plan bouché."""
+    project = low_attic()
+    level = only_level(project)
+    room = _room(level)
+    before = Pose(1.375, 4.375, 1.30, 5.4978, -0.1562, 853.3, WIDTH, HEIGHT)
+    s = room.framing.shares(before)
+    assert s.near > NEAR_MAX, s
+    # Sans l'habillage réel (boîtes et pentes seulement), la même place passait.
+    bare = FramingScene.build(room.free, room.roofs, level.height, room.framing.boxes)
+    assert bare.shares(before).near <= NEAR_MAX
+    plans, skipped = plan_views(project, level.id)
+    assert [p.role for p in plans] == ["overall", "zone", "detail"], skipped
+    for plan in plans:
+        assert plan_shares(room, plan).near <= NEAR_MAX, (plan.name, plan_shares(room, plan))
+
+
+def test_a_wall_glued_to_the_lens_counts_as_near_whatever_the_surface() -> None:
+    """La règle est générale : une surface à moins de 1,20 m compte, mur comme pente."""
+    scene = _box_room()
+    glued = scene.shares(Pose(0.3, 2.0, 1.5, math.pi, 0.0, 600.0, WIDTH, HEIGHT))
+    open_view = scene.shares(Pose(0.3, 2.0, 1.5, 0.0, 0.0, 600.0, WIDTH, HEIGHT))
+    assert glued.near > 0.9 and open_view.near < NEAR_MAX
 
 
 def test_a_room_without_slopes_keeps_level_eye_height_views() -> None:

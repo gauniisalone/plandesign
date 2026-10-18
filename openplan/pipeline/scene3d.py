@@ -405,6 +405,33 @@ def _ridge_half_beam(panel: RoofPanel) -> Float:
     return np.array(points)
 
 
+def timber_solids(level: Level, graph: WallGraph) -> list[Float]:
+    """Charpente apparente du niveau telle que le rendu la bâtit (chevrons, pannes, faîtière),
+    chaque pièce en sommets de son solide convexe : la mesure du cadrage des vues la compte
+    (une caméra logée dans une panne, ou collée à elle, est refusée)."""
+    out: list[Float] = []
+    for panel in roof_panels(level, graph):
+        enabled, spacing = timber_settings(panel.roof)
+        if not enabled:
+            continue
+        base = panel.vertices[:4]
+        length = float(np.linalg.norm(base[1] - base[0]))
+        slope = float(np.linalg.norm(base[3] - base[0]))
+        holes = []
+        for w in level.elements.values():
+            if isinstance(w, RoofWindow) and w.visible and w.roof == panel.roof.id:
+                u0, u1 = max(0.0, w.offset), min(length, w.offset + w.width)
+                v0, v1 = max(0.0, w.distance), min(slope, w.distance + w.length)
+                if u1 - u0 > 2 * ROOF_WINDOW_FRAME_M and v1 - v0 > 2 * ROOF_WINDOW_FRAME_M:
+                    holes.append((u0, u1, v0, v1))
+        out += [
+            _panel_box(panel, rect, t0, t1)
+            for rect, t0, t1 in timber_rects(length, slope, spacing, holes)
+        ]
+        out.append(_ridge_half_beam(panel))
+    return out
+
+
 def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[Polyhedron]:
     """Une pente pleine, ou percée de ses velux : morceaux de toiture autour des trous, cadre en
     bois et vitrage (finition `glass`) dans chaque trou ; la lumière du ciel entre par là."""

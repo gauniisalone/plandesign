@@ -17,16 +17,19 @@ automatiques d'avant, sauf celles que l'utilisateur a modifiées à la main (`us
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Literal
 from uuid import UUID, uuid4
 
+import numpy as np
 from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-from openplan.geom.framing import Box, FramingScene, Pose, Shares
+from openplan.geom.framing import ROOF as ROOF_SURFACE
+from openplan.geom.framing import Box, FramingScene, Pose, Shares, Solid
 from openplan.geom.roof import derived_roofs, roof_window_footprint
 from openplan.geom.stairs import stair_layout
 from openplan.geom.wallgraph import GeometryError, WallGraph
@@ -192,9 +195,23 @@ class _Room:
 
     @cached_property
     def framing(self) -> FramingScene:
-        """La pièce pour la mesure du cadrage (sol, pentes, murs, meubles hors tapis)."""
+        """La pièce pour la mesure du cadrage (sol, pentes, murs, meubles hors tapis), avec
+        l'habillage réel du rendu (correctif du contrechamp) : charpente apparente sous les
+        pentes et décor debout (plantes, lampes, suspension, rideaux, livres)."""
         boxes = [_box(f) for f in self.furniture if f.category not in RUGS]
-        return FramingScene.build(self.free, self.roofs, self.level.height, boxes)
+        solids: list[Solid] = []
+        if self.roofs:
+            import trimesh
+
+            from openplan.pipeline.scene3d import timber_solids
+
+            graph = WallGraph.from_level(self.level)
+            solids = [
+                Solid(np.asarray(trimesh.convex.convex_hull(points).triangles), ROOF_SURFACE)
+                for points in timber_solids(self.level, graph)
+            ]
+            boxes += _decor_boxes(self.level)
+        return FramingScene.build(self.free, self.roofs, self.level.height, boxes, solids)
 
 
 def _box(f: Furniture) -> Box:
@@ -221,6 +238,22 @@ def _footprint(f: Furniture, margin: float = 0.0) -> Polygon:
             for dx, dy in ((-w, -d), (w, -d), (w, d), (-w, d))
         ]
     )
+
+
+STANDING_DECOR = ("floor_plant", "plant", "table_lamp", "pendant", "curtain", "books")
+"""Décor qui dépasse des meubles et peut boucher l'objectif (pas les tapis, cadres ni textiles
+du lit, posés à plat ou dans la boîte de leur meuble)."""
+
+
+def _decor_boxes(level: Level) -> list[Box]:
+    """Le décor debout que le rendu ajoute (D4, H5), en boîtes pour la mesure du cadrage."""
+    from openplan.pipeline.decor import dress_level
+
+    return [
+        Box(d.x, d.y, d.yaw, d.width / 2.0, d.depth / 2.0, d.z, d.z + d.height)
+        for d in dress_level(level)
+        if d.kind in STANDING_DECOR
+    ]
 
 
 def _room(level: Level, target: Room | None = None) -> _Room:
@@ -379,12 +412,20 @@ HORIZON_MIN = 0.28
 grand angle) : plus bas, les verticales convergent trop."""
 ROOF_MAX = 0.40
 """Part de l'image laissée au toit (pentes et plafond) dans une vue large ou de détail."""
+FLOOR_MIN = 0.15
+"""Part de sol au moins visible dans une vue large sous les combles (le plancher situe la pièce)."""
 ROOF_MIN_DETAIL = 0.12
 """Détail du lit encastré : assez de rampant au-dessus pour lire « sous la pente »."""
 ROOF_PENALTY = 10.0
 """Par point de toit au-delà de 40 % : 10 points de toit en trop coûtent un mètre de vue."""
 FRAMING_COLS = 40
 """Finesse de la mesure (rayons par ligne) pendant le choix ; 64 pour les tests."""
+NEAR_MAX = 0.10
+"""Correctif du contrechamp : une place est écartée si plus de 10 % de l'image est occupée par
+une surface à moins de 1,20 m (`framing.NEAR_M`), quelle qu'elle soit (pente, mur, panne,
+meuble, décor). 10 % laisse passer un bout de panne ou un coin de lit au bord du cadre (une
+bande de bord d'image), pas un premier plan bouché : le contrechamp refusé en couvrait 100 %.
+Si toutes les places sont bouchées, la moins bouchée reste (jamais de vue manquante pour ça)."""
 TILT_STEP = math.radians(1.0)
 RANKED = 12
 """Places les mieux notées par la profondeur, remesurées sous les combles."""
@@ -410,13 +451,16 @@ def _attic_tilt(
     room: _Room, x: float, y: float, z: float, yaw: float, focal: float, aspect: str
 ) -> tuple[float, Shares]:
     """Tangage d'une vue large sous les combles : l'horizon vers le tiers supérieur, puis
-    l'objectif encore baissé (jusqu'à `HORIZON_MIN`) tant que le toit dépasse 40 %."""
+    l'objectif encore baissé (jusqu'à `HORIZON_MIN`) tant que le toit dépasse 40 % ou que le
+    sol fait moins de 15 % (le décor debout peut en cacher une part)."""
     width, height = _size(aspect)
     pitch = _pitch_for_horizon(HORIZON_TARGET, focal, aspect)
     lowest = _pitch_for_horizon(HORIZON_MIN, focal, aspect)
     pose = Pose(x, y, z, yaw, pitch, focal, width, height)
     shares = room.framing.shares(pose, FRAMING_COLS)
-    while shares.roof > ROOF_MAX and pitch - TILT_STEP >= lowest - 1e-9:
+    while (shares.roof > ROOF_MAX or shares.floor < FLOOR_MIN) and (
+        pitch - TILT_STEP >= lowest - 1e-9
+    ):
         pitch -= TILT_STEP
         shares = room.framing.shares(pose.with_pitch(pitch), FRAMING_COLS)
     return pitch, shares
@@ -433,15 +477,27 @@ def _attic_rank(
     pente concourent (toutes, si aucune n'y tient). Renvoie (x, y, z, lacet, tangage)."""
     standing = [c for c in candidates if _attic_stands(room, c[1], c[2])] or candidates
     best: tuple[float, tuple[float, float, float, float, float]] | None = None
-    for score, x, y, yaw in sorted(standing, key=lambda c: -c[0])[:RANKED]:
+    blocked: tuple[float, tuple[float, float, float, float, float]] | None = None
+    measured = 0
+    for score, x, y, yaw in sorted(standing, key=lambda c: -c[0]):
+        if measured >= RANKED:
+            break
         z = room.height_at(x, y, ATTIC_EYE_M)
         if z is None:
             continue
         pitch, shares = _attic_tilt(room, x, y, z, yaw, focal, aspect)
+        if shares.near > NEAR_MAX:
+            # Premier plan bouché (pente collée, panne, meuble, décor) : écartée.
+            if blocked is None or shares.near < blocked[0]:
+                blocked = (shares.near, (x, y, z, yaw, pitch))
+            continue
+        measured += 1
         total = score - ROOF_PENALTY * max(0.0, shares.roof - ROOF_MAX)
         if best is None or total > best[0]:
             best = (total, (x, y, z, yaw, pitch))
-    return None if best is None else best[1]
+    if best is not None:
+        return best[1]
+    return None if blocked is None else blocked[1]
 
 
 def _attic_stands(room: _Room, x: float, y: float) -> bool:
@@ -454,10 +510,17 @@ AXIS_STEP_M = 0.1
 AXIS_STEPS = 41
 
 
-def _attic_axis_start(room: _Room, x: float, y: float, yaw: float) -> tuple[float, float, float]:
+def _attic_axis_start(
+    room: _Room,
+    x: float,
+    y: float,
+    yaw: float,
+    clear: Callable[[float, float, float], bool] | None = None,
+) -> tuple[float, float, float]:
     """Vue d'architecte sous les combles : la première place, en avançant dans l'axe, où la
-    caméra tient à 1,30 m hors des meubles ; essayée depuis ce bout de l'axe et depuis le bout
-    opposé (regard retourné), on garde le plus court. Sans place : la vue telle quelle."""
+    caméra tient à 1,30 m hors des meubles (et, avec `clear`, sans premier plan bouché) ;
+    essayée depuis ce bout de l'axe et depuis le bout opposé (regard retourné), on garde le
+    plus court. Sans place : la vue telle quelle."""
     ux, uy = math.cos(yaw), math.sin(yaw)
     c = room.polygon.centroid
     span = 2.0 * ((c.x - x) * ux + (c.y - y) * uy)
@@ -467,7 +530,7 @@ def _attic_axis_start(room: _Room, x: float, y: float, yaw: float) -> tuple[floa
         for k in range(AXIS_STEPS):
             px = sx + sign * ux * k * AXIS_STEP_M
             py = sy + sign * uy * k * AXIS_STEP_M
-            if _attic_stands(room, px, py):
+            if _attic_stands(room, px, py) and (clear is None or clear(px, py, a)):
                 if best is None or k < best[0]:
                     best = (k, px, py, math.atan2(math.sin(a), math.cos(a)))
                 break
@@ -492,7 +555,11 @@ def _overall(
             # remplirait le bas de l'image une fois l'objectif baissé) ; on avance dans l'axe
             # jusqu'à une place libre, depuis ce bout de l'axe ou depuis l'autre (le plus court).
             # Puis plus bas que l'œil, objectif baissé (horizon au tiers).
-            x, y, yaw = _attic_axis_start(room, x, y, op.yaw)
+            def clear(px: float, py: float, a: float) -> bool:
+                pz = max(1.0, min(ATTIC_EYE_M, room.clearance(px, py) - HEADROOM_M))
+                return _attic_tilt(room, px, py, pz, a, focal, aspect)[1].near <= NEAR_MAX
+
+            x, y, yaw = _attic_axis_start(room, x, y, op.yaw, clear)
             z = max(1.0, min(ATTIC_EYE_M, room.clearance(x, y) - HEADROOM_M))
             pitch, _ = _attic_tilt(room, x, y, z, yaw, focal, aspect)
         else:
@@ -735,6 +802,8 @@ BUILT_IN_DISTANCE_M = 2.5
 BUILT_IN_HEIGHT_M = 1.2
 BUILT_IN_ANGLE_DEG = 50.0
 BUILT_IN_FOCAL_MM = 28.0
+BUILT_IN_WIDE_MM = 24.0
+"""Repli du détail sous la pente quand aucune place libre ne cadre tout à 28 mm."""
 PILLOW_FROM_HEAD_M = 0.35
 """Point de l'oreiller (même cote que la règle du lit encastré, `geom.built_in_bed`)."""
 FRAME_EDGE = 0.04
@@ -755,52 +824,80 @@ def _slope_above_head(room: _Room, bed: Furniture) -> tuple[float, float, float]
     return x, y, z
 
 
-def _built_in_under_slope(room: _Room, bed: Furniture, aspect: str) -> ViewPlan | None:
+def _built_in_under_slope(
+    room: _Room, bed: Furniture, aspect: str, avoid: list[ViewPlan] | None = None
+) -> ViewPlan | None:
     """Détail du lit encastré sous une pente : le lit entier et le rampant au-dessus de la tête
     dans le cadre, ce qui fait lire « encastré sous la pente » ; le toit entre 12 et 40 % de
     l'image ; de trois quarts (50° de l'axe du lit, d'un côté ou de l'autre), à 2,5 m environ.
-    Le tangage centre en hauteur le bas du lit et le rampant."""
+    Le tangage centre en hauteur le bas du lit et le rampant. `avoid` : vues déjà posées, dont
+    les places trop proches sont sautées (le détail reste un détail plutôt qu'être remplacé)."""
     slope = _slope_above_head(room, bed)
     if slope is None:
         return None
-    focal = focal_px(BUILT_IN_FOCAL_MM)
     width, height = _size(aspect)
-    half = _half_fov(focal, aspect)
     shape = _footprint(bed)
     c = shape.centroid
     points = [*_box(bed).corners(), slope]
-    best: tuple[float, tuple[float, float, float, float, float]] | None = None
-    for factor in AIM_FACTORS:
-        d = BUILT_IN_DISTANCE_M * factor
-        for off in range(-90, 91, 10):
-            vx, vy = _rotate(_front(bed), off)
-            x, y = c.x + vx * d, c.y + vy * d
-            z = room.height_at(x, y, BUILT_IN_HEIGHT_M)
-            if z is None or not room.sees((x, y), (c.x, c.y)):
-                continue
-            yaw = math.atan2(c.y - y, c.x - x)
-            if min(room.cone(x, y, yaw, half, furniture=False)) < CLEAR_FRAME * d:
-                continue
-            elev = [math.atan2(pz - z, math.hypot(px - x, py - y)) for px, py, pz in points]
-            pitch = (max(elev) + min(elev)) / 2.0
-            pose = Pose(x, y, z, yaw, pitch, focal, width, height)
-            uv = [pose.project(p) for p in points]
-            fits = all(
-                p is not None
-                and FRAME_EDGE <= p[0] <= 1.0 - FRAME_EDGE
-                and FRAME_EDGE <= p[1] <= 1.0 - FRAME_EDGE
-                for p in uv
-            )
-            roof = room.framing.shares(pose, FRAMING_COLS).roof
-            score = -abs(abs(off) - BUILT_IN_ANGLE_DEG) / 10.0 - abs(factor - 1.0) * 3.0
-            score -= 2.0 * _near_others(room, x, y, yaw, [shape])
-            score -= ROOF_PENALTY * (max(0.0, roof - ROOF_MAX) + max(0.0, ROOF_MIN_DETAIL - roof))
-            score -= 0.0 if fits else MISS_PENALTY
-            if best is None or score > best[0]:
-                best = (score, (x, y, z, yaw, pitch))
+    # Avec des vues à éviter, la grille s'affine (5°) pour retrouver une place qui cadre tout.
+    step = 5 if avoid else 10
+
+    def best_at(mm: float) -> tuple[float, bool, tuple[float, float, float, float, float]] | None:
+        focal = focal_px(mm)
+        half = _half_fov(focal, aspect)
+        best: tuple[float, bool, tuple[float, float, float, float, float]] | None = None
+        for factor in AIM_FACTORS:
+            d = BUILT_IN_DISTANCE_M * factor
+            for off in range(-90, 91, step):
+                vx, vy = _rotate(_front(bed), off)
+                x, y = c.x + vx * d, c.y + vy * d
+                z = room.height_at(x, y, BUILT_IN_HEIGHT_M)
+                if z is None or not room.sees((x, y), (c.x, c.y)):
+                    continue
+                yaw = math.atan2(c.y - y, c.x - x)
+                if min(room.cone(x, y, yaw, half, furniture=False)) < CLEAR_FRAME * d:
+                    continue
+                if any(
+                    _yaw_gap_deg(yaw, a.yaw) < DISTINCT_YAW_DEG
+                    and math.hypot(a.x - x, a.y - y) < DISTINCT_POS_M
+                    for a in avoid or []
+                ):
+                    continue
+                elev = [math.atan2(pz - z, math.hypot(px - x, py - y)) for px, py, pz in points]
+                pitch = (max(elev) + min(elev)) / 2.0
+                pose = Pose(x, y, z, yaw, pitch, focal, width, height)
+                uv = [pose.project(p) for p in points]
+                fits = all(
+                    p is not None
+                    and FRAME_EDGE <= p[0] <= 1.0 - FRAME_EDGE
+                    and FRAME_EDGE <= p[1] <= 1.0 - FRAME_EDGE
+                    for p in uv
+                )
+                measure = room.framing.shares(pose, FRAMING_COLS)
+                if measure.near > NEAR_MAX:
+                    continue  # premier plan bouché : écartée (correctif du contrechamp)
+                roof = measure.roof
+                score = -abs(abs(off) - BUILT_IN_ANGLE_DEG) / 10.0 - abs(factor - 1.0) * 3.0
+                score -= 2.0 * _near_others(room, x, y, yaw, [shape])
+                score -= ROOF_PENALTY * (
+                    max(0.0, roof - ROOF_MAX) + max(0.0, ROOF_MIN_DETAIL - roof)
+                )
+                score -= 0.0 if fits else MISS_PENALTY
+                if best is None or score > best[0]:
+                    best = (score, fits, (x, y, z, yaw, pitch))
+        return best
+
+    # 28 mm d'abord ; si aucune place libre ne cadre tout le lit et son rampant, 24 mm (champ
+    # vertical de 59° au lieu de 51°), comme les vues larges.
+    mm = BUILT_IN_FOCAL_MM
+    best = best_at(mm)
+    if best is None or not best[1]:
+        wider = best_at(BUILT_IN_WIDE_MM)
+        if wider is not None and (best is None or wider[1]):
+            mm, best = BUILT_IN_WIDE_MM, wider
     if best is None:
         return None
-    x, y, z, yaw, pitch = best[1]
+    x, y, z, yaw, pitch = best[2]
     return ViewPlan(
         role="detail",
         name="Détail : lit encastré",
@@ -809,9 +906,9 @@ def _built_in_under_slope(room: _Room, bed: Furniture, aspect: str) -> ViewPlan 
         z=z,
         yaw=yaw,
         pitch=pitch,
-        focal_px=focal,
+        focal_px=focal_px(mm),
         note=f"lit encastré sous la pente, de trois quarts, à "
-        f"{math.hypot(c.x - x, c.y - y):.1f} m, {BUILT_IN_FOCAL_MM:.0f} mm",
+        f"{math.hypot(c.x - x, c.y - y):.1f} m, {mm:.0f} mm",
     )
 
 
@@ -1079,6 +1176,22 @@ def _alternate(room: _Room, taken: list[ViewPlan], aspect: str, role: Role) -> V
 _SKIP_PREFIX: dict[str, str] = {"zone": "vue de zone", "detail": "détail"}
 
 
+def _detail_elsewhere(
+    room: _Room, view: ViewPlan, kept: list[ViewPlan], aspect: str
+) -> ViewPlan | None:
+    """Le détail du lit encastré sous la pente, trop proche d'une vue déjà gardée : la meilleure
+    autre place du même détail, distincte des vues gardées (sinon None : vue de secours)."""
+    if view.role != "detail" or not room.roofs:
+        return None
+    bed = next((f for f in room.furniture if f.category == "bed_builtin"), None)
+    if bed is None:
+        return None
+    moved = _built_in_under_slope(room, bed, aspect, avoid=kept)
+    if moved is None or not all(distinct(moved, k) for k in kept):
+        return None
+    return moved
+
+
 def _ensure_distinct(
     room: _Room,
     views: list[ViewPlan],
@@ -1092,6 +1205,10 @@ def _ensure_distinct(
     for v in views:
         twin = next((k for k in kept if not distinct(v, k)), None)
         if twin is not None:
+            moved = _detail_elsewhere(room, v, kept, aspect)
+            if moved is not None:
+                kept.append(moved)
+                continue
             skipped.append(f"{v.name} : trop proche de « {twin.name} », remplacée")
             continue
         kept.append(v)
