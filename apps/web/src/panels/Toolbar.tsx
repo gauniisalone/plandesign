@@ -630,10 +630,13 @@ export function BottomBar({
   onZoom,
   onFit,
   onChecks,
+  levelSlot,
 }: {
   project: Project;
   levelId: string;
   viewMode: ViewMode;
+  /** T7d1 : nom et hauteur du niveau, en tête de la barre du bas (panneau fermé par défaut). */
+  levelSlot?: React.ReactNode;
   /** pixels par mètre du plan ; 100 % = 100 px/m */
   scale: number;
   /** nombre de vérifications en défaut (rapport courant) */
@@ -664,6 +667,7 @@ export function BottomBar({
   const plan = viewMode !== "3d";
   return (
     <div className="float bottombar">
+      {plan && levelSlot}
       {plan && (
         <>
           <IconButton

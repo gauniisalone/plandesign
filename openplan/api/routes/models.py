@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from uuid import UUID
 
@@ -142,6 +143,21 @@ def inspire(
     return jobs.submit(
         "inspiration", work, device=device, expected_s=expected, message=message, owner=actor
     )
+
+
+@router.get("/jobs/running")
+def running_job(jobs: JobsDep, actor: ActorDep) -> dict[str, object]:
+    """La tâche lourde en cours de cet utilisateur, s'il y en a une : sa sorte et depuis quand,
+    rien d'autre. Sert à isoler les e2e lourds (aucun test ne démarre tant que le précédent
+    calcule) et, plus tard, à une file d'attente."""
+    job = jobs.running_for(actor)
+    if job is None:
+        return {"running": False}
+    return {
+        "running": True,
+        "kind": job.kind,
+        "elapsed_s": round(time.perf_counter() - job.started, 1),
+    }
 
 
 @router.get("/projects/{project_id}/jobs/{job_id}")

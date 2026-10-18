@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { createEmptyProject, expectSpace, goSpace, showPanel } from "./helpers";
 
 /** Barres compactes (étape b) : raccourcis, infobulles, aucune fonction perdue, poignée du
  *  panneau, thème sombre sur le canevas, le plan, la 3D et les cartes. */
@@ -99,7 +99,8 @@ test("barres compactes : infobulles, raccourcis, aucune fonction perdue", async 
   // Aucune fonction perdue : photos, panneau, exports, lien, vues, boussole.
   for (const name of [
     "Ajouter une photo",
-    "Masquer le panneau",
+    // T7d1 : le panneau est fermé par défaut ; l'icône l'ouvre.
+    "Afficher le panneau",
     "Exporter",
     "Copier le lien",
     "Plan",
@@ -239,6 +240,7 @@ test("poignée du panneau : 300 px, 260 à 480 px, largeur retenue", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await createRoom(page, "E2E poignée du panneau");
+  await showPanel(page);
   const side = page.locator(".side");
   const handle = page.getByRole("separator", { name: "Largeur du panneau" });
   const width = async () => Math.round((await side.boundingBox())!.width);
@@ -261,8 +263,9 @@ test("poignée du panneau : 300 px, 260 à 480 px, largeur retenue", async ({
   await page.mouse.up();
   await expect(handle).toHaveAttribute("aria-valuenow", "480");
 
-  // Retenue après rechargement.
+  // Retenue après rechargement (le panneau, fermé au départ, se rouvre à sa largeur).
   await page.reload();
+  await showPanel(page);
   await expect(handle).toHaveAttribute("aria-valuenow", "480");
   expect(await width()).toBe(480);
 

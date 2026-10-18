@@ -13,6 +13,45 @@ export async function createEmptyProject(
   return id;
 }
 
+/** T7d1 (isolation des e2e lourds, PO du 18 oct.) : à la fin d'un test qui lance le chemin
+ *  automatique, attendre que le serveur n'ait plus de tâche lourde ; un échec ne peut plus
+ *  faire refuser (« une tâche lourde à la fois ») le lancement du test suivant. */
+export async function waitNoHeavyJob(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const r = await page.request.get("/api/jobs/running");
+        if (!r.ok()) return false;
+        return ((await r.json()) as { running: boolean }).running;
+      },
+      { timeout: 300_000, intervals: [1000, 2000, 5000] },
+    )
+    .toBe(false);
+}
+
+/** T7d1 (décision PO du 16 oct.) : le panneau de droite est fermé par défaut ; les tests
+ *  qui lisent l'inspecteur l'ouvrent comme on le ferait, par l'icône du haut. */
+export async function showPanel(page: Page): Promise<void> {
+  const open = page.getByRole("button", { name: "Afficher le panneau" });
+  const close = page.getByRole("button", { name: "Masquer le panneau" });
+  // L'atelier finit de charger : l'un des deux boutons est là.
+  await expect(open.or(close)).toBeVisible({ timeout: 30_000 });
+  if (await open.isVisible()) await open.click();
+  await expect(close).toBeVisible();
+}
+
+/** T7d1 : le volet Rendus (ex-écran Résultats : « Vos rendus », vues automatiques, points de
+ *  vue, galerie) s'ouvre par « Réglages et galerie » dans l'en-tête du cadre Rendus. */
+export async function openRendersPane(page: Page): Promise<void> {
+  await page
+    .locator(".board-item.kind-frame.role-renders")
+    .getByRole("button", { name: "Réglages et galerie" })
+    .click();
+  await expect(
+    page.locator(".side-card .side-head h2", { hasText: "Rendus" }),
+  ).toBeVisible();
+}
+
 /** Espaces de l'atelier (B3, plus d'onglets) : résultats, éditeur (le tableau), plan en 2D
  *  ou en 3D, et « Ajouter une source ». */
 export type Space = "renders" | "board" | "plan" | "3d" | "source";

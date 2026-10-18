@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject } from "./helpers";
+import { createEmptyProject, showPanel } from "./helpers";
 
 /** E5c : escalier déplacé à la souris (accroché à un mur parallèle, règles en direct, refus
  *  expliqué, annulable) ; une porte s'ouvre vers la pièce quel que soit le sens de tracé du
@@ -25,6 +25,8 @@ async function createRoom(
   await page.goto("/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
+  // T7d1 : le panneau (fermé par défaut) porte les cartes et la fiche.
+  await showPanel(page);
   const svg = page.locator("svg.plan");
   await expect(svg).toBeVisible();
   await page.keyboard.press("w");

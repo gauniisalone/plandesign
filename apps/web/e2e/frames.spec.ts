@@ -1,7 +1,18 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import {
+  createEmptyProject,
+  expectSpace,
+  goSpace,
+  waitNoHeavyJob,
+} from "./helpers";
+
+// T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
+// encore pour le précédent (même s'il a échoué).
+test.afterEach(async ({ page }) => {
+  await waitNoHeavyJob(page);
+});
 
 /** T2 : cadres typés du tableau. Les cadres « Photos de la pièce » et « Inspirations »
  *  sont là dès le départ avec leur consigne ; une image déposée dans Inspirations devient
@@ -60,7 +71,12 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
     ".board-item.kind-frame.role-inspirations",
   );
   await expect(photos).toContainText("Photos de la pièce");
-  await expect(photos).toContainText("photos réelles de la pièce");
+  // T7d1 : états vides courts ; l'explication est dans l'infobulle.
+  await expect(photos).toContainText("Déposez vos photos");
+  await expect(photos.locator(".board-frame-hint")).toHaveAttribute(
+    "title",
+    /photos réelles de la pièce/,
+  );
   await expect(inspirations).toContainText("images d'ambiance");
 
   // Une image dans Inspirations : jointe, visible, cochée Référence, dans le cadre.
@@ -91,7 +107,7 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
   await dropInto(page, photos, "piece.png", PNG);
   const photo = board.locator(".board-item.kind-photo");
   await expect(photo).toHaveCount(1, { timeout: 60_000 });
-  await expect(photos).not.toContainText("photos réelles de la pièce");
+  await expect(photos).not.toContainText("Déposez vos photos");
   await expect
     .poll(async () => {
       const p = (await (

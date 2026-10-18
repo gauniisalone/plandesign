@@ -7,7 +7,7 @@ import {
   type ProjectSettingsUpdate,
 } from "../api/client";
 import type { Project } from "../api/types.gen";
-import { answersSummary, hasAnswers } from "../guided";
+import { answersSummary } from "../guided";
 import { GuidedFields } from "../panels/GuidedFields";
 
 /** Le compositeur flottant du tableau (T7b, maquette d'augus du 16 octobre) : il remplace la
@@ -18,6 +18,10 @@ import { GuidedFields } from "../panels/GuidedFields";
  *  (`pending_instruction`, `pending_answers`), lu par le chemin automatique. */
 
 const MAX_TEXT = 300;
+/** Ancienne ligne d'aide (retirée à la demande d'augus : moins de texte), en infobulle. */
+const HELP =
+  "Dites ce que vous voulez : espace, surface, chambres, style, envies. Rien n'est " +
+  "obligatoire. Vos exigences sont gardées dans le projet ; le chemin automatique les lit.";
 const SAVE_DELAY_MS = 600;
 const GEMINI_PAUSE_MS = 1200;
 const GEMINI_SPACING_MS = 4500;
@@ -159,6 +163,7 @@ export function Composer({
     <section
       className="board-composer"
       aria-label="Compositeur"
+      title={HELP}
       onPointerDown={stop}
       onWheel={(e) => e.stopPropagation()}
     >
@@ -186,6 +191,17 @@ export function Composer({
             </button>
           ))}
         </div>
+        <span className="board-composer-sp" />
+        {text.trim() && (
+          <button
+            type="button"
+            className="link"
+            onClick={() => onVariant(text.trim())}
+            title="Envoie le texte à l'assistant (un seul moteur)"
+          >
+            Nouvelle variante → assistant
+          </button>
+        )}
         <button
           type="button"
           className="icon board-composer-close"
@@ -232,25 +248,6 @@ export function Composer({
           Google, jamais les photos
         </label>
       )}
-
-      <p className="muted board-composer-note">
-        {hasAnswers(answers) || text.trim()
-          ? "Gardées dans le projet : déposez une photo de la pièce ou générez ; le chemin automatique les lit."
-          : "Dites ce que vous voulez : espace, surface, chambres, style, envies. Rien n'est obligatoire."}
-        {text.trim() && (
-          <>
-            {" "}
-            <button
-              type="button"
-              className="link"
-              onClick={() => onVariant(text.trim())}
-              title="Envoie le texte à l'assistant (un seul moteur)"
-            >
-              Nouvelle variante → assistant
-            </button>
-          </>
-        )}
-      </p>
 
       <footer
         className="board-composer-foot"

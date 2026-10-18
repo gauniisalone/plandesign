@@ -93,6 +93,12 @@ interface Props {
   hasRenders: boolean;
   /** T7c : « Importer › Photo ou plan de la pièce » ouvre « Ajouter une source ». */
   onAddSource: () => void;
+  /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
+  focusRenders?: number;
+  /** T7d1 : « Re-rendre » les vues périmées depuis l'en-tête du cadre Rendus. */
+  onRerender: (cameraIds: string[]) => void;
+  /** T7d1 : ouvre le volet Rendus (réglages, vues, points de vue, galerie). */
+  onOpenRendersPane: () => void;
   /** A1 : « Rendu contextualisé… » depuis une photo, un rendu ou le plan. */
   onContextual: (pick: {
     kind: "photo" | "render" | "plan";
@@ -101,13 +107,20 @@ interface Props {
   }) => void;
 }
 
-/** T2 : ce qu'un cadre fixe attend, tant qu'il est vide. */
+/** T2, T7d1 : ce qu'un cadre fixe attend, tant qu'il est vide : une ligne courte (retour
+ *  d'augus, 16 oct.) ; l'explication passe dans l'infobulle. */
 const FRAME_HINTS: Record<string, string> = {
+  photos: "Déposez vos photos",
+  inspirations: "Déposez vos images d'ambiance",
+  renders: "Les rendus apparaîtront ici",
+};
+const FRAME_TIPS: Record<string, string> = {
   photos:
-    "Déposez ici les photos réelles de la pièce : elles font le plan (ou collez, ou « Importer » à gauche : plan DXF, PDF, image).",
+    "Les photos réelles de la pièce font le plan. Aussi : coller, ou « Importer » à gauche (plan DXF, PDF, image).",
   inspirations:
-    "Déposez ici vos images d'ambiance : leur allure guidera les rendus (cochées Référence).",
-  renders: "Les rendus arrivent ici dès qu'un plan existe.",
+    "Vos images d'ambiance : cochées Référence, leur allure guide les rendus.",
+  renders:
+    "Une image par vue, dès qu'un plan existe ; « Réglages et galerie » pour le reste.",
 };
 
 const uid = () =>
@@ -175,6 +188,16 @@ export function BoardCanvas(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // T7d1 : à l'arrivée d'un projet qui a des rendus (ou du chemin automatique), la vue cadre
+  // le cadre Rendus et ce qu'il contient ; pas un geste, non enregistré.
+  useEffect(() => {
+    if (!props.focusRenders || !stage.current) return;
+    const frame = items.find((i) => i.kind === "frame" && i.role === "renders");
+    if (!frame) return;
+    fit(false, [frame, ...items.filter((i) => i.frame === frame.id)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.focusRenders]);
+
   const applyView = useCallback(
     (next: BoardView) => {
       setViewState(next);
@@ -183,13 +206,15 @@ export function BoardCanvas(props: Props) {
     [props],
   );
 
-  const fit = (persist = true) => {
+  /** Cadre la vue sur `subset` (sinon sur tout ce qui est posé). */
+  const fit = (persist = true, subset?: BoardItem[]) => {
     const el = stage.current;
-    if (!el || items.length === 0) return;
-    const minX = Math.min(...items.map((i) => i.x));
-    const minY = Math.min(...items.map((i) => i.y));
-    const maxX = Math.max(...items.map((i) => i.x + i.w));
-    const maxY = Math.max(...items.map((i) => i.y + i.h));
+    const pool = subset && subset.length > 0 ? subset : items;
+    if (!el || pool.length === 0) return;
+    const minX = Math.min(...pool.map((i) => i.x));
+    const minY = Math.min(...pool.map((i) => i.y));
+    const maxX = Math.max(...pool.map((i) => i.x + i.w));
+    const maxY = Math.max(...pool.map((i) => i.y + i.h));
     const rect = el.getBoundingClientRect();
     // T7b : le compositeur ouvert couvre le bas du tableau ; on cadre au-dessus de lui.
     const composer = el.querySelector(".board-composer");
@@ -850,20 +875,20 @@ export function BoardCanvas(props: Props) {
                   </span>
                 ) : (
                   <>
-                    <b>Votre plan</b>
-                    <span className="muted">
-                      Tracez-le vous-même, ou laissez PlanDesign le construire :
-                      d'après les photos de la pièce, sinon d'après la note
-                      Exigences (plan proposé, à ajuster).
-                    </span>
+                    {/* T7d1 : deux boutons, sans paragraphe (retour d'augus). */}
                     <span className="board-plan-actions">
-                      <button type="button" onClick={() => enterPlan(item)}>
+                      <button
+                        type="button"
+                        onClick={() => enterPlan(item)}
+                        title="Tracer les murs à la main, dans le plan"
+                      >
                         ✎ Tracer moi-même
                       </button>
                       <button
                         type="button"
                         className="primary"
                         onClick={props.onGeneratePlan}
+                        title="D'après les photos de la pièce, sinon d'après vos exigences (plan proposé, à ajuster)"
                       >
                         Générer le plan
                       </button>
@@ -1008,7 +1033,10 @@ export function BoardCanvas(props: Props) {
           <>
             {FRAME_HINTS[item.role ?? ""] &&
               !items.some((i) => i.frame === item.id) && (
-                <span className="board-frame-hint">
+                <span
+                  className="board-frame-hint"
+                  title={FRAME_TIPS[item.role ?? ""]}
+                >
                   {FRAME_HINTS[item.role ?? ""]}
                 </span>
               )}
@@ -1042,6 +1070,34 @@ export function BoardCanvas(props: Props) {
                 />
               ) : (
                 item.text
+              )}
+              {item.role === "renders" && (
+                // T7d1 : ce que portait l'écran Résultats pour les rendus : les vues
+                // périmées à refaire, et le volet Rendus (réglages, vues, galerie).
+                <span
+                  className="board-frame-actions"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {props.stale.size > 0 && (
+                    <button
+                      type="button"
+                      className="board-stale-btn"
+                      onClick={() => props.onRerender([...props.stale])}
+                      title="Le plan, l'ambiance ou le point de vue ont changé depuis ces rendus"
+                    >
+                      Re-rendre {props.stale.size} vue
+                      {props.stale.size > 1 ? "s" : ""} périmée
+                      {props.stale.size > 1 ? "s" : ""}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={props.onOpenRendersPane}
+                    title="Vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
+                  >
+                    Réglages et galerie
+                  </button>
+                </span>
               )}
             </span>
           </>

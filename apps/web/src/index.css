@@ -5060,10 +5060,13 @@ button.link.home-empty-link {
 }
 
 /* ---- P2 : bande de rendus, dans les trois onglets ---- */
+/* T7d1 : la barre du bas porte maintenant le niveau ; la bande des rendus se pose juste
+   au-dessus d'elle, à droite, sans la chevaucher ni chevaucher la bande des photos. */
 .render-strip {
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 64px;
+  right: 12px;
+  left: auto;
+  transform: none;
   padding: 4px 6px;
   gap: 6px;
   max-width: 44%;
@@ -5454,11 +5457,35 @@ button.link.home-empty-link {
   border: 1px solid var(--line);
 }
 
+/* T7d1 : actions de l'en-tête du cadre Rendus. */
+.board-frame-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.4em;
+}
+
+.board-frame-actions button {
+  font-size: inherit;
+  padding: 0.2em 0.7em;
+  margin: 0;
+}
+
+.board-frame-actions .board-stale-btn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
 .board-item.kind-frame:has(.board-frame-head) .board-frame-hint {
-  top: calc(13px * max(1, var(--inv, 1)) * 2.4);
+  top: calc(min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 2.4);
 }
 
 .board-frame-title.board-frame-head {
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+  flex-wrap: wrap;
+  white-space: normal;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
   top: 0;
   bottom: auto;
   left: 0;
@@ -5480,14 +5507,16 @@ button.link.home-empty-link {
 /* T3 : cadre Plan vide : deux chemins, et la progression. */
 .board-plan-empty {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 24px;
+  padding: 16px;
   text-align: center;
-  font-size: calc(13px * max(1, var(--inv, 1)));
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 4.5cqw);
   cursor: default;
 }
 
@@ -5521,8 +5550,10 @@ button.link.home-empty-link {
   display: grid;
   place-items: center;
   padding: 16px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: center;
-  font-size: calc(12.5px * max(1, var(--inv, 1)));
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 7cqw);
   color: var(--muted);
   pointer-events: none;
 }
@@ -5571,9 +5602,11 @@ button.link.home-empty-link {
   justify-content: space-between;
   gap: 0.6em;
   padding: 0.45em 0.8em;
-  font-size: calc(13px * max(1, var(--inv, 1)));
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 4cqw);
   color: var(--muted);
   border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .board-plan-head button {
@@ -6253,4 +6286,48 @@ button.link.home-empty-link {
 
 .board-import-menu .muted {
   font-size: 12px;
+}
+
+/* T7d1 : nom et hauteur du niveau, en tête de la barre du bas du plan (le panneau de droite
+   est fermé par défaut). */
+.level-bar {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.level-bar label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.level-bar input {
+  font: inherit;
+  width: 9em;
+  padding: 3px 6px;
+}
+
+.level-bar .level-bar-height {
+  width: 4em;
+}
+
+@media (max-width: 900px) {
+  .level-bar .muted {
+    display: none;
+  }
+
+  .level-bar input {
+    width: 6em;
+  }
+}
+
+/* T7d1 : les textes d'un cadre se plafonnent à sa largeur (cqw), pour rester lisibles au
+   zoom de départ sans jamais déborder. */
+.board-item {
+  container-type: inline-size;
 }

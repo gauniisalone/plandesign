@@ -27,7 +27,8 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
   await expect(board.locator(".board-item.kind-requirements")).toHaveCount(0);
   const composer = page.getByRole("region", { name: "Compositeur" });
   await expect(composer).toHaveCount(1);
-  await expect(composer).toContainText("Rien n'est obligatoire");
+  // T7d1 : l'aide est en infobulle (moins de texte).
+  await expect(composer).toHaveAttribute("title", /Rien n'est obligatoire/);
   await expect(
     composer.getByRole("tab", { name: "Prompt libre" }),
   ).toHaveAttribute("aria-selected", "true");

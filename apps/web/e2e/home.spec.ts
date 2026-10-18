@@ -1,7 +1,18 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectSpace, goSpace } from "./helpers";
+import {
+  expectSpace,
+  goSpace,
+  openRendersPane,
+  waitNoHeavyJob,
+} from "./helpers";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+// T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
+// encore pour le précédent (même s'il a échoué).
+test.afterEach(async ({ page }) => {
+  await waitNoHeavyJob(page);
+});
 
 /** T5 : la galerie de tableaux remplace l'accueil à prompt (principe d'augus : un projet =
  *  un tableau). « + Nouveau projet » ouvre un tableau vide ; exigences, photos, plan et
@@ -227,9 +238,11 @@ test("tableau : échec de la construction → message clair, photo et consigne g
   const p = await project(page, id);
   expect(Object.keys(p.images)).toHaveLength(1);
   expect(p.pending_instruction).toBe(CONSIGNE);
-  await expect(board.locator(".board-item.kind-plan")).toContainText(
-    "Votre plan",
-  );
+  await expect(
+    board
+      .locator(".board-item.kind-plan")
+      .getByRole("button", { name: "Générer le plan" }),
+  ).toBeVisible();
 });
 
 test("à l'ouverture : un nom tapé à la main reste, même s'il ressemble à un fichier", async ({
@@ -320,6 +333,12 @@ test("L3 sur le tableau : logement décrit → chemin automatique → vues répa
     .getByRole("group", { name: "Déclencheur" })
     .getByRole("button", { name: "Générer maintenant" })
     .click();
+  // T7d1 : l'arrivée cadre le cadre Rendus ; « Vos rendus » est dans le volet Rendus.
+  await expect(
+    page.locator(".board-item.kind-render:not(.role-inspiration)").first(),
+  ).toBeVisible({ timeout: 280_000 });
+  await openRendersPane(page);
+  // Les cartes arrivent vue par vue ; « Vos rendus » paraît quand le chemin finit.
   const check = page.getByRole("region", { name: "Respect de votre demande" });
   await expect(check).toBeVisible({ timeout: 280_000 });
   await expect(check.locator("li", { hasText: "Chambres" })).toHaveClass(
@@ -375,6 +394,10 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
   await page
     .locator(".import-screen .dropzone input[type=file]")
     .setInputFiles(PLAN_DXF);
+  await expect(
+    page.locator(".board-item.kind-render:not(.role-inspiration)").first(),
+  ).toBeVisible({ timeout: 280_000 });
+  await openRendersPane(page);
   await expect(page.getByLabel("Vos rendus")).toBeVisible({ timeout: 280_000 });
   const check = page.getByRole("region", { name: "Respect de votre demande" });
   await expect(check).toBeVisible();

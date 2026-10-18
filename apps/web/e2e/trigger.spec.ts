@@ -1,7 +1,17 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, goSpace } from "./helpers";
+import {
+  createEmptyProject,
+  goSpace,
+  waitNoHeavyJob,
+} from "./helpers";
+
+// T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
+// encore pour le précédent (même s'il a échoué).
+test.afterEach(async ({ page }) => {
+  await waitNoHeavyJob(page);
+});
 
 /** T4 : le déclencheur du chemin « zéro geste » sur le tableau. Bascule « générer au dépôt
  *  d'une photo » activée par défaut : une photo déposée sur un projet sans plan construit le
@@ -108,7 +118,9 @@ test("déclencheur : au dépôt (0 geste) ou « Générer maintenant » (1 geste
     timeout: 60_000,
   });
   await page.waitForTimeout(3000);
-  await expect(plan).toContainText("Votre plan");
+  await expect(
+    plan.getByRole("button", { name: "Générer le plan" }),
+  ).toBeVisible();
   await trigger.getByRole("button", { name: "Générer maintenant" }).click();
   await expect(plan.locator("img.board-plan")).toBeVisible({
     timeout: 180_000,

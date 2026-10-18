@@ -64,17 +64,19 @@ geste). Si le plan ne se construit pas, le projet, la photo et vos exigences res
 message qui dit pourquoi ; l'image d'inspiration de secours de l'ancien accueil se demande
 désormais depuis Paramètres avancés › Outils experts › Photos.
 
-L'atelier a trois espaces, sans onglets : l'écran de **résultats** (les rendus, d'abord dès
-qu'un rendu existe), l'**éditeur** (l'espace de travail, voir plus bas) et le **plan**, édité depuis son
-cadre de l'espace de travail. On passe de l'un à l'autre par un seul bouton en haut : **Ouvrir l'éditeur →**
+Un projet s'ouvre sur son **espace de travail** (voir plus bas), cadré sur le cadre **Rendus**
+dès qu'un rendu existe ; le **plan** s'édite depuis son cadre. L'écran de **résultats** existe
+encore pour un temps (il sera remplacé par une visionneuse plein écran). On passe de l'un à l'autre par un seul bouton en haut : **Ouvrir l'éditeur →**
 sur les résultats, **← Résultats** dans l'espace de travail, **← Espace de travail** dans le plan. Dans le plan :
 un canevas quadrillé plein écran ; en haut le nom du projet, **Ajouter une source** (photos ou plan), le bouton qui replie le panneau de droite et l'engrenage
 **Paramètres avancés** ; dessous la palette (sélection, main, mur, porte, fenêtre,
 **Recalibrer**, pièces, **Meuble**, **Aménager**, annuler, rétablir, supprimer) ; en bas à
 gauche la bande des photos (le **+** ajoute une photo : elle est analysée toute seule et
 complète le plan) ; en bas à droite le zoom, les vues Plan / Plan + 3D / 3D, le menu Exporter et
-« copier le lien » ; à droite l'inspecteur (la fiche de ce qui est sélectionné ; sans sélection,
-le niveau et les vérifications). Une photo peut aussi être glissée directement sur le canevas.
+« copier le lien », et à gauche de la barre du bas le **nom et la hauteur sous plafond du
+niveau**. Le **panneau de droite** (la fiche de ce qui est sélectionné ; sans sélection, le
+niveau et les vérifications) est **fermé au départ** et ne s'ouvre jamais tout seul : son
+icône en haut à droite l'ouvre, comme « Réglages et galerie » ou « Changer l'ambiance ». Une photo peut aussi être glissée directement sur le canevas.
 
 ### 2. Recalibrer
 

@@ -1,7 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import {
+  createEmptyProject,
+  expectSpace,
+  goSpace,
+  showPanel,
+  waitNoHeavyJob,
+} from "./helpers";
+
+// T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
+// encore pour le précédent (même s'il a échoué).
+test.afterEach(async ({ page }) => {
+  await waitNoHeavyJob(page);
+});
 
 /** Scénario de la démo (docs/STATUS.md) joué dans un vrai navigateur. */
 
@@ -40,6 +52,8 @@ async function createProject(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}$/);
   await expect(page.locator("svg.plan")).toBeVisible();
+  // T7d1 : ces parcours lisent l'inspecteur ; le panneau est fermé par défaut.
+  await showPanel(page);
 }
 
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
@@ -701,6 +715,7 @@ test("importer un plan DXF : murs observés tout de suite, correction des calque
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}$/);
   await expect(page.locator("text.room-label")).toHaveCount(1);
   await expectSpace(page, "plan");
+  await showPanel(page);
   await page
     .locator("polygon.wall")
     .first()
@@ -824,6 +839,7 @@ test("importer un plan PDF vectoriel : échelle papier lue, murs tout de suite, 
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await expect(page.locator("text.room-label")).toHaveCount(1);
+  await showPanel(page);
   await page
     .locator("polygon.wall")
     .first()

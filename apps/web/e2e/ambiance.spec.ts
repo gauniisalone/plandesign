@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject } from "./helpers";
+import { createEmptyProject, showPanel } from "./helpers";
 
 /** V1 (note 10, point 1) : fiche « Ambiance » de la pièce, lisible ; ce que l'utilisateur
  *  choisit est marqué « choisi » (prioritaire sur l'automatique) ; annulable. */
@@ -26,6 +26,8 @@ async function createRoom(page: Page, name: string): Promise<string> {
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await page.getByRole("button", { name: "Détecter les pièces" }).click();
   await expect(page.locator("text.room-label")).toHaveCount(1);
+  // T7d1 : la fiche Ambiance est dans le panneau, fermé par défaut.
+  await showPanel(page);
   return /projects\/([0-9a-f-]{36})/.exec(page.url())![1]!;
 }
 

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { createEmptyProject } from "./helpers";
+import { createEmptyProject, showPanel } from "./helpers";
 
 /** E5 : bibliothèque d'ouvertures. Section « Portes et fenêtres » en cartes avec vignettes,
  *  pose d'un clic sur un mur (fantôme qui suit le mur), symboles normalisés, poignées E2 et
@@ -12,6 +12,8 @@ async function createRoom(page: Page, name: string): Promise<string> {
   await page.goto("/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
+  // T7d1 : le panneau (fermé par défaut) porte les cartes et la fiche.
+  await showPanel(page);
   const svg = page.locator("svg.plan");
   await expect(svg).toBeVisible();
   await page.keyboard.press("w");

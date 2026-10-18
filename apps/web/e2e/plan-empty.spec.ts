@@ -18,7 +18,9 @@ test("cadre Plan vide : tracer ou générer, progression, plan de départ depuis
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
   const plan = board.locator(".board-item.kind-plan");
-  await expect(plan).toContainText("Votre plan");
+  await expect(
+    plan.getByRole("button", { name: "Générer le plan" }),
+  ).toBeVisible();
   await expect(
     plan.getByRole("button", { name: "Tracer moi-même" }),
   ).toBeVisible();
@@ -49,7 +51,9 @@ test("cadre Plan vide : tracer ou générer, progression, plan de départ depuis
   await generate.click();
   await expect(plan.locator("img.board-plan")).toBeVisible({ timeout: 30_000 });
   await expect(plan).toContainText("Modifier le plan");
-  await expect(plan).not.toContainText("Votre plan");
+  await expect(
+    plan.getByRole("button", { name: "Générer le plan" }),
+  ).toHaveCount(0);
   const project = (await (
     await page.request.get(`/api/projects/${id}`)
   ).json()) as {

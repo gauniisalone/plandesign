@@ -1385,31 +1385,14 @@ function LevelPanel({
   onOp: (op: Op) => void;
   onOpenAdvanced?: () => void;
 }) {
-  const units = project.units_display;
-  const [name, setName] = useState(level.name);
-  const [prevName, setPrevName] = useState(level.name);
-  if (prevName !== level.name) {
-    setPrevName(level.name);
-    setName(level.name);
-  }
   const levelRooms = rooms(level);
   return (
     <section>
       <h2>Niveau : {level.name}</h2>
       {level.kind && <p className="muted">{LEVEL_KIND_LABELS[level.kind]}</p>}
-      <label className="field">
-        <span>Nom</span>
-        <input
-          aria-label="Nom du niveau"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() =>
-            name.trim() &&
-            name !== level.name &&
-            onOp({ op: "update_level", fields: { name: name.trim() } })
-          }
-        />
-      </label>
+      <p className="muted">
+        Nom et hauteur sous plafond : dans le plan, en haut à gauche.
+      </p>
       <label className="field">
         <span>Niveau</span>
         <select
@@ -1462,22 +1445,6 @@ function LevelPanel({
           </select>
         </label>
       ))}
-      <p className="muted">
-        Hauteur sous plafond ({SOURCE_LABEL[level.height_source]})
-      </p>
-      <NumberField
-        label="Hauteur"
-        value={toDisplay(level.height, units)}
-        suffix={units}
-        onCommit={(v) => {
-          const m = parseLength(String(v), units);
-          if (m && m > 0)
-            onOp({
-              op: "update_level",
-              fields: { height: m, height_source: "measured" },
-            });
-        }}
-      />
       <p className="muted">
         {Object.keys(level.vertices).length} sommets ·{" "}
         {Object.keys(level.elements).length} éléments · {project.history.length}{" "}

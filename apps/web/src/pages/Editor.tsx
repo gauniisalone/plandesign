@@ -47,6 +47,7 @@ import {
 } from "../panels/Toolbar";
 import { RendersStage } from "../panels/RendersStage";
 import { RenderStrip } from "../panels/RenderStrip";
+import { LevelBar } from "../panels/LevelBar";
 import type { PickAction } from "../panels/PickCard";
 import { latestRenders, staleCameraIds } from "../staleViews";
 import { takePendingNotices } from "../state/pendingArrival";
@@ -139,7 +140,9 @@ type SidePane =
   | "amenager"
   | "assistant"
   | "advanced"
-  | "contextual";
+  | "contextual"
+  /** T7d1 : réglages, vues, points de vue et galerie des rendus (ex-écran Résultats). */
+  | "renders";
 
 const PANE_TITLE: Record<Exclude<SidePane, "inspector">, string> = {
   catalog: "Meuble",
@@ -147,6 +150,7 @@ const PANE_TITLE: Record<Exclude<SidePane, "inspector">, string> = {
   assistant: "Assistant",
   advanced: "Paramètres avancés",
   contextual: "Rendu contextualisé",
+  renders: "Rendus",
 };
 
 /** Atelier à onglets Rendus · Plan · 3D (P1), et « Ajouter une source » : canevas plein écran avec barres
@@ -203,15 +207,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   }, []);
   const panelWidth = sideWidth ?? (wide ? 340 : 300);
   const [fitToken, setFitToken] = useState(0);
-  // Écran étroit (≤ 900 px) : le panneau est un tiroir par-dessus le plan, fermé au départ
-  // (décision PO du 29 septembre) ; sinon ouvert à côté.
-  const [panelOpen, setPanelOpen] = useState(
-    () => typeof window === "undefined" || window.innerWidth > 900,
-  );
-  // Sous 900 px le tiroir se ferme (le plan reste visible) ; au-dessus, le panneau revient.
+  // T7d1 (décision PO du 16 octobre) : le panneau de droite est fermé au départ et ne
+  // s'ouvre jamais tout seul : l'icône du haut, ou une action explicite (« Réglages et
+  // galerie », « Changer l'ambiance », l'assistant…).
+  const [panelOpen, setPanelOpen] = useState(false);
+  // Sous 900 px le tiroir se ferme (le plan reste visible) ; il ne se rouvre pas seul.
   useEffect(() => {
     const narrow = window.matchMedia("(max-width: 900px)");
-    const onChange = (e: MediaQueryListEvent) => setPanelOpen(!e.matches);
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setPanelOpen(false);
+    };
     narrow.addEventListener("change", onChange);
     return () => narrow.removeEventListener("change", onChange);
   }, []);
@@ -337,15 +342,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       // à tracer) ; « Ajouter une source » reste dans la barre du haut.
       if (empty && initialStep === undefined) goStep("board");
       else if (empty) setStep("import");
-      else if (latestRenders(state.renders).size > 0) goStep("render");
+      else if (latestRenders(state.renders).size > 0) {
+        // T7d1 : un projet qui a des rendus s'ouvre sur l'espace de travail, cadré sur
+        // eux (volet Rendus fermé : seul le chemin automatique l'ouvre).
+        goStep("board");
+        setRendersFocus((n) => n + 1);
+      }
       // B3 : sans rendu, l'atelier s'ouvre sur l'éditeur (le tableau) ; sans aucun mur,
       // sur le plan, où l'on trace (consigne gardée de l'accueil, L1b).
       else if (walls(level).length > 0) goStep("board");
       // Consigne gardée de l'accueil (P5c) : elle attend dans l'assistant.
-      if (state.project.pending_instruction) {
-        setPanelOpen(true);
-        setPane("assistant");
-      }
+      if (state.project.pending_instruction) setPane("assistant");
     }
     setArrived(true);
     const pending = takePendingFile();
@@ -406,10 +413,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // rendus en premier, avec les accès pour affiner.
   const pilotArrival = state.pilotArrival;
   const [showArrival, setShowArrival] = useState(false);
+  /** T7d1 : demande de cadrage de l'espace de travail sur le cadre Rendus. */
+  const [rendersFocus, setRendersFocus] = useState(0);
   useEffect(() => {
     if (pilotArrival === 0) return;
-    goStep("render");
+    // T7d1 : l'espace de travail cadré sur les rendus, « Vos rendus » ouvert dans le volet.
+    // Le volet Rendus (avec « Vos rendus ») ne s'ouvre pas tout seul : il est prêt pour le
+    // bouton « Réglages et galerie » du cadre Rendus.
+    goStep("board");
     setShowArrival(true);
+    setPane("renders");
+    setRendersFocus((n) => n + 1);
   }, [pilotArrival, goStep]);
   // Pièce principale : le séjour d'un plan généré (L3), sinon celle qui a une ambiance,
   // sinon la première.
@@ -598,7 +612,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     state.autoJob?.status !== "running" &&
     !state.autoDone &&
     !noticeClosed;
-  const show3d = viewMode !== "2d";
+  // T7d1 : volet Rendus ouvert dans l'espace de travail ; la 3D, cachée sous l'espace de
+  // travail, n'est montée que pour les vignettes des points de vue, volet ouvert.
+  const rendersPane = step === "board" && panelOpen && pane === "renders";
+  const show3d = viewMode !== "2d" || rendersPane;
   const rendering = step === "render";
   const tab = tabOf(step, viewMode);
   const stale = staleCameraIds(state.project, state.renders);
@@ -897,6 +914,96 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
 
   const showScaleCard = tool === "scale" && show2d && step !== "import";
 
+  const renderPanel = (
+    <RenderPanel
+      project={state.project}
+      level={level}
+      busy={state.busy}
+      renders={state.renders}
+      renderJob={state.renderJob}
+      loadedToken={loadedToken}
+      snapshot={(pose) => viewerRef.current?.snapshotFrom(pose) ?? null}
+      onView={(pose) => {
+        // Dans Rendus, la 3D est sous les images : « voir en 3D » ouvre l'onglet 3D.
+        setViewFrom((v) => ({ pose, id: (v?.id ?? 0) + 1 }));
+        goTab("3d");
+      }}
+      onRender={(cam, samples, gpu, daylight) => {
+        journalApi.ui(projectId, "render_requested", "one");
+        actions.startRender(
+          cam,
+          samples,
+          gpu,
+          daylight,
+          view3d.section === "none"
+            ? null
+            : { axis: view3d.section, value: view3d.value },
+        );
+      }}
+      sectionNote={
+        view3d.section === "none"
+          ? null
+          : view3d.section === "z"
+            ? `horizontale à ${view3d.value.toFixed(2).replace(".", ",")} m`
+            : `verticale ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
+      }
+      northDeg={level.north_deg ?? 90}
+      onNorth={(deg) =>
+        actions.apply({
+          op: "update_level",
+          fields: { north_deg: deg },
+        })
+      }
+      onAddViewpoint={addViewpoint}
+      onArchitectView={actions.addArchitectView}
+      arrival={
+        showArrival && state.pilotRun
+          ? {
+              run: state.pilotRun,
+              onRefine: () => {
+                journalApi.ui(projectId, "refine_clicked", "arrivee");
+                goStep("edit");
+              },
+              onAmbiance: () => {
+                journalApi.ui(projectId, "refine_clicked", "ambiance");
+                goStep("edit");
+                setPane("inspector");
+                setPanelOpen(true);
+                if (mainRoom)
+                  actions.select({
+                    kind: "element",
+                    id: mainRoom.id,
+                  });
+              },
+              onClose: () => setShowArrival(false),
+              onCatalogue: actions.catalogueRender,
+              onUndoAreaGuard: actions.undoAreaGuard,
+              busy: state.renderJob?.status === "running",
+            }
+          : null
+      }
+      onAutoViews={actions.addAutoViews}
+      onRenderAll={(...args) => {
+        journalApi.ui(projectId, "render_requested", "all");
+        return actions.renderAll(...args);
+      }}
+      onSectionView={
+        view3d.section === "x" || view3d.section === "y"
+          ? () =>
+              actions.addSectionView(view3d.section as "x" | "y", view3d.value)
+          : null
+      }
+      sectionViewName={
+        view3d.section === "x" || view3d.section === "y"
+          ? `Coupe ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
+          : null
+      }
+      onFinish={actions.finishRender}
+      onPlace={placeViewpoint}
+      onRefresh={actions.refreshRenders}
+    />
+  );
+
   return (
     <div
       className="editor"
@@ -1066,6 +1173,12 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   : null
             }
             onAddSource={() => goStep("import")}
+            focusRenders={rendersFocus}
+            onRerender={rerenderViews}
+            onOpenRendersPane={() => {
+              setPane("renders");
+              setPanelOpen(true);
+            }}
             onContextual={(pick) => {
               setContextualPick(pick);
               setPanelOpen(true);
@@ -1222,6 +1335,15 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
         {step !== "import" && step !== "board" && (
           <BottomBar
             project={state.project}
+            levelSlot={
+              step === "edit" ? (
+                <LevelBar
+                  project={state.project}
+                  level={level}
+                  onOp={actions.apply}
+                />
+              ) : null
+            }
             levelId={level.id}
             viewMode={viewMode}
             scale={scale}
@@ -1405,7 +1527,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           conversation) gardent leur état d'un repli à l'autre. */}
       {step !== "import" && (
         <div
-          className={`side${panelOpen ? "" : " closed"}`}
+          // T7d1 : sur l'écran Résultats (jusqu'à T7d2), le panneau Rendus en est la moitié.
+          className={`side${panelOpen || rendering ? "" : " closed"}`}
           style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
         >
           <SideHandle
@@ -1430,102 +1553,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 {assistantPanel}
               </>
             ) : rendering ? (
-              <RenderPanel
-                project={state.project}
-                level={level}
-                busy={state.busy}
-                renders={state.renders}
-                renderJob={state.renderJob}
-                loadedToken={loadedToken}
-                snapshot={(pose) =>
-                  viewerRef.current?.snapshotFrom(pose) ?? null
-                }
-                onView={(pose) => {
-                  // Dans Rendus, la 3D est sous les images : « voir en 3D » ouvre l'onglet 3D.
-                  setViewFrom((v) => ({ pose, id: (v?.id ?? 0) + 1 }));
-                  goTab("3d");
-                }}
-                onRender={(cam, samples, gpu, daylight) => {
-                  journalApi.ui(projectId, "render_requested", "one");
-                  actions.startRender(
-                    cam,
-                    samples,
-                    gpu,
-                    daylight,
-                    view3d.section === "none"
-                      ? null
-                      : { axis: view3d.section, value: view3d.value },
-                  );
-                }}
-                sectionNote={
-                  view3d.section === "none"
-                    ? null
-                    : view3d.section === "z"
-                      ? `horizontale à ${view3d.value.toFixed(2).replace(".", ",")} m`
-                      : `verticale ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
-                }
-                northDeg={level.north_deg ?? 90}
-                onNorth={(deg) =>
-                  actions.apply({
-                    op: "update_level",
-                    fields: { north_deg: deg },
-                  })
-                }
-                onAddViewpoint={addViewpoint}
-                onArchitectView={actions.addArchitectView}
-                arrival={
-                  showArrival && state.pilotRun
-                    ? {
-                        run: state.pilotRun,
-                        onRefine: () => {
-                          journalApi.ui(projectId, "refine_clicked", "arrivee");
-                          goStep("edit");
-                        },
-                        onAmbiance: () => {
-                          journalApi.ui(
-                            projectId,
-                            "refine_clicked",
-                            "ambiance",
-                          );
-                          goStep("edit");
-                          setPane("inspector");
-                          setPanelOpen(true);
-                          if (mainRoom)
-                            actions.select({
-                              kind: "element",
-                              id: mainRoom.id,
-                            });
-                        },
-                        onClose: () => setShowArrival(false),
-                        onCatalogue: actions.catalogueRender,
-                        onUndoAreaGuard: actions.undoAreaGuard,
-                        busy: state.renderJob?.status === "running",
-                      }
-                    : null
-                }
-                onAutoViews={actions.addAutoViews}
-                onRenderAll={(...args) => {
-                  journalApi.ui(projectId, "render_requested", "all");
-                  return actions.renderAll(...args);
-                }}
-                onSectionView={
-                  view3d.section === "x" || view3d.section === "y"
-                    ? () =>
-                        actions.addSectionView(
-                          view3d.section as "x" | "y",
-                          view3d.value,
-                        )
-                    : null
-                }
-                sectionViewName={
-                  view3d.section === "x" || view3d.section === "y"
-                    ? `Coupe ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
-                    : null
-                }
-                onFinish={actions.finishRender}
-                onPlace={placeViewpoint}
-                onRefresh={actions.refreshRenders}
-              />
+              renderPanel
             ) : (
               <>
                 {/* Recalibrer : la carte se range dans le panneau, hors du plan à cliquer. */}
@@ -1616,6 +1644,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   </aside>
                 )}
                 {pane === "assistant" && assistantPanel}
+                {pane === "renders" && renderPanel}
                 {pane === "contextual" && contextualPick && (
                   <ContextualPanel
                     key={`${contextualPick.kind}:${contextualPick.id}`}

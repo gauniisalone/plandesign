@@ -117,6 +117,8 @@ for (const [width, height] of SIZES) {
       ".bottombar",
       ".side",
     ];
+    // T7d1 : nom et hauteur du niveau, dans la barre du bas (couverte par « .bottombar »).
+    await expect(page.locator(".bottombar .level-bar")).toBeVisible();
     await expectNoHorizontalScroll(page);
     await expectDisjoint(page, floats);
     const bars = await boxes(page, [

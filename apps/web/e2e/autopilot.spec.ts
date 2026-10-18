@@ -1,7 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import {
+  createEmptyProject,
+  expectSpace,
+  goSpace,
+  openRendersPane,
+  waitNoHeavyJob,
+} from "./helpers";
+
+// T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
+// encore pour le précédent (même s'il a échoué).
+test.afterEach(async ({ page }) => {
+  await waitNoHeavyJob(page);
+});
 
 /** V1 (note 10, point 6) : chemin « zéro geste ». Un plan déposé, et sans autre geste :
  *  ambiance déduite, aménagement par zones, trois vues, rendus ; progression par étape
@@ -44,12 +56,21 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
     .locator("polygon.wall")
     .first()
     .click({ position: { x: 200, y: 4 } });
+  // T7d1 : le panneau de droite est fermé par défaut ; on l'ouvre pour voir la fiche.
+  await page.getByRole("button", { name: "Afficher le panneau" }).click();
   await expect(page.locator(".inspector h2").first()).toBeVisible();
+  await page.getByRole("button", { name: "Masquer le panneau" }).click();
 
-  // Arrivée : l'onglet Rendus, les rendus d'abord, et les accès pour affiner.
+  // Arrivée (T7d1) : l'espace de travail cadré sur les rendus, le panneau reste fermé ;
+  // « Vos rendus » est dans le volet Rendus, ouvert par « Réglages et galerie ».
+  await expect(
+    page.locator(".board-item.kind-render:not(.role-inspiration)").first(),
+  ).toBeVisible({ timeout: 240_000 });
+  await expectSpace(page, "board");
+  await expect(page.locator(".side.closed")).toHaveCount(1);
+  await openRendersPane(page);
   const arrival = page.getByLabel("Vos rendus");
-  await expect(arrival).toBeVisible({ timeout: 240_000 });
-  await expectSpace(page, "renders");
+  await expect(arrival).toBeVisible();
   for (const name of [
     "Affiner le plan",
     "Changer l'ambiance",
@@ -85,7 +106,19 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
     (e) => e.type === "camera" && e.metadata?.auto_view,
   ).length;
   expect(views).toBeGreaterThanOrEqual(2);
-  // Onglet Rendus (P1) : les images au centre, une par vue, aucune périmée.
+  // Le cadre Rendus de l'espace de travail : une carte par vue, aucune « Re-rendre ».
+  const rendersFrame = page.locator(".board-item.kind-frame.role-renders");
+  await expect(
+    page.locator(".board-item.kind-render:not(.role-inspiration)"),
+  ).toHaveCount(views);
+  await expect(
+    rendersFrame.getByRole("button", { name: /Re-rendre/ }),
+  ).toHaveCount(0);
+  await expect(
+    rendersFrame.getByRole("button", { name: "Réglages et galerie" }),
+  ).toBeVisible();
+  // Écran Résultats (P1), encore là jusqu'à T7d2 : les images au centre, une par vue.
+  await goSpace(page, "renders");
   const stage = page.locator(".renders-stage");
   await expect(stage.locator(".renders-grid img")).toHaveCount(views);
   await expect(stage.locator(".badge.stale")).toHaveCount(0);
@@ -150,7 +183,13 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   );
   expect(moved.ok()).toBeTruthy();
   await page.reload();
-  await expectSpace(page, "renders");
+  // T7d1 : la réouverture se fait sur l'espace de travail ; l'en-tête du cadre Rendus dit
+  // la vue périmée et la refait en un clic.
+  await expectSpace(page, "board");
+  await expect(
+    rendersFrame.getByRole("button", { name: "Re-rendre 1 vue périmée" }),
+  ).toBeVisible();
+  await goSpace(page, "renders");
   await expect(stage.locator(".badge.stale")).toHaveCount(1);
   await expect(
     strip.getByRole("button", { name: "Re-rendre la vue" }),
@@ -251,7 +290,7 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(assistant).toBeVisible();
   // Le fil est relu du journal local après un rechargement.
   await page.reload();
-  await expectSpace(page, "renders");
+  await expectSpace(page, "board");
   await page.getByRole("button", { name: "Assistant", exact: true }).click();
   await expect(
     page.locator("aside.assistant .bubble.user", {
