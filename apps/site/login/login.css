@@ -94,6 +94,45 @@
   line-height: 1.5;
   color: var(--text-muted);
 }
+/* Formulaire de contact (/contact/, avec l'option seulement). */
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+.contact-form input[type="email"],
+.contact-form textarea {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field);
+  color: var(--text);
+  font: 1rem var(--font-sans);
+}
+.contact-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.contact-consent {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+.contact-form .btn {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+.contact-status.ok {
+  color: var(--link);
+}
+.contact-status.error {
+  color: var(--primary);
+}
 .login-mention a {
   color: var(--link);
 }

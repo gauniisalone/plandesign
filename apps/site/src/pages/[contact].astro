@@ -1,0 +1,44 @@
+---
+// Page /contact/ (formulaire de contact) : produite SEULEMENT avec l'option de build
+// PUBLIC_LOGIN_WINDOW=1, car elle appelle l'API de l'app (POST /api/contact). Sans l'option,
+// getStaticPaths ne rend aucune page : la sortie reste celle de la production.
+import Base from "../layouts/Base.astro";
+import { APP_ORIGIN, LOGIN_WINDOW } from "../config";
+
+export function getStaticPaths() {
+  return LOGIN_WINDOW ? [{ params: { contact: "contact" } }] : [];
+}
+
+const MESSAGE_MAX = 2000;
+---
+
+<Base
+  title="Contact · PlanDesign"
+  description="Écrire à l'éditeur de PlanDesign : une question, une remarque, l'exercice de vos droits."
+  path="/contact/"
+>
+  <article class="wrap prose">
+    <h1>Contact</h1>
+    <form id="contact" class="contact-form" data-app-origin={APP_ORIGIN} novalidate>
+      <label class="mono" for="contact-email">Votre adresse e-mail</label>
+      <input id="contact-email" name="email" type="email" autocomplete="email" required maxlength="320" />
+      <label class="mono" for="contact-message">Votre message</label>
+      <textarea id="contact-message" name="message" rows="8" required maxlength={MESSAGE_MAX}></textarea>
+      <div class="contact-trap" aria-hidden="true">
+        <label for="contact-website">Ne pas remplir</label>
+        <input id="contact-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+      </div>
+      <label class="contact-consent">
+        <input id="contact-consent" name="consent" type="checkbox" required />
+        <span>J'accepte que mon adresse serve à me répondre.</span>
+      </label>
+      <p class="contact-status" role="status" hidden></p>
+      <button type="submit" class="btn btn-primary">Envoyer</button>
+    </form>
+    <p class="note">
+      Votre message nous parvient par e-mail ; il n'est pas enregistré sur nos serveurs. Détails dans la page
+      <a href="/confidentialite/">Confidentialité</a>.
+    </p>
+  </article>
+  <script src="/contact.js" defer></script>
+</Base>

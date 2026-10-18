@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { LOGIN_WINDOW } from "../config";
 ---
 
 <Base
@@ -17,7 +18,11 @@ import Base from "../layouts/Base.astro";
       du 21 juin 2004 (LCEN), son éditeur a choisi de ne pas rendre publiques ses coordonnées, qui ont été
       communiquées à l'hébergeur.
     </p>
+    {LOGIN_WINDOW ? (
+      <p>Contact : par le <a href="/contact/">formulaire de contact</a>.</p>
+    ) : (
     <p>Contact : un formulaire de contact sera disponible prochainement.</p>
+    )}
 
     <h2>Directeur de la publication</h2>
     <p>L'éditeur.</p>

@@ -1,10 +1,14 @@
+---
+// Lien « Contact » seulement avec l'option de build (le formulaire appelle l'API de l'app).
+import { LOGIN_WINDOW } from "../config";
+---
 <footer class="site-footer">
   <div class="wrap">
     <p>PlanDesign · version d'essai · code ouvert sous licence Apache-2.0</p>
     <nav aria-label="Pied de page">
       <ul>
         <li><a href="/mentions-legales/">Mentions légales</a></li>
-        <li><a href="/confidentialite/">Confidentialité</a></li>
+        <li><a href="/confidentialite/">Confidentialité</a></li>{LOGIN_WINDOW && <li><a href="/contact/">Contact</a></li>}
       </ul>
     </nav>
   </div>

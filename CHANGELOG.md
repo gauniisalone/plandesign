@@ -7,6 +7,24 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (contact, et lien rouvert)
+
+- **Un lien d'invitation rouvert par la personne qui l'a déjà accepté ouvre le projet**
+  (si elle en est toujours membre), au lieu du message « plus valable ». Pour tout autre, et
+  pour un membre retiré depuis, le message unique reste. C'est le serveur qui décide, même
+  après un rechargement.
+- **Formulaire de contact** sur le site, page `/contact/` et lien « Contact » dans le pied de
+  page : adresse e-mail, message (2000 caractères au plus), case « J'accepte que mon adresse
+  serve à me répondre ». Le message part par e-mail vers `OPENPLAN_CONTACT_TO` (par défaut
+  l'adresse administrateur), en texte seul, sujet « PlanDesign · contact », « Répondre »
+  écrivant directement au visiteur ; rien n'est enregistré en base. Anti-spam : champ piège
+  caché et 3 envois par IP et par heure, avec toujours la même réponse. L'API
+  (`POST /api/contact`) n'accepte que l'origine du site, sans cookies.
+- Comme la fenêtre de connexion, le formulaire n'existe qu'avec l'option de build
+  `PUBLIC_LOGIN_WINDOW=1` ; avec elle, les mentions légales et la confidentialité renvoient à
+  `/contact/`. Sans elle, pas de page `/contact/` : la sortie du site reste identique à la
+  production.
+
 ### 18 octobre 2026 (B1e, partage)
 
 - **Inviter quelqu'un à un projet** (comptes) : menu « Partager », pour le propriétaire seul.

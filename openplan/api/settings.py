@@ -95,6 +95,9 @@ class Settings:
     brevo_api_key: str | None = field(default=None, repr=False)
     """OPENPLAN_BREVO_API_KEY : clé de l'API de Brevo (avec OPENPLAN_MAILER=smtp_api) ; posée
     par l'infra dans le `.env` du serveur, jamais dans le dépôt, jamais affichée ni journalisée."""
+    contact_to: str | None = None
+    """OPENPLAN_CONTACT_TO : destinataire du formulaire de contact du site ; défaut :
+    OPENPLAN_ADMIN_EMAIL."""
     site_origin: str | None = None
     """OPENPLAN_SITE_ORIGIN : origine du site public (`https://plandesign.fr`) dont la fenêtre
     « Se connecter » appelle l'API (B1d). Acceptée seulement sur la demande et la vérification
@@ -152,6 +155,7 @@ class Settings:
             mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,
             brevo_api_key=merged.get("OPENPLAN_BREVO_API_KEY", "").strip() or None,
             site_origin=parse_origin(merged.get("OPENPLAN_SITE_ORIGIN")),
+            contact_to=merged.get("OPENPLAN_CONTACT_TO", "").strip() or None,
         )
 
     @property

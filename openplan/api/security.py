@@ -187,11 +187,16 @@ ACCOUNTS_PUBLIC = frozenset(
         "/api/auth/login/verify",
         "/api/auth/logout",
         "/api/test/mail/last-code",
+        "/api/contact",
     }
 )
+CONTACT_PATH = "/api/contact"
+"""Formulaire de contact du site : l'origine du site SEULEMENT, CORS sans cookies."""
 SITE_MUTATIONS = frozenset({"/api/auth/email/start", "/api/auth/email/verify"})
 """Les seules mutations acceptées depuis l'origine du site (OPENPLAN_SITE_ORIGIN)."""
-SITE_CORS = SITE_MUTATIONS | {"/api/auth/me"}
+SITE_CREDENTIALS = SITE_MUTATIONS | {"/api/auth/me"}
+"""Routes de la fenêtre « Se connecter » : CORS avec cookies (la session de l'app)."""
+SITE_CORS = SITE_CREDENTIALS | {CONTACT_PATH}
 """Routes lisibles par la fenêtre du site (CORS avec cookies)."""
 SITE_PREFLIGHT_MAX_AGE_S = 600
 """Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
@@ -327,7 +332,8 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         path = request.url.path
         if site_origin is not None and from_site(request):
             response.headers["Access-Control-Allow-Origin"] = site_origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+            if path in SITE_CREDENTIALS:
+                response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Vary"] = "Origin"
         if log is not None and logged_path(path):
             log.write(
@@ -355,11 +361,10 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             preflight.headers["Access-Control-Allow-Headers"] = "content-type"
             preflight.headers["Access-Control-Max-Age"] = str(SITE_PREFLIGHT_MAX_AGE_S)
             return finish(preflight, request, "-", started)
-        site_mutation = from_site(request) and path in SITE_MUTATIONS
-        if (
-            request.method in MUTATING
-            and request_origin(request) != allowed_origin
-            and not site_mutation
+        site_mutation = from_site(request) and path in SITE_MUTATIONS | {CONTACT_PATH}
+        if request.method in MUTATING and (
+            (path == CONTACT_PATH and not site_mutation)
+            or (request_origin(request) != allowed_origin and not site_mutation)
         ):
             refused = JSONResponse(status_code=403, content={"detail": "origine refusée"})
             return finish(refused, request, "-", started)

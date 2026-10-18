@@ -152,6 +152,11 @@ class SharingMixin:
         with self.session() as db, db.begin():
             row = self._live_invitation(db, raw or "")
             if row is None:
+                # Rouvert par celui qui l'a servi et toujours membre : le projet s'ouvre (rien
+                # n'est révélé, il l'a déjà). Pour tout autre, le message unique.
+                mine = self._used_by_member(db, raw or "", user_id)
+                if mine is not None:
+                    return mine
                 raise InvitationRefusedError(INVITE_REFUSED)
             done = db.execute(
                 update(Invitation)
@@ -179,6 +184,13 @@ class SharingMixin:
             if ROLE_RANK[row.role] > ROLE_RANK[member.role]:
                 member.role = row.role
             return row.project_id, member.role
+
+    def _used_by_member(self, db: Session, raw: str, user_id: UUID) -> tuple[UUID, str] | None:
+        row = db.scalar(select(Invitation).where(Invitation.token_hash == hash_invite(raw)))
+        if row is None or row.used_by != user_id:
+            return None
+        member = db.get(Member, (row.project_id, user_id))
+        return None if member is None else (row.project_id, member.role)
 
     # --- membres ----------------------------------------------------------------------
 

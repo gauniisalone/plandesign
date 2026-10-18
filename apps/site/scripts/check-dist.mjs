@@ -48,7 +48,9 @@ function check(file) {
       if (/type="application\/ld\+json"/.test(attrs)) continue;
       if (!/\ssrc=/.test(attrs)) problems.push(`${rel} : script en ligne exécutable`);
       else if (!LOGIN) problems.push(`${rel} : script sans l'option de la fenêtre de connexion`);
-      else if (!/\ssrc="\/login\.js"/.test(attrs)) problems.push(`${rel} : script autre que /login.js`);
+      else if (!/\ssrc="\/(login|contact)\.js"/.test(attrs)) {
+        problems.push(`${rel} : script autre que /login.js ou /contact.js`);
+      }
     }
     if (!LOGIN && /data-app-origin|<dialog\b/i.test(text)) {
       problems.push(`${rel} : fenêtre de connexion sans l'option de build`);
@@ -65,7 +67,7 @@ function check(file) {
 }
 
 walk(DIST);
-for (const name of ["login.js", "login.css"]) {
+for (const name of ["login.js", "login.css", "contact.js", "contact/index.html"]) {
   const there = existsSync(join(DIST, name));
   if (!LOGIN && there) problems.push(`${name} : présent sans l'option de build`);
   if (LOGIN && !there) problems.push(`${name} : absent avec l'option de build`);

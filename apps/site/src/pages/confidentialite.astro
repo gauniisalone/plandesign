@@ -19,17 +19,24 @@ import { LOGIN_WINDOW } from "../config";
     )}
 
     <h2>Responsable du traitement</h2>
+    {LOGIN_WINDOW ? (
+      <p>
+        L'éditeur de PlanDesign, projet personnel non professionnel (voir les <a href="/mentions-legales/">mentions
+        légales</a>), joignable par le <a href="/contact/">formulaire de contact</a>.
+      </p>
+    ) : (
     <p>
       L'éditeur de PlanDesign, projet personnel non professionnel (voir les <a href="/mentions-legales/">mentions
       légales</a>). Un formulaire de contact sera disponible prochainement.
     </p>
+    )}
 
     <h2>Ce site</h2>
     <ul>
       <li>Aucun cookie, aucune mesure d'audience, aucun traceur publicitaire, aucun appel à un service tiers : les polices et les images sont servies par nos propres serveurs.</li>
       {LOGIN_WINDOW ? (
         <li>
-          Le formulaire « Décrivez le projet » n'est conservé par ce site : après la connexion, votre description
+          Le formulaire « Décrivez le projet » n'est pas conservé par ce site : après la connexion, votre description
           préremplit votre premier espace de travail, dans l'application.
         </li>
       ) : (
@@ -60,7 +67,7 @@ import { LOGIN_WINDOW } from "../config";
       ) : (
       <li>Compte : votre adresse e-mail, utilisée pour vous envoyer un lien de connexion (sans mot de passe) et pour les messages liés au service.</li>
       )}
-      <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>{LOGIN_WINDOW && <li>Partage : un projet n'est visible que de ses membres ; vous invitez quelqu'un par un lien que vous lui transmettez vous-même.</li>}
+      <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>{LOGIN_WINDOW && <li>Partage : un projet n'est visible que de ses membres ; vous invitez quelqu'un par un lien que vous lui transmettez vous-même.</li>}{LOGIN_WINDOW && <li>Contact : l'adresse et le message envoyés par le formulaire de contact nous parviennent par e-mail (Brevo) ; ils ne sont pas enregistrés sur nos serveurs et ne servent qu'à vous répondre.</li>}
       <li>Hébergement : chez Hostinger, dans un centre de données à Paris (France).</li>
       <li>Vos photos ne sont transmises à aucun service tiers.</li>
       <li>
@@ -89,8 +96,8 @@ import { LOGIN_WINDOW } from "../config";
     <h2>Vos droits</h2>
     {LOGIN_WINDOW ? (
       <p>
-        Vous pouvez exercer vos droits (accès, rectification, suppression, limitation, opposition, portabilité) ; un
-        moyen de contact sera ajouté prochainement. Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
+        Vous pouvez exercer vos droits (accès, rectification, suppression, limitation, opposition, portabilité) par le
+        <a href="/contact/">formulaire de contact</a>. Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
       </p>
     ) : (
     <p>

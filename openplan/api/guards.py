@@ -185,6 +185,8 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/auth/logout"): "public",
     # Mailer `fake` seulement (tests sur la boucle locale) : absente sinon.
     ("GET", "/api/test/mail/last-code"): "public",
+    # Formulaire de contact du site (origine du site seulement, voir security.py)
+    ("POST", "/api/contact"): "public",
     ("GET", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
     ("POST", "/api/auth/invitation/accept"): "user",

@@ -42,8 +42,10 @@ class MailMessage:
     to: str
     subject: str
     text: str
-    code: str = field(repr=False)
+    code: str = field(default="", repr=False)
     """Le code seul, pour la console et la boîte des tests ; jamais journalisé ailleurs."""
+    reply_to: str | None = None
+    """Formulaire de contact : l'adresse du visiteur, pour lui répondre directement."""
 
 
 class Mailer(Protocol):
@@ -60,6 +62,13 @@ class ConsoleMailer:
     """Développement : le code part dans le journal du serveur, rien ne sort de la machine."""
 
     def send(self, message: MailMessage) -> None:
+        if not message.code:
+            log.warning(
+                "message « %s » (envoi « console », rien n'est parti) pour %s",
+                message.subject,
+                mask_address(message.to),
+            )
+            return
         log.warning(
             "code de connexion (envoi « console », rien n'est parti) pour %s : %s",
             mask_address(message.to),
@@ -93,12 +102,15 @@ class BrevoApiMailer:
 
     def payload(self, message: MailMessage) -> dict[str, object]:
         """Le corps JSON envoyé : jamais de `htmlContent` (B1b2)."""
-        return {
+        payload: dict[str, object] = {
             "sender": {"name": APP_NAME, "email": self.sender},
             "to": [{"email": message.to, "contactPixelTrackingConsent": False}],
             "subject": message.subject,
             "textContent": message.text,
         }
+        if message.reply_to:
+            payload["replyTo"] = {"email": message.reply_to}
+        return payload
 
     def send(self, message: MailMessage) -> None:
         if not self.api_key:

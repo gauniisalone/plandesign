@@ -311,11 +311,13 @@ def create_app(
 def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:
     """Comptes actifs : connexion, partage (B1e) et, avec le mailer `fake` seulement, le point
     de test des codes. Importés ici : le mode local n'en charge rien."""
+    from openplan.api.accounts.contact import router as contact_router
     from openplan.api.accounts.routes import router as auth_router
     from openplan.api.accounts.routes import test_router
     from openplan.api.accounts.sharing_routes import router as sharing_router
 
     app.include_router(auth_router, prefix="/api", dependencies=guarded)
     app.include_router(sharing_router, prefix="/api", dependencies=guarded)
+    app.include_router(contact_router, prefix="/api", dependencies=guarded)
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)

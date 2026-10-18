@@ -49,7 +49,13 @@ Avec l'option :
 - CSP de plandesign.fr : `script-src 'self'` (déjà) et
   `connect-src 'self' https://app.plandesign.fr` ;
 - sur l'app : `OPENPLAN_SITE_ORIGIN=https://plandesign.fr` (sans elle, l'API refuse toute
-  origine extérieure ; avec, seulement sur la demande et la vérification du code).
+  origine extérieure ; avec, seulement sur la demande et la vérification du code, et sur le
+  formulaire de contact) ;
+- sur l'app : `OPENPLAN_CONTACT_TO=<adresse>`, destinataire du formulaire de contact
+  (`/contact/`, avec l'option seulement ; par défaut `OPENPLAN_ADMIN_EMAIL`) ;
+- dans `public/sitemap.xml` : ajouter `https://plandesign.fr/contact/` (le sitemap est un
+  fichier fixe, laissé tel quel tant que la sortie par défaut doit rester celle de la
+  production).
 
 ## Contrat /nouveau v1 (site → app) — ACTIF avec la fenêtre
 
