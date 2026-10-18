@@ -8,9 +8,11 @@ export interface Hosting {
   online: boolean;
   /** Des rapports d'erreur filtrés (ni texte, ni photo, ni nom) partent vers le suivi. */
   errorReports: boolean;
+  /** B1d : comptes actifs (connexion par code e-mail, projets visibles de leurs membres). */
+  accounts: boolean;
 }
 
-const LOCAL: Hosting = { online: false, errorReports: false };
+const LOCAL: Hosting = { online: false, errorReports: false, accounts: false };
 let pending: Promise<Hosting> | null = null;
 
 export function loadHosting(): Promise<Hosting> {
@@ -18,6 +20,7 @@ export function loadHosting(): Promise<Hosting> {
     (h) => ({
       online: Boolean(h.exposed),
       errorReports: Boolean(h.error_reports),
+      accounts: Boolean(h.accounts),
     }),
     () => LOCAL,
   );
@@ -39,6 +42,14 @@ export function useHosting(): Hosting | null {
   }, []);
   return hosting;
 }
+
+/** Note 17, § 11 (avenant B1b2 : un code, plus de lien) : la mention des comptes, sur la
+ *  page de connexion et au pied de l'application. */
+export const ACCOUNTS_PRIVACY =
+  "La connexion se fait par un code envoyé à votre adresse e-mail ; PlanDesign ne garde que " +
+  "cette adresse (et le nom que vous donnez), et l'e-mail part par notre service d'envoi " +
+  "(Brevo). Vos projets sont stockés sur plandesign.fr (Hostinger, France) et visibles de " +
+  "leurs membres.";
 
 /** Où sont gardés photos et plans. */
 export function storedWhere(hosting: Hosting | null): string {

@@ -6572,3 +6572,75 @@ button.link.home-empty-link {
 .board-item {
   container-type: inline-size;
 }
+
+/* ---- B1d : page de connexion (comptes actifs) et section Compte des Réglages ---- */
+.login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  gap: 24px;
+}
+.login-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 28px 28px 24px;
+}
+.login-card h1 {
+  font-size: 22px;
+  margin: 12px 0 8px;
+}
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.login-card label {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.login-card input {
+  font: inherit;
+  padding: 10px 12px;
+}
+.login-card input.login-code {
+  letter-spacing: 0.4em;
+  font-size: 22px;
+  text-align: center;
+}
+.login-card button.primary {
+  margin-top: 8px;
+  padding: 10px 16px;
+}
+.login-card .link {
+  align-self: flex-start;
+}
+.login-foot {
+  width: min(560px, 100%);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.account-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.account-section p {
+  margin: 0 0 8px;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* B1d : le rail masqué pour un lecteur (l'attribut `hidden` l'emporte sur display). */
+.board-rail[hidden] {
+  display: none;
+}

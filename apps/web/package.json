@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview",
     "gen-types": "node scripts/gen-types.mjs schemas",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:accounts": "playwright test -c playwright.accounts.config.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

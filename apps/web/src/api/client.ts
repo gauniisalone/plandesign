@@ -156,6 +156,16 @@ export const sessionApi = {
   close: () => request<void>("/session", { method: "DELETE" }),
 };
 
+/** B1d : comptes actifs (lu dans /api/health au démarrage). Une 401 veut alors dire « plus de
+ *  session » : l'application revient à la page de connexion, sans demander de jeton. */
+let accountsMode = false;
+let signedOutHandler: (() => void) | null = null;
+
+export function setAccountsMode(on: boolean, onSignedOut: () => void): void {
+  accountsMode = on;
+  signedOutHandler = onSignedOut;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // Un corps texte est du JSON ; un FormData (import de fichier) laisse le navigateur fixer le type.
   const headers = new Headers(init.headers);
@@ -165,7 +175,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = readToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   let response = await fetch(BASE + path, { ...init, headers });
-  if (response.status === 401) {
+  if (response.status === 401 && accountsMode) {
+    signedOutHandler?.();
+  } else if (response.status === 401) {
     const fresh = askToken();
     if (fresh) {
       headers.set("Authorization", `Bearer ${fresh}`);
@@ -197,6 +209,39 @@ const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+/** B1d : l'utilisateur connecté (comptes actifs). */
+export interface Me {
+  id: string;
+  email: string;
+  name: string;
+  is_admin: boolean;
+}
+
+export type Role = "viewer" | "commenter" | "editor" | "owner";
+
+/** Connexion par code (B1b2) et rôle par projet (B1d). */
+export const authApi = {
+  /** Même réponse que l'adresse ait un compte ou non. */
+  start: (email: string) =>
+    request<{ detail: string }>("/auth/email/start", json({ email })),
+  verify: (email: string, code: string) =>
+    request<Me>("/auth/email/verify", json({ email, code })),
+  /** null sans session : lu hors de `request`, une 401 attendue ne déclenche rien. */
+  me: async (): Promise<Me | null> => {
+    const response = await fetch(`${BASE}/auth/me`);
+    if (response.status === 401) return null;
+    if (!response.ok)
+      throw new ApiError(
+        `${response.status} ${response.statusText}`,
+        response.status,
+      );
+    return (await response.json()) as Me;
+  },
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  logoutAll: () => request<void>("/auth/logout-all", { method: "POST" }),
+  role: (pid: string) => request<{ role: Role }>(`/projects/${pid}/role`),
+};
+
 /** Bilan de l'installation (`openplan doctor`) : chaque manque avec sa commande. */
 export interface DoctorCheck {
   key: string;
@@ -220,6 +265,8 @@ export const api = {
       version: string;
       exposed?: boolean;
       error_reports?: boolean;
+      /** B1d : comptes actifs (page de connexion, session). */
+      accounts?: boolean;
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),

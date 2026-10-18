@@ -95,6 +95,11 @@ class Settings:
     brevo_api_key: str | None = field(default=None, repr=False)
     """OPENPLAN_BREVO_API_KEY : clé de l'API de Brevo (avec OPENPLAN_MAILER=smtp_api) ; posée
     par l'infra dans le `.env` du serveur, jamais dans le dépôt, jamais affichée ni journalisée."""
+    site_origin: str | None = None
+    """OPENPLAN_SITE_ORIGIN : origine du site public (`https://plandesign.fr`) dont la fenêtre
+    « Se connecter » appelle l'API (B1d). Acceptée seulement sur la demande et la vérification
+    du code (et la lecture de `/api/auth/me`), avec CORS à cookies ; vide (défaut) : aucune
+    origine extérieure n'est acceptée, nulle part."""
 
     @property
     def local_only(self) -> bool:
@@ -146,6 +151,7 @@ class Settings:
             public_url=(merged.get("OPENPLAN_PUBLIC_URL") or DEFAULT_PUBLIC_URL).rstrip("/"),
             mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,
             brevo_api_key=merged.get("OPENPLAN_BREVO_API_KEY", "").strip() or None,
+            site_origin=parse_origin(merged.get("OPENPLAN_SITE_ORIGIN")),
         )
 
     @property
@@ -172,6 +178,20 @@ def parse_mailer(text: str | None) -> str:
     value = (text or "console").strip().lower()
     if value not in MAILERS:
         msg = "OPENPLAN_MAILER : « console », « fake » ou « smtp_api »"
+        raise ValueError(msg)
+    return value
+
+
+_ORIGIN = re.compile(r"^https?://[a-z0-9.-]+(:[0-9]{1,5})?$")
+
+
+def parse_origin(text: str | None) -> str | None:
+    """`https://hôte[:port]`, sans chemin ; vide = aucune."""
+    value = (text or "").strip().lower().rstrip("/")
+    if not value:
+        return None
+    if not _ORIGIN.match(value):
+        msg = "OPENPLAN_SITE_ORIGIN : une origine seule, par exemple https://plandesign.fr"
         raise ValueError(msg)
     return value
 

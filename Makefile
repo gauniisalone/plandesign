@@ -113,7 +113,7 @@ endif
 ## Tests de bout en bout dans Chromium headless (Playwright ; lance API + Vite, données jetables)
 ## Prérequis une fois : cd apps/web && npx playwright install chromium (et install-deps sous Debian)
 e2e:
-	cd $(WEB) && rm -rf .e2e-data && npm run e2e
+	cd $(WEB) && rm -rf .e2e-data && npm run e2e && npm run e2e:accounts
 
 ## Pipeline complète (les e2e sont à part : plus lents, navigateur requis)
 check: lint typecheck test build

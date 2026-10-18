@@ -11,7 +11,7 @@ from pydantic import Field
 from openplan.adapters.gateway import ModelGateway
 from openplan.api.deps import LanguageModelDep, ProjectDep, SettingsDep, StoreDep
 from openplan.api.files import served_file
-from openplan.api.guards import forget_project, register_project, visible_summaries
+from openplan.api.guards import forget_project, register_project, role_of, visible_summaries
 from openplan.pipeline import home_settings
 from openplan.pipeline.cover import project_cover
 from openplan.pipeline.generated import generate_plan
@@ -111,6 +111,18 @@ def _without_server_path(request: Request, summaries: list[ProjectSummary]) -> l
 @router.get("/projects/{project_id}")
 def get_project(project: ProjectDep) -> Project:
     return project
+
+
+class ProjectRole(StrictModel):
+    role: str
+    """viewer, commenter, editor ou owner (toujours owner sans comptes)."""
+
+
+@router.get("/projects/{project_id}/role")
+def project_role(project_id: UUID, request: Request) -> ProjectRole:
+    """B1d : le rôle de l'utilisateur, pour masquer à l'écran ce qu'il ne peut pas faire (la
+    vraie barrière reste la garde de chaque route)."""
+    return ProjectRole(role=role_of(request, project_id))
 
 
 @router.post("/projects/{project_id}/name/auto")

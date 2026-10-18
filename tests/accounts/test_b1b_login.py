@@ -394,7 +394,9 @@ def test_logout_everywhere_and_admin_revocation(tmp_path: Path, migrated_url: st
 def test_exposed_access_log_names_the_user_never_the_address(
     tmp_path: Path, migrated_url: str
 ) -> None:
-    client, service, mailer = accounts_client(tmp_path, migrated_url, host="0.0.0.0")
+    client, service, mailer = accounts_client(
+        tmp_path, migrated_url, host="0.0.0.0", mailer="console"
+    )
     assert (
         client.post("/api/session").status_code == 401
     )  # l'ancien cookie de lecture n'existe plus

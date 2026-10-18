@@ -7,6 +7,45 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (B1d-a, note 17 § 5 et § 11)
+
+- **Avec les comptes, l'application commence par la connexion** : sans session, la page
+  « Se connecter à PlanDesign » et rien d'autre (adresse, puis code à 6 chiffres reçu par
+  e-mail), avec la mention de la note 17 § 11 (code e-mail, Brevo, Hostinger en France). Au
+  chargement, une seule réponse 401 au plus. Une session perdue en cours de route ramène à
+  cette page ; après le code, on revient là où l'on était. Le mode local ne change pas.
+- **Arrivée depuis le site (contrat « /nouveau v1 »)** : `app.plandesign.fr/nouveau?v=1&…`
+  crée un espace de travail au nom automatique, avec les exigences préremplies (description,
+  type de pièce, surface), et l'ouvre **compositeur ouvert et prérempli**. **Rien ne se génère
+  tout seul** : il faut un geste, « Générer maintenant » ou le dépôt d'une photo. Les
+  paramètres sont revalidés (pièce de la liste, surface de 8 à 400 m², description coupée à
+  300 caractères), un paramètre inconnu est ignoré.
+- **Rôles à l'écran** : `GET /api/projects/{id}/role`. Le lecteur (et le commentateur, jusqu'à
+  B2) ne voit ni outils, ni compositeur, ni « Générer », ni « Nouveau plan », ni assistant ;
+  le serveur refuse de toute façon ce que le rôle ne permet pas. La galerie « Vos espaces de
+  travail » ne montre que les projets du membre.
+- **Réglages** : l'adresse connectée, « Me déconnecter » et « Me déconnecter partout »
+  (accueil et paramètres de l'espace de travail). Le bilan de l'installation est réservé aux
+  administrateurs.
+- **Préparation de la fenêtre du site (B1d-b)** : `OPENPLAN_SITE_ORIGIN` (vide par défaut :
+  aucune origine extérieure acceptée, nulle part). Renseignée, cette seule origine peut
+  demander et vérifier un code et lire `/api/auth/me`, avec CORS à cookies ; tout le reste lui
+  est refusé. `/api/health` dit seulement si les comptes sont actifs.
+- **Tests** : nouveaux e2e avec les comptes (`make e2e` les enchaîne). Le mailer `fake` a un
+  point de test qui donne le dernier code ; il n'existe qu'avec ce mailer, et l'API refuse de
+  démarrer en mailer `fake` hors de la boucle locale.
+- **Correctif « Générer maintenant »** : taper son texte puis cliquer tout de suite
+  « Générer maintenant » pouvait répondre « Rien à lire pour générer le plan » (le texte
+  part au projet quand le champ est quitté, donc par ce même clic, et la génération lisait
+  la copie d'avant). Le compositeur passe désormais ses exigences du moment.
+- **Backlog** :
+  - B1d-b : aligner les limites du formulaire du site sur l'app (description 300 caractères,
+    surface 8 à 400 m²).
+  - B1e : sur les cartes de la galerie, masquer « Renommer » et « Supprimer » selon le rôle
+    (le résumé des projets portera le rôle).
+  - B2 : bloquer à l'écran, pour un lecteur, le dépôt de photos et le déplacement des cartes
+    sur l'espace de travail (le serveur répond déjà 403).
+
 ### 18 octobre 2026 (B1b2, avenant à la note 17)
 
 - **Connexion par code à 6 chiffres**, avec les comptes seulement : l'e-mail ne porte plus de

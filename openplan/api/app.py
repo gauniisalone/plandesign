@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from openplan import __version__
@@ -149,12 +149,15 @@ def create_app(
     app.state.opening_detector = opening_detector
     app.state.image_finisher = image_finisher
     app.state.jobs = JobRegistry(exposed=not settings.local_only)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=_DEV_ORIGINS,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if not settings.accounts_enabled:
+        # Avec les comptes, seule l'origine du site (OPENPLAN_SITE_ORIGIN) passe, et seulement
+        # sur la connexion (security.py) : pas d'origines de développement.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=_DEV_ORIGINS,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     # Jetons nommés hors boucle locale, journal des accès, en-têtes de sécurité (4.6).
     install_security(app, settings)
@@ -258,7 +261,16 @@ def create_app(
             "error_reports": monitoring_active(),
             "tokens": len(settings.tokens),
             "web": settings.web_dir is not None,
+            # B1d : le front choisit la page de connexion ; rien d'autre sur les comptes.
+            "accounts": settings.accounts_enabled,
         }
+
+    @app.get("/nouveau", include_in_schema=False)
+    def nouveau(request: Request) -> RedirectResponse:
+        """Contrat « /nouveau v1 » du site : le front est routé par l'ancre ; les paramètres
+        passent tels quels, le front les revalide."""
+        query = request.url.query
+        return RedirectResponse("/#/nouveau" + (f"?{query}" if query else ""), status_code=303)
 
     @app.get("/api/doctor", dependencies=guarded)
     def doctor() -> DoctorReport:
@@ -292,6 +304,10 @@ def create_app(
         from openplan.api.accounts.routes import router as auth_router
 
         app.include_router(auth_router, prefix="/api", dependencies=guarded)
+        if settings.mailer == "fake":
+            from openplan.api.accounts.routes import test_router
+
+            app.include_router(test_router, prefix="/api", dependencies=guarded)
     if settings.web_dir is not None:
         _mount_web(app, settings.web_dir)
     return app

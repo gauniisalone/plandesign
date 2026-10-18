@@ -12,6 +12,10 @@ from openplan.api.settings import Settings
 log = logging.getLogger("openplan.accounts")
 
 
+class FakeMailerExposedError(RuntimeError):
+    """Le mailer `fake` (boîte en mémoire, lue par un point de test) hors de la boucle locale."""
+
+
 def open_accounts(settings: Settings, mailer: Mailer | None = None) -> AccountService:
     """Connexion à la base, refus clair si elle n'est pas migrée (jamais de migration
     implicite : `openplan accounts migrate`, après `pg_dump`). `mailer` remplace celui des
@@ -19,6 +23,12 @@ def open_accounts(settings: Settings, mailer: Mailer | None = None) -> AccountSe
     if not settings.database_url:  # pragma: no cover - appelé seulement avec l'URL
         msg = "OPENPLAN_DATABASE_URL absent"
         raise RuntimeError(msg)
+    if settings.mailer == "fake" and not settings.local_only:
+        msg = (
+            "OPENPLAN_MAILER=fake : réservé aux tests sur la boucle locale (sa boîte se lit par "
+            f"un point de test), refusé sur {settings.host}"
+        )
+        raise FakeMailerExposedError(msg)
     mailer = mailer or build_mailer(settings.mailer, settings.mail_from, settings.brevo_api_key)
     engine = make_engine(settings.database_url)
     check_schema(engine)

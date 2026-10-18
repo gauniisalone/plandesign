@@ -25,7 +25,7 @@ from openplan.api.access import (
     AdminDep,
     SignedInDep,
 )
-from openplan.api.accounts.mail import MailMessage
+from openplan.api.accounts.mail import FakeMailer, MailMessage
 from openplan.api.accounts.service import (
     LOGIN_TTL,
     REFUSAL_TEXT,
@@ -40,6 +40,8 @@ from openplan.schemas.common import StrictModel
 
 log = logging.getLogger("openplan.accounts")
 router = APIRouter(tags=["auth"])
+test_router = APIRouter(tags=["tests"])
+"""Enregistré seulement avec OPENPLAN_MAILER=fake, lui-même refusé hors boucle locale."""
 
 NEUTRAL = "Si cette adresse peut se connecter, un code vient de partir."
 LOGIN_PAGE = "/api/auth/login"
@@ -91,6 +93,10 @@ class Me(StrictModel):
 
 class Revoked(StrictModel):
     revoked: int
+
+
+class LastCode(StrictModel):
+    code: str
 
 
 def _send(accounts: AccountService, message: MailMessage) -> None:
@@ -268,3 +274,13 @@ def admin_revoke(user_id: UUID, request: Request, admin: AdminDep) -> Revoked:
     """Un administrateur révoque toutes les sessions d'un utilisateur."""
     del admin
     return Revoked(revoked=service(request).revoke_all(user_id))
+
+
+@test_router.get("/test/mail/last-code")
+def last_code(email: str, request: Request) -> LastCode:
+    """Tests de bout en bout : le dernier code envoyé à cette adresse par le mailer `fake`."""
+    mailer = service(request).mailer
+    message = mailer.last_to(email.strip().lower()) if isinstance(mailer, FakeMailer) else None
+    if message is None:
+        raise HTTPException(status_code=404, detail="aucun code pour cette adresse")
+    return LastCode(code=message.code)

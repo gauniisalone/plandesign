@@ -1,3 +1,5 @@
+import type { Requirements } from "../guided";
+import { useReadOnly } from "../state/account";
 import {
   useCallback,
   useEffect,
@@ -101,7 +103,7 @@ interface Props {
    *  selon la bascule « générer au dépôt d'une photo ». */
   onPhotoDropped: (project: Project, imageId: string) => void;
   /** T4 : « Générer maintenant » (plan s'il manque, sinon chemin automatique). */
-  onGenerateNow: () => void;
+  onGenerateNow: (fresh: Requirements) => void;
   /** T4 : il y a déjà des rendus (la barre du déclencheur se retire). */
   hasRenders: boolean;
   /** T7c : « Importer › Photo ou plan de la pièce » ouvre « Ajouter une source ». */
@@ -256,6 +258,8 @@ export function BoardCanvas(props: Props) {
   /** T7c : le menu « Importer » de la barre de gauche (source du plan, ou fichiers). */
   const [importMenu, setImportMenu] = useState(false);
   const dark = useDarkTheme();
+  // B1d : lecteur (et commentateur jusqu'à B2) : ni outils, ni compositeur, ni « Générer ».
+  const readOnly = useReadOnly();
   const space = useRef(false);
   const items = live ?? board.items;
   const byRun = useMemo(
@@ -997,7 +1001,7 @@ export function BoardCanvas(props: Props) {
             <span className="board-plan-head">
               Plan · {level?.name ?? item.text}
               {emptyPlan && <span className="chip muted">vide</span>}
-              {!emptyPlan && (
+              {!emptyPlan && !readOnly && (
                 <button
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
@@ -1019,26 +1023,28 @@ export function BoardCanvas(props: Props) {
                     <span>{props.planProgress}</span>
                   </span>
                 ) : (
-                  <>
-                    {/* T7d1 : deux boutons, sans paragraphe (retour d'augus). */}
-                    <span className="board-plan-actions">
-                      <button
-                        type="button"
-                        onClick={() => enterPlan(item)}
-                        title="Tracer les murs à la main, dans le plan"
-                      >
-                        ✎ Tracer moi-même
-                      </button>
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={props.onGeneratePlan}
-                        title="D'après les photos de la pièce, sinon d'après vos exigences (plan proposé, à ajuster)"
-                      >
-                        Générer le plan
-                      </button>
-                    </span>
-                  </>
+                  !readOnly && (
+                    <>
+                      {/* T7d1 : deux boutons, sans paragraphe (retour d'augus). */}
+                      <span className="board-plan-actions">
+                        <button
+                          type="button"
+                          onClick={() => enterPlan(item)}
+                          title="Tracer les murs à la main, dans le plan"
+                        >
+                          ✎ Tracer moi-même
+                        </button>
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={() => props.onGeneratePlan()}
+                          title="D'après les photos de la pièce, sinon d'après vos exigences (plan proposé, à ajuster)"
+                        >
+                          Générer le plan
+                        </button>
+                      </span>
+                    </>
+                  )
                 )}
               </span>
             ) : level ? (
@@ -1363,6 +1369,7 @@ export function BoardCanvas(props: Props) {
     <section className="board" aria-label="Espace de travail">
       <div
         className="board-rail"
+        hidden={readOnly}
         role="toolbar"
         aria-label="Outils de l'espace de travail"
       >
@@ -1688,15 +1695,17 @@ export function BoardCanvas(props: Props) {
           )}
 
           {/* T7b : le compositeur flottant (exigences + déclencheur du zéro geste). */}
-          <Composer
-            key={project.id}
-            project={project}
-            hasRenders={props.hasRenders}
-            planProgress={props.planProgress}
-            onSettings={props.onSettings}
-            onVariant={props.onVariant}
-            onGenerateNow={props.onGenerateNow}
-          />
+          {!readOnly && (
+            <Composer
+              key={project.id}
+              project={project}
+              hasRenders={props.hasRenders}
+              planProgress={props.planProgress}
+              onSettings={props.onSettings}
+              onVariant={props.onVariant}
+              onGenerateNow={props.onGenerateNow}
+            />
+          )}
         </div>
 
         <div

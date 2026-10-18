@@ -186,8 +186,14 @@ ACCOUNTS_PUBLIC = frozenset(
         "/api/auth/login/code",
         "/api/auth/login/verify",
         "/api/auth/logout",
+        "/api/test/mail/last-code",
     }
 )
+SITE_MUTATIONS = frozenset({"/api/auth/email/start", "/api/auth/email/verify"})
+"""Les seules mutations acceptées depuis l'origine du site (OPENPLAN_SITE_ORIGIN)."""
+SITE_CORS = SITE_MUTATIONS | {"/api/auth/me"}
+"""Routes lisibles par la fenêtre du site (CORS avec cookies)."""
+SITE_PREFLIGHT_MAX_AGE_S = 600
 """Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
 AUTH_PREFIX = "/api/auth/"
 AUTH_RATE_EXEMPT = frozenset({"/api/auth/me"})
@@ -309,10 +315,20 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
     exposed = not settings.local_only
     log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
     allowed_origin = settings.public_origin
+    site_origin = settings.site_origin
     limiter = SlidingWindowLimiter(AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_S)
+
+    def from_site(request: Request) -> bool:
+        """Requête de la fenêtre « Se connecter » du site, sur une route qui l'accepte."""
+        origin = request.headers.get("origin", "").strip().lower()
+        return site_origin is not None and origin == site_origin and request.url.path in SITE_CORS
 
     def finish(response: Response, request: Request, actor: str, started: float) -> Response:
         path = request.url.path
+        if site_origin is not None and from_site(request):
+            response.headers["Access-Control-Allow-Origin"] = site_origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Vary"] = "Origin"
         if log is not None and logged_path(path):
             log.write(
                 actor=actor,
@@ -333,7 +349,18 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         request.state.user = None
         if not path.startswith("/api/"):
             return finish(await call_next(request), request, "-", started)
-        if request.method in MUTATING and request_origin(request) != allowed_origin:
+        if request.method == "OPTIONS" and from_site(request):
+            preflight = Response(status_code=204)
+            preflight.headers["Access-Control-Allow-Methods"] = "GET, POST"
+            preflight.headers["Access-Control-Allow-Headers"] = "content-type"
+            preflight.headers["Access-Control-Max-Age"] = str(SITE_PREFLIGHT_MAX_AGE_S)
+            return finish(preflight, request, "-", started)
+        site_mutation = from_site(request) and path in SITE_MUTATIONS
+        if (
+            request.method in MUTATING
+            and request_origin(request) != allowed_origin
+            and not site_mutation
+        ):
             refused = JSONResponse(status_code=403, content={"detail": "origine refusée"})
             return finish(refused, request, "-", started)
         if path.startswith(AUTH_PREFIX) and path not in AUTH_RATE_EXEMPT:

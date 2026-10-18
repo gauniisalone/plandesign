@@ -8,11 +8,13 @@ import {
 } from "../api/client";
 import { APP_NAME } from "../brand";
 import { formatDate } from "../model";
+import { AccountSection } from "../panels/AccountSection";
 import { DoctorBlock } from "../panels/DoctorBlock";
 import { ThemeSwitch } from "../panels/SettingsPanel";
 import type { Step } from "../panels/Toolbar";
 import { useDarkTheme } from "../board/mediaItems";
-import { privacyLine, useHosting } from "../state/hosting";
+import { useAccount } from "../state/account";
+import { ACCOUNTS_PRIVACY, privacyLine, useHosting } from "../state/hosting";
 import { IconGear, IconPlan, IconPlus, IconTrash } from "../ui/icons";
 
 interface Props {
@@ -40,11 +42,14 @@ export function Home({ onOpen }: Props) {
     homeSettings?.remote_model && homeSettings.gemini_text,
   );
   const hosting = useHosting();
+  const account = useAccount();
+  // Avec les comptes, le bilan de l'installation est réservé aux administrateurs.
+  const showDoctor = !account || account.me.is_admin;
 
   useEffect(() => {
-    api.doctor().then(setDoctor, () => undefined);
+    if (showDoctor) api.doctor().then(setDoctor, () => undefined);
     homeApi.settings().then(setHomeSettings, () => undefined);
-  }, []);
+  }, [showDoctor]);
 
   const refresh = () =>
     api.listProjects().then(
@@ -96,7 +101,11 @@ export function Home({ onOpen }: Props) {
           onClick={() => setSettingsOpen((o) => !o)}
           aria-label="Réglages"
           aria-expanded={settingsOpen}
-          title="Réglages : thème, Gemini, état de l'installation"
+          title={
+            account
+              ? "Réglages : thème, Gemini, compte"
+              : "Réglages : thème, Gemini, état de l'installation"
+          }
         >
           <IconGear />
         </button>
@@ -117,6 +126,7 @@ export function Home({ onOpen }: Props) {
               </label>
             )}
             {doctor && <DoctorBlock report={doctor} />}
+            <AccountSection />
           </div>
         )}
       </header>
@@ -169,6 +179,7 @@ export function Home({ onOpen }: Props) {
             erreurs) ; tant que l'hébergement n'est pas connu, elle n'affirme rien. */}
         {hosting && <> · {privacyLine(hosting, gemini)}</>} · une reconstruction
         estimée n'est jamais un relevé certifié.
+        {hosting?.accounts && <> {ACCOUNTS_PRIVACY}</>}
       </footer>
     </div>
   );

@@ -47,6 +47,7 @@ V, E, O = Role.VIEWER, Role.EDITOR, Role.OWNER  # noqa: E741 - lisibilité de la
 PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     # Projet
     ("GET", P): V,
+    ("GET", P + "/role"): V,  # B1d : le front masque ce que le rôle ne permet pas
     ("PATCH", P): E,  # l'accord pour un modèle distant exige en plus `owner` (settings.py)
     ("DELETE", P): O,
     ("POST", P + "/name/auto"): E,
@@ -175,6 +176,8 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/auth/login/code"): "public",
     ("POST", "/api/auth/login/verify"): "public",
     ("POST", "/api/auth/logout"): "public",
+    # Mailer `fake` seulement (tests sur la boucle locale) : absente sinon.
+    ("GET", "/api/test/mail/last-code"): "public",
     ("GET", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
     ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
@@ -283,6 +286,17 @@ def route_guard(request: Request) -> None:
 
 
 # --- liste et création des projets --------------------------------------------------
+
+
+def role_of(request: Request, project_id: UUID) -> str:
+    """Rôle de l'utilisateur sur le projet ; `owner` sans comptes (tout est permis)."""
+    accounts = accounts_of(request)
+    if accounts is None:
+        return "owner"
+    name = accounts.role_name(project_id, signed_in_user(request).id)
+    if name is None:
+        raise HTTPException(status_code=404, detail=NOT_A_MEMBER.format(project_id))
+    return name
 
 
 def visible_ids(request: Request) -> set[UUID] | None:

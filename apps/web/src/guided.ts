@@ -89,6 +89,12 @@ const label = (
 ) => list.find((x) => x.value === value)?.label ?? value ?? "";
 
 /** Une réponse au moins est donnée ? */
+/** Exigences du compositeur (T7b) : le texte libre et les réponses guidées. */
+export interface Requirements {
+  text: string;
+  answers: GuidedAnswers;
+}
+
 export function hasAnswers(a: GuidedAnswers): boolean {
   return Boolean(
     a.space ||

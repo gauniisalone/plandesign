@@ -7,7 +7,7 @@ import {
   type ProjectSettingsUpdate,
 } from "../api/client";
 import type { Project } from "../api/types.gen";
-import { answersSummary } from "../guided";
+import { answersSummary, type Requirements } from "../guided";
 import { GuidedFields } from "../panels/GuidedFields";
 
 /** Le compositeur flottant du tableau (T7b, maquette d'augus du 16 octobre) : il remplace la
@@ -60,7 +60,9 @@ export function Composer({
   onSettings: (body: ProjectSettingsUpdate) => void;
   /** Envoie le texte à l'assistant (« Nouvelle variante »), comme l'ancienne note. */
   onVariant: (text: string) => void;
-  onGenerateNow: () => void;
+  /** Les exigences au moment du clic : le texte du champ n'est peut-être pas encore
+   *  revenu du serveur (il part quand le champ est quitté, donc par ce même clic). */
+  onGenerateNow: (fresh: Requirements) => void;
 }) {
   // Ouvert d'office tant qu'il n'y a pas de rendu ; ensuite, le dernier choix du projet.
   const [open, setOpen] = useState(() => storedOpen(project.id) ?? !hasRenders);
@@ -280,7 +282,13 @@ export function Composer({
             <button
               type="button"
               className="primary"
-              onClick={onGenerateNow}
+              onClick={() => {
+                saveText();
+                onGenerateNow({
+                  text: text.trim().slice(0, MAX_TEXT),
+                  answers,
+                });
+              }}
               title="Plan s'il manque (d'après les photos, sinon vos exigences), puis ambiance, aménagement, vues et rendus"
             >
               Générer maintenant

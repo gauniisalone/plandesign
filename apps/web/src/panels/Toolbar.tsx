@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useReadOnly } from "../state/account";
 import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
 import type { Tool } from "../editor2d/PlanCanvas";
@@ -172,6 +173,7 @@ export function TopBar({
   onTogglePanel: () => void;
   onToggleAdvanced: () => void;
 }) {
+  const readOnly = useReadOnly();
   return (
     <div className="float topbar">
       <button className="back" onClick={onHome} title="Retour aux projets">
@@ -220,7 +222,7 @@ export function TopBar({
         </button>
       )}
       {/* T7c : dans l'espace de travail, l'import est dans la barre d'outils de gauche. */}
-      {tab !== "board" && (
+      {tab !== "board" && !readOnly && (
         <button
           type="button"
           className={`add-source${sourceOpen ? " active" : ""}`}
@@ -231,15 +233,17 @@ export function TopBar({
           <IconPlus /> <span className="lbl">Ajouter une source</span>
         </button>
       )}
-      <IconButton
-        label="Assistant"
-        shortcut="/"
-        more="l'ambiance, les meubles, des aménagements : une phrase, chaque geste s'annule"
-        Icon={IconChat}
-        active={assistantOpen}
-        disabled={sourceOpen}
-        onClick={onAssistant}
-      />
+      {!readOnly && (
+        <IconButton
+          label="Assistant"
+          shortcut="/"
+          more="l'ambiance, les meubles, des aménagements : une phrase, chaque geste s'annule"
+          Icon={IconChat}
+          active={assistantOpen}
+          disabled={sourceOpen}
+          onClick={onAssistant}
+        />
+      )}
       {busy && (
         <span className="busy-dot" aria-live="polite">
           <span className="spinner" /> en cours…

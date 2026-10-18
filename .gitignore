@@ -158,6 +158,8 @@ credentials.json
 # Tests navigateur (Playwright) : données jetables, rapports, captures
 # ============================================================
 apps/web/.e2e-data/
+apps/web/.e2e-accounts/
+apps/web/test-results-accounts/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/e2e/screenshots/

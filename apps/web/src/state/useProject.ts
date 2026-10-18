@@ -51,6 +51,7 @@ import type {
   Project,
   ValidationReport,
 } from "../api/types.gen";
+import { hasAnswers, type Requirements } from "../guided";
 import { isPlanFile } from "../importFiles";
 import { firstLevel, NO_SELECTION, walls, type Selection } from "../model";
 import { takePendingArrival } from "./pendingArrival";
@@ -576,41 +577,52 @@ export function useProject(projectId: string) {
     [state, run, applyProject, autoplan, importPlan],
   );
 
+  /** Les exigences telles qu'elles sont dans le compositeur au moment du clic. */
   /** « Générer le plan » depuis le cadre Plan vide (T3) : une photo du projet → plan estimé
    *  puis chemin automatique ; sinon la note Exigences (texte, réponses) → plan proposé ou
    *  plan de départ (L3, L1b) puis chemin automatique ; sinon rien à lire, et on le dit. */
-  const generatePlan = useCallback(() => {
-    const { project, levelId } = state;
-    if (!project || !levelId) return;
-    if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
-    const photo = Object.keys(project.images)[0];
-    if (photo) {
-      autoplan(project.id, levelId, photo, project.history_cursor);
-      return;
-    }
-    const text = project.pending_instruction ?? "";
-    const answers = (project.pending_answers ?? undefined) as
-      GuidedAnswers | undefined;
-    if (!text && !answers) {
-      setState((s) => ({
-        ...s,
-        error:
-          "Rien à lire pour générer le plan : déposez une photo de la pièce ou remplissez la note Exigences (surface, logement, envies), ou tracez le plan vous-même.",
-      }));
-      return;
-    }
-    void run(async () => {
-      const result = await api.programme(project.id, levelId, text, answers);
-      await applyProject(result.project);
-      setState((s) => ({ ...s, arrival: s.arrival + 1 }));
-      if (result.kind === "none")
-        throw new ApiError(
-          "Sans surface ni logement décrit, pas de plan à proposer : donnez une surface dans la note Exigences, déposez une photo, ou tracez la pièce.",
-          409,
-        );
-      if (result.project.render.auto_path) startAutopilot(project.id, levelId);
-    });
-  }, [state, run, applyProject, autoplan, startAutopilot]);
+  const generatePlan = useCallback(
+    (fresh?: Requirements) => {
+      const { project, levelId } = state;
+      if (!project || !levelId) return;
+      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      const photo = Object.keys(project.images)[0];
+      if (photo) {
+        autoplan(project.id, levelId, photo, project.history_cursor);
+        return;
+      }
+      // Les exigences du compositeur au moment du clic, sinon celles du projet.
+      const text = fresh ? fresh.text : (project.pending_instruction ?? "");
+      const answers = (
+        fresh
+          ? hasAnswers(fresh.answers)
+            ? fresh.answers
+            : undefined
+          : (project.pending_answers ?? undefined)
+      ) as GuidedAnswers | undefined;
+      if (!text && !answers) {
+        setState((s) => ({
+          ...s,
+          error:
+            "Rien à lire pour générer le plan : déposez une photo de la pièce ou remplissez la note Exigences (surface, logement, envies), ou tracez le plan vous-même.",
+        }));
+        return;
+      }
+      void run(async () => {
+        const result = await api.programme(project.id, levelId, text, answers);
+        await applyProject(result.project);
+        setState((s) => ({ ...s, arrival: s.arrival + 1 }));
+        if (result.kind === "none")
+          throw new ApiError(
+            "Sans surface ni logement décrit, pas de plan à proposer : donnez une surface dans la note Exigences, déposez une photo, ou tracez la pièce.",
+            409,
+          );
+        if (result.project.render.auto_path)
+          startAutopilot(project.id, levelId);
+      });
+    },
+    [state, run, applyProject, autoplan, startAutopilot],
+  );
 
   /** Une photo déposée sur le tableau (T4) : projet sans plan et bascule « générer au dépôt
    *  d'une photo » active → construction du plan puis chemin automatique, sans autre geste. */
@@ -628,14 +640,17 @@ export function useProject(projectId: string) {
 
   /** « Générer maintenant » (T4) : sans plan, comme « Générer le plan » ; avec un plan, le
    *  chemin automatique (ambiance, aménagement, vues, rendus). */
-  const generateNow = useCallback(() => {
-    const { project, levelId } = state;
-    if (!project || !levelId) return;
-    if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
-    const level = project.levels[levelId];
-    if (!level || walls(level).length === 0) generatePlan();
-    else startAutopilot(project.id, levelId);
-  }, [state, generatePlan, startAutopilot]);
+  const generateNow = useCallback(
+    (fresh?: Requirements) => {
+      const { project, levelId } = state;
+      if (!project || !levelId) return;
+      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      const level = project.levels[levelId];
+      if (!level || walls(level).length === 0) generatePlan(fresh);
+      else startAutopilot(project.id, levelId);
+    },
+    [state, generatePlan, startAutopilot],
+  );
 
   /** « Ce n'est pas une photo » / « ce n'est pas un plan » : ce que la construction a
    *  fait est annulé, puis l'image est relue autrement. Possible tant que le plan n'a

@@ -36,7 +36,13 @@ import { PhotoPanel } from "../panels/PhotoPanel";
 import { PhotoStrip } from "../panels/PhotoStrip";
 import { RenderPanel } from "../panels/RenderPanel";
 import { RecalibrateCard } from "../panels/RecalibrateCard";
-import { InstallState, SettingsPanel } from "../panels/SettingsPanel";
+import { AccountSection } from "../panels/AccountSection";
+import {
+  InstallState,
+  SettingsPanel,
+  ThemeSwitch,
+} from "../panels/SettingsPanel";
+import { ReadOnlyContext, canEdit, useRole } from "../state/account";
 import {
   BottomBar,
   type Step,
@@ -161,6 +167,9 @@ const PANE_TITLE: Record<Exclude<SidePane, "inspector">, string> = {
  *  Paramètres avancés). */
 export function Editor({ projectId, initialStep, onHome }: Props) {
   const { state, actions } = useProject(projectId);
+  // B1d : lecteur et commentateur (jusqu'à B2) en lecture seule ; tant que le rôle
+  // n'est pas connu, rien d'éditable n'est montré.
+  const readOnly = !canEdit(useRole(projectId));
   const [tool, setTool] = useState<Tool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [step, setStep] = useState<Step>(initialStep ?? "edit");
@@ -1020,824 +1029,850 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   );
 
   return (
-    <div
-      className="editor"
-      data-space={arrived ? (tab ?? "source") : "loading"}
-    >
-      <div className={`stage view-${viewMode}`} ref={stageRef}>
-        {state.pilotJob?.status === "running" && (
-          <PilotProgress job={state.pilotJob} />
-        )}
-        <div
-          className={`canvas-wrap split-${viewMode}${dropOver ? " drop-over" : ""}`}
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes("Files")) {
-              e.preventDefault();
-              setDropOver(true);
-            }
-          }}
-          onDragLeave={() => setDropOver(false)}
-          onDrop={onDrop}
-        >
-          {show2d && (
-            <div className="pane">
-              <PlanCanvas
-                level={level}
-                derived={state.derived}
-                units={state.project.units_display}
-                tool={tool}
-                selection={state.selection}
-                background={background}
-                imageWidths={Object.fromEntries(
-                  Object.values(state.project.images).map((i) => [
-                    i.id,
-                    i.width_px,
-                  ]),
-                )}
-                ghost={state.ghost?.furniture ?? null}
-                ghostAlt={state.compare?.furniture ?? null}
-                highlight={state.assistantHighlight}
-                onCheckFurniture={actions.checkFurniture}
-                onCheckElement={actions.checkElement}
-                placing={placing}
-                onCheckPlacement={actions.checkPlacement}
-                onPlacingEnd={endPlacing}
-                onSelect={actions.select}
-                onOp={actions.apply}
-                fitToken={fitToken}
-                zoomCommand={zoomCommand}
-                onScaleChange={setScale}
-                onMeasure={(a, b) => setMeasure({ a, b })}
-                insets={insets}
-              />
-            </div>
+    <ReadOnlyContext.Provider value={readOnly}>
+      <div
+        className={`editor${readOnly ? " read-only" : ""}`}
+        data-space={arrived ? (tab ?? "source") : "loading"}
+      >
+        <div className={`stage view-${viewMode}`} ref={stageRef}>
+          {state.pilotJob?.status === "running" && (
+            <PilotProgress job={state.pilotJob} />
           )}
-          {show3d && (
-            <div className="pane pane-3d">
-              <Viewer3D
-                ref={viewerRef}
-                url={glbUrl}
-                selection={state.selection}
-                hiddenIds={hiddenIds}
-                onSelect={actions.select}
-                viewFrom={viewFrom}
-                preset={preset}
-                onLoaded={() => setLoadedToken((n) => n + 1)}
-                section={
-                  view3d.section === "none"
-                    ? null
-                    : {
-                        axis: view3d.section,
-                        value: view3d.value,
-                        flip: view3d.flip,
-                      }
-                }
-                cutawayWalls={view3d.dollhouse ? wallIds : null}
-                xray={view3d.xray}
-              />
-            </div>
-          )}
-        </div>
-        {viewerCam !== null && (
-          <RenderViewer
-            project={state.project}
-            level={level}
-            renders={state.renders}
-            stale={stale}
-            busy={state.busy || renderRunning}
-            running={renderRunning}
-            cameraId={viewerCam}
-            onNavigate={setViewerCam}
-            onClose={() => setViewerCam(null)}
-            onRerender={rerenderViews}
-            onRefine={(cameraId) => {
-              setViewerCam(null);
-              refineView(cameraId);
+          <div
+            className={`canvas-wrap split-${viewMode}${dropOver ? " drop-over" : ""}`}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("Files")) {
+                e.preventDefault();
+                setDropOver(true);
+              }
             }}
-            onPickAction={(cameraId, action) => {
-              // Retirer ou remplacer un meuble se voit d'ici (la vue devient périmée) ;
-              // le reste mène au plan, à la 3D ou à l'assistant : la visionneuse se ferme.
-              if (action.kind !== "remove" && action.kind !== "replace")
-                setViewerCam(null);
-              pickAction(cameraId, action);
-            }}
-            onCatalogue={actions.catalogueRender}
-            onUndo={actions.undo}
-            onRedo={actions.redo}
-          />
-        )}
-        {step !== "import" && step !== "board" && (
-          <RenderStrip
-            project={state.project}
-            level={level}
-            renders={state.renders}
-            stale={stale}
-            running={renderRunning}
-            stage={state.renderJob?.stage ?? null}
-            onOpen={openViewer}
-            onRerender={rerenderViews}
-          />
-        )}
-        {step === "board" && board.board && (
-          <BoardCanvas
-            project={state.project}
-            board={board.board}
-            renders={state.renders}
-            stale={stale}
-            notice={board.notice}
-            canUndo={board.canUndo}
-            canRedo={board.canRedo}
-            active={step === "board"}
-            planVersion={state.project.history_cursor}
-            onCommit={board.commit}
-            onView={board.setView}
-            onUndo={board.undo}
-            onRedo={board.redo}
-            onDismissNotice={board.dismissNotice}
-            onProjectChanged={(p) => void actions.adoptProject(p)}
-            onOpenRender={(runId) => {
-              const entry = state.renders.find((r) => r.run_id === runId);
-              // T7e : la visionneuse montre les vues du plan de ce rendu.
-              const lid =
-                entry && state.project && renderLevelId(state.project, entry);
-              if (lid && lid !== level.id) actions.openLevel(lid);
-              openViewer(entry?.camera_id ?? "");
-            }}
-            onEditPlan={(levelId) => {
-              journalApi.ui(projectId, "tab_changed", "board>plan");
-              // T7e : le plan de ce cadre devient le plan ouvert.
-              if (levelId) actions.openLevel(levelId);
-              goTab("plan");
-            }}
-            activeLevelId={level.id}
-            onOpenLevel={actions.openLevel}
-            onOpenViewer={(lid) => {
-              if (lid !== level.id) actions.openLevel(lid);
-              openViewer("");
-            }}
-            onVariant={(text) => {
-              openAssistant();
-              if (text.trim()) actions.askAssistant(text.trim(), null);
-            }}
-            onSettings={actions.updateSettings}
-            onGeneratePlan={() => {
-              journalApi.ui(projectId, "generate_clicked", "plan");
-              actions.generatePlan();
-            }}
-            onGenerateNow={() => {
-              journalApi.ui(projectId, "generate_clicked", "now");
-              actions.generateNow();
-            }}
-            onPhotoDropped={actions.planFromPhoto}
-            queued={queued}
-            onCancelQueued={actions.cancelQueued}
-            hasRenders={state.renders.length > 0}
-            planProgress={
-              state.autoJob?.status === "queued" ||
-              state.pilotJob?.status === "queued"
-                ? "En attente"
-                : state.autoJob?.status === "running"
-                  ? `Construction du plan : ${jobSentence(state.autoJob)}`
-                  : state.pilotJob?.status === "running"
-                    ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
-                    : null
-            }
-            onAddSource={() => goStep("import")}
-            onImportPlan={(file) => {
-              goStep("import");
-              actions.importFile(file);
-            }}
-            focusRenders={rendersFocus}
-            onRerender={rerenderViews}
-            onOpenRendersPane={(levelId) => {
-              if (levelId) actions.openLevel(levelId);
-              setPane("renders");
-              setPanelOpen(true);
-            }}
-            onContextual={(pick) => {
-              setContextualPick(pick);
-              setPanelOpen(true);
-              setPane("contextual");
-            }}
-          />
-        )}
-        {step === "import" && (
-          <ImportScreen
-            project={state.project}
-            level={level}
-            busy={state.busy}
-            autoJob={state.autoJob}
-            lastAuto={state.lastAuto}
-            planPreview={state.planPreview}
-            planEditable={
-              state.planCursor !== null &&
-              state.planCursor === state.project.history_cursor
-            }
-            planLayers={state.planLayers}
-            onImport={actions.importFile}
-            onRescale={actions.rescaleImportedPlan}
-            onLayers={actions.relayerImportedPlan}
-            onContinue={() => goStep("edit")}
-          />
-        )}
-        <TopBar
-          project={state.project}
-          tab={tab}
-          sourceOpen={step === "import"}
-          panelOpen={panelOpen}
-          advancedOpen={panelOpen && pane === "advanced"}
-          busy={state.busy}
-          onHome={onHome}
-          onTab={(next) => {
-            // Mesure du parcours (P0) : seuls les changements faits à la main comptent.
-            if (next !== tab)
-              journalApi.ui(
-                projectId,
-                "tab_changed",
-                `${tab ?? "source"}>${next}`,
-              );
-            goTab(next);
-          }}
-          onSource={() => goStep(step === "import" ? "edit" : "import")}
-          assistantOpen={panelOpen && pane === "assistant"}
-          onAssistant={() => togglePane("assistant")}
-          onTogglePanel={() => setPanelOpen((o) => !o)}
-          onToggleAdvanced={() => togglePane("advanced")}
-          save={
-            board.save === "error" || state.saveFailed
-              ? "error"
-              : board.save === "saving" || state.busy
-                ? "saving"
-                : "saved"
-          }
-          onRetrySave={board.save === "error" ? board.retry : undefined}
-          onNewPlan={() => setNewPlanOpen(true)}
-          planName={
-            Object.keys(state.project.levels).length > 1
-              ? level.name
-              : undefined
-          }
-        />
-        {newPlanOpen && (
-          <NewPlanDialog
-            busy={state.busy}
-            onClose={() => setNewPlanOpen(false)}
-            onCreate={(body) => {
-              void actions.newPlan(body).then((lid) => {
-                if (!lid) return;
-                setNewPlanOpen(false);
-                // T7e : le plan créé s'ouvre, prêt à être tracé ou retouché.
-                journalApi.ui(projectId, "tab_changed", "board>plan");
-                goTab("plan");
-              });
-            }}
-          />
-        )}
-        {step === "edit" && show2d && (
-          <ToolPalette
-            project={state.project}
-            tool={tool}
-            viewMode={viewMode}
-            busy={state.busy}
-            hasSelection={state.selection.kind !== "none"}
-            hasBackground={hasScaleTarget()}
-            catalogOpen={panelOpen && pane === "catalog"}
-            layoutOpen={panelOpen && pane === "amenager"}
-            onTool={(t) => {
-              setTool(t);
-              if (t !== "scale") setMeasure(null);
-            }}
-            onUndo={actions.undo}
-            onRedo={actions.redo}
-            onDetectRooms={() => actions.apply({ op: "detect_rooms" })}
-            onDeleteSelection={deleteSelection}
-            onCatalog={() => togglePane("catalog")}
-            onStairs={openStairs}
-            onLayout={() => togglePane("amenager")}
-          />
-        )}
-        {step === "edit" && (
-          <ViewBar
-            viewMode={viewMode}
-            state={{
-              section: view3d.section,
-              flip: view3d.flip,
-              hideRoof,
-              xray: view3d.xray,
-              dollhouse: view3d.dollhouse,
-              ceilings: showCeilings,
-              materials,
-            }}
-            sectionRange={
-              view3d.section === "none" ? [0, 1] : sectionRange(view3d.section)
-            }
-            sectionValue={view3d.value}
-            sectionPdfUrl={
-              view3d.section === "x" || view3d.section === "y"
-                ? api.exportSectionPdfUrl(
-                    state.project.id,
-                    level.id,
-                    view3d.section,
-                    view3d.value,
-                  )
-                : null
-            }
-            onViewMode={(m) => {
-              if (m !== viewMode)
-                journalApi.ui(projectId, "tab_changed", `vue:${viewMode}>${m}`);
-              setViewMode(m);
-            }}
-            onPreset={choosePreset}
-            onSection={pickSection}
-            onSectionValue={(value) => setView3d({ value })}
-            onToggle={toggleView}
-          />
-        )}
-        {show2d && step === "edit" && (
-          <PhotoStrip
-            project={state.project}
-            level={level}
-            busy={state.busy}
-            selection={state.selection}
-            onSelect={actions.select}
-            onUpload={actions.importFile}
-            onOp={actions.apply}
-            onAdvanced={openAdvanced}
-          />
-        )}
-        {showScaleCard && !panelOpen && (
-          <RecalibrateCard
-            docked={false}
-            measure={measure}
-            ceilingHeight={level.height}
-            busy={state.busy}
-            onApply={(body) => {
-              actions.recalibrate(body);
-              setMeasure(null);
-              setTool("select");
-            }}
-            onPreviewDimensions={actions.previewDimensions}
-            onApplyDimensions={(body) => {
-              actions.recalibrateDimensions(body);
-              setMeasure(null);
-              setTool("select");
-            }}
-            onCancel={() => {
-              setMeasure(null);
-              setTool("select");
-            }}
-          />
-        )}
-        {step !== "import" && step !== "board" && (
-          <BottomBar
-            project={state.project}
-            levelSlot={
-              step === "edit" ? (
-                <LevelBar
-                  project={state.project}
+            onDragLeave={() => setDropOver(false)}
+            onDrop={onDrop}
+          >
+            {show2d && (
+              <div className="pane">
+                <PlanCanvas
                   level={level}
+                  derived={state.derived}
+                  units={state.project.units_display}
+                  tool={tool}
+                  selection={state.selection}
+                  background={background}
+                  imageWidths={Object.fromEntries(
+                    Object.values(state.project.images).map((i) => [
+                      i.id,
+                      i.width_px,
+                    ]),
+                  )}
+                  ghost={state.ghost?.furniture ?? null}
+                  ghostAlt={state.compare?.furniture ?? null}
+                  highlight={state.assistantHighlight}
+                  onCheckFurniture={actions.checkFurniture}
+                  onCheckElement={actions.checkElement}
+                  placing={placing}
+                  onCheckPlacement={actions.checkPlacement}
+                  onPlacingEnd={endPlacing}
+                  onSelect={actions.select}
                   onOp={actions.apply}
+                  fitToken={fitToken}
+                  zoomCommand={zoomCommand}
+                  onScaleChange={setScale}
+                  onMeasure={(a, b) => setMeasure({ a, b })}
+                  insets={insets}
                 />
-              ) : null
-            }
-            levelId={level.id}
-            viewMode={viewMode}
-            scale={scale}
-            violations={state.report?.violations.length ?? 0}
-            onZoom={zoom}
-            onFit={fit}
-            onChecks={showInspector}
-          />
-        )}
-        {/* Au-dessus des barres du bas (bande, barre) : jamais dessus. */}
-        <div className="stage-notices" style={{ bottom: insets.bottom + 8 }}>
-          {homeNotices.length > 0 && (
-            <div
-              className="auto-banner estimated"
-              role="status"
-              aria-label="Depuis l'accueil"
-            >
-              <span>
-                {homeNotices.map((n, i) => (
-                  <span key={i} className="notice">
-                    {n}
-                  </span>
-                ))}
-              </span>
-              <button className="link" onClick={() => setHomeNotices([])}>
-                fermer
-              </button>
-            </div>
-          )}
-          {/* Pendant Recalibrer, la carte a la place : pas de bandeau. */}
-          {step !== "import" &&
-            tool !== "scale" &&
-            state.autoJob?.status === "running" && (
-              <div className="auto-banner" role="status">
-                <span className="spinner" aria-hidden="true" />
-                <span>
-                  <strong>Construction du plan</strong> :{" "}
-                  {jobSentence(state.autoJob)}
-                </span>
               </div>
             )}
-          {step !== "import" && tool !== "scale" && state.lastRecalibration && (
-            <div className="auto-banner done" role="status">
-              {state.lastRecalibration.text ? (
-                <span>
-                  <strong>Plan recalibré</strong> :{" "}
-                  {state.lastRecalibration.text}.
-                </span>
-              ) : (
-                <span>
-                  <strong>Plan mis à l'échelle</strong> ×{" "}
-                  {state.lastRecalibration.factor.toFixed(3)} :{" "}
-                  {state.lastRecalibration.what} ={" "}
-                  {state.lastRecalibration.real_m.toFixed(2)} m (était{" "}
-                  {state.lastRecalibration.current_m.toFixed(2)} m).
-                </span>
-              )}
-              <button
-                className="link"
-                disabled={state.busy}
-                onClick={() => {
-                  actions.undo();
-                  actions.clearRecalibration();
-                }}
-              >
-                annuler
-              </button>
-              <button className="link" onClick={actions.clearRecalibration}>
-                fermer
-              </button>
-            </div>
-          )}
-          {step === "edit" &&
-            show2d &&
-            tool !== "scale" &&
-            status &&
-            !estimatedBanner && (
-              <div
-                className={`plan-status-line ${status}`}
-                role="status"
-                aria-label="Statut du plan"
-              >
-                <span className={`plan-status ${status}`}>
-                  {PLAN_STATUS_LABEL[status]}
-                </span>
-                <span className="muted">
-                  {status === "estimated"
-                    ? "reconstruit d'après les photos, pas un relevé : « ≈ » = cote estimée, sans « ≈ » = saisie ou mesurée"
-                    : "proposé d'après votre texte : ajustez les cotes, « ≈ » = cote non saisie"}
-                </span>
-                <button
-                  className="link"
-                  onClick={recalibrate}
-                  aria-label="Recalibrer le plan"
-                >
-                  Recalibrer
-                </button>
-              </div>
-            )}
-          {estimatedBanner && state.lastAuto && (
-            <div className="auto-banner estimated" role="status">
-              <span>
-                <strong>Plan estimé</strong> : vérifiez l'échelle avec une
-                longueur que vous connaissez.
-                {state.lastAuto.run.notices.map((n, i) => (
-                  <span key={i} className="muted notice">
-                    {n}
-                  </span>
-                ))}
-              </span>
-              <button className="primary" onClick={recalibrate}>
-                Recalibrer
-              </button>
-              {state.project.history_cursor ===
-                state.lastAuto.run.project.history_cursor && (
-                <button
-                  className="link"
-                  disabled={state.busy}
-                  onClick={() =>
-                    actions.rereadAs(
-                      state.lastAuto?.run.kind === "plan" ? "photo" : "plan",
-                    )
+            {show3d && (
+              <div className="pane pane-3d">
+                <Viewer3D
+                  ref={viewerRef}
+                  url={glbUrl}
+                  selection={state.selection}
+                  hiddenIds={hiddenIds}
+                  onSelect={actions.select}
+                  viewFrom={viewFrom}
+                  preset={preset}
+                  onLoaded={() => setLoadedToken((n) => n + 1)}
+                  section={
+                    view3d.section === "none"
+                      ? null
+                      : {
+                          axis: view3d.section,
+                          value: view3d.value,
+                          flip: view3d.flip,
+                        }
                   }
-                  title="L'image est relue autrement : ce qui vient d'être construit est remplacé"
-                >
-                  {state.lastAuto.run.kind === "plan"
-                    ? "ce n'est pas un plan"
-                    : "ce n'est pas une photo"}
-                </button>
-              )}
-              <button className="link" onClick={() => setNoticeClosed(true)}>
-                fermer
-              </button>
-            </div>
+                  cutawayWalls={view3d.dollhouse ? wallIds : null}
+                  xray={view3d.xray}
+                />
+              </div>
+            )}
+          </div>
+          {viewerCam !== null && (
+            <RenderViewer
+              project={state.project}
+              level={level}
+              renders={state.renders}
+              stale={stale}
+              busy={state.busy || renderRunning}
+              running={renderRunning}
+              cameraId={viewerCam}
+              onNavigate={setViewerCam}
+              onClose={() => setViewerCam(null)}
+              onRerender={rerenderViews}
+              onRefine={(cameraId) => {
+                setViewerCam(null);
+                refineView(cameraId);
+              }}
+              onPickAction={(cameraId, action) => {
+                // Retirer ou remplacer un meuble se voit d'ici (la vue devient périmée) ;
+                // le reste mène au plan, à la 3D ou à l'assistant : la visionneuse se ferme.
+                if (action.kind !== "remove" && action.kind !== "replace")
+                  setViewerCam(null);
+                pickAction(cameraId, action);
+              }}
+              onCatalogue={actions.catalogueRender}
+              onUndo={actions.undo}
+              onRedo={actions.redo}
+            />
           )}
-          {step === "edit" &&
-            tool !== "scale" &&
-            starterArea !== null &&
-            !starterClosed && (
-              <div className="auto-banner estimated" role="status">
+          {step !== "import" && step !== "board" && (
+            <RenderStrip
+              project={state.project}
+              level={level}
+              renders={state.renders}
+              stale={stale}
+              running={renderRunning}
+              stage={state.renderJob?.stage ?? null}
+              onOpen={openViewer}
+              onRerender={rerenderViews}
+            />
+          )}
+          {step === "board" && board.board && (
+            <BoardCanvas
+              project={state.project}
+              board={board.board}
+              renders={state.renders}
+              stale={stale}
+              notice={board.notice}
+              canUndo={board.canUndo}
+              canRedo={board.canRedo}
+              active={step === "board"}
+              planVersion={state.project.history_cursor}
+              onCommit={board.commit}
+              onView={board.setView}
+              onUndo={board.undo}
+              onRedo={board.redo}
+              onDismissNotice={board.dismissNotice}
+              onProjectChanged={(p) => void actions.adoptProject(p)}
+              onOpenRender={(runId) => {
+                const entry = state.renders.find((r) => r.run_id === runId);
+                // T7e : la visionneuse montre les vues du plan de ce rendu.
+                const lid =
+                  entry && state.project && renderLevelId(state.project, entry);
+                if (lid && lid !== level.id) actions.openLevel(lid);
+                openViewer(entry?.camera_id ?? "");
+              }}
+              onEditPlan={(levelId) => {
+                journalApi.ui(projectId, "tab_changed", "board>plan");
+                // T7e : le plan de ce cadre devient le plan ouvert.
+                if (levelId) actions.openLevel(levelId);
+                goTab("plan");
+              }}
+              activeLevelId={level.id}
+              onOpenLevel={actions.openLevel}
+              onOpenViewer={(lid) => {
+                if (lid !== level.id) actions.openLevel(lid);
+                openViewer("");
+              }}
+              onVariant={(text) => {
+                openAssistant();
+                if (text.trim()) actions.askAssistant(text.trim(), null);
+              }}
+              onSettings={actions.updateSettings}
+              onGeneratePlan={() => {
+                journalApi.ui(projectId, "generate_clicked", "plan");
+                actions.generatePlan();
+              }}
+              onGenerateNow={(fresh) => {
+                journalApi.ui(projectId, "generate_clicked", "now");
+                actions.generateNow(fresh);
+              }}
+              onPhotoDropped={actions.planFromPhoto}
+              queued={queued}
+              onCancelQueued={actions.cancelQueued}
+              hasRenders={state.renders.length > 0}
+              planProgress={
+                state.autoJob?.status === "queued" ||
+                state.pilotJob?.status === "queued"
+                  ? "En attente"
+                  : state.autoJob?.status === "running"
+                    ? `Construction du plan : ${jobSentence(state.autoJob)}`
+                    : state.pilotJob?.status === "running"
+                      ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
+                      : null
+              }
+              onAddSource={() => goStep("import")}
+              onImportPlan={(file) => {
+                goStep("import");
+                actions.importFile(file);
+              }}
+              focusRenders={rendersFocus}
+              onRerender={rerenderViews}
+              onOpenRendersPane={(levelId) => {
+                if (levelId) actions.openLevel(levelId);
+                setPane("renders");
+                setPanelOpen(true);
+              }}
+              onContextual={(pick) => {
+                setContextualPick(pick);
+                setPanelOpen(true);
+                setPane("contextual");
+              }}
+            />
+          )}
+          {step === "import" && !readOnly && (
+            <ImportScreen
+              project={state.project}
+              level={level}
+              busy={state.busy}
+              autoJob={state.autoJob}
+              lastAuto={state.lastAuto}
+              planPreview={state.planPreview}
+              planEditable={
+                state.planCursor !== null &&
+                state.planCursor === state.project.history_cursor
+              }
+              planLayers={state.planLayers}
+              onImport={actions.importFile}
+              onRescale={actions.rescaleImportedPlan}
+              onLayers={actions.relayerImportedPlan}
+              onContinue={() => goStep("edit")}
+            />
+          )}
+          <TopBar
+            project={state.project}
+            tab={tab}
+            sourceOpen={step === "import"}
+            panelOpen={panelOpen}
+            advancedOpen={panelOpen && pane === "advanced"}
+            busy={state.busy}
+            onHome={onHome}
+            onTab={(next) => {
+              // Mesure du parcours (P0) : seuls les changements faits à la main comptent.
+              if (next !== tab)
+                journalApi.ui(
+                  projectId,
+                  "tab_changed",
+                  `${tab ?? "source"}>${next}`,
+                );
+              goTab(next);
+            }}
+            onSource={() => goStep(step === "import" ? "edit" : "import")}
+            assistantOpen={panelOpen && pane === "assistant"}
+            onAssistant={() => togglePane("assistant")}
+            onTogglePanel={() => setPanelOpen((o) => !o)}
+            onToggleAdvanced={() => togglePane("advanced")}
+            save={
+              board.save === "error" || state.saveFailed
+                ? "error"
+                : board.save === "saving" || state.busy
+                  ? "saving"
+                  : "saved"
+            }
+            onRetrySave={board.save === "error" ? board.retry : undefined}
+            onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
+            planName={
+              Object.keys(state.project.levels).length > 1
+                ? level.name
+                : undefined
+            }
+          />
+          {newPlanOpen && (
+            <NewPlanDialog
+              busy={state.busy}
+              onClose={() => setNewPlanOpen(false)}
+              onCreate={(body) => {
+                void actions.newPlan(body).then((lid) => {
+                  if (!lid) return;
+                  setNewPlanOpen(false);
+                  // T7e : le plan créé s'ouvre, prêt à être tracé ou retouché.
+                  journalApi.ui(projectId, "tab_changed", "board>plan");
+                  goTab("plan");
+                });
+              }}
+            />
+          )}
+          {step === "edit" && show2d && !readOnly && (
+            <ToolPalette
+              project={state.project}
+              tool={tool}
+              viewMode={viewMode}
+              busy={state.busy}
+              hasSelection={state.selection.kind !== "none"}
+              hasBackground={hasScaleTarget()}
+              catalogOpen={panelOpen && pane === "catalog"}
+              layoutOpen={panelOpen && pane === "amenager"}
+              onTool={(t) => {
+                setTool(t);
+                if (t !== "scale") setMeasure(null);
+              }}
+              onUndo={actions.undo}
+              onRedo={actions.redo}
+              onDetectRooms={() => actions.apply({ op: "detect_rooms" })}
+              onDeleteSelection={deleteSelection}
+              onCatalog={() => togglePane("catalog")}
+              onStairs={openStairs}
+              onLayout={() => togglePane("amenager")}
+            />
+          )}
+          {step === "edit" && (
+            <ViewBar
+              viewMode={viewMode}
+              state={{
+                section: view3d.section,
+                flip: view3d.flip,
+                hideRoof,
+                xray: view3d.xray,
+                dollhouse: view3d.dollhouse,
+                ceilings: showCeilings,
+                materials,
+              }}
+              sectionRange={
+                view3d.section === "none"
+                  ? [0, 1]
+                  : sectionRange(view3d.section)
+              }
+              sectionValue={view3d.value}
+              sectionPdfUrl={
+                view3d.section === "x" || view3d.section === "y"
+                  ? api.exportSectionPdfUrl(
+                      state.project.id,
+                      level.id,
+                      view3d.section,
+                      view3d.value,
+                    )
+                  : null
+              }
+              onViewMode={(m) => {
+                if (m !== viewMode)
+                  journalApi.ui(
+                    projectId,
+                    "tab_changed",
+                    `vue:${viewMode}>${m}`,
+                  );
+                setViewMode(m);
+              }}
+              onPreset={choosePreset}
+              onSection={pickSection}
+              onSectionValue={(value) => setView3d({ value })}
+              onToggle={toggleView}
+            />
+          )}
+          {show2d && step === "edit" && (
+            <PhotoStrip
+              project={state.project}
+              level={level}
+              busy={state.busy}
+              selection={state.selection}
+              onSelect={actions.select}
+              onUpload={actions.importFile}
+              onOp={actions.apply}
+              onAdvanced={openAdvanced}
+            />
+          )}
+          {showScaleCard && !panelOpen && (
+            <RecalibrateCard
+              docked={false}
+              measure={measure}
+              ceilingHeight={level.height}
+              busy={state.busy}
+              onApply={(body) => {
+                actions.recalibrate(body);
+                setMeasure(null);
+                setTool("select");
+              }}
+              onPreviewDimensions={actions.previewDimensions}
+              onApplyDimensions={(body) => {
+                actions.recalibrateDimensions(body);
+                setMeasure(null);
+                setTool("select");
+              }}
+              onCancel={() => {
+                setMeasure(null);
+                setTool("select");
+              }}
+            />
+          )}
+          {step !== "import" && step !== "board" && (
+            <BottomBar
+              project={state.project}
+              levelSlot={
+                step === "edit" ? (
+                  <LevelBar
+                    project={state.project}
+                    level={level}
+                    onOp={actions.apply}
+                  />
+                ) : null
+              }
+              levelId={level.id}
+              viewMode={viewMode}
+              scale={scale}
+              violations={state.report?.violations.length ?? 0}
+              onZoom={zoom}
+              onFit={fit}
+              onChecks={showInspector}
+            />
+          )}
+          {/* Au-dessus des barres du bas (bande, barre) : jamais dessus. */}
+          <div className="stage-notices" style={{ bottom: insets.bottom + 8 }}>
+            {homeNotices.length > 0 && (
+              <div
+                className="auto-banner estimated"
+                role="status"
+                aria-label="Depuis l'accueil"
+              >
                 <span>
-                  <strong>Plan de départ simplifié</strong> : une pièce de{" "}
-                  {String(starterArea).replace(".", ",")} m² en rectangle,
-                  déduite de votre texte ; ce n'est pas un relevé. Corrigez murs
-                  et ouvertures ici.
+                  {homeNotices.map((n, i) => (
+                    <span key={i} className="notice">
+                      {n}
+                    </span>
+                  ))}
                 </span>
-                <button className="link" onClick={() => setStarterClosed(true)}>
+                <button className="link" onClick={() => setHomeNotices([])}>
                   fermer
                 </button>
               </div>
             )}
-          {step !== "import" && generated && !generatedClosed && (
-            <div
-              className="auto-banner estimated"
-              role="status"
-              aria-label="Plan généré"
-            >
-              <span>
-                <strong>Plan généré depuis votre programme</strong> : murs,
-                portes et fenêtres sont inventés, ce n'est pas un relevé ;
-                corrigez-les dans le plan.
-                {(generated.notes ?? []).length > 0 &&
-                  ` ${(generated.notes ?? []).map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(". ")}.`}
-              </span>
-              <button className="link" onClick={() => setGeneratedClosed(true)}>
-                fermer
-              </button>
-            </div>
-          )}
-          {state.error && (
-            <div className="error-banner" role="alert">
-              {state.error}
-              <button className="link" onClick={actions.clearError}>
-                fermer
-              </button>
-            </div>
-          )}
+            {/* Pendant Recalibrer, la carte a la place : pas de bandeau. */}
+            {step !== "import" &&
+              tool !== "scale" &&
+              state.autoJob?.status === "running" && (
+                <div className="auto-banner" role="status">
+                  <span className="spinner" aria-hidden="true" />
+                  <span>
+                    <strong>Construction du plan</strong> :{" "}
+                    {jobSentence(state.autoJob)}
+                  </span>
+                </div>
+              )}
+            {step !== "import" &&
+              tool !== "scale" &&
+              state.lastRecalibration && (
+                <div className="auto-banner done" role="status">
+                  {state.lastRecalibration.text ? (
+                    <span>
+                      <strong>Plan recalibré</strong> :{" "}
+                      {state.lastRecalibration.text}.
+                    </span>
+                  ) : (
+                    <span>
+                      <strong>Plan mis à l'échelle</strong> ×{" "}
+                      {state.lastRecalibration.factor.toFixed(3)} :{" "}
+                      {state.lastRecalibration.what} ={" "}
+                      {state.lastRecalibration.real_m.toFixed(2)} m (était{" "}
+                      {state.lastRecalibration.current_m.toFixed(2)} m).
+                    </span>
+                  )}
+                  <button
+                    className="link"
+                    disabled={state.busy}
+                    onClick={() => {
+                      actions.undo();
+                      actions.clearRecalibration();
+                    }}
+                  >
+                    annuler
+                  </button>
+                  <button className="link" onClick={actions.clearRecalibration}>
+                    fermer
+                  </button>
+                </div>
+              )}
+            {step === "edit" &&
+              show2d &&
+              tool !== "scale" &&
+              status &&
+              !estimatedBanner && (
+                <div
+                  className={`plan-status-line ${status}`}
+                  role="status"
+                  aria-label="Statut du plan"
+                >
+                  <span className={`plan-status ${status}`}>
+                    {PLAN_STATUS_LABEL[status]}
+                  </span>
+                  <span className="muted">
+                    {status === "estimated"
+                      ? "reconstruit d'après les photos, pas un relevé : « ≈ » = cote estimée, sans « ≈ » = saisie ou mesurée"
+                      : "proposé d'après votre texte : ajustez les cotes, « ≈ » = cote non saisie"}
+                  </span>
+                  <button
+                    className="link"
+                    onClick={recalibrate}
+                    aria-label="Recalibrer le plan"
+                  >
+                    Recalibrer
+                  </button>
+                </div>
+              )}
+            {estimatedBanner && state.lastAuto && (
+              <div className="auto-banner estimated" role="status">
+                <span>
+                  <strong>Plan estimé</strong> : vérifiez l'échelle avec une
+                  longueur que vous connaissez.
+                  {state.lastAuto.run.notices.map((n, i) => (
+                    <span key={i} className="muted notice">
+                      {n}
+                    </span>
+                  ))}
+                </span>
+                <button className="primary" onClick={recalibrate}>
+                  Recalibrer
+                </button>
+                {state.project.history_cursor ===
+                  state.lastAuto.run.project.history_cursor && (
+                  <button
+                    className="link"
+                    disabled={state.busy}
+                    onClick={() =>
+                      actions.rereadAs(
+                        state.lastAuto?.run.kind === "plan" ? "photo" : "plan",
+                      )
+                    }
+                    title="L'image est relue autrement : ce qui vient d'être construit est remplacé"
+                  >
+                    {state.lastAuto.run.kind === "plan"
+                      ? "ce n'est pas un plan"
+                      : "ce n'est pas une photo"}
+                  </button>
+                )}
+                <button className="link" onClick={() => setNoticeClosed(true)}>
+                  fermer
+                </button>
+              </div>
+            )}
+            {step === "edit" &&
+              tool !== "scale" &&
+              starterArea !== null &&
+              !starterClosed && (
+                <div className="auto-banner estimated" role="status">
+                  <span>
+                    <strong>Plan de départ simplifié</strong> : une pièce de{" "}
+                    {String(starterArea).replace(".", ",")} m² en rectangle,
+                    déduite de votre texte ; ce n'est pas un relevé. Corrigez
+                    murs et ouvertures ici.
+                  </span>
+                  <button
+                    className="link"
+                    onClick={() => setStarterClosed(true)}
+                  >
+                    fermer
+                  </button>
+                </div>
+              )}
+            {step !== "import" && generated && !generatedClosed && (
+              <div
+                className="auto-banner estimated"
+                role="status"
+                aria-label="Plan généré"
+              >
+                <span>
+                  <strong>Plan généré depuis votre programme</strong> : murs,
+                  portes et fenêtres sont inventés, ce n'est pas un relevé ;
+                  corrigez-les dans le plan.
+                  {(generated.notes ?? []).length > 0 &&
+                    ` ${(generated.notes ?? []).map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(". ")}.`}
+                </span>
+                <button
+                  className="link"
+                  onClick={() => setGeneratedClosed(true)}
+                >
+                  fermer
+                </button>
+              </div>
+            )}
+            {state.error && (
+              <div className="error-banner" role="alert">
+                {state.error}
+                <button className="link" onClick={actions.clearError}>
+                  fermer
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {/* Le panneau reste monté quand il est replié : ses fiches (Aménager en trois pas,
+        {/* Le panneau reste monté quand il est replié : ses fiches (Aménager en trois pas,
           conversation) gardent leur état d'un repli à l'autre. */}
-      {step !== "import" && (
-        <div
-          className={`side${panelOpen ? "" : " closed"}`}
-          style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
-        >
-          <SideHandle
-            width={panelWidth}
-            onWidth={setSideWidth}
-            onCommit={(w) => saveSideWidth(w)}
-          />
-          <div className="side-card">
-            {
-              <>
-                {/* Recalibrer : la carte se range dans le panneau, hors du plan à cliquer. */}
-                {showScaleCard && panelOpen && (
-                  <RecalibrateCard
-                    docked
-                    measure={measure}
-                    ceilingHeight={level.height}
-                    busy={state.busy}
-                    onApply={(body) => {
-                      actions.recalibrate(body);
-                      setMeasure(null);
-                      setTool("select");
-                    }}
-                    onPreviewDimensions={actions.previewDimensions}
-                    onApplyDimensions={(body) => {
-                      actions.recalibrateDimensions(body);
-                      setMeasure(null);
-                      setTool("select");
-                    }}
-                    onCancel={() => {
-                      setMeasure(null);
-                      setTool("select");
-                    }}
-                  />
-                )}
-                {pane !== "inspector" && (
-                  <div className="side-head">
-                    <h2>{PANE_TITLE[pane]}</h2>
-                    <button
-                      className="icon"
-                      onClick={showInspector}
-                      aria-label={`Fermer ${PANE_TITLE[pane]}`}
-                      title="Revenir à l'inspecteur"
-                    >
-                      <IconClose />
-                    </button>
-                  </div>
-                )}
-                {pane === "inspector" && inspector}
-                {pane === "catalog" && (
-                  <aside className="inspector">
-                    <LibraryPanel
-                      chosen={placing?.assetId ?? null}
+        {step !== "import" && (
+          <div
+            className={`side${panelOpen ? "" : " closed"}`}
+            style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
+          >
+            <SideHandle
+              width={panelWidth}
+              onWidth={setSideWidth}
+              onCommit={(w) => saveSideWidth(w)}
+            />
+            <div className="side-card">
+              {
+                <>
+                  {/* Recalibrer : la carte se range dans le panneau, hors du plan à cliquer. */}
+                  {showScaleCard && panelOpen && (
+                    <RecalibrateCard
+                      docked
+                      measure={measure}
+                      ceilingHeight={level.height}
                       busy={state.busy}
-                      circulationToken={circulationToken}
-                      onChoose={(a) => {
-                        // Poser un meuble se fait avec l'outil Sélection : un autre outil
-                        // (Mur, Porte…) choisi ensuite abandonne la pose.
-                        if (a) setTool("select");
-                        setPlacing(
-                          a && {
-                            assetId: a.id,
-                            category: a.category,
-                            label: a.label,
-                            width: a.width.default,
-                            depth: a.depth.default,
-                          },
-                        );
+                      onApply={(body) => {
+                        actions.recalibrate(body);
+                        setMeasure(null);
+                        setTool("select");
                       }}
-                      onChooseStairs={(c) => {
-                        if (c) setTool("select");
-                        setPlacing(
-                          c && {
-                            assetId: `stairs:${c.kind}`,
-                            category: "stairs",
-                            label: c.label,
-                            width: c.along,
-                            depth: c.across,
-                            stairs: c.kind,
-                          },
-                        );
+                      onPreviewDimensions={actions.previewDimensions}
+                      onApplyDimensions={(body) => {
+                        actions.recalibrateDimensions(body);
+                        setMeasure(null);
+                        setTool("select");
                       }}
-                      onChooseOpening={(c) => {
-                        if (c) setTool("select");
-                        setPlacing(
-                          c && {
-                            assetId: `opening:${c.id}`,
-                            category: "opening",
-                            label: c.label,
-                            width: c.width,
-                            depth: 0.2,
-                            opening: c,
-                          },
-                        );
+                      onCancel={() => {
+                        setMeasure(null);
+                        setTool("select");
                       }}
                     />
-                  </aside>
-                )}
-                {pane === "assistant" && assistantPanel}
-                {pane === "renders" && renderPanel}
-                {pane === "contextual" && contextualPick && (
-                  <ContextualPanel
-                    key={`${contextualPick.kind}:${contextualPick.id}`}
-                    project={state.project}
-                    level={level}
-                    renders={state.renders}
-                    pick={contextualPick}
-                    references={(board.board?.items ?? [])
-                      .filter((i) => i.reference && i.ref)
-                      .map((i) => ({
-                        kind: i.kind as
-                          "photo" | "render" | "contextual" | "file",
-                        ref: i.ref ?? "",
-                        label:
-                          i.text ||
-                          (i.kind === "photo"
-                            ? "Photo"
-                            : i.kind === "render"
-                              ? "Rendu"
-                              : "Image"),
-                      }))}
-                    onGenerated={() => setContextualTick((n) => n + 1)}
-                    onClose={() => {
-                      setContextualPick(null);
-                      setPane("inspector");
-                    }}
-                  />
-                )}
-                {pane === "amenager" && (
-                  <AmenagerPanel
-                    project={state.project}
-                    level={level}
-                    busy={state.busy}
-                    lastBrief={state.lastBrief}
-                    lastLayouts={state.lastLayouts}
-                    ghost={state.ghost}
-                    onSettings={actions.updateSettings}
-                    onAskAssistant={() => openAssistant()}
-                    onProposeLayouts={actions.proposeLayouts}
-                    onPreviewProposal={actions.previewProposal}
-                    onApplyProposal={actions.applyProposal}
-                    lastCritique={state.lastCritique}
-                    onCritique={actions.critiqueProposal}
-                    onRevise={actions.reviseProposal}
-                    compare={state.compare}
-                    onCompare={actions.compareProposal}
-                    renders={state.renders}
-                    renderJob={state.renderJob}
-                    onRenderProposal={actions.renderProposal}
-                  />
-                )}
-                {pane === "advanced" && (
-                  <>
-                    <details className="adv-group" open>
-                      <summary>Réglages : unités, nord et thème</summary>
-                      <SettingsPanel
-                        project={state.project}
-                        level={level}
-                        onOp={actions.apply}
-                        onSettings={actions.updateSettings}
-                      />
-                    </details>
-                    <details className="adv-group" open>
-                      <summary>
-                        Assistant IA : modèle, consentement, journal
-                      </summary>
-                      <AiPanel
-                        project={state.project}
-                        level={level}
+                  )}
+                  {pane !== "inspector" && (
+                    <div className="side-head">
+                      <h2>{PANE_TITLE[pane]}</h2>
+                      <button
+                        className="icon"
+                        onClick={showInspector}
+                        aria-label={`Fermer ${PANE_TITLE[pane]}`}
+                        title="Revenir à l'inspecteur"
+                      >
+                        <IconClose />
+                      </button>
+                    </div>
+                  )}
+                  {pane === "inspector" && !readOnly && inspector}
+                  {pane === "catalog" && !readOnly && (
+                    <aside className="inspector">
+                      <LibraryPanel
+                        chosen={placing?.assetId ?? null}
                         busy={state.busy}
-                        lastPerception={state.lastPerception}
-                        lastBrief={state.lastBrief}
-                        onSettings={actions.updateSettings}
-                        onPerceive={actions.perceive}
-                        onOp={actions.apply}
+                        circulationToken={circulationToken}
+                        onChoose={(a) => {
+                          // Poser un meuble se fait avec l'outil Sélection : un autre outil
+                          // (Mur, Porte…) choisi ensuite abandonne la pose.
+                          if (a) setTool("select");
+                          setPlacing(
+                            a && {
+                              assetId: a.id,
+                              category: a.category,
+                              label: a.label,
+                              width: a.width.default,
+                              depth: a.depth.default,
+                            },
+                          );
+                        }}
+                        onChooseStairs={(c) => {
+                          if (c) setTool("select");
+                          setPlacing(
+                            c && {
+                              assetId: `stairs:${c.kind}`,
+                              category: "stairs",
+                              label: c.label,
+                              width: c.along,
+                              depth: c.across,
+                              stairs: c.kind,
+                            },
+                          );
+                        }}
+                        onChooseOpening={(c) => {
+                          if (c) setTool("select");
+                          setPlacing(
+                            c && {
+                              assetId: `opening:${c.id}`,
+                              category: "opening",
+                              label: c.label,
+                              width: c.width,
+                              depth: 0.2,
+                              opening: c,
+                            },
+                          );
+                        }}
                       />
-                    </details>
+                    </aside>
+                  )}
+                  {pane === "assistant" && !readOnly && assistantPanel}
+                  {pane === "renders" && !readOnly && renderPanel}
+                  {pane === "contextual" && contextualPick && !readOnly && (
+                    <ContextualPanel
+                      key={`${contextualPick.kind}:${contextualPick.id}`}
+                      project={state.project}
+                      level={level}
+                      renders={state.renders}
+                      pick={contextualPick}
+                      references={(board.board?.items ?? [])
+                        .filter((i) => i.reference && i.ref)
+                        .map((i) => ({
+                          kind: i.kind as
+                            "photo" | "render" | "contextual" | "file",
+                          ref: i.ref ?? "",
+                          label:
+                            i.text ||
+                            (i.kind === "photo"
+                              ? "Photo"
+                              : i.kind === "render"
+                                ? "Rendu"
+                                : "Image"),
+                        }))}
+                      onGenerated={() => setContextualTick((n) => n + 1)}
+                      onClose={() => {
+                        setContextualPick(null);
+                        setPane("inspector");
+                      }}
+                    />
+                  )}
+                  {pane === "amenager" && !readOnly && (
+                    <AmenagerPanel
+                      project={state.project}
+                      level={level}
+                      busy={state.busy}
+                      lastBrief={state.lastBrief}
+                      lastLayouts={state.lastLayouts}
+                      ghost={state.ghost}
+                      onSettings={actions.updateSettings}
+                      onAskAssistant={() => openAssistant()}
+                      onProposeLayouts={actions.proposeLayouts}
+                      onPreviewProposal={actions.previewProposal}
+                      onApplyProposal={actions.applyProposal}
+                      lastCritique={state.lastCritique}
+                      onCritique={actions.critiqueProposal}
+                      onRevise={actions.reviseProposal}
+                      compare={state.compare}
+                      onCompare={actions.compareProposal}
+                      renders={state.renders}
+                      renderJob={state.renderJob}
+                      onRenderProposal={actions.renderProposal}
+                    />
+                  )}
+                  {pane === "advanced" && readOnly && (
                     <details className="adv-group" open>
-                      <summary>État de l'installation</summary>
+                      <summary>Réglages : thème et compte</summary>
                       <aside className="inspector">
-                        <InstallState />
+                        <ThemeSwitch />
+                        <AccountSection />
                       </aside>
                     </details>
-                    <AutoDiagnostic last={state.lastAuto} />
-                    <details className="adv-group experts">
-                      <summary>Outils experts (rarement utiles)</summary>
+                  )}
+                  {pane === "advanced" && !readOnly && (
+                    <>
                       <details className="adv-group" open>
-                        <summary>Photos : fond du plan et vues</summary>
-                        <PhotoPanel
+                        <summary>Réglages : unités, nord et thème</summary>
+                        <SettingsPanel
+                          project={state.project}
+                          level={level}
+                          onOp={actions.apply}
+                          onSettings={actions.updateSettings}
+                        />
+                        <AccountSection />
+                      </details>
+                      <details className="adv-group" open>
+                        <summary>
+                          Assistant IA : modèle, consentement, journal
+                        </summary>
+                        <AiPanel
                           project={state.project}
                           level={level}
                           busy={state.busy}
-                          report={state.report}
-                          selection={state.selection}
-                          onSelect={actions.select}
-                          onAdoptView={actions.adoptView}
-                          onRotateView={actions.rotateView}
-                          imageWarnings={state.imageWarnings}
-                          lastInspiration={state.lastInspiration}
-                          inspirationJob={state.inspirationJob}
-                          onInspire={actions.inspire}
-                          onUpload={actions.importFile}
-                          onRemove={actions.removeImage}
+                          lastPerception={state.lastPerception}
+                          lastBrief={state.lastBrief}
+                          onSettings={actions.updateSettings}
+                          onPerceive={actions.perceive}
                           onOp={actions.apply}
                         />
                       </details>
                       <details className="adv-group" open>
-                        <summary>
-                          Calibration : mesures et facteur d'échelle
-                        </summary>
+                        <summary>État de l'installation</summary>
                         <aside className="inspector">
-                          <MeasurementsPanel
+                          <InstallState />
+                        </aside>
+                      </details>
+                      <AutoDiagnostic last={state.lastAuto} />
+                      <details className="adv-group experts">
+                        <summary>Outils experts (rarement utiles)</summary>
+                        <details className="adv-group" open>
+                          <summary>Photos : fond du plan et vues</summary>
+                          <PhotoPanel
                             project={state.project}
                             level={level}
-                            derived={state.derived}
+                            busy={state.busy}
                             report={state.report}
                             selection={state.selection}
-                            lastCalibration={state.lastCalibration}
-                            busy={state.busy}
-                            onOp={actions.apply}
-                            onAddMeasurement={actions.addMeasurement}
-                            onRemoveMeasurement={actions.removeMeasurement}
-                            onCalibrate={actions.calibrate}
-                            onSettings={actions.updateSettings}
+                            onSelect={actions.select}
                             onAdoptView={actions.adoptView}
                             onRotateView={actions.rotateView}
+                            imageWarnings={state.imageWarnings}
+                            lastInspiration={state.lastInspiration}
+                            inspirationJob={state.inspirationJob}
+                            onInspire={actions.inspire}
+                            onUpload={actions.importFile}
+                            onRemove={actions.removeImage}
+                            onOp={actions.apply}
                           />
-                        </aside>
+                        </details>
+                        <details className="adv-group" open>
+                          <summary>
+                            Calibration : mesures et facteur d'échelle
+                          </summary>
+                          <aside className="inspector">
+                            <MeasurementsPanel
+                              project={state.project}
+                              level={level}
+                              derived={state.derived}
+                              report={state.report}
+                              selection={state.selection}
+                              lastCalibration={state.lastCalibration}
+                              busy={state.busy}
+                              onOp={actions.apply}
+                              onAddMeasurement={actions.addMeasurement}
+                              onRemoveMeasurement={actions.removeMeasurement}
+                              onCalibrate={actions.calibrate}
+                              onSettings={actions.updateSettings}
+                              onAdoptView={actions.adoptView}
+                              onRotateView={actions.rotateView}
+                            />
+                          </aside>
+                        </details>
+                        <details className="adv-group" open>
+                          <summary>
+                            Blender : fichier .blend et rendu depuis la photo
+                          </summary>
+                          <aside className="inspector">
+                            <BlenderPanel
+                              projectId={state.project.id}
+                              levelId={level.id}
+                            />
+                          </aside>
+                        </details>
+                        <details className="adv-group" open>
+                          <summary>Données : provenance et confiance</summary>
+                          <aside className="inspector">
+                            <Legend />
+                          </aside>
+                        </details>
                       </details>
-                      <details className="adv-group" open>
-                        <summary>
-                          Blender : fichier .blend et rendu depuis la photo
-                        </summary>
-                        <aside className="inspector">
-                          <BlenderPanel
-                            projectId={state.project.id}
-                            levelId={level.id}
-                          />
-                        </aside>
-                      </details>
-                      <details className="adv-group" open>
-                        <summary>Données : provenance et confiance</summary>
-                        <aside className="inspector">
-                          <Legend />
-                        </aside>
-                      </details>
-                    </details>
-                  </>
-                )}
-              </>
-            }
+                    </>
+                  )}
+                </>
+              }
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </ReadOnlyContext.Provider>
   );
 }
 

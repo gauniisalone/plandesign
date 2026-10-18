@@ -34,6 +34,10 @@ def accounts_client(
 ) -> tuple[TestClient, AccountService, FakeMailer]:
     app = create_app(settings=accounts_settings(tmp_path, url, **overrides))
     service: AccountService = app.state.accounts
+    if not isinstance(service.mailer, FakeMailer):
+        # Serveur exposé : le mailer `fake` y est refusé au démarrage ; la boîte des tests
+        # remplace alors celui des réglages, sans point de test.
+        service.mailer = FakeMailer()
     assert isinstance(service.mailer, FakeMailer)
     client = TestClient(app, base_url=ORIGIN, headers={"Origin": ORIGIN})
     return client, service, service.mailer
