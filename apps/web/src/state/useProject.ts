@@ -54,6 +54,7 @@ import type {
 import { hasAnswers, type Requirements } from "../guided";
 import { isPlanFile } from "../importFiles";
 import { firstLevel, NO_SELECTION, walls, type Selection } from "../model";
+import { currentCapabilities } from "./capabilities";
 import { takePendingArrival } from "./pendingArrival";
 
 /** `updated_at` en microsecondes (le serveur l'écrit à la microseconde, strictement croissant
@@ -481,7 +482,8 @@ export function useProject(projectId: string) {
           }));
           if (
             result.run.method !== "none" &&
-            result.run.project.render.auto_path
+            result.run.project.render.auto_path &&
+            currentCapabilities().renders
           )
             startAutopilot(pid, lid);
         } else if (job.status === "failed") {
@@ -561,7 +563,11 @@ export function useProject(projectId: string) {
           lastAuto: null,
           arrival: options.correction ? s.arrival : s.arrival + 1,
         }));
-        if (!options.correction && result.project.render.auto_path)
+        if (
+          !options.correction &&
+          result.project.render.auto_path &&
+          currentCapabilities().renders
+        )
           startAutopilot(project.id, levelId);
       });
     },
@@ -589,6 +595,12 @@ export function useProject(projectId: string) {
           },
         }));
         await applyProject(result.project);
+        // En ligne sans estimation de profondeur : la photo est rangée, le plan ne se
+        // construit pas depuis elle (« Plan depuis photo : bientôt en ligne »).
+        if (!currentCapabilities().photoPlan) {
+          setState((s) => ({ ...s, arrival: s.arrival + 1 }));
+          return;
+        }
         autoplan(
           project.id,
           levelId,
@@ -610,7 +622,7 @@ export function useProject(projectId: string) {
       if (!project || !levelId) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       const photo = Object.keys(project.images)[0];
-      if (photo) {
+      if (photo && currentCapabilities().photoPlan) {
         autoplan(project.id, levelId, photo, project.history_cursor);
         return;
       }
@@ -640,7 +652,7 @@ export function useProject(projectId: string) {
             "Sans surface ni logement décrit, pas de plan à proposer : donnez une surface dans la note Exigences, déposez une photo, ou tracez la pièce.",
             409,
           );
-        if (result.project.render.auto_path)
+        if (result.project.render.auto_path && currentCapabilities().renders)
           startAutopilot(project.id, levelId);
       });
     },
@@ -656,6 +668,7 @@ export function useProject(projectId: string) {
       const level = project.levels[levelId];
       if (!level || walls(level).length > 0) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      if (!currentCapabilities().photoPlan) return; // photo rangée, plan bientôt en ligne
       autoplan(project.id, levelId, imageId, project.history_cursor);
     },
     [state, autoplan],
@@ -670,7 +683,8 @@ export function useProject(projectId: string) {
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       const level = project.levels[levelId];
       if (!level || walls(level).length === 0) generatePlan(fresh);
-      else startAutopilot(project.id, levelId);
+      else if (currentCapabilities().renders)
+        startAutopilot(project.id, levelId);
     },
     [state, generatePlan, startAutopilot],
   );

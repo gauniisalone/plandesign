@@ -1,3 +1,4 @@
+import { useCapabilities } from "../state/capabilities";
 import { useEffect, useRef, useState } from "react";
 import {
   api,
@@ -61,6 +62,7 @@ export function PhotoPanel({
   onRemove,
   onOp,
 }: Props) {
+  const { images: canImages } = useCapabilities();
   const fileRef = useRef<HTMLInputElement>(null);
   const images = Object.values(project.images);
   // Navigation par photos : les vues (caméras de photos) dans l'ordre d'ajout ; la vue
@@ -143,7 +145,7 @@ export function PhotoPanel({
           ))}
         </ul>
       </section>
-      {images.length > 0 && (
+      {images.length > 0 && canImages && (
         <InspirationSection
           projectId={project.id}
           images={images}

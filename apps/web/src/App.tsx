@@ -12,6 +12,7 @@ import { Login } from "./pages/Login";
 import { NewFromSite } from "./pages/NewFromSite";
 import type { Step } from "./panels/Toolbar";
 import { AccountContext, type Account } from "./state/account";
+import { refreshCapabilities, watchCapabilities } from "./state/capabilities";
 import { loadHosting } from "./state/hosting";
 
 interface Route {
@@ -77,19 +78,24 @@ export function App() {
     const onHash = () => setRoute(routeFromHash());
     window.addEventListener("hashchange", onHash);
     let alive = true;
-    void loadHosting().then(async (hosting) => {
-      if (!hosting.accounts) {
-        if (!alive) return;
-        setSession({ kind: "local" });
-        // API exposée par jeton : un jeton déjà connu de l'onglet pose le cookie de lecture.
-        void openReadSession();
-        return;
-      }
-      setAccountsMode(true, () => setSession({ kind: "signed-out" }));
-      const me = await readSessionOnce();
-      if (alive)
-        setSession(me ? { kind: "signed-in", me } : { kind: "signed-out" });
-    });
+    // Ce que le serveur sait calculer, lu avant d'afficher quoi que ce soit, puis relu
+    // régulièrement (un poste de calcul peut se connecter en cours de session).
+    void Promise.all([loadHosting(), refreshCapabilities()]).then(
+      async ([hosting]) => {
+        watchCapabilities();
+        if (!hosting.accounts) {
+          if (!alive) return;
+          setSession({ kind: "local" });
+          // API exposée par jeton : un jeton déjà connu de l'onglet pose le cookie de lecture.
+          void openReadSession();
+          return;
+        }
+        setAccountsMode(true, () => setSession({ kind: "signed-out" }));
+        const me = await readSessionOnce();
+        if (alive)
+          setSession(me ? { kind: "signed-in", me } : { kind: "signed-out" });
+      },
+    );
     return () => {
       alive = false;
       window.removeEventListener("hashchange", onHash);

@@ -193,6 +193,7 @@ def _code_step(email: str, next_path: str, error: str = "", status: int = 200) -
         f'<p class="error">{html.escape(error)}</p>'
         if error
         else f"<p>{html.escape(NEUTRAL)} Il expire dans {MINUTES} minutes.</p>"
+        "<p>Pas reçu ? Regardez dans vos courriers indésirables.</p>"
     )
     return _page(
         f"Se connecter à {APP_NAME}",

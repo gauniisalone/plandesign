@@ -1,3 +1,4 @@
+import { useCapabilities } from "../state/capabilities";
 import { useEffect, useRef, useState } from "react";
 import {
   renderApi,
@@ -644,6 +645,7 @@ export function ArrivalView({
   onCatalogue?: (runId: string) => void;
   busy: boolean;
 }) {
+  const { images: canImages } = useCapabilities();
   // Une image gardée en favori (US2) est montrée d'abord.
   const [side, setSide] = useState<"A" | "B" | "C">(() => {
     if (entry.favorites?.length) {
@@ -753,7 +755,7 @@ export function ArrivalView({
           )}
         </div>
       )}
-      {onCatalogue && !entry.catalogue && (
+      {onCatalogue && !entry.catalogue && canImages && (
         <button
           type="button"
           className="link"
@@ -805,6 +807,7 @@ function FinishControls({
   busy: boolean;
   onFinish: (strength: number, style: FinishStyle | null) => void;
 }) {
+  const { images: canImages } = useCapabilities();
   const [strength, setStrength] = useState(0.35);
   const [style, setStyle] = useState<FinishStyle | "">("");
   return (
@@ -831,13 +834,15 @@ function FinishControls({
         <option value="industriel">industriel</option>
         <option value="contemporain">contemporain</option>
       </select>
-      <button
-        disabled={busy}
-        onClick={() => onFinish(strength, style || null)}
-        title="Retouche photo par un modèle d'images local, guidée par la profondeur et les arêtes du rendu : la géométrie ne bouge pas, l'image Blender reste. Image marquée « générée »."
-      >
-        Finition IA
-      </button>
+      {canImages && (
+        <button
+          disabled={busy}
+          onClick={() => onFinish(strength, style || null)}
+          title="Retouche photo par un modèle d'images local, guidée par la profondeur et les arêtes du rendu : la géométrie ne bouge pas, l'image Blender reste. Image marquée « générée »."
+        >
+          Finition IA
+        </button>
+      )}
     </div>
   );
 }

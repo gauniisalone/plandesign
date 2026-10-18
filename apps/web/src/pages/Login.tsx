@@ -157,6 +157,7 @@ export function Login({
             <p className="muted" role="status">
               {NEUTRAL} Il expire dans 15 minutes.
             </p>
+            <p className="muted login-spam">Pas reçu ? Regardez dans vos courriers indésirables.</p>
             <label htmlFor="login-code">Code à 6 chiffres</label>
             <input
               id="login-code"

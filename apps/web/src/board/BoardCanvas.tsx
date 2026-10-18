@@ -1,3 +1,4 @@
+import { useCapabilities, type Capabilities } from "../state/capabilities";
 import type { Requirements } from "../guided";
 import { useReadOnly } from "../state/account";
 import {
@@ -177,6 +178,17 @@ function inside(item: BoardItem, frame: BoardItem): boolean {
 
 /** En-tête d'un cadre Rendus (T7d1, T7d2 ; T7e : un par plan) : re-rendre ses vues
  *  périmées, les voir en grand, ouvrir le volet Rendus de son plan. */
+/** Ligne courte d'un cadre quand la capacité manque (lot MVP en ligne sans GPU). */
+function missingHint(role: string, caps: Capabilities): string | null {
+  if (role === "renders" && !caps.renders)
+    return caps.online
+      ? "Rendus réalistes : bientôt en ligne"
+      : "Rendus réalistes : Blender n'est pas installé";
+  if (role === "photos" && !caps.photoPlan)
+    return "Plan depuis photo : bientôt en ligne";
+  return null;
+}
+
 function RendersFrameActions({
   levelId,
   stale,
@@ -192,7 +204,7 @@ function RendersFrameActions({
   onOpenViewer: (levelId: string) => void;
   onOpenRendersPane: (levelId?: string) => void;
 }) {
-  const n = stale.length;
+  const n = useCapabilities().renders ? stale.length : 0;
   return (
     <span
       className="board-frame-actions"
@@ -258,6 +270,7 @@ export function BoardCanvas(props: Props) {
   /** T7c : le menu « Importer » de la barre de gauche (source du plan, ou fichiers). */
   const [importMenu, setImportMenu] = useState(false);
   const dark = useDarkTheme();
+  const caps = useCapabilities();
   // B1d : lecteur (et commentateur jusqu'à B2) : ni outils, ni compositeur, ni « Générer ».
   const readOnly = useReadOnly();
   const space = useRef(false);
@@ -1196,6 +1209,13 @@ export function BoardCanvas(props: Props) {
                   Annuler
                 </button>
               </span>
+            ) : missingHint(item.role ?? "", caps) ? (
+              <span
+                className="board-frame-hint board-frame-missing"
+                role="note"
+              >
+                {missingHint(item.role ?? "", caps)}
+              </span>
             ) : (
               FRAME_HINTS[item.role ?? ""] &&
               !items.some((i) => i.frame === item.id) && (
@@ -1604,7 +1624,8 @@ export function BoardCanvas(props: Props) {
                   Modifier le plan
                 </button>
               )}
-              {single &&
+              {caps.images &&
+                single &&
                 single.ref &&
                 (single.kind === "photo" ||
                   single.kind === "plan" ||

@@ -18,6 +18,7 @@ import { APP_ORIGIN } from "../config";
   </form>
   <form class="login-step" data-step="code" hidden>
     <p class="login-text" role="status">Si cette adresse peut se connecter, un code vient de partir. Il expire dans 15 minutes.</p>
+    <p class="login-text">Pas reçu ? Regardez dans vos courriers indésirables.</p>
     <label class="mono" for="connexion-code">Code à 6 chiffres</label>
     <input id="connexion-code" name="code" class="login-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" maxlength="8" required />
     <p class="login-error" role="alert" hidden></p>

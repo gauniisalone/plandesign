@@ -264,7 +264,7 @@ export function TopBar({
       {onShare && (
         <button
           type="button"
-          className="share-btn"
+          className="new-plan-btn share-btn"
           onClick={onShare}
           title="Inviter quelqu'un par un lien, gérer les membres"
         >

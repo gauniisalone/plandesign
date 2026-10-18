@@ -8,6 +8,8 @@ import {
 } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { answersSummary, type Requirements } from "../guided";
+import { walls } from "../model";
+import { useCapabilities } from "../state/capabilities";
 import { GuidedFields } from "../panels/GuidedFields";
 
 /** Le compositeur flottant du tableau (T7b, maquette d'augus du 16 octobre) : il remplace la
@@ -77,6 +79,12 @@ export function Composer({
     items: [],
   });
   const answersTimer = useRef<number | null>(null);
+  // Sans rendus (en ligne sans poste de calcul) : « Générer le plan » tant qu'il n'y a pas
+  // de mur, puis plus rien (aucun bouton qui finirait en erreur de calcul).
+  const caps = useCapabilities();
+  const hasWalls = Object.values(project.levels).some(
+    (l) => walls(l).length > 0,
+  );
   const lastModelCall = useRef(0);
   const gemini = Boolean(home?.remote_model && home.gemini_text);
 
@@ -263,36 +271,40 @@ export function Composer({
           </span>
         ) : (
           <>
-            <label className="board-trigger-toggle">
-              <input
-                type="checkbox"
-                checked={project.render.auto_on_drop}
-                onChange={(e) =>
-                  onSettings({
-                    render: {
-                      ...project.render,
-                      auto_on_drop: e.target.checked,
-                    },
-                  })
-                }
-              />
-              Générer automatiquement au dépôt d'une photo
-            </label>
+            {caps.renders && (
+              <label className="board-trigger-toggle">
+                <input
+                  type="checkbox"
+                  checked={project.render.auto_on_drop}
+                  onChange={(e) =>
+                    onSettings({
+                      render: {
+                        ...project.render,
+                        auto_on_drop: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                Générer automatiquement au dépôt d'une photo
+              </label>
+            )}
             <span className="board-composer-sp" />
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                saveText();
-                onGenerateNow({
-                  text: text.trim().slice(0, MAX_TEXT),
-                  answers,
-                });
-              }}
-              title="Plan s'il manque (d'après les photos, sinon vos exigences), puis ambiance, aménagement, vues et rendus"
-            >
-              Générer maintenant
-            </button>
+            {(caps.renders || !hasWalls) && (
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  saveText();
+                  onGenerateNow({
+                    text: text.trim().slice(0, MAX_TEXT),
+                    answers,
+                  });
+                }}
+                title="Plan s'il manque (d'après les photos, sinon vos exigences), puis ambiance, aménagement, vues et rendus"
+              >
+                {caps.renders ? "Générer maintenant" : "Générer le plan"}
+              </button>
+            )}
           </>
         )}
       </footer>

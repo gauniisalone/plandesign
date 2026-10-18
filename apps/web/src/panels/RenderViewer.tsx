@@ -1,3 +1,4 @@
+import { useCapabilities } from "../state/capabilities";
 import { useEffect } from "react";
 import type { RenderEntry } from "../api/client";
 import type { Level, Project } from "../api/types.gen";
@@ -51,6 +52,7 @@ export function RenderViewer({
   onPickAction: (cameraId: string, action: PickAction) => void;
   onCatalogue?: (runId: string) => void;
 }) {
+  const { renders: canRender } = useCapabilities();
   const latest = latestRenders(renders);
   const views = allCameras(level)
     .map((cam) => latest.get(cam.id))
@@ -109,7 +111,7 @@ export function RenderViewer({
           </span>
         )}
         <span className="render-viewer-sp" />
-        {staleIds.length > 0 && (
+        {staleIds.length > 0 && canRender && (
           <button
             type="button"
             className="render-viewer-stale"

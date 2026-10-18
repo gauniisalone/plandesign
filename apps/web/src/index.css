@@ -6727,10 +6727,6 @@ button.link.home-empty-link {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.share-btn {
-  padding: 6px 12px;
-  border-radius: 999px;
-}
 .login-invite {
   margin: 0;
   padding: 10px 12px;
@@ -6783,4 +6779,9 @@ button.link.home-empty-link {
   background: var(--panel);
   box-shadow: var(--shadow-lg);
   font-size: 13px;
+}
+
+/* ---- Lot MVP en ligne sans GPU : ligne « bientôt en ligne » d'un cadre ---- */
+.board-frame-missing {
+  font-style: italic;
 }

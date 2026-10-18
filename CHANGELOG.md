@@ -7,6 +7,38 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (MVP en ligne sans GPU)
+
+Le MVP ouvre sans rendus en ligne (décision d'augus) : ce qui marche marche, ce qui manque le
+dit en une ligne, et aucun bouton ne finit en erreur de calcul.
+
+- **L'application décide sur ce que le serveur sait calculer** (Blender, modèles d'images,
+  estimation de profondeur, lus dans `/api/health` et relus toutes les minutes) : la machine
+  d'augus ne change pas, et un poste de calcul qui se connecterait demain rendrait les
+  fonctions disponibles sans recharger la page.
+- **Sans rendus** : le cadre Rendus dit « Rendus réalistes : bientôt en ligne » ; le chemin
+  automatique ne s'enchaîne plus après un plan, un import ou une photo ; « Générer maintenant »
+  devient « Générer le plan » tant qu'il n'y a pas de mur, puis disparaît ; la bascule
+  « générer au dépôt d'une photo », « Re-rendre » et la vignette 3D d'une variante sont masqués.
+- **En ligne sans estimation de profondeur** : une photo déposée est rangée dans Photos, le plan
+  ne se construit pas depuis elle, et le cadre dit « Plan depuis photo : bientôt en ligne ».
+- **Sans modèle d'images** : image d'inspiration, rendu contextualisé, finition IA et Version
+  catalogue sont masqués.
+- **Connexion** : après l'envoi du code, « Pas reçu ? Regardez dans vos courriers indésirables. »
+  Correction : Brevo transforme le texte en HTML et peut y ajouter un pixel d'ouverture, malgré
+  `contactPixelTrackingConsent: false` ; la page Confidentialité « comptes » le dit.
+- « Partager » prend le style des autres boutons de la barre.
+- Image Docker : l'extra « comptes » est installé ; l'image démarre sans base (mode local ou
+  jeton) et avec (`OPENPLAN_DATABASE_URL`), vérifié par un build local. Elle passe de 2,72 à
+  1,12 Go : plus de cache de téléchargement d'uv dans l'image, et seuls les dossiers écrits à
+  l'exécution (données, poids, matières) appartiennent à l'utilisateur, au lieu d'un
+  `chown -R /app` qui recopiait tout dans une couche de plus (le code reste en lecture seule).
+- Site, avec l'option de build seulement : les textes ne promettent plus ni rendus réalistes
+  ni plan depuis une photo (« Quelques mots suffisent pour commencer », « Voyez-la en 3D »,
+  « Rendus réalistes : bientôt ») ; sans l'option, la sortie reste celle de la production.
+- Tests : nouveaux e2e « en ligne sans GPU » (sans Blender ni poids) : aucune réponse 409 ou
+  5xx, jamais de chemin automatique ni de plan depuis photo lancés (`make e2e` les enchaîne).
+
 ### 19 octobre 2026 (B2a, présence en temps réel)
 
 - **Qui est là** (comptes) : dans un projet partagé, les avatars des autres membres présents

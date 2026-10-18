@@ -104,8 +104,10 @@ test("b2 : thème Clair / Sombre / Système, retenu par le navigateur", async ({
   await expect(html).toHaveAttribute("data-theme", "dark");
   await page.screenshot({ path: path.join(SHOTS, "b2_theme_sombre.png") });
 
-  // Clair choisi : reste clair même si le système passe en sombre.
+  // Clair choisi : reste clair même si le système passe en sombre. La touche ne part qu'une
+  // fois l'éditeur affiché (l'application lit d'abord ce que le serveur sait faire).
   await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator(".topbar")).toBeVisible({ timeout: 30_000 });
   await page.keyboard.press(",");
   await button(page, "Clair").click();
   await expect(html).toHaveAttribute("data-theme", "light");

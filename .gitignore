@@ -159,6 +159,8 @@ credentials.json
 # ============================================================
 apps/web/.e2e-data/
 apps/web/.e2e-accounts/
+apps/web/.e2e-online/
+apps/web/test-results-online/
 apps/web/test-results-accounts/
 apps/web/test-results/
 apps/web/playwright-report/

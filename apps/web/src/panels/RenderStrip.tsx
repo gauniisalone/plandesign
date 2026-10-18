@@ -1,3 +1,4 @@
+import { useCapabilities } from "../state/capabilities";
 import { renderApi, type RenderEntry } from "../api/client";
 import type { Level, Project } from "../api/types.gen";
 import { allCameras } from "../model";
@@ -26,6 +27,7 @@ export function RenderStrip({
   onOpen: (cameraId: string) => void;
   onRerender: (cameraIds: string[]) => void;
 }) {
+  const { renders: canRender } = useCapabilities();
   const latest = latestRenders(renders);
   const views = allCameras(level)
     .map((cam) => ({ cam, r: latest.get(cam.id) }))
@@ -69,7 +71,8 @@ export function RenderStrip({
           {stage || "rendu en cours…"}
         </span>
       ) : (
-        staleIds.length > 0 && (
+        staleIds.length > 0 &&
+        canRender && (
           <button
             type="button"
             className="primary"

@@ -1,3 +1,4 @@
+import { useCapabilities } from "../state/capabilities";
 import { ZONE_LABELS } from "../intent";
 import { useEffect, useState } from "react";
 import {
@@ -462,6 +463,7 @@ function LayoutsSection({
   projectId: string;
   onRender: (proposal: LayoutProposal) => void;
 }) {
+  const { renders: canRender } = useCapabilities();
   const rendering = renderJob?.status === "running";
   return (
     <section className="layouts">
@@ -574,18 +576,20 @@ function LayoutsSection({
                       : "comparer"}
                   </button>
                 )}
-                <button
-                  className="link"
-                  disabled={busy || !blender?.available || rendering}
-                  onClick={() => onRender(p)}
-                  title={
-                    blender?.available
-                      ? `Rendu Blender de cette variante sans l'appliquer (${blender.message}) ; le résultat s'affiche ici et dans la galerie de l'écran Rendre`
-                      : "Blender introuvable : installez-le (Paramètres avancés › Blender) ; l'aperçu 3D du plan reste disponible"
-                  }
-                >
-                  Vignette 3D
-                </button>
+                {canRender && (
+                  <button
+                    className="link"
+                    disabled={busy || !blender?.available || rendering}
+                    onClick={() => onRender(p)}
+                    title={
+                      blender?.available
+                        ? `Rendu Blender de cette variante sans l'appliquer (${blender.message}) ; le résultat s'affiche ici et dans la galerie de l'écran Rendre`
+                        : "Blender introuvable : installez-le (Paramètres avancés › Blender) ; l'aperçu 3D du plan reste disponible"
+                    }
+                  >
+                    Vignette 3D
+                  </button>
+                )}
               </div>
               {renders.some((r) => r.variant === p.index) && (
                 <div className="variant-thumbs">

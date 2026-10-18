@@ -10,8 +10,11 @@ import {
 } from "../config";
 
 const title = "Vos designs et plans en un clic · PlanDesign";
-const description =
-  "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Code ouvert, données hébergées en France.";
+// MVP sans rendus en ligne (décision d'augus, 19 oct.) : avec l'option de build, les textes
+// ne promettent ni rendus réalistes ni plan depuis une photo ; sans elle, ceux d'avant.
+const description = LOGIN_WINDOW
+  ? "Décrivez une pièce ou importez son plan 2D : PlanDesign construit le plan, l'aménage et le montre en 3D. Rendus réalistes : bientôt. Code ouvert, données hébergées en France."
+  : "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Code ouvert, données hébergées en France.";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -23,13 +26,20 @@ const jsonLd = {
   operatingSystem: "Web",
   inLanguage: "fr",
   license: "https://www.apache.org/licenses/LICENSE-2.0",
-  featureList: [
-    "Plan construit depuis la photo d'une pièce ou un plan 2D (PDF, DXF)",
-    "Rendus réalistes sous plusieurs points de vue",
-    "Espace de travail par projet : exigences, photos, inspirations, plan, rendus",
-    "Planche d'inspiration",
-    "Exports SVG, PDF, DXF et GLB",
-  ],
+  featureList: LOGIN_WINDOW
+    ? [
+        "Plan construit depuis une description ou un plan 2D (PDF, DXF)",
+        "Aménagement et vue 3D dans le navigateur",
+        "Espace de travail par projet : exigences, photos, inspirations, plan",
+        "Exports SVG, PDF, DXF et GLB",
+      ]
+    : [
+        "Plan construit depuis la photo d'une pièce ou un plan 2D (PDF, DXF)",
+        "Rendus réalistes sous plusieurs points de vue",
+        "Espace de travail par projet : exigences, photos, inspirations, plan, rendus",
+        "Planche d'inspiration",
+        "Exports SVG, PDF, DXF et GLB",
+      ],
 };
 ---
 
@@ -37,9 +47,15 @@ const jsonLd = {
   <section class="hero" aria-labelledby="titre">
     <div class="wrap">
       <h1 id="titre">Vos designs et plans en un clic</h1>
+      {LOGIN_WINDOW ? (
+        <p class="lead">
+          Décrivez la pièce ou importez son plan : l'espace de travail construit le plan, puis la 3D.
+        </p>
+      ) : (
       <p class="lead">
         De la photo de la pièce au plan, puis aux rendus — décrivez le projet, l'espace de travail fait le reste.
       </p>
+      )}
 
       {/* Pas de <form> tant que les comptes ne sont pas ouverts : rien ne peut être envoyé
           (même la touche Entrée). Contrat futur : voir README.md. */}
@@ -113,7 +129,11 @@ const jsonLd = {
   <section id="comment-ca-marche" class="section section-alt" aria-labelledby="titre-comment">
     <div class="wrap">
       <p class="eyebrow mono">Comment ça marche</p>
+      {LOGIN_WINDOW ? (
+        <h2 id="titre-comment">Quelques mots suffisent pour commencer.</h2>
+      ) : (
       <h2 id="titre-comment">Une photo suffit pour commencer.</h2>
+      )}
       <p class="intro">
         Pas de logiciel à apprendre : vous déposez, PlanDesign construit le plan puis propose des rendus. Vous corrigez
         ce que vous voulez, quand vous voulez.
@@ -134,8 +154,16 @@ const jsonLd = {
             </svg>
           </div>
           <span class="step-num" aria-hidden="true">1</span>
+          {LOGIN_WINDOW ? (
+            <h3>Décrivez la pièce</h3>
+          ) : (
           <h3>Déposez la pièce</h3>
+          )}
+          {LOGIN_WINDOW ? (
+            <p>Quelques mots et une surface, ou un plan 2D existant (DXF ou PDF). Ajoutez vos envies.</p>
+          ) : (
           <p>Une ou plusieurs photos de la pièce, ou un plan 2D existant (PDF ou DXF). Ajoutez vos envies en quelques mots.</p>
+          )}
         </li>
         <li class="step">
           <div class="step-art">
@@ -170,8 +198,16 @@ const jsonLd = {
             </svg>
           </div>
           <span class="step-num" aria-hidden="true">3</span>
+          {LOGIN_WINDOW ? (
+            <h3>Voyez-la en 3D</h3>
+          ) : (
           <h3>Recevez les rendus</h3>
+          )}
+          {LOGIN_WINDOW ? (
+            <p>La pièce aménagée en 3D dans le navigateur, exportable. Rendus réalistes : bientôt.</p>
+          ) : (
           <p>Plusieurs rendus réalistes de la pièce aménagée, sous plusieurs points de vue, sans aucun réglage à faire.</p>
+          )}
         </li>
       </ol>
 
@@ -182,11 +218,13 @@ const jsonLd = {
         </p>
       </div>
 
+      {!LOGIN_WINDOW && (
       <p class="note">
         Lors de nos essais du 16 octobre 2026 sur un ordinateur équipé d'une carte graphique, le plan était prêt en 17 à
         38 secondes et trois vues rendues en une à deux minutes après le dépôt. En ligne, les délais dépendront des postes
         de calcul mis à disposition pendant la version d'essai.
       </p>
+      )}
     </div>
   </section>
 
@@ -207,14 +245,24 @@ const jsonLd = {
         </li>
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M2 14s4.5-8 12-8 12 8 12 8-4.5 8-12 8S2 14 2 14z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><circle cx="14" cy="14" r="3.5" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>
+          {LOGIN_WINDOW ? (
+            <h3>Vue 3D et exports</h3>
+          ) : (
           <h3>Rendus multi-vues</h3>
+          )}
+          {LOGIN_WINDOW ? (
+            <p>La pièce en 3D dans le navigateur, sous tous les angles. Rendus réalistes : bientôt.</p>
+          ) : (
           <p>Vue d'ensemble, contrechamp, détail : la même pièce vue sous plusieurs angles.</p>
+          )}
         </li>
+        {!LOGIN_WINDOW && (
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect x="3" y="5" width="22" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"></rect><path d="M3 19l6-6 5 5 3-3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><circle cx="19" cy="10" r="2" fill="currentColor"></circle></svg>
           <h3>Planche d'inspiration</h3>
           <p>Des images d'ambiance générées d'après votre projet et vos références, calculées sans service tiers.</p>
         </li>
+        )}
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M14 3v14 M8 11l6 6 6-6 M4 21v3h20v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           <h3>Exports ouverts</h3>

@@ -2,6 +2,8 @@
 # Sans torch (profondeur, combles depuis la profondeur, image d'inspiration) ni Blender :
 # ces fonctions répondent par un message clair. Pour elles, installer en local (make setup-neural).
 # Rien ne sort du conteneur : pas de téléchargement de poids (HF_HUB_OFFLINE=1), pas de télémétrie.
+# Comptes (extra « comptes » : SQLAlchemy, Alembic, psycopg) : chargés seulement avec
+# OPENPLAN_DATABASE_URL ; sans elle, l'image sert le mode local ou exposé par jeton, comme avant.
 
 # --- 1. Front (Vite) -----------------------------------------------------------------
 FROM node:24-slim AS web
@@ -16,6 +18,7 @@ FROM python:3.12-slim AS api
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1 \
     HF_HUB_OFFLINE=1 \
     OPENPLAN_DATA_DIR=/app/data \
     OPENPLAN_MODELS_DIR=/app/models/weights \
@@ -23,17 +26,21 @@ ENV UV_LINK_MODE=copy \
 WORKDIR /app
 # libgl/libglib : OpenCV headless n'en a pas besoin, mais reportlab/pillow veulent zlib/jpeg déjà présents.
 COPY pyproject.toml uv.lock README.md LICENSE ./
-RUN uv sync --frozen --no-dev --no-install-project --extra api --extra vision --extra ai --extra monitoring
+RUN uv sync --frozen --no-dev --no-install-project --extra api --extra vision --extra ai --extra monitoring --extra comptes
 COPY openplan/ ./openplan/
 COPY models/registry.yaml ./models/registry.yaml
 COPY assets/catalog.yaml ./assets/catalog.yaml
 COPY assets/furniture ./assets/furniture
 COPY assets/materials ./assets/materials
 COPY blender/scripts/build_scene.py ./blender/scripts/build_scene.py
-RUN uv sync --frozen --no-dev --extra api --extra vision --extra ai --extra monitoring
+RUN uv sync --frozen --no-dev --extra api --extra vision --extra ai --extra monitoring --extra comptes
 COPY --from=web /web/dist ./apps/web/dist
-RUN useradd --create-home --uid 1000 openplan && mkdir -p /app/data /app/models/weights \
-    && chown -R openplan:openplan /app
+# Seuls les dossiers écrits à l'exécution appartiennent à l'utilisateur : le code et le venv
+# restent à root, en lecture seule pour lui (et un `chown -R /app` recopiait tout /app dans une
+# couche de plus, environ 660 Mo). UV_NO_CACHE : pas de cache de téléchargement dans l'image.
+RUN useradd --create-home --uid 1000 openplan \
+    && mkdir -p /app/data /app/models/weights /app/models/materials \
+    && chown openplan:openplan /app/data /app/models/weights /app/models/materials
 USER openplan
 EXPOSE 8000
 # 127.0.0.1 par défaut : avec network_mode: host (docker-compose.yml) l'API n'est joignable que

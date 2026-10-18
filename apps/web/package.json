@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "gen-types": "node scripts/gen-types.mjs schemas",
     "e2e": "playwright test",
-    "e2e:accounts": "playwright test -c playwright.accounts.config.ts"
+    "e2e:accounts": "playwright test -c playwright.accounts.config.ts",
+    "e2e:online": "playwright test -c playwright.online.config.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
