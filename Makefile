@@ -30,14 +30,14 @@ help:
 
 ## Installation (sans torch : voir setup-neural)
 setup:
-	$(UV) sync --extra api --extra vision --extra ai --extra monitoring
+	$(UV) sync --extra api --extra vision --extra ai --extra monitoring --extra comptes
 ifneq ($(HAS_WEB),)
 	cd $(WEB) && if [ -f package-lock.json ]; then npm ci; else npm install; fi
 endif
 
 ## Modèles neuronaux locaux : torch + transformers (plusieurs Go), puis poids à la demande
 setup-neural:
-	$(UV) sync --extra api --extra vision --extra ai --extra monitoring --extra neural
+	$(UV) sync --extra api --extra vision --extra ai --extra monitoring --extra comptes --extra neural
 	@echo "Poids : uv run openplan models list ; uv run openplan models pull <id>"
 
 ## Tout-en-un pour essayer : front construit puis servi par l'API sur un seul port (boucle

@@ -72,10 +72,18 @@ class Settings:
     auto_path: bool = True
     """Chemin automatique après un dépôt pour les projets créés par ce serveur (V1, point 6) ;
     OPENPLAN_AUTO_PATH=0 le coupe par défaut (serveur jetable des tests de bout en bout)."""
+    database_url: str | None = None
+    """Base des comptes (note 17) : OPENPLAN_DATABASE_URL (`postgresql://…`). Absente = mode
+    local inchangé, sans compte, sans base, sans session ; présente = comptes, sessions et
+    droits par projet, projets sous `<data>/projects/`. Jamais affichée ni journalisée."""
 
     @property
     def local_only(self) -> bool:
         return self.host in LOCAL_HOSTS
+
+    @property
+    def accounts_enabled(self) -> bool:
+        return bool(self.database_url)
 
     @property
     def tokens(self) -> dict[str, str]:
@@ -112,7 +120,19 @@ class Settings:
             web_dir=Path(merged["OPENPLAN_WEB_DIR"]) if merged.get("OPENPLAN_WEB_DIR") else None,
             auto_path=merged.get("OPENPLAN_AUTO_PATH", "1").strip().lower()
             not in ("0", "false", "non", "no"),
+            database_url=merged.get("OPENPLAN_DATABASE_URL", "").strip() or None,
         )
+
+
+ACCOUNTS_PROJECTS_DIR = "projects"
+
+
+def project_root(settings: Settings) -> Path:
+    """Dossier des projets : le dossier des données en mode local (inchangé), `<data>/projects`
+    avec les comptes (clés de stockage `projects/<id>/…`, note 17 § 8)."""
+    if settings.accounts_enabled:
+        return settings.data_dir / ACCOUNTS_PROJECTS_DIR
+    return settings.data_dir
 
 
 LEGACY_TOKEN_NAME = "invité"

@@ -54,7 +54,7 @@ from openplan.api.routes import (
 from openplan.api.routes import settings as settings_routes
 from openplan.api.routes.gallery import purge_all
 from openplan.api.security import TokenMissingError, install_security
-from openplan.api.settings import Settings
+from openplan.api.settings import Settings, project_root
 from openplan.brand import APP_NAME
 from openplan.geom.scale import CalibrationError
 from openplan.geom.wallgraph import GeometryError
@@ -69,6 +69,7 @@ from openplan.scene.catalog import CatalogError
 from openplan.scene.history import HistoryError, PatchRejectedError
 from openplan.scene.migrate import UnsupportedSchemaVersionError
 from openplan.scene.ops import OpError
+from openplan.scene.storage import DiskStorage
 from openplan.scene.store import ProjectNotFoundError, ProjectStore
 
 _DEV_ORIGINS = [
@@ -127,7 +128,15 @@ def create_app(
     init_monitoring()
     app = FastAPI(title=f"{APP_NAME} API", version=__version__, lifespan=_lifespan)
     app.state.settings = settings
-    app.state.store = store or ProjectStore(settings.data_dir)
+    # Une seule porte pour les fichiers (note 17) : le disque sous le dossier des données.
+    app.state.storage = DiskStorage(settings.data_dir)
+    app.state.accounts = None
+    if settings.accounts_enabled:
+        # Comptes (note 17) : importés seulement ici ; le mode local n'en charge rien.
+        from openplan.api.accounts.setup import open_accounts
+
+        app.state.accounts = open_accounts(settings)
+    app.state.store = store or ProjectStore(project_root(settings))
     app.state.language_model = language_model or build_language_model(settings.ai)
     app.state.depth_estimator = depth_estimator
     app.state.image_generator = image_generator

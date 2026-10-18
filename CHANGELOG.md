@@ -7,6 +7,19 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (branche comptes, note 17)
+
+- **Base des comptes et couche de stockage (B1a)** : nouvel extra `comptes` (SQLAlchemy 2,
+  psycopg 3, Alembic). Les comptes ne s'activent que si `OPENPLAN_DATABASE_URL` est défini :
+  sans elle, rien ne change (aucune base, aucun compte, SQLAlchemy jamais importé, projets au
+  même endroit). Avec elle : tables `users`, `login_tokens`, `sessions`, `projects`, `members`
+  (une migration Alembic, `b1a_0001`), projets rangés sous `<données>/projects/<id>/`, et
+  l'API refuse de démarrer sur une base non migrée. `openplan accounts migrate` applique les
+  migrations, `openplan accounts status` dit où en est la base (jamais son adresse). Une seule
+  couche `Storage` pour les fichiers (disque aujourd'hui, stockage objet possible plus tard) :
+  clés relatives sûres, écriture atomique, rien hors du dossier des données, lien symbolique
+  compris. Tests sur SQLite et sur un Postgres 16 jetable.
+
 ### 4 octobre 2026
 
 - **Charpente apparente (C1)** : sous chaque pente, chevrons (8 × 16 cm, entraxe 60 cm),
