@@ -1,6 +1,6 @@
 // Vérifie la sortie statique : compatible CSP stricte, aucun appel vers des tiers.
 // Lancé après `astro build`. Sort en erreur au premier problème.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 
 const DIST = new URL("../dist/", import.meta.url).pathname;
@@ -11,6 +11,13 @@ const ALLOWED_HOSTS = new Set([
   "www.w3.org",
   "www.sitemaps.org",
 ]);
+// B1d-b : option de build PUBLIC_LOGIN_WINDOW=1 (fenêtre « Se connecter »). Sans elle
+// (production tant qu'augus n'a pas décrété le MVP) : aucune mention de l'app, aucun
+// script, aucun fichier de la fenêtre. Avec : le seul script /login.js, la seule origine
+// de l'app (PUBLIC_APP_ORIGIN, https://app.plandesign.fr par défaut).
+const LOGIN = process.env.PUBLIC_LOGIN_WINDOW === "1";
+const APP_HOST = new URL(process.env.PUBLIC_APP_ORIGIN || "https://app.plandesign.fr").hostname;
+if (LOGIN) ALLOWED_HOSTS.add(APP_HOST);
 
 const problems = [];
 let total = 0;
@@ -38,15 +45,19 @@ function check(file) {
     if (/<style[\s>]/i.test(text)) problems.push(`${rel} : balise <style> en ligne`);
     for (const m of text.matchAll(/<script\b([^>]*)>/gi)) {
       const attrs = m[1];
-      if (!/type="application\/ld\+json"/.test(attrs) && !/\ssrc=/.test(attrs)) {
-        problems.push(`${rel} : script en ligne exécutable`);
-      }
+      if (/type="application\/ld\+json"/.test(attrs)) continue;
+      if (!/\ssrc=/.test(attrs)) problems.push(`${rel} : script en ligne exécutable`);
+      else if (!LOGIN) problems.push(`${rel} : script sans l'option de la fenêtre de connexion`);
+      else if (!/\ssrc="\/login\.js"/.test(attrs)) problems.push(`${rel} : script autre que /login.js`);
+    }
+    if (!LOGIN && /data-app-origin|<dialog\b/i.test(text)) {
+      problems.push(`${rel} : fenêtre de connexion sans l'option de build`);
     }
     if (/\son[a-z]+\s*=/i.test(text)) problems.push(`${rel} : gestionnaire d'événement en ligne`);
   }
   // Décision d'augus (16 oct. 2026) : ni lien ni mention de l'app ou du dépôt tant que
   // les comptes ne sont pas ouverts.
-  if (/app\.plandesign/i.test(text)) problems.push(`${rel} : mention de app.plandesign.fr`);
+  if (!LOGIN && /app\.plandesign/i.test(text)) problems.push(`${rel} : mention de app.plandesign.fr`);
   if (/github/i.test(text)) problems.push(`${rel} : mention de GitHub`);
   for (const m of text.matchAll(/https?:\/\/([a-z0-9.-]+)/gi)) {
     if (!ALLOWED_HOSTS.has(m[1].toLowerCase())) problems.push(`${rel} : hôte externe ${m[1]}`);
@@ -54,8 +65,15 @@ function check(file) {
 }
 
 walk(DIST);
+for (const name of ["login.js", "login.css"]) {
+  const there = existsSync(join(DIST, name));
+  if (!LOGIN && there) problems.push(`${name} : présent sans l'option de build`);
+  if (LOGIN && !there) problems.push(`${name} : absent avec l'option de build`);
+}
 if (problems.length) {
   console.error("check-dist : problèmes trouvés\n" + [...new Set(problems)].join("\n"));
   process.exit(1);
 }
-console.log(`check-dist : OK (${(total / 1024).toFixed(1)} Kio au total)`);
+console.log(
+  `check-dist : OK${LOGIN ? ` avec la fenêtre de connexion (${APP_HOST})` : ""} (${(total / 1024).toFixed(1)} Kio au total)`,
+);

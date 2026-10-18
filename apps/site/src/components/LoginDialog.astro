@@ -1,0 +1,32 @@
+---
+// B1d-b : fenêtre « Se connecter » (rendue seulement avec PUBLIC_LOGIN_WINDOW=1). Deux temps :
+// l'adresse, puis le code reçu par e-mail. Le comportement est dans login/login.js (fichier
+// externe : pas de script en ligne, CSP stricte), qui appelle l'API de l'application.
+import { APP_ORIGIN } from "../config";
+---
+<dialog id="connexion" class="login-dialog" aria-labelledby="connexion-titre" data-app-origin={APP_ORIGIN}>
+  <form method="dialog" class="login-close-form">
+    <button type="submit" class="login-close" aria-label="Fermer">×</button>
+  </form>
+  <h2 id="connexion-titre">Se connecter à PlanDesign</h2>
+  <form class="login-step" data-step="email">
+    <p class="login-text">Un code de connexion vous est envoyé par e-mail, sans mot de passe.</p>
+    <label class="mono" for="connexion-email">Adresse e-mail</label>
+    <input id="connexion-email" name="email" type="email" autocomplete="email" required maxlength="320" />
+    <p class="login-error" role="alert" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block">Recevoir un code</button>
+  </form>
+  <form class="login-step" data-step="code" hidden>
+    <p class="login-text" role="status">Si cette adresse peut se connecter, un code vient de partir. Il expire dans 15 minutes.</p>
+    <label class="mono" for="connexion-code">Code à 6 chiffres</label>
+    <input id="connexion-code" name="code" class="login-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" maxlength="8" required />
+    <p class="login-error" role="alert" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
+    <button type="button" class="login-back">Changer d'adresse ou recevoir un nouveau code</button>
+  </form>
+  <p class="login-mention">
+    La connexion se fait par un code envoyé à votre adresse e-mail ; PlanDesign ne garde que cette adresse (et le
+    nom que vous donnez), et l'e-mail part par notre service d'envoi (Brevo). Vos projets sont stockés sur
+    plandesign.fr (Hostinger, France) et visibles de leurs membres.
+  </p>
+</dialog>

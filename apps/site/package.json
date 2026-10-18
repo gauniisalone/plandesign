@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
-    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build && node scripts/check-dist.mjs",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build && node scripts/login-assets.mjs && node scripts/check-dist.mjs",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview"
   },
   "dependencies": {

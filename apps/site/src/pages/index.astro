@@ -6,6 +6,7 @@ import {
   SURFACE_MIN,
   SURFACE_MAX,
   ROOM_TYPES,
+  LOGIN_WINDOW,
 } from "../config";
 
 const title = "Vos designs et plans en un clic · PlanDesign";
@@ -51,7 +52,11 @@ const jsonLd = {
       >
         <div class="form-meta">
           <span id="projet-titre">Votre projet</span>
+          {LOGIN_WINDOW ? (
+            <strong>Connexion par e-mail, sans mot de passe</strong>
+          ) : (
           <strong>Ouverture prochaine · connexion par e-mail, sans mot de passe</strong>
+          )}
         </div>
         <div class="form-grid">
           <div class="field">
@@ -89,11 +94,18 @@ const jsonLd = {
           </div>
         </div>
         <SoonButton label="Commencer" block />
+        {LOGIN_WINDOW ? (
+          <p id="projet-aide" class="form-hint">
+            « Commencer » ouvre la connexion par e-mail ; votre description préremplit ensuite votre premier espace de
+            travail. Rien n'est conservé sur ce site. *Champ obligatoire.
+          </p>
+        ) : (
         <p id="projet-aide" class="form-hint">
           Ouverture prochaine : ce formulaire ne s'envoie pas encore, rien n'est transmis ni conservé.
           À l'ouverture des comptes, vous vous connecterez par e-mail et votre description préremplira votre premier
           espace de travail. *Champ obligatoire.
         </p>
+        )}
       </div>
     </div>
   </section>
@@ -234,7 +246,11 @@ const jsonLd = {
   <section class="section cta" aria-labelledby="titre-cta">
     <div class="wrap">
       <h2 id="titre-cta">Prêt à dessiner votre pièce ?</h2>
+      {LOGIN_WINDOW ? (
+        <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail, puis déposez votre première photo.</p>
+      ) : (
       <p class="intro">À l'ouverture : décrivez le projet en deux lignes, connectez-vous par e-mail, puis déposez votre première photo.</p>
+      )}
       <div class="cta-actions">
         <SoonButton label="Commencer" />
         <SoonButton label="Ouvrir mon espace" variant="outline" />

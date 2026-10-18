@@ -1,7 +1,8 @@
 ---
-// Bouton d'accès à l'application, inactif tant que les comptes ne sont pas ouverts.
-// Point d'accroche futur : data-action="login" ouvrira la fenêtre « Se connecter »
-// (e-mail + lien magique). Voir README.md, « Fenêtre de connexion (à venir) ».
+// Bouton d'accès à l'application. Sans l'option PUBLIC_LOGIN_WINDOW : inactif, « Ouverture
+// prochaine ». Avec : il ouvre la fenêtre « Se connecter » (public/… non : login/login.js,
+// copié dans dist/ par scripts/login-assets.mjs seulement avec l'option).
+import { LOGIN_WINDOW } from "../config";
 interface Props {
   label: string;
   variant?: "primary" | "outline";
@@ -9,6 +10,16 @@ interface Props {
 }
 const { label, variant = "primary", block = false } = Astro.props;
 ---
+{LOGIN_WINDOW ? (
+  <button
+    type="button"
+    class:list={["btn", `btn-${variant}`, { "btn-block": block }]}
+    data-action="login"
+    aria-haspopup="dialog"
+  >
+    {label}
+  </button>
+) : (
 <button
   type="button"
   class:list={["btn", "btn-soon", `btn-soon-${variant}`, { "btn-block": block }]}
@@ -18,3 +29,4 @@ const { label, variant = "primary", block = false } = Astro.props;
   <span class="btn-label">{label}</span>
   <span class="btn-sub">Ouverture prochaine</span>
 </button>
+)}

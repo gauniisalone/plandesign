@@ -7,6 +7,21 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (B1d-b, site public)
+
+- **Fenêtre « Se connecter » sur plandesign.fr, derrière une option de build**
+  (`PUBLIC_LOGIN_WINDOW=1`, désactivée par défaut) : sans elle, la sortie du site est
+  identique octet pour octet à celle en production (405a364), boutons « Ouverture prochaine »
+  compris, et `check-dist` refuse tout script, toute mention de l'app et les fichiers de la
+  fenêtre. Avec elle : « Se lancer », « Commencer » et « Ouvrir mon espace » ouvrent une
+  fenêtre en deux temps (adresse, puis code reçu par e-mail) qui appelle l'API de l'app
+  (script externe `login.js`, aucun script en ligne) ; code juste, on part vers l'app, sur
+  `/nouveau` si la description est remplie (compositeur prérempli), sinon sur son accueil.
+- **Formulaire du site aligné sur l'app** (avec l'option) : description 300 caractères,
+  surface 8 à 400 m². Contrat « /nouveau v1 » réactivé dans `apps/site/README.md`.
+- Pour l'ouverture (infra) : `connect-src 'self' https://app.plandesign.fr` dans la CSP du
+  site, `OPENPLAN_SITE_ORIGIN=https://plandesign.fr` sur l'app.
+
 ### 18 octobre 2026 (B1d-a, note 17 § 5 et § 11)
 
 - **Avec les comptes, l'application commence par la connexion** : sans session, la page

@@ -1,6 +1,7 @@
 # Site public PlanDesign (plandesign.fr)
 
-Page publique statique, construite avec Astro (sortie HTML/CSS seule, aucun script client).
+Page publique statique, construite avec Astro (sortie HTML/CSS seule, aucun script client
+sans l'option de la fenêtre de connexion, voir plus bas).
 
 ```sh
 cd apps/site
@@ -10,7 +11,7 @@ npm run build   # → dist/, puis scripts/check-dist.mjs (CSP stricte, aucun hô
 
 `dist/` est servi tel quel (Caddy `file_server`, page d'erreur `404.html`).
 
-## État actuel (16 oct. 2026) : aucun lien vers l'app
+## Sortie par défaut (production, 16 oct. 2026) : aucun lien vers l'app
 
 Tant que les comptes ne sont pas ouverts, le site ne contient aucun lien vers
 l'application ni vers le dépôt (`check-dist` échoue sinon). Les boutons « Se lancer »,
@@ -18,40 +19,57 @@ l'application ni vers le dépôt (`check-dist` échoue sinon). Les boutons « Se
 data-action="login">` marqués « Ouverture prochaine » (`src/components/SoonButton.astro`).
 Le formulaire de l'accueil n'est pas un `<form>` : il ne s'envoie pas.
 
-## Fenêtre de connexion (à venir, non codée)
+## Fenêtre « Se connecter » (B1d-b) — derrière une option de build
 
-Les boutons `data-action="login"` ouvriront une fenêtre « Se connecter » sur le site :
-saisie de l'e-mail, puis envoi du lien magique par l'API de l'app (note 17, lot B1b).
-Cela demandera :
+Désactivée par défaut, donc en production tant qu'augus n'a pas décrété le MVP : sans
+l'option, `dist/` est identique octet pour octet à la sortie d'avant (405a364), et
+`check-dist` refuse tout script, toute mention de l'app et les fichiers de la fenêtre.
 
-- un script sur le site (fichier externe, pas de script en ligne) ;
-- `connect-src 'self' https://app.plandesign.fr` dans la CSP de plandesign.fr ;
-- CORS côté app : origine `https://plandesign.fr` autorisée sur la route d'envoi du lien,
-  sans cookie tiers ; réponse neutre (même message que l'adresse existe ou non).
+```sh
+PUBLIC_LOGIN_WINDOW=1 npm run build                       # app : https://app.plandesign.fr
+PUBLIC_LOGIN_WINDOW=1 PUBLIC_APP_ORIGIN=http://localhost:8010 npm run build   # essai local
+```
 
-## Contrat /nouveau (site → app) — SUSPENDU
+Avec l'option :
 
-Ce contrat n'est plus utilisé depuis le 16 oct. 2026 (formulaire débranché). Il est
-gardé comme référence pour le jour où le formulaire préremplira le premier espace de
-travail.
+- les boutons `data-action="login"` (« Se lancer », « Commencer », « Ouvrir mon espace »)
+  deviennent actifs et ouvrent une fenêtre `<dialog>` en deux temps : l'adresse
+  (`POST /api/auth/email/start`), puis le code à 6 chiffres reçu par e-mail
+  (`POST /api/auth/email/verify`, avec les cookies) ;
+- le comportement est dans `login/login.js` et le style dans `login/login.css`, copiés dans
+  `dist/` par `scripts/login-assets.mjs` (fichiers externes : aucun script en ligne) ;
+- code juste : la session `pd_session` est posée par l'app (même site que plandesign.fr :
+  le cookie `SameSite=Lax` passe), puis le navigateur part vers l'app, sur `/nouveau` (contrat
+  ci-dessous) si la description est remplie, sinon sur son accueil ;
+- les limites du formulaire sont celles de l'app : description 300 caractères, surface 8 à
+  400 m².
 
-Le formulaire de l'accueil envoyait le visiteur, en `GET`, vers
+À poser par l'infra le jour de l'ouverture :
+
+- CSP de plandesign.fr : `script-src 'self'` (déjà) et
+  `connect-src 'self' https://app.plandesign.fr` ;
+- sur l'app : `OPENPLAN_SITE_ORIGIN=https://plandesign.fr` (sans elle, l'API refuse toute
+  origine extérieure ; avec, seulement sur la demande et la vérification du code).
+
+## Contrat /nouveau v1 (site → app) — ACTIF avec la fenêtre
+
+Après la connexion, la fenêtre envoie le visiteur, en `GET`, vers
 `https://app.plandesign.fr/nouveau` avec les paramètres suivants
-(encodage `application/x-www-form-urlencoded`, UTF-8 : espace = `+`,
-retours à la ligne = `%0D%0A`) :
+(encodage `application/x-www-form-urlencoded`, UTF-8 : espace = `+`) :
 
 | Paramètre     | Valeurs                                                                 | Obligatoire |
 |---------------|-------------------------------------------------------------------------|-------------|
 | `v`           | `1` (version du contrat)                                                | toujours envoyé |
 | `source`      | `site`                                                                  | toujours envoyé |
 | `piece`       | vide, ou une valeur de `ROOM_TYPES` (`openplan/schemas/assistant.py`)    | non (vide possible) |
-| `surface`     | vide, ou nombre décimal avec point, 1 à 1000, au dixième près (m²)           | non (vide possible) |
-| `description` | texte libre, 1 à 1000 caractères                                        | oui (côté navigateur) |
+| `surface`     | vide, ou nombre décimal avec point, 8 à 400, au dixième près (m²)       | non (vide possible) |
+| `description` | texte libre, 1 à 300 caractères                                         | oui (sinon : accueil de l'app) |
 
-Les champs vides sont envoyés vides (`piece=&surface=`) : l'app doit les traiter
-comme absents. Les limites ne sont garanties que par le navigateur : l'app doit
-revalider (type, bornes, longueur, valeur de `piece` dans la liste) et ignorer
-tout paramètre inconnu. Le site ne stocke rien et ne pose aucun cookie.
+Les champs vides sont envoyés vides (`piece=&surface=`) : l'app les traite comme absents.
+L'app revalide tout (pièce de la liste, surface de 8 à 400 m², description coupée à 300
+caractères au dernier mot), ignore tout paramètre inconnu, crée un espace de travail au nom
+automatique, préremplit ses exigences et l'ouvre compositeur ouvert, **sans rien générer**.
+Le site ne stocke rien et ne pose aucun cookie.
 
 Exemple :
 `/nouveau?v=1&source=site&piece=attic&surface=35.5&description=Chambre+d%27amis+sous+les+combles`
