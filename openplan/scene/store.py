@@ -18,7 +18,7 @@ import json
 import shutil
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -73,6 +73,8 @@ class ProjectStore:
         dossier des données, dont les projets sont un sous-dossier avec les comptes."""
         self._locks: dict[UUID, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        self._stamps: dict[UUID, datetime] = {}
+        """Dernier `updated_at` écrit par projet (voir `save`)."""
         self.root.mkdir(parents=True, exist_ok=True)
         self.index_path = self.root / INDEX_FILE
         with self._connect() as con:
@@ -101,7 +103,19 @@ class ProjectStore:
             return self._locks.setdefault(project_id, threading.Lock())
 
     def save(self, project: Project) -> Path:
-        """Écriture atomique : fichier temporaire puis remplacement ; puis l'index."""
+        """Écriture atomique : fichier temporaire puis remplacement ; puis l'index.
+
+        `updated_at` est strictement croissant d'une écriture à l'autre du même projet : un
+        enregistrement qui ne l'a pas avancé (réglage, résultat de tâche) ou qui tombe dans la
+        même microseconde reçoit le précédent + 1 µs. L'écran s'en sert pour ne jamais revenir
+        à un projet plus ancien que celui qu'il affiche."""
+        with self._locks_guard:
+            last = self._stamps.get(project.id) or self._indexed_stamp(project.id)
+            if last is not None and project.updated_at <= last:
+                project = project.model_copy(
+                    update={"updated_at": last + timedelta(microseconds=1)}
+                )
+            self._stamps[project.id] = project.updated_at
         directory = self.project_dir(project.id)
         (directory / IMAGES_DIR).mkdir(parents=True, exist_ok=True)
         (directory / RUNS_DIR).mkdir(exist_ok=True)
@@ -112,6 +126,13 @@ class ProjectStore:
         tmp.replace(target)
         self._index(project, target)
         return target
+
+    def _indexed_stamp(self, project_id: UUID) -> datetime | None:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT updated_at FROM projects WHERE id = ?", (str(project_id),)
+            ).fetchone()
+        return None if row is None else datetime.fromisoformat(row["updated_at"])
 
     def load(self, project_id: UUID) -> Project:
         target = self.project_dir(project_id) / PROJECT_FILE

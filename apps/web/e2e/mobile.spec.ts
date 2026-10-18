@@ -49,8 +49,17 @@ test("téléphone : tracer une pièce au doigt, sans débordement", async ({
     [300, 330],
     [60, 330],
   ];
-  for (const [x, y] of corners)
+  for (const [i, [x, y]] of corners.entries()) {
     await page.touchscreen.tap(box.x + x, box.y + y);
+    // Le conteneur du plan change de taille pendant le tracé (barre d'adresse du téléphone,
+    // bandeau qui paraît) : la vue ne doit pas se recadrer sous le doigt, sinon le toucher
+    // qui referme la pièce manque le premier sommet (5 sommets au lieu de 4). Rendu
+    // déterministe en provoquant ce changement ici.
+    if (i === 1) {
+      await page.setViewportSize({ width: 412, height: 860 });
+      await expect(page.locator("polygon.wall")).toHaveCount(1);
+    }
+  }
   await page.touchscreen.tap(box.x + 60, box.y + 190);
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await expect(page.locator("circle.vertex")).toHaveCount(4);

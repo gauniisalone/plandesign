@@ -477,8 +477,18 @@ export function PlanCanvas({
     return () => observer.disconnect();
   }, []);
 
-  // Recadrage à la demande (bouton) ou à l'ouverture
+  // Recadrage à la demande (bouton) ou à l'ouverture. Pendant un tracé de murs (chaîne en
+  // cours), un changement de taille du conteneur ne recadre pas : la vue ne saute pas sous le
+  // doigt ou la souris (sinon le geste qui referme la pièce manque le premier sommet et en
+  // pose un cinquième). Une demande explicite (fitToken) recadre toujours.
+  const drawingRef = useRef(false);
   useEffect(() => {
+    drawingRef.current = pendingStart !== null;
+  }, [pendingStart]);
+  const fittedToken = useRef<number | null>(null);
+  useEffect(() => {
+    if (drawingRef.current && fittedToken.current === fitToken) return;
+    fittedToken.current = fitToken;
     setView(fitView(derived?.bounds ?? null, size.width, size.height, insets));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitToken, size.width, size.height]);

@@ -56,6 +56,15 @@ import { isPlanFile } from "../importFiles";
 import { firstLevel, NO_SELECTION, walls, type Selection } from "../model";
 import { takePendingArrival } from "./pendingArrival";
 
+/** `updated_at` en microsecondes (le serveur l'écrit à la microseconde, strictement croissant
+ *  par projet) : `Date.parse` s'arrête à la milliseconde. */
+function stamp(iso: string): number {
+  const m = iso.match(/^(.*T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(.*)$/);
+  if (!m) return Date.parse(iso) * 1000;
+  const micro = Number((m[2] ?? "").padEnd(6, "0"));
+  return Date.parse(`${m[1]}${m[3]}`) * 1000 + micro;
+}
+
 export interface EditorState {
   project: Project | null;
   levelId: string | null;
@@ -212,14 +221,28 @@ export function useProject(projectId: string) {
       levelRef.current = level?.id ?? null;
       const derived = level ? await api.derived(project.id, level.id) : null;
       const report = await api.validation(project.id);
-      setState((s) => ({
-        ...s,
-        project,
-        levelId: level?.id ?? null,
-        derived,
-        report,
-        selection: pruneSelection(s.selection, project, level?.id ?? null),
-      }));
+      // Chaque pose attend `derived` et `validation` : deux poses peuvent se croiser (un geste
+      // pendant qu'une tâche rend son résultat). L'écran ne revient jamais en arrière : un
+      // projet plus ancien que celui affiché ne l'écrase pas (gestes, annuler, rétablir et
+      // imports avancent `updated_at`).
+      setState((s) =>
+        s.project &&
+        s.project.id === project.id &&
+        stamp(project.updated_at) < stamp(s.project.updated_at)
+          ? s
+          : {
+              ...s,
+              project,
+              levelId: level?.id ?? null,
+              derived,
+              report,
+              selection: pruneSelection(
+                s.selection,
+                project,
+                level?.id ?? null,
+              ),
+            },
+      );
     },
     [],
   );

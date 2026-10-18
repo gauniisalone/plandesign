@@ -7,6 +7,23 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (stabilité)
+
+- **Le plan ne saute plus pendant qu'on trace des murs** : si la zone du plan changeait de
+  taille au milieu d'un tracé (barre d'adresse d'un téléphone, bandeau qui paraît, panneau),
+  la vue se recadrait sous le doigt ; le geste qui referme la pièce manquait alors le premier
+  sommet et en posait un cinquième. Pendant un tracé, la vue reste en place ; « Recadrer »
+  recadre toujours.
+- **Un geste n'est plus effacé à l'écran par un résultat arrivé en retard** : quand une
+  tâche (construction du plan, chemin automatique) rendait son résultat pendant un geste,
+  l'écran pouvait afficher le projet d'avant le geste (le geste restait enregistré, mais ne
+  se voyait plus). L'écran ne revient plus jamais à un projet plus ancien que celui affiché.
+  Pour que cette règle ne masque jamais un état récent, chaque enregistrement d'un projet
+  avance désormais son `updated_at` (strictement croissant, à la microseconde), même un
+  réglage ou un résultat de tâche.
+- Tests : le journal d'accès du serveur des e2e est gardé, pour avoir une preuve quand un
+  test tombe.
+
 ### 18 octobre 2026 (contact, et lien rouvert)
 
 - **Un lien d'invitation rouvert par la personne qui l'a déjà accepté ouvre le projet**

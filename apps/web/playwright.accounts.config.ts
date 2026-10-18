@@ -44,6 +44,9 @@ export default defineConfig({
         `${env} uv run --extra comptes openplan serve --port ${apiPort} --data-dir ${dir}/data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
+      // Journal d'accès d'uvicorn (sortie standard) gardé dans le journal des e2e : une
+      // preuve quand un test tombe ; le garde de commit29 y voit aussi les réponses 500.
+      stdout: "pipe",
       timeout: 90_000,
     },
     {
