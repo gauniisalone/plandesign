@@ -58,7 +58,9 @@ export function photosMayLeave(project: Project): boolean {
 export function photosWhere(project: Project, online: boolean): string {
   if (photosMayLeave(project))
     return "peut partir chez le modèle distant autorisé dans Paramètres avancés › IA";
-  return online ? "gardée sur le serveur PlanDesign" : "reste sur cette machine";
+  return online
+    ? "gardée sur le serveur PlanDesign"
+    : "reste sur cette machine";
 }
 
 /** Statut du plan (A3) : « estimated » tant qu'un plan reconstruit (photo, image) n'a ni cote
@@ -295,6 +297,26 @@ export function isRoom(e: Element | undefined): e is Room {
 
 export function firstLevel(project: Project): Level | undefined {
   return Object.values(project.levels)[0];
+}
+
+/** T7e : le plan d'un rendu (écrit dans le rendu, sinon celui de sa caméra), comme
+ *  `openplan.pipeline.board._level_of` ; undefined si aucun. */
+export function renderLevelId(
+  project: Project,
+  entry: { level_id?: string | null; camera_id: string | null },
+): string | undefined {
+  if (entry.level_id && project.levels[entry.level_id]) return entry.level_id;
+  const cameraId = entry.camera_id;
+  if (!cameraId) return undefined;
+  return Object.values(project.levels).find((l) => l.elements[cameraId])?.id;
+}
+
+/** T7e : le plan d'une caméra. */
+export function cameraLevelId(
+  project: Project,
+  cameraId: string,
+): string | undefined {
+  return Object.values(project.levels).find((l) => l.elements[cameraId])?.id;
 }
 
 export function walls(level: Level): Wall[] {

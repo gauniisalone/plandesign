@@ -82,7 +82,7 @@ def test_a_window_must_fit_its_roof_and_leaves_with_it() -> None:
 def test_projects_0_1_0_still_open() -> None:
     data = json.loads(attic_project().model_dump_json())
     data["schema_version"] = "0.1.0"
-    assert load_project(data).schema_version == SCHEMA_VERSION == "0.14.0"
+    assert load_project(data).schema_version == SCHEMA_VERSION == "0.15.0"
 
 
 def test_every_roof_dips_under_its_eave_to_close_the_gap() -> None:

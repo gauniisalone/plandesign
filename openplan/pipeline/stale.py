@@ -3,6 +3,8 @@ plus récent que son dernier rendu, touche ce qu'on voit : la géométrie, les m
 matières, l'ambiance (tout ce qui n'est ni une caméra ni un réglage du projet). Un pas qui ne
 touche que des caméras ne périme que les vues de ces caméras ; un réglage du projet (nom,
 réglages de rendu, confidentialité, unités, consigne gardée, photos) n'en périme aucune.
+T7e : un pas qui ne touche qu'un plan (niveau) ne périme que les vues de ce plan ; une
+variante retouchée ne périme pas les rendus de l'original, ni l'inverse.
 
 La même règle est écrite côté atelier (`apps/web/src/staleViews.ts`) : les deux se lisent
 ensemble, et le test `tests/unit/test_stale.py` en fixe les cas.
@@ -43,6 +45,16 @@ class StepScope:
 
     visible: bool
     cameras: frozenset[str] = field(default_factory=frozenset)
+    levels: frozenset[str] | None = None
+    """T7e : plans dont ce qu'on voit a changé ; None = tous (un changement hors des plans)."""
+
+    def hides(self, camera_id: str, level_id: str | None) -> bool:
+        """Ce pas périme-t-il la vue de cette caméra (posée sur ce plan) ?"""
+        if camera_id in self.cameras:
+            return True
+        if not self.visible:
+            return False
+        return self.levels is None or level_id is None or level_id in self.levels
 
 
 def _types_at(ops: Iterable[Mapping[str, JsonValue]]) -> dict[str, str]:
@@ -61,6 +73,8 @@ def step_scope(entry: HistoryEntry, project: Project) -> StepScope:
     added = _types_at(entry.patch)
     removed = _types_at(entry.inverse_patch)
     visible = False
+    everywhere = False
+    levels: set[str] = set()
     cameras: set[str] = set()
     for op in entry.patch:
         for key in ("path", "from"):
@@ -73,6 +87,11 @@ def step_scope(entry: HistoryEntry, project: Project) -> StepScope:
             m = _ELEMENT.match(path)
             if m is None:
                 visible = True
+                parts = path.split("/")
+                if top == "levels" and len(parts) > 2 and parts[2]:
+                    levels.add(parts[2])
+                else:
+                    everywhere = True
                 continue
             level_id, element_id = m.group(1), m.group(2)
             element_path = f"/levels/{level_id}/elements/{element_id}"
@@ -83,7 +102,12 @@ def step_scope(entry: HistoryEntry, project: Project) -> StepScope:
                 cameras.add(element_id)
             else:
                 visible = True
-    return StepScope(visible=visible, cameras=frozenset(cameras))
+                levels.add(level_id)
+    return StepScope(
+        visible=visible,
+        cameras=frozenset(cameras),
+        levels=None if everywhere else frozenset(levels),
+    )
 
 
 def _current_type(project: Project, level_id: str, element_id: str) -> str | None:
@@ -110,8 +134,8 @@ def latest_view_renders(renders: Iterable[RenderEntry]) -> dict[UUID, RenderEntr
 def stale_cameras(project: Project, renders: Iterable[RenderEntry]) -> set[UUID]:
     """Caméras dont la vue est périmée (une annulation ne remet pas une vue « à jour »)."""
     existing = {
-        e.id
-        for level in project.levels.values()
+        e.id: str(lid)
+        for lid, level in project.levels.items()
         for e in level.elements.values()
         if e.type == "camera"
     }
@@ -124,7 +148,7 @@ def stale_cameras(project: Project, renders: Iterable[RenderEntry]) -> set[UUID]
     stale: set[UUID] = set()
     for camera_id, render in latest.items():
         for at, scope in scoped:
-            if at > render.created_at and (scope.visible or str(camera_id) in scope.cameras):
+            if at > render.created_at and scope.hides(str(camera_id), existing[camera_id]):
                 stale.add(camera_id)
                 break
     return stale

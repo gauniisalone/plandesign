@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.pipeline import journal
 from openplan.pipeline.derived import compute_derived
-from openplan.pipeline.editing import edit
+from openplan.pipeline.editing import InvalidEditError, edit
 from openplan.pipeline.journal import JournalEvent
 from openplan.scene import history
 from openplan.scene.ops import (
@@ -22,6 +22,7 @@ from openplan.scene.ops import (
     SetIntent,
     UpdateElement,
 )
+from openplan.scene.plans import NewPlan, PlanError, add_plan
 from openplan.schemas.common import StrictModel
 from openplan.schemas.derived import DerivedLevel
 from openplan.schemas.elements import Furniture
@@ -113,6 +114,29 @@ def _journal_gesture(
             request_id=origin.id if origin else None,
         ),
     )
+
+
+class NewPlanResult(EditResult):
+    level_id: UUID
+    """Le plan créé (T7e) : l'atelier l'ouvre."""
+
+
+@router.post("/projects/{project_id}/levels")
+def new_plan(body: NewPlan, project: ProjectDep, store: StoreDep, actor: ActorDep) -> NewPlanResult:
+    """T7e, « + Nouveau plan » : variante de ce plan (copie), nouvel étage (vide, au-dessus)
+    ou plan vide (variante vide) ; un seul pas d'historique, annulable."""
+    with store.lock(project.id):
+        fresh = store.load(project.id)
+        try:
+            after, level_id = add_plan(fresh, body, actor=actor)
+        except PlanError as exc:
+            raise OpError(str(exc)) from exc
+        report = validate_invariants(after)
+        if not report.valid:
+            raise InvalidEditError(report)
+        store.save(after)
+    edit = _result(after, level_id, report)
+    return NewPlanResult(**edit.model_dump(), level_id=level_id)
 
 
 @router.post("/projects/{project_id}/undo")

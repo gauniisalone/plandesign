@@ -123,9 +123,14 @@ DEFAULT_RISE_M = 2.70
 
 def stair_rise(project: Project, level_id: UUID) -> float:
     """Hauteur à franchir pour arriver à ce niveau : écart avec le niveau d'en dessous le plus
-    proche, s'il est plausible (1,5 à 6 m) ; sinon 2,70 m."""
+    proche, s'il est plausible (1,5 à 6 m) ; sinon 2,70 m. Les variantes (T7e) ne sont pas des
+    niveaux d'en dessous."""
     host = project.levels[level_id]
-    below = [lv.elevation for lv in project.levels.values() if lv.elevation < host.elevation - 0.5]
+    below = [
+        lv.elevation
+        for lv in project.levels.values()
+        if lv.variant_of is None and lv.elevation < host.elevation - 0.5
+    ]
     if below:
         gap = host.elevation - max(below)
         if 1.5 <= gap <= 6.0:

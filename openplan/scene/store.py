@@ -175,6 +175,7 @@ class ProjectStore:
         wall_count = sum(
             1
             for level in project.levels.values()
+            if level.variant_of is None  # T7e : une variante ne double pas les murs
             for element in level.elements.values()
             if isinstance(element, Wall)
         )

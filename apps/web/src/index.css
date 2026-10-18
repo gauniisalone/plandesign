@@ -4975,7 +4975,8 @@ button.link.home-empty-link {
   white-space: nowrap;
 }
 
-.topbar .add-source {
+.topbar .add-source,
+.topbar .new-plan-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -4988,7 +4989,8 @@ button.link.home-empty-link {
   white-space: nowrap;
 }
 
-.topbar .add-source svg {
+.topbar .add-source svg,
+.topbar .new-plan-btn svg {
   width: 16px;
   height: 16px;
 }
@@ -5096,6 +5098,46 @@ button.link.home-empty-link {
 .render-viewer-one > li.stale .pick-frame > img:first-child,
 .render-viewer-one > li.stale > a > img {
   opacity: 0.6;
+}
+
+/* ---- T7e : « + Nouveau plan », une petite fenêtre à deux champs ---- */
+.new-plan-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, black 35%, transparent);
+  padding: 16px;
+}
+
+.new-plan {
+  width: min(360px, 100%);
+  background: var(--panel);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.new-plan h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.new-plan label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.new-plan-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* « agrandir » (l'image dans un onglet) est redondant en plein écran (retour PO). */

@@ -31,6 +31,16 @@ export interface EditResult {
   derived: DerivedLevel;
 }
 
+/** T7e : sorte de « + Nouveau plan » : variante de ce plan, nouvel étage, plan vide. */
+export type NewPlanKind = "variant" | "storey" | "empty";
+
+export interface NewPlanBody {
+  name: string;
+  kind: NewPlanKind;
+  /** Le plan ouvert ; absent = le premier du projet. */
+  source_level_id?: string | null;
+}
+
 export interface CalibrationResult {
   calibration: Calibration;
   project: Project;
@@ -267,6 +277,12 @@ export const api = {
     }),
   applyOp: (pid: string, lid: string, op: Op) =>
     request<EditResult>(`/projects/${pid}/levels/${lid}/ops`, json(op)),
+  /** T7e : « + Nouveau plan » (variante de ce plan, nouvel étage, plan vide). */
+  newPlan: (pid: string, body: NewPlanBody) =>
+    request<EditResult & { level_id: string }>(
+      `/projects/${pid}/levels`,
+      json(body),
+    ),
   undo: (pid: string) =>
     request<Project>(`/projects/${pid}/undo`, { method: "POST" }),
   redo: (pid: string) =>
@@ -1265,6 +1281,8 @@ export interface RenderEstimate {
 export interface RenderEntry {
   run_id: string;
   camera_id: string | null;
+  /** T7e : le plan rendu ; absent des rendus d'avant (retrouvé par la caméra). */
+  level_id?: string | null;
   camera_name: string;
   samples: number;
   device: string;

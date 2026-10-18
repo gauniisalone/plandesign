@@ -5,7 +5,13 @@
  * Origine d'une donnée. L'ordre de priorité est donné par SOURCE_PRIORITY.
  */
 
-export type Source = "measured" | "observed" | "estimated" | "inferred" | "generated" | "user_defined";
+export type Source =
+  | "measured"
+  | "observed"
+  | "estimated"
+  | "inferred"
+  | "generated"
+  | "user_defined";
 
 export interface Bake {
   bounds_max: Point3 | null;
@@ -108,7 +114,11 @@ export interface DecorPalette {
   /**
    * @minItems 2
    */
-  prints: [[unknown, unknown, unknown], [unknown, unknown, unknown], ...[unknown, unknown, unknown][]];
+  prints: [
+    [unknown, unknown, unknown],
+    [unknown, unknown, unknown],
+    ...[unknown, unknown, unknown][],
+  ];
   /**
    * @minItems 3
    * @maxItems 3
@@ -146,7 +156,7 @@ export interface Polyhedron {
     [unknown, unknown, unknown],
     [unknown, unknown, unknown],
     [unknown, unknown, unknown],
-    ...[unknown, unknown, unknown][]
+    ...[unknown, unknown, unknown][],
   ];
   finish:
     | "plaster"
@@ -201,7 +211,14 @@ export interface Prism {
     | "painted_wood"
     | "linen";
   holes: Point2[][];
-  kind: "wall" | "floor" | "ceiling" | "furniture" | "fixture" | "stairs" | "joinery";
+  kind:
+    | "wall"
+    | "floor"
+    | "ceiling"
+    | "furniture"
+    | "fixture"
+    | "stairs"
+    | "joinery";
   model: string | null;
   part: number;
   source: Source;
@@ -330,7 +347,13 @@ export type JsonValue = unknown;
  * Origine d'une donnée. L'ordre de priorité est donné par SOURCE_PRIORITY.
  */
 
-export type Source1 = "measured" | "observed" | "estimated" | "inferred" | "generated" | "user_defined";
+export type Source1 =
+  | "measured"
+  | "observed"
+  | "estimated"
+  | "inferred"
+  | "generated"
+  | "user_defined";
 
 export type OpeningKind =
   | "door"
@@ -346,10 +369,21 @@ export type OpeningKind =
  * Origine d'une donnée. L'ordre de priorité est donné par SOURCE_PRIORITY.
  */
 
-export type Source2 = "measured" | "observed" | "estimated" | "inferred" | "generated" | "user_defined";
+export type Source2 =
+  | "measured"
+  | "observed"
+  | "estimated"
+  | "inferred"
+  | "generated"
+  | "user_defined";
 
 export type MeasurementKind =
-  "wall_length" | "door_width" | "ceiling_height" | "point_to_point" | "object_dimension" | "plan_dimension";
+  | "wall_length"
+  | "door_width"
+  | "ceiling_height"
+  | "point_to_point"
+  | "object_dimension"
+  | "plan_dimension";
 
 export interface Project {
   calibrations: Calibration[];
@@ -474,6 +508,7 @@ export interface Level {
   kind: ("ground" | "upper" | "attic" | "basement") | null;
   name: string;
   north_deg: number;
+  variant_of: string | null;
   vertices: {
     [k: string]: Vertex;
   };
@@ -592,7 +627,10 @@ export interface DesignIntent {
   mood:
     | []
     | ["chaleureux" | "lumineux" | "epure" | "cosy" | "brut"]
-    | ["chaleureux" | "lumineux" | "epure" | "cosy" | "brut", "chaleureux" | "lumineux" | "epure" | "cosy" | "brut"];
+    | [
+        "chaleureux" | "lumineux" | "epure" | "cosy" | "brut",
+        "chaleureux" | "lumineux" | "epure" | "cosy" | "brut",
+      ];
   /**
    * @maxItems 5
    */
@@ -612,7 +650,15 @@ export interface DesignIntent {
   usage: string | null;
   version: 1;
   views: ViewsIntent;
-  zones: ("couchage" | "lecture" | "bureau" | "rangement" | "detente" | "cuisine" | "repas")[];
+  zones: (
+    | "couchage"
+    | "lecture"
+    | "bureau"
+    | "rangement"
+    | "detente"
+    | "cuisine"
+    | "repas"
+  )[];
 }
 
 export interface FurnitureWish {
@@ -939,7 +985,8 @@ export interface Material {
    */
   base_color: [unknown, unknown, unknown];
   id: string;
-  license: "open_source" | "cc0" | "cc_by" | "commercial_restricted" | "unknown";
+  license:
+    "open_source" | "cc0" | "cc_by" | "commercial_restricted" | "unknown";
   metallic: number;
   name: string;
   roughness: number;
@@ -1004,7 +1051,10 @@ export interface GuidedAnswers {
   mood:
     | []
     | ["chaleureux" | "lumineux" | "epure" | "cosy" | "brut"]
-    | ["chaleureux" | "lumineux" | "epure" | "cosy" | "brut", "chaleureux" | "lumineux" | "epure" | "cosy" | "brut"];
+    | [
+        "chaleureux" | "lumineux" | "epure" | "cosy" | "brut",
+        "chaleureux" | "lumineux" | "epure" | "cosy" | "brut",
+      ];
   room_type: string | null;
   space: ("appartement" | "maison" | "studio" | "piece" | "combles") | null;
   style: string | null;
@@ -1072,4 +1122,3 @@ export interface Violation {
   severity: "low" | "medium" | "high";
   type: string;
 }
-

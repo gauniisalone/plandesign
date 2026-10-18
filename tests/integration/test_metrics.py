@@ -30,8 +30,9 @@ T0 = datetime(2026, 10, 12, 18, 0, tzinfo=UTC)
 
 
 def _step(actor: str, seconds: float, label: str = "geste") -> HistoryEntry:
-    # Un pas qui touche ce qu'on voit (la hauteur du niveau) : il périme les vues (P2).
-    touch = [{"op": "replace", "path": "/levels/x/height", "value": 2.5}]
+    # Un pas qui touche ce qu'on voit hors d'un plan précis (une calibration) : il périme
+    # toutes les vues (P2 ; T7e : un pas sur un seul plan ne périme que les vues de ce plan).
+    touch = [{"op": "replace", "path": "/calibrations/0", "value": 2.5}]
     return HistoryEntry(
         actor=actor,
         label=label,

@@ -137,9 +137,20 @@ MAX_PROMPT_WORDS = 60
 """Le texte du modèle d'images est coupé vers 75 jetons : on reste en dessous."""
 
 
-def _room_word(project: Project) -> tuple[str, DesignIntent | None]:
+def render_level(render_dir: Path) -> UUID | None:
+    """T7e : le plan d'un rendu, écrit dans son `render.json` (absent avant T7e)."""
+    try:
+        data = json.loads((render_dir / "render.json").read_text(encoding="utf-8"))
+        return UUID(str(data["level_id"])) if data.get("level_id") else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _room_word(project: Project, level_id: UUID | None = None) -> tuple[str, DesignIntent | None]:
+    """La pièce et son ambiance : celles du plan rendu (T7e), sinon du premier plan."""
     room, intent = "room", None
-    for level in project.levels.values():
+    chosen = project.levels.get(level_id) if level_id is not None else None
+    for level in [chosen] if chosen is not None else project.levels.values():
         rooms = [e for e in level.elements.values() if isinstance(e, Room)]
         intent = next((r.intent for r in rooms if r.intent is not None), None)
         types = [r.room_type for r in rooms if r.room_type]
@@ -153,11 +164,11 @@ def _room_word(project: Project) -> tuple[str, DesignIntent | None]:
     return room, intent
 
 
-def finish_prompt(project: Project, style: str | None = None) -> str:
+def finish_prompt(project: Project, style: str | None = None, level_id: UUID | None = None) -> str:
     """Le prompt (anglais, que le modèle comprend mieux), dérivé de l'ambiance de la pièce
     (V1, point 5) : la pièce, le style, l'humeur, les matières par surface, les couleurs, la
     lumière, la densité du décor. `style` force le style ; sans ambiance, le style seul (D5)."""
-    room, intent = _room_word(project)
+    room, intent = _room_word(project, level_id)
     return prompt_words(room, intent, style)
 
 
@@ -313,7 +324,8 @@ def finish_render(
     depth_npy = render_dir / "depth_z.npy"
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None
     edges = edges_of(pixels)
-    prompt = finish_prompt(project, options.style)
+    level_id = render_level(render_dir)
+    prompt = finish_prompt(project, options.style, level_id)
     result = finisher.finish(
         FinishRequest(
             prompt=prompt,
@@ -329,7 +341,7 @@ def finish_render(
     guided = (["profondeur"] if depth is not None else []) + (
         ["arêtes"] if any("canny" in m for m in result.model_ids) else []
     )
-    _, intent = _room_word(project)
+    _, intent = _room_word(project, level_id)
     entry = FinishEntry(
         run_id=run_id,
         strength=options.strength,

@@ -23,7 +23,13 @@ if TYPE_CHECKING:
     from PIL import ImageFont
 
 from openplan.adapters.protocols import ImageInspirer, InspirationMode, InspirationRequest
-from openplan.pipeline.finish import NEGATIVE, depth_control, edges_of, finish_prompt
+from openplan.pipeline.finish import (
+    NEGATIVE,
+    depth_control,
+    edges_of,
+    finish_prompt,
+    render_level,
+)
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.scene import Project
 
@@ -141,7 +147,7 @@ def inspire_render(
         pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
     depth_npy = render_dir / "depth_z.npy"
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None
-    prompt = finish_prompt(project, None)
+    prompt = finish_prompt(project, None, render_level(render_dir))
     result = inspirer.inspire(
         InspirationRequest(
             prompt=prompt,

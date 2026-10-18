@@ -28,6 +28,7 @@ const PROJECT_SETTINGS = new Set([
   "privacy",
   "units_display",
   "pending_instruction",
+  "pending_answers",
   "images",
 ]);
 const ELEMENT = /^\/levels\/([^/]+)\/elements\/([^/]+)(\/|$)/;
@@ -35,6 +36,15 @@ const ELEMENT = /^\/levels\/([^/]+)\/elements\/([^/]+)(\/|$)/;
 interface StepScope {
   visible: boolean;
   cameras: Set<string>;
+  /** T7e : plans dont ce qu'on voit a changé ; null = tous (hors des plans). */
+  levels: Set<string> | null;
+}
+
+/** Ce pas périme-t-il la vue de cette caméra, posée sur ce plan ? */
+function hides(scope: StepScope, cameraId: string, levelId: string): boolean {
+  if (scope.cameras.has(cameraId)) return true;
+  if (!scope.visible) return false;
+  return scope.levels === null || scope.levels.has(levelId);
 }
 
 type PatchOp = {
@@ -62,12 +72,15 @@ function typesAt(ops: PatchOp[]): Map<string, string> {
 
 /** Ce qu'un pas d'historique touche (P2, même règle que `openplan.pipeline.stale`) : ce
  *  qu'on voit (géométrie, meubles, matières, ambiance), ou seulement des caméras ; les
- *  réglages du projet ne comptent pas. */
+ *  réglages du projet ne comptent pas. T7e : un pas qui ne touche qu'un plan ne périme que
+ *  les vues de ce plan. */
 export function stepScope(entry: HistoryEntry, project: Project): StepScope {
   const patch = entry.patch as PatchOp[];
   const added = typesAt(patch);
   const removed = typesAt(entry.inverse_patch as PatchOp[]);
-  const scope: StepScope = { visible: false, cameras: new Set() };
+  const scope: StepScope = { visible: false, cameras: new Set(), levels: null };
+  const levels = new Set<string>();
+  let everywhere = false;
   for (const op of patch) {
     for (const path of [op.path, op.from]) {
       if (typeof path !== "string" || !path.startsWith("/")) continue;
@@ -75,6 +88,9 @@ export function stepScope(entry: HistoryEntry, project: Project): StepScope {
       const m = ELEMENT.exec(path);
       if (!m) {
         scope.visible = true;
+        const parts = path.split("/");
+        if (parts[1] === "levels" && parts[2]) levels.add(parts[2]);
+        else everywhere = true;
         continue;
       }
       const [, levelId = "", elementId = ""] = m;
@@ -83,9 +99,13 @@ export function stepScope(entry: HistoryEntry, project: Project): StepScope {
         added.get(`/levels/${levelId}/elements/${elementId}`) ??
         removed.get(`/levels/${levelId}/elements/${elementId}`);
       if (kind === "camera") scope.cameras.add(elementId);
-      else scope.visible = true;
+      else {
+        scope.visible = true;
+        levels.add(levelId);
+      }
     }
   }
+  scope.levels = everywhere ? null : levels;
   return scope;
 }
 
@@ -98,26 +118,24 @@ export function staleCameraIds(
   const stale = new Set<string>();
   const latest = latestRenders(renders);
   if (latest.size === 0) return stale;
-  const existing = new Set(
+  const existing = new Map(
     Object.values(project.levels).flatMap((l) =>
       Object.values(l.elements)
         .filter((e) => e.type === "camera")
-        .map((e) => e.id),
+        .map((e) => [e.id, l.id] as const),
     ),
   );
-  const scoped = project.history
-    .slice(0, project.history_cursor)
-    .map((e) => ({
-      at: Date.parse(e.timestamp ?? ""),
-      scope: stepScope(e, project),
-    }));
+  const scoped = project.history.slice(0, project.history_cursor).map((e) => ({
+    at: Date.parse(e.timestamp ?? ""),
+    scope: stepScope(e, project),
+  }));
   for (const [cameraId, r] of latest) {
-    if (!existing.has(cameraId)) continue;
+    const levelId = existing.get(cameraId);
+    if (levelId === undefined) continue;
     const renderedAt = Date.parse(r.created_at);
     if (
       scoped.some(
-        ({ at, scope }) =>
-          at > renderedAt && (scope.visible || scope.cameras.has(cameraId)),
+        ({ at, scope }) => at > renderedAt && hides(scope, cameraId, levelId),
       )
     )
       stale.add(cameraId);

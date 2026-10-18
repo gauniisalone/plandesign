@@ -41,6 +41,17 @@ def check_invariants(project: Project) -> list[Violation]:
                     message="Le fond de photo du niveau référence une image qui n'existe plus.",
                 )
             )
+        if level.variant_of is not None:
+            storey = project.levels.get(level.variant_of)
+            if storey is None or storey.variant_of is not None or storey.id == level.id:
+                violations.append(
+                    Violation(
+                        type="orphan_variant",
+                        severity="high",
+                        element_ids=[level.id, level.variant_of],
+                        message="Ce plan est la variante d'un étage qui n'existe pas (T7e).",
+                    )
+                )
     violations.extend(_check_measurements(project))
     violations.extend(check_layout(project))
     violations.extend(check_views(project))

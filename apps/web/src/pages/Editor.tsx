@@ -11,6 +11,7 @@ import type { Insets } from "../editor2d/view";
 import { jobSentence } from "../importFiles";
 import {
   firstLevel,
+  renderLevelId,
   PLAN_STATUS_LABEL,
   planStatus,
   poseOf,
@@ -45,6 +46,7 @@ import {
   ViewBar,
   type ViewMode,
 } from "../panels/Toolbar";
+import { NewPlanDialog } from "../panels/NewPlanDialog";
 import { RenderViewer } from "../panels/RenderViewer";
 import { RenderStrip } from "../panels/RenderStrip";
 import { LevelBar } from "../panels/LevelBar";
@@ -308,6 +310,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     Object.keys(state.project?.images ?? {}).join(","),
     state.renders.map((r) => r.run_id).join(","),
     state.project?.pending_instruction ?? "",
+    // T7e : un plan ajouté, annulé ou renommé a sa rangée sur l'espace de travail.
+    Object.values(state.project?.levels ?? {})
+      .map((l) => `${l.id}:${l.name}`)
+      .join(","),
   ].join("|");
   // A1 : source choisie pour un rendu contextualisé, et compteur qui resynchronise le
   // tableau quand des variantes arrivent.
@@ -316,7 +322,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   );
   const [contextualTick, setContextualTick] = useState(0);
   const board = useBoard(projectId, `${boardSync}|${contextualTick}`);
-  const level = state.project ? firstLevel(state.project) : undefined;
+  // T7e : le plan ouvert (celui qu'on édite, visé par le chemin automatique) ; le premier
+  // par défaut.
+  const level = state.project
+    ? ((state.levelId ? state.project.levels[state.levelId] : undefined) ??
+      firstLevel(state.project))
+    : undefined;
+  const [newPlanOpen, setNewPlanOpen] = useState(false);
 
   const fit = useCallback(() => setFitToken((n) => n + 1), []);
   const zoom = useCallback(
@@ -654,9 +666,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       });
   };
   /** « Re-rendre les n vues » (P2) : depuis la bande ou la ligne des vues périmées. */
-  const rerenderViews = (cameraIds: string[]) => {
+  const rerenderViews = (cameraIds: string[], onLevel?: string) => {
     journalApi.ui(projectId, "render_requested", "perimees");
-    actions.renderViews(cameraIds);
+    actions.renderViews(cameraIds, onLevel);
   };
   // Vus de l'extérieur, plafonds et versants cachent l'intérieur : masqués par défaut ; la
   // maison de poupée les masque toujours.
@@ -1140,11 +1152,23 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onProjectChanged={(p) => void actions.adoptProject(p)}
             onOpenRender={(runId) => {
               const entry = state.renders.find((r) => r.run_id === runId);
+              // T7e : la visionneuse montre les vues du plan de ce rendu.
+              const lid =
+                entry && state.project && renderLevelId(state.project, entry);
+              if (lid && lid !== level.id) actions.openLevel(lid);
               openViewer(entry?.camera_id ?? "");
             }}
-            onEditPlan={() => {
+            onEditPlan={(levelId) => {
               journalApi.ui(projectId, "tab_changed", "board>plan");
+              // T7e : le plan de ce cadre devient le plan ouvert.
+              if (levelId) actions.openLevel(levelId);
               goTab("plan");
+            }}
+            activeLevelId={level.id}
+            onOpenLevel={actions.openLevel}
+            onOpenViewer={(lid) => {
+              if (lid !== level.id) actions.openLevel(lid);
+              openViewer("");
             }}
             onVariant={(text) => {
               openAssistant();
@@ -1171,7 +1195,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onAddSource={() => goStep("import")}
             focusRenders={rendersFocus}
             onRerender={rerenderViews}
-            onOpenRendersPane={() => {
+            onOpenRendersPane={(levelId) => {
+              if (levelId) actions.openLevel(levelId);
               setPane("renders");
               setPanelOpen(true);
             }}
@@ -1232,7 +1257,28 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 : "saved"
           }
           onRetrySave={board.save === "error" ? board.retry : undefined}
+          onNewPlan={() => setNewPlanOpen(true)}
+          planName={
+            Object.keys(state.project.levels).length > 1
+              ? level.name
+              : undefined
+          }
         />
+        {newPlanOpen && (
+          <NewPlanDialog
+            busy={state.busy}
+            onClose={() => setNewPlanOpen(false)}
+            onCreate={(body) => {
+              void actions.newPlan(body).then((lid) => {
+                if (!lid) return;
+                setNewPlanOpen(false);
+                // T7e : le plan créé s'ouvre, prêt à être tracé ou retouché.
+                journalApi.ui(projectId, "tab_changed", "board>plan");
+                goTab("plan");
+              });
+            }}
+          />
+        )}
         {step === "edit" && show2d && (
           <ToolPalette
             project={state.project}

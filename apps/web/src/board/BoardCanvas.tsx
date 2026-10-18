@@ -98,10 +98,19 @@ interface Props {
   onAddSource: () => void;
   /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
   focusRenders?: number;
-  /** T7d1 : « Re-rendre » les vues périmées depuis l'en-tête du cadre Rendus. */
-  onRerender: (cameraIds: string[]) => void;
-  /** T7d1 : ouvre le volet Rendus (réglages, vues, points de vue, galerie). */
-  onOpenRendersPane: () => void;
+  /** T7d1 : « Re-rendre » les vues périmées depuis l'en-tête du cadre Rendus (T7e : sur le
+   *  plan de ce cadre). */
+  onRerender: (cameraIds: string[], levelId?: string) => void;
+  /** T7d1 : ouvre le volet Rendus (réglages, vues, points de vue, galerie) ; T7e : du plan
+   *  de ce cadre, qui devient le plan ouvert. */
+  onOpenRendersPane: (levelId?: string) => void;
+  /** T7e : « Voir en grand » d'un cadre Rendus : la visionneuse sur la première vue de son
+   *  plan. */
+  onOpenViewer: (levelId: string) => void;
+  /** T7e : le plan ouvert (cadrage sur ses rendus). */
+  activeLevelId?: string;
+  /** T7e : ouvrir un autre plan. */
+  onOpenLevel?: (levelId: string) => void;
   /** A1 : « Rendu contextualisé… » depuis une photo, un rendu ou le plan. */
   onContextual: (pick: {
     kind: "photo" | "render" | "plan";
@@ -143,8 +152,65 @@ function inside(item: BoardItem, frame: BoardItem): boolean {
   );
 }
 
+/** En-tête d'un cadre Rendus (T7d1, T7d2 ; T7e : un par plan) : re-rendre ses vues
+ *  périmées, les voir en grand, ouvrir le volet Rendus de son plan. */
+function RendersFrameActions({
+  levelId,
+  stale,
+  hasRender,
+  onRerender,
+  onOpenViewer,
+  onOpenRendersPane,
+}: {
+  levelId: string;
+  stale: string[];
+  hasRender: boolean;
+  onRerender: (cameraIds: string[], levelId?: string) => void;
+  onOpenViewer: (levelId: string) => void;
+  onOpenRendersPane: (levelId?: string) => void;
+}) {
+  const n = stale.length;
+  return (
+    <span
+      className="board-frame-actions"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {n > 0 && (
+        <button
+          type="button"
+          className="board-stale-btn"
+          onClick={() => onRerender(stale, levelId)}
+          title="Le plan, l'ambiance ou le point de vue ont changé depuis ces rendus"
+        >
+          Re-rendre {n} vue{n > 1 ? "s" : ""} périmée{n > 1 ? "s" : ""}
+        </button>
+      )}
+      {hasRender && (
+        <button
+          type="button"
+          onClick={() => onOpenViewer(levelId)}
+          title="Les rendus en grand, un par un : télécharger, affiner, désigner un meuble (← → pour passer de l'un à l'autre)"
+        >
+          Voir en grand
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => onOpenRendersPane(levelId)}
+        title="Vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
+      >
+        Réglages et galerie
+      </button>
+    </span>
+  );
+}
+
 export function BoardCanvas(props: Props) {
   const { project, board, renders, active } = props;
+  /** T7e : le plan d'un cadre Rendus (`ref`) ; celui d'avant T7e, sans `ref`, est au premier
+   *  plan. */
+  const firstLevelId = Object.keys(project.levels)[0] ?? "";
+  const frameLevel = (frame: BoardItem): string => frame.ref ?? firstLevelId;
   const stage = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const lastDown = useRef<{ id: string; t: number } | null>(null);
@@ -196,7 +262,12 @@ export function BoardCanvas(props: Props) {
   // le cadre Rendus et ce qu'il contient ; pas un geste, non enregistré.
   useEffect(() => {
     if (!props.focusRenders || !stage.current) return;
-    const frame = items.find((i) => i.kind === "frame" && i.role === "renders");
+    // T7e : le cadre Rendus du plan ouvert.
+    const frames = items.filter(
+      (i) => i.kind === "frame" && i.role === "renders",
+    );
+    const frame =
+      frames.find((i) => frameLevel(i) === props.activeLevelId) ?? frames[0];
     if (!frame) return;
     fit(false, [frame, ...items.filter((i) => i.frame === frame.id)]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1089,39 +1160,22 @@ export function BoardCanvas(props: Props) {
               {item.role === "renders" && (
                 // T7d1–T7d2 : ce que portait l'ancien écran de résultats : les vues
                 // périmées à refaire, la visionneuse, le volet Rendus (réglages, galerie).
-                <span
-                  className="board-frame-actions"
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  {props.stale.size > 0 && (
-                    <button
-                      type="button"
-                      className="board-stale-btn"
-                      onClick={() => props.onRerender([...props.stale])}
-                      title="Le plan, l'ambiance ou le point de vue ont changé depuis ces rendus"
-                    >
-                      Re-rendre {props.stale.size} vue
-                      {props.stale.size > 1 ? "s" : ""} périmée
-                      {props.stale.size > 1 ? "s" : ""}
-                    </button>
+                // T7e : chaque cadre agit sur les vues de son plan.
+                <RendersFrameActions
+                  levelId={frameLevel(item)}
+                  stale={[...props.stale].filter(
+                    (c) => project.levels[frameLevel(item)]?.elements[c],
                   )}
-                  {props.hasRenders && (
-                    <button
-                      type="button"
-                      onClick={() => props.onOpenRender("")}
-                      title="Les rendus en grand, un par un : télécharger, affiner, désigner un meuble (← → pour passer de l'un à l'autre)"
-                    >
-                      Voir en grand
-                    </button>
+                  hasRender={items.some(
+                    (i) =>
+                      i.frame === item.id &&
+                      i.kind === "render" &&
+                      i.role !== "inspiration",
                   )}
-                  <button
-                    type="button"
-                    onClick={props.onOpenRendersPane}
-                    title="Vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
-                  >
-                    Réglages et galerie
-                  </button>
-                </span>
+                  onRerender={props.onRerender}
+                  onOpenViewer={props.onOpenViewer}
+                  onOpenRendersPane={props.onOpenRendersPane}
+                />
               )}
             </span>
           </>

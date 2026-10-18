@@ -147,6 +147,8 @@ class RenderEntry(StrictModel):
     """Sortie B (V1) : l'image d'inspiration, `generated`, « cotes non garanties »."""
     catalogue: InspirationEntry | None = None
     """« Version catalogue » demandée (V1.7b) : txt2img, « matières libres »."""
+    level_id: UUID | None = None
+    """T7e : le plan (niveau) rendu ; absent des rendus d'avant, retrouvé alors par la caméra."""
 
 
 RENDER_SIDECAR = "render.json"
@@ -358,6 +360,7 @@ def render_camera_view(
     entry = RenderEntry(
         run_id=run_id or uuid4(),
         camera_id=camera.id,
+        level_id=level_id,
         camera_name=camera.name or ("Photo" if camera.image_id else "Point de vue"),
         samples=samples,
         device=device,
@@ -839,6 +842,7 @@ def render_proposal(
     entry = RenderEntry(
         run_id=run_id or uuid4(),
         camera_id=None,
+        level_id=level_id,
         camera_name=f"Variante {proposal.index}",
         samples=samples,
         device=device,

@@ -124,9 +124,35 @@ def replaced(before: Board | None, after: Board) -> Board:
 def _key(item: BoardItem) -> str:
     if item.role == "prompt":
         return "prompt"
+    if item.kind == "frame" and item.role == "renders" and item.ref:
+        # T7e : le cadre Rendus d'un plan autre que le premier.
+        return f"frame:renders:{item.ref}"
     if item.kind == "frame" and item.role in FIXED_FRAMES:
         return f"frame:{item.role}"
     return f"{item.kind}:{item.ref}" if item.ref else ""
+
+
+def renders_title(project: Project, level_id: str) -> str:
+    """« Rendus » pour un projet à un seul plan (comme avant T7e), « Rendus · nom » sinon."""
+    try:
+        level = project.levels.get(UUID(level_id))
+    except ValueError:
+        level = None
+    if len(project.levels) < 2 or level is None:
+        return FIXED_FRAMES["renders"]
+    return f"{FIXED_FRAMES['renders']} · {level.name}"
+
+
+def _level_of(project: Project, entry: RenderEntry) -> str | None:
+    """Le plan d'un rendu (T7e) : écrit dans le rendu, sinon celui de sa caméra ; None si
+    aucun (variante d'aménagement d'avant T7e, caméra supprimée)."""
+    if entry.level_id is not None and entry.level_id in project.levels:
+        return str(entry.level_id)
+    if entry.camera_id is not None:
+        for lid, level in project.levels.items():
+            if entry.camera_id in level.elements:
+                return str(lid)
+    return None
 
 
 # ------------------------------------------------------------------ ce que le projet fournit
@@ -135,6 +161,8 @@ class Provided:
     photos: list[str]
     renders: list[tuple[str, str]]
     """(run, titre) : le dernier rendu de chaque vue, du plus ancien au plus récent."""
+    render_levels: dict[str, str]
+    """T7e : run → plan (niveau) du rendu ; absent = le premier plan."""
     inspirations: list[str]
     """Images d'inspiration sans plan (rendu de secours, A2)."""
     plans: list[tuple[str, str]]
@@ -177,6 +205,9 @@ def provided(project: Project, runs_dir: Path) -> Provided:
     return Provided(
         photos=[str(i) for i in project.images],
         renders=[(str(e.run_id), e.camera_name) for e in by_view.values()],
+        render_levels={
+            str(e.run_id): lid for e in by_view.values() if (lid := _level_of(project, e))
+        },
         inspirations=inspirations,
         plans=[(str(lid), level.name) for lid, level in project.levels.items()],
         prompt=prompt or None,
@@ -223,9 +254,16 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
         | {f"contextual:{ref}" for ref, _ in have.contextual}
     )
     items = [i for i in items if i.kind not in AUTO_KINDS or _key(i) in alive]
+    # T7e : le cadre Rendus d'un plan disparu (annulé) s'en va avec ce qu'il contient ; ses
+    # rendus reviennent dans le cadre du premier plan.
+    lids = {lid for lid, _ in have.plans}
+    gone = {i.id for i in items if i.kind == "frame" and i.role == "renders" and i.ref}
+    gone = {fid for fid in gone if next(i for i in items if i.id == fid).ref not in lids}
+    items = [i for i in items if i.id not in gone and i.frame not in gone]
 
     present = {_key(i) for i in items}
     added = _Adder(items)
+    first = have.plans[0][0] if have.plans else None
     for lid, name in have.plans:
         if f"plan:{lid}" not in present | dismissed:
             added.plan(lid, name)
@@ -238,17 +276,33 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     added.make_room_for_heads()
     # T2 : les cadres Photos de la pièce et Inspirations existent dès le départ, même vides.
     for role, title in FIXED_FRAMES.items():
-        if f"frame:{role}" not in present | dismissed:
+        if role != "renders" and f"frame:{role}" not in present | dismissed:
             added.frame(role, title)  # type: ignore[arg-type]
+    # T7e : une rangée par plan, son cadre « Rendus · nom » à droite du plan ; le premier plan
+    # garde le cadre Rendus d'avant (un projet à un plan ne change pas).
+    for lid, _ in have.plans:
+        key = "frame:renders" if lid == first else f"frame:renders:{lid}"
+        if key not in present | dismissed:
+            added.renders_frame(lid, renders_title(project, lid), first=lid == first)
+        else:
+            added.retitle(lid, renders_title(project, lid), first=lid == first)
     for photo in have.photos:
         if f"photo:{photo}" not in present | dismissed:
             added.into("photos", FIXED_FRAMES["photos"], "photo", photo, "")
     for run, title in have.renders:
         if f"render:{run}" not in present | dismissed:
-            added.into("renders", "Rendus", "render", run, title)
+            into = have.render_levels.get(run, first)
+            added.into_renders(into, first, renders_title(project, into or ""), run, title)
     for run in have.inspirations:
         if f"render:{run}" not in present | dismissed:
-            added.into("renders", "Rendus", "render", run, "inspiration, sans plan", "inspiration")
+            added.into_renders(
+                first,
+                first,
+                renders_title(project, first or ""),
+                run,
+                "inspiration, sans plan",
+                "inspiration",
+            )
     # Un fichier joint posé sur le tableau à la main garde sa place et sa sorte d'élément.
     placed_media = {i.ref for i in added.items if i.kind in ("file", "video", "pdf")}
     for kind, mid, name in joined:
@@ -274,20 +328,73 @@ class _Adder:
         """Un cadre nommé, créé s'il manque (T2 : cadres fixes, même vides)."""
         self._frame(role, title)
 
+    def _find_renders(self, level_id: str | None, *, first: bool) -> BoardItem | None:
+        """Le cadre Rendus d'un plan : `ref` = son niveau ; celui du premier plan peut être le
+        cadre d'avant T7e, sans `ref`."""
+        return next(
+            (
+                i
+                for i in self.items
+                if i.kind == "frame"
+                and i.role == "renders"
+                and (i.ref == level_id or (first and i.ref is None))
+            ),
+            None,
+        )
+
+    def renders_frame(self, level_id: str | None, title: str, *, first: bool) -> BoardItem:
+        """T4 (maquette), T7e : le cadre Rendus d'un plan, à droite du plan, à sa hauteur."""
+        found = self._find_renders(level_id, first=first)
+        if found is not None:
+            return found
+        plan = next((i for i in self.items if i.kind == "plan" and i.ref == level_id), None)
+        if plan is not None:
+            right, top = plan.x + plan.w + GAP, plan.y
+        else:
+            plans = [i for i in self.items if i.kind == "plan"]
+            right = max((i.x + i.w for i in plans), default=PLAN_X + PLAN_W) + GAP
+            top = min((i.y for i in plans), default=0.0)
+        frame = BoardItem(
+            kind="frame",
+            x=right,
+            y=top,
+            w=FRAME_W,
+            h=PLAN_H,
+            text=title,
+            role="renders",
+            ref=None if first else level_id,
+            z=-1,
+        )
+        self.items.append(frame)
+        return frame
+
+    def retitle(self, level_id: str | None, title: str, *, first: bool) -> None:
+        """Le titre suit le nom du plan, tant qu'il est celui que le tableau a donné."""
+        found = self._find_renders(level_id, first=first)
+        if found is None or found.text == title:
+            return
+        if found.text != FIXED_FRAMES["renders"] and not found.text.startswith(
+            f"{FIXED_FRAMES['renders']} · "
+        ):
+            return
+        self.items[self.items.index(found)] = found.model_copy(update={"text": title})
+
+    def into_renders(
+        self,
+        level_id: str | None,
+        first: str | None,
+        title: str,
+        ref: str,
+        text: str,
+        item_role: BoardRole | None = None,
+    ) -> None:
+        frame = self.renders_frame(level_id, title, first=level_id == first)
+        self.into("renders", title, "render", ref, text, item_role, frame=frame)
+
     def _frame(self, role: BoardRole, title: str) -> BoardItem:
         found = next((i for i in self.items if i.kind == "frame" and i.role == role), None)
         if found is not None:
             return found
-        if role == "renders":
-            # T4 (maquette) : les rendus à droite du plan, à sa hauteur.
-            plans = [i for i in self.items if i.kind == "plan"]
-            right = max((i.x + i.w for i in plans), default=PLAN_X + PLAN_W) + GAP
-            top = min((i.y for i in plans), default=0.0)
-            frame = BoardItem(
-                kind="frame", x=right, y=top, w=FRAME_W, h=PLAN_H, text=title, role=role, z=-1
-            )
-            self.items.append(frame)
-            return frame
         frame = BoardItem(
             kind="frame",
             x=0.0,
@@ -313,8 +420,10 @@ class _Adder:
         ref: str,
         text: str,
         item_role: BoardRole | None = None,
+        *,
+        frame: BoardItem | None = None,
     ) -> None:
-        frame = self._frame(role, title)
+        frame = frame or self._frame(role, title)
         inside = sum(1 for i in self.items if i.frame == frame.id)
         row, col = divmod(inside, COLS)
         x = frame.x + PAD + col * (CELL_W + 16.0)
@@ -340,12 +449,17 @@ class _Adder:
         )
 
     def _push_below(self, frame: BoardItem, dy: float) -> None:
-        """Un cadre qui grandit pousse ce qui est posé dessous, dans la même colonne."""
+        """Un cadre qui grandit pousse ce qui est posé dessous, dans la même colonne ; à droite
+        de la colonne des cadres (T7e), les rangées suivantes entières (plan et ses rendus)."""
         bottom = frame.y + frame.h
+        right = frame.x >= PLAN_X - GAP
         moved = {
             i.id
             for i in self.items
-            if i.id != frame.id and i.frame is None and i.y >= bottom and i.x < frame.x + frame.w
+            if i.id != frame.id
+            and i.frame is None
+            and i.y >= bottom
+            and (i.x + i.w > PLAN_X - GAP if right else i.x < frame.x + frame.w)
         }
         self.items[:] = [
             i.model_copy(update={"y": i.y + dy}) if i.id in moved or i.frame in moved else i
@@ -391,8 +505,12 @@ class _Adder:
         ]
 
     def plan(self, level_id: str, name: str) -> None:
-        plans = [i for i in self.items if i.kind == "plan"]
-        y = max((i.y + i.h for i in plans), default=-GAP) + GAP
+        """T7e : un plan de plus ouvre une rangée sous la précédente (sous le plus bas des plans
+        et de leurs cadres Rendus)."""
+        row = [
+            i for i in self.items if i.kind == "plan" or (i.kind == "frame" and i.role == "renders")
+        ]
+        y = max((i.y + i.h for i in row), default=-GAP) + GAP
         self.items.append(
             BoardItem(kind="plan", x=PLAN_X, y=y, w=PLAN_W, h=PLAN_H, ref=level_id, text=name)
         )

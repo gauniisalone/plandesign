@@ -81,6 +81,13 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.14.0", "0.15.0")
+def _variant_of(data: dict[str, Any]) -> dict[str, Any]:
+    """0.15.0 (plusieurs plans, T7e) : `Level.variant_of`, l'étage dont un plan est une
+    variante ; tout niveau d'un projet 0.14.0 est un étage (None), sans perte."""
+    return data
+
+
 @register("0.13.0", "0.14.0")
 def _auto_on_drop(data: dict[str, Any]) -> dict[str, Any]:
     """0.14.0 (tableau T4) : `render.auto_on_drop`, une photo déposée sur le tableau lance la

@@ -172,6 +172,9 @@ class Level(StrictModel):
     north_deg: float = Field(default=90.0, ge=0.0, lt=360.0)
     """Direction du nord dans le repère du plan, en degrés depuis +X (antihoraire) : 90 = le
     nord est en haut du plan (défaut). Sert à l'éclairage solaire des rendus."""
+    variant_of: UUID | None = None
+    """T7e : None = un étage du projet (empilé en 3D à son altitude) ; sinon l'étage dont ce
+    plan est une variante (autre version du même lieu, jamais empilée, vue seule)."""
 
     @model_validator(mode="after")
     def _keys_match_ids(self) -> Level:

@@ -68,7 +68,9 @@ Un projet s'ouvre sur son **espace de travail** (voir plus bas), cadré sur le c
 dès qu'un rendu existe ; le **plan** s'édite depuis son cadre, et **← Espace de travail**, en
 haut, y ramène. Les rendus se regardent en grand dans la **visionneuse** : **Voir en grand**
 dans l'en-tête du cadre Rendus, un double-clic sur un rendu ou une vignette de la bande sous
-le plan ; ← → passent d'une vue à l'autre, Échap ferme. Dans le plan :
+le plan ; ← → passent d'une vue à l'autre, Échap ferme. **+ Nouveau plan**, en haut de
+l'espace de travail, ajoute une variante de ce plan, un nouvel étage ou un plan vide : chaque
+plan a sa rangée, son plan et ses rendus. Dans le plan :
 un canevas quadrillé plein écran ; en haut le nom du projet, **Ajouter une source** (photos ou plan), le bouton qui replie le panneau de droite et l'engrenage
 **Paramètres avancés** ; dessous la palette (sélection, main, mur, porte, fenêtre,
 **Recalibrer**, pièces, **Meuble**, **Aménager**, annuler, rétablir, supprimer) ; en bas à

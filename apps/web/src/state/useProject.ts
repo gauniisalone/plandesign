@@ -41,6 +41,7 @@ import {
   type FinishStyle,
   type RenderEntry,
   type ProjectSettingsUpdate,
+  type NewPlanBody,
 } from "../api/client";
 import type { Op } from "../api/ops";
 import type {
@@ -195,20 +196,59 @@ export function useProject(projectId: string) {
     [],
   );
 
+  /** T7e : plan ouvert (le niveau édité, visé par le chemin automatique) ; le premier par
+   *  défaut, gardé d'un changement à l'autre tant qu'il existe (un plan annulé rend le
+   *  premier). */
+  const levelRef = useRef<string | null>(null);
+
   /** Recharge les dérivés après un changement qui ne les renvoie pas (undo, mesures...). */
-  const applyProject = useCallback(async (project: Project) => {
-    const level = firstLevel(project);
-    const derived = level ? await api.derived(project.id, level.id) : null;
-    const report = await api.validation(project.id);
-    setState((s) => ({
-      ...s,
-      project,
-      levelId: level?.id ?? null,
-      derived,
-      report,
-      selection: pruneSelection(s.selection, project),
-    }));
-  }, []);
+  const applyProject = useCallback(
+    async (project: Project, wanted?: string) => {
+      const keep = wanted ?? levelRef.current;
+      const level =
+        (keep ? project.levels[keep] : undefined) ?? firstLevel(project);
+      levelRef.current = level?.id ?? null;
+      const derived = level ? await api.derived(project.id, level.id) : null;
+      const report = await api.validation(project.id);
+      setState((s) => ({
+        ...s,
+        project,
+        levelId: level?.id ?? null,
+        derived,
+        report,
+        selection: pruneSelection(s.selection, project, level?.id ?? null),
+      }));
+    },
+    [],
+  );
+
+  /** T7e : ouvrir un autre plan du projet (cadre « Plan · nom » de l'espace de travail). */
+  const openLevel = useCallback(
+    (levelId: string) => {
+      if (!state.project || levelId === levelRef.current) return;
+      const project = state.project;
+      void run(async () => applyProject(project, levelId));
+    },
+    [state.project, run, applyProject],
+  );
+
+  /** T7e : « + Nouveau plan » ; le plan créé s'ouvre. */
+  const newPlan = useCallback(
+    async (body: NewPlanBody): Promise<string | undefined> => {
+      if (!state.project) return undefined;
+      const id = state.project.id;
+      const source = levelRef.current;
+      return run(async () => {
+        const result = await api.newPlan(id, {
+          ...body,
+          source_level_id: source,
+        });
+        await applyProject(result.project, result.level_id);
+        return result.level_id;
+      });
+    },
+    [state.project, run, applyProject],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -263,7 +303,7 @@ export function useProject(projectId: string) {
           project: result.project,
           derived: result.derived,
           report: result.report,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -553,8 +593,7 @@ export function useProject(projectId: string) {
     }
     const text = project.pending_instruction ?? "";
     const answers = (project.pending_answers ?? undefined) as
-      | GuidedAnswers
-      | undefined;
+      GuidedAnswers | undefined;
     if (!text && !answers) {
       setState((s) => ({
         ...s,
@@ -980,8 +1019,10 @@ export function useProject(projectId: string) {
 
   /** « Re-rendre les n vues » périmées (P2) : même suivi que « Rendre toutes les vues ». */
   const renderViews = useCallback(
-    (cameraIds: string[]) => {
-      const { project, levelId } = state;
+    (cameraIds: string[], onLevel?: string) => {
+      const { project } = state;
+      // T7e : les vues d'un autre plan (cadre « Rendus · nom ») se refont sur leur plan.
+      const levelId = onLevel ?? state.levelId;
       if (!project || !levelId || cameraIds.length === 0) return;
       followRenderJob(project.id, "Re-rendre les vues", () =>
         renderApi.renderViews(project.id, levelId, cameraIds),
@@ -1237,7 +1278,7 @@ export function useProject(projectId: string) {
           project: result.project,
           derived: result.derived,
           report: result.report,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -1257,7 +1298,7 @@ export function useProject(projectId: string) {
           project: result.project,
           derived: result.derived,
           report: result.report,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -1279,7 +1320,7 @@ export function useProject(projectId: string) {
           report: result.report,
           lastRecalibration: result.summary,
           autoDone: true,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -1303,7 +1344,7 @@ export function useProject(projectId: string) {
           report: result.report,
           lastRecalibration: result.summary,
           autoDone: true,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -1378,7 +1419,7 @@ export function useProject(projectId: string) {
           assistantLast: cited ?? s.assistantLast,
           lastLayouts: layouts ?? s.lastLayouts,
           ghost: layouts?.proposals[0] ?? s.ghost,
-          selection: pruneSelection(s.selection, result.project),
+          selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
       });
     },
@@ -1574,6 +1615,8 @@ export function useProject(projectId: string) {
       startAutopilot,
       catalogueRender,
       addSectionView,
+      openLevel,
+      newPlan,
       startRender,
       renderProposal,
       clearError,
@@ -1581,8 +1624,13 @@ export function useProject(projectId: string) {
   };
 }
 
-function pruneSelection(selection: Selection, project: Project): Selection {
-  const level = firstLevel(project);
+function pruneSelection(
+  selection: Selection,
+  project: Project,
+  levelId: string | null,
+): Selection {
+  const level =
+    (levelId ? project.levels[levelId] : undefined) ?? firstLevel(project);
   if (!level) return NO_SELECTION;
   if (selection.kind === "vertex" && !level.vertices[selection.id])
     return NO_SELECTION;
