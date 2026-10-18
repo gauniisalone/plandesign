@@ -57,6 +57,8 @@ export interface ProjectSummary {
   image_count: number;
   wall_count: number;
   has_thumbnail: boolean;
+  /** B1e : rôle de l'utilisateur (toujours « owner » en mode local). */
+  role?: Role;
 }
 
 /** Corps de création d'une mesure : les champs à défaut sont facultatifs côté client. */
@@ -219,13 +221,70 @@ export interface Me {
 
 export type Role = "viewer" | "commenter" | "editor" | "owner";
 
+/** B1e : un lien d'invitation en attente (le jeton n'est rendu qu'à la création). */
+export interface InvitationOut {
+  id: string;
+  role: Role;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface MemberOut {
+  user_id: string;
+  email: string;
+  name: string;
+  role: Role;
+  you: boolean;
+}
+
+/** Menu « Partager » (B1e) : réservé au propriétaire. */
+export const shareApi = {
+  invite: (pid: string, role: Role, days: 1 | 7 | 30) =>
+    request<InvitationOut & { token: string }>(
+      `/projects/${pid}/invitations`,
+      json({ role, days }),
+    ),
+  invitations: (pid: string) =>
+    request<InvitationOut[]>(`/projects/${pid}/invitations`),
+  revoke: (pid: string, id: string) =>
+    request<void>(`/projects/${pid}/invitations/${id}`, { method: "DELETE" }),
+  members: (pid: string) => request<MemberOut[]>(`/projects/${pid}/members`),
+  setRole: (pid: string, userId: string, role: Role) =>
+    request<MemberOut[]>(`/projects/${pid}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+  remove: (pid: string, userId: string) =>
+    request<MemberOut[]>(`/projects/${pid}/members/${userId}`, {
+      method: "DELETE",
+    }),
+};
+
+/** Le lien à copier : le jeton dans l'ancre (jamais envoyé au serveur dans une URL). */
+export function invitationLink(token: string): string {
+  return `${window.location.origin}/#/invitation/${token}`;
+}
+
 /** Connexion par code (B1b2) et rôle par projet (B1d). */
 export const authApi = {
   /** Même réponse que l'adresse ait un compte ou non. */
-  start: (email: string) =>
-    request<{ detail: string }>("/auth/email/start", json({ email })),
-  verify: (email: string, code: string) =>
-    request<Me>("/auth/email/verify", json({ email, code })),
+  /** `invitation` (B1e) : le jeton d'un lien d'invitation, qui ouvre l'inscription. */
+  start: (email: string, invitation?: string) =>
+    request<{ detail: string }>(
+      "/auth/email/start",
+      json({ email, invitation: invitation ?? null }),
+    ),
+  verify: (email: string, code: string, invitation?: string) =>
+    request<Me>(
+      "/auth/email/verify",
+      json({ email, code, invitation: invitation ?? null }),
+    ),
+  /** B1e : le lien d'invitation ouvert (jeton lu dans l'ancre, jamais dans une URL). */
+  acceptInvitation: (token: string) =>
+    request<{ project_id: string; role: Role }>(
+      "/auth/invitation/accept",
+      json({ token }),
+    ),
   /** null sans session : lu hors de `request`, une 401 attendue ne déclenche rien. */
   me: async (): Promise<Me | null> => {
     const response = await fetch(`${BASE}/auth/me`);

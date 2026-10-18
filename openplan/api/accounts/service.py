@@ -10,7 +10,8 @@
   par 15 min et 10 demandes par IP par heure, au-delà rien ne part (même réponse) ; la
   vérification d'un code répond pareil qu'il soit faux, expiré, épuisé ou déjà servi.
 - Compte : retrouvé par l'adresse normalisée ; créé seulement si l'inscription est ouverte
-  (`OPENPLAN_SIGNUP=open`), pour l'adresse administrateur, ou (B1e) sur invitation.
+  (`OPENPLAN_SIGNUP=open`), pour l'adresse administrateur, ou (B1e) avec le jeton d'un lien
+  d'invitation encore valable, présenté à la demande et à la vérification du code.
 - Session : 32 octets aléatoires en cookie `pd_session`, empreinte en base, 30 jours
   prolongés à l'usage (au plus une fois par heure), révocable.
 """
@@ -36,6 +37,7 @@ from openplan.api.accounts.db import aware, utcnow
 from openplan.api.accounts.mail import Mailer, MailMessage, login_message
 from openplan.api.accounts.models import AuthSession, LoginToken, User
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
+from openplan.api.accounts.sharing import SharingMixin
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 
@@ -145,8 +147,9 @@ def _auth_user(user: User) -> AuthUser:
     return AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
 
 
-class AccountService(AccountsRepo):
-    """Comptes, liens de connexion et sessions ; aussi le `AccountsBackend` de l'API."""
+class AccountService(AccountsRepo, SharingMixin):
+    """Comptes, codes de connexion, sessions et partage (B1e) ; aussi le
+    `AccountsBackend` de l'API."""
 
     def __init__(
         self,
@@ -164,21 +167,23 @@ class AccountService(AccountsRepo):
 
     # --- demande d'un lien ------------------------------------------------------------
 
-    def _may_sign_in(self, db: Session, email: str) -> bool:
+    def _may_sign_in(self, db: Session, email: str, invitation: str | None) -> bool:
         if email == self.admin_email or self.settings.signup == "open":
             return True
         if db.scalar(select(User.id).where(User.email == email)) is not None:
             return True
-        return self.pending_invitation(email)
+        return invitation is not None and self._live_invitation(db, invitation) is not None
 
-    def pending_invitation(self, email: str) -> bool:
-        """Invitation en attente pour cette adresse : arrive avec B1e."""
-        del email
-        return False
-
-    def start_login(self, email: str, next_path: str | None, ip: str | None) -> MailMessage | None:
+    def start_login(
+        self,
+        email: str,
+        next_path: str | None,
+        ip: str | None,
+        invitation: str | None = None,
+    ) -> MailMessage | None:
         """Le message à envoyer (le code), ou None quand rien ne doit partir (adresse qui ne
-        peut pas se connecter, limite atteinte). L'appelant répond pareil dans les deux cas."""
+        peut pas se connecter, limite atteinte). L'appelant répond pareil dans les deux cas.
+        `invitation` : le jeton d'un lien d'invitation (B1e), qui ouvre l'inscription."""
         address = checked_email(email)
         if not self.ip_limiter.allow(ip or "-"):
             return None
@@ -187,7 +192,7 @@ class AccountService(AccountsRepo):
         row_id = uuid4()
         with self.session() as db, db.begin():
             db.execute(delete(LoginToken).where(LoginToken.created_at < now - TOKEN_PURGE_AFTER))
-            if not self._may_sign_in(db, address):
+            if not self._may_sign_in(db, address, invitation):
                 return None
             recent = db.scalar(
                 select(func.count())
@@ -213,7 +218,7 @@ class AccountService(AccountsRepo):
     # --- code tapé dans la fenêtre « Se connecter » -----------------------------------
 
     def complete_login(
-        self, email: str, typed: str, user_agent: str = ""
+        self, email: str, typed: str, user_agent: str = "", invitation: str | None = None
     ) -> tuple[AuthUser, str, str]:
         """Vérifie le code de cette adresse (tous ses codes encore valables, comparés en temps
         constant) ; juste : le consomme (marqué utilisé avant tout), trouve ou crée le compte,
@@ -269,7 +274,7 @@ class AccountService(AccountsRepo):
                 next_path = matched.next
         if refused:
             raise LoginRefusedError(LoginRefusal.INVALID)
-        user = self._user_for_login(address, now)
+        user = self._user_for_login(address, now, invitation)
         session_raw = new_token()
         with self.session() as db, db.begin():
             db.add(
@@ -284,7 +289,7 @@ class AccountService(AccountsRepo):
             )
         return user, session_raw, safe_next(next_path)
 
-    def _user_for_login(self, email: str, now: datetime) -> AuthUser:
+    def _user_for_login(self, email: str, now: datetime, invitation: str | None) -> AuthUser:
         is_admin_address = email == self.admin_email
         for _ in range(2):  # une création concurrente de la même adresse : on relit
             try:
@@ -294,7 +299,7 @@ class AccountService(AccountsRepo):
                         if not (
                             is_admin_address
                             or self.settings.signup == "open"
-                            or self.pending_invitation(email)
+                            or self.valid_invitation(invitation)
                         ):
                             raise LoginRefusedError(LoginRefusal.CLOSED)
                         user = User(email=email, name="", is_admin=False, created_at=now)

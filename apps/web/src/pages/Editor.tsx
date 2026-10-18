@@ -42,7 +42,13 @@ import {
   SettingsPanel,
   ThemeSwitch,
 } from "../panels/SettingsPanel";
-import { ReadOnlyContext, canEdit, useRole } from "../state/account";
+import { ShareDialog } from "../panels/ShareDialog";
+import {
+  ReadOnlyContext,
+  canEdit,
+  useAccount,
+  useRole,
+} from "../state/account";
 import {
   BottomBar,
   type Step,
@@ -169,7 +175,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   const { state, actions } = useProject(projectId);
   // B1d : lecteur et commentateur (jusqu'à B2) en lecture seule ; tant que le rôle
   // n'est pas connu, rien d'éditable n'est montré.
-  const readOnly = !canEdit(useRole(projectId));
+  const role = useRole(projectId);
+  const readOnly = !canEdit(role);
+  // B1e : « Partager » pour le propriétaire, avec les comptes seulement.
+  const canShare = useAccount() !== null && role === "owner";
+  const [shareOpen, setShareOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [step, setStep] = useState<Step>(initialStep ?? "edit");
@@ -1282,12 +1292,19 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             }
             onRetrySave={board.save === "error" ? board.retry : undefined}
             onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
+            onShare={canShare ? () => setShareOpen(true) : undefined}
             planName={
               Object.keys(state.project.levels).length > 1
                 ? level.name
                 : undefined
             }
           />
+          {shareOpen && (
+            <ShareDialog
+              projectId={projectId}
+              onClose={() => setShareOpen(false)}
+            />
+          )}
           {newPlanOpen && (
             <NewPlanDialog
               busy={state.busy}

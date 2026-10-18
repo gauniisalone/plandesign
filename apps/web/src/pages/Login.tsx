@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { ApiError, authApi, type Me } from "../api/client";
 import { APP_NAME } from "../brand";
-import { ACCOUNTS_PRIVACY } from "../state/hosting";
+import { ACCOUNTS_LINE, PRIVACY_URL } from "../state/hosting";
 import { IconPlan } from "../ui/icons";
 
 /** B1d : sans session, la page de connexion et rien d'autre (note 17, § 5). Deux temps :
  *  l'adresse, puis le code à 6 chiffres reçu par e-mail (B1b2). La réponse à la demande est
  *  la même que l'adresse ait un compte ou non. Après le code, l'application reprend la page
- *  demandée (l'ancre de l'adresse ne change pas). */
+ *  demandée (l'ancre de l'adresse ne change pas). B1e : ouverte depuis un lien d'invitation,
+ *  elle le dit (sans rien du projet) et passe le jeton, qui ouvre l'inscription. */
 
 const NEUTRAL = "Si cette adresse peut se connecter, un code vient de partir.";
 
@@ -20,7 +21,14 @@ function message(e: unknown): string {
   return "Le serveur ne répond pas : réessayez dans un instant.";
 }
 
-export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
+export function Login({
+  onSignedIn,
+  invitation,
+}: {
+  onSignedIn: (me: Me) => void;
+  /** Jeton d'un lien d'invitation (lu dans l'ancre). */
+  invitation?: string;
+}) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -32,7 +40,7 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     setBusy(true);
     setError(null);
     try {
-      await authApi.start(email.trim());
+      await authApi.start(email.trim(), invitation);
       setCode("");
       setStep("code");
     } catch (err) {
@@ -51,7 +59,7 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     setBusy(true);
     setError(null);
     try {
-      onSignedIn(await authApi.verify(email.trim(), code));
+      onSignedIn(await authApi.verify(email.trim(), code, invitation));
     } catch (err) {
       setError(`Connexion impossible : ${message(err)}`);
       setBusy(false);
@@ -67,10 +75,14 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
         <h1>Se connecter à {APP_NAME}</h1>
         {step === "email" ? (
           <form onSubmit={(e) => void ask(e)}>
-            <p className="muted">
-              Vos designs et plans en un clic. Un code de connexion vous est
-              envoyé par e-mail, sans mot de passe.
-            </p>
+            {invitation ? (
+              <p className="login-invite" role="status">
+                Vous avez été invité à un projet {APP_NAME} : connectez-vous
+                avec votre adresse e-mail pour l'ouvrir.
+              </p>
+            ) : (
+              <p className="muted">Vos designs et plans en un clic.</p>
+            )}
             <label htmlFor="login-email">Adresse e-mail</label>
             <input
               id="login-email"
@@ -130,7 +142,12 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
           </form>
         )}
       </main>
-      <footer className="login-foot muted">{ACCOUNTS_PRIVACY}</footer>
+      <footer className="login-foot muted">
+        {ACCOUNTS_LINE}{" "}
+        <a href={PRIVACY_URL} target="_blank" rel="noopener">
+          Confidentialité
+        </a>
+      </footer>
     </div>
   );
 }

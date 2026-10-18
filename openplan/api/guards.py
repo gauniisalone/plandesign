@@ -48,6 +48,13 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     # Projet
     ("GET", P): V,
     ("GET", P + "/role"): V,  # B1d : le front masque ce que le rôle ne permet pas
+    # Partage (B1e) : le propriétaire seul
+    ("GET", P + "/invitations"): O,
+    ("POST", P + "/invitations"): O,
+    ("DELETE", P + "/invitations/{invitation_id}"): O,
+    ("GET", P + "/members"): O,
+    ("PATCH", P + "/members/{user_id}"): O,
+    ("DELETE", P + "/members/{user_id}"): O,
     ("PATCH", P): E,  # l'accord pour un modèle distant exige en plus `owner` (settings.py)
     ("DELETE", P): O,
     ("POST", P + "/name/auto"): E,
@@ -180,6 +187,7 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("GET", "/api/test/mail/last-code"): "public",
     ("GET", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
+    ("POST", "/api/auth/invitation/accept"): "user",
     ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",
@@ -308,9 +316,14 @@ def visible_ids(request: Request) -> set[UUID] | None:
 
 
 def visible_summaries(request: Request, store: ProjectStore) -> list[ProjectSummary]:
-    ids = visible_ids(request)
+    """Projets visibles, avec le rôle de l'utilisateur (`owner` sans comptes) : la galerie
+    masque « Renommer » et « Supprimer » selon le rôle (B1e)."""
+    accounts = accounts_of(request)
     summaries = store.list()
-    return summaries if ids is None else [s for s in summaries if s.id in ids]
+    if accounts is None:
+        return summaries
+    roles = accounts.roles_of(signed_in_user(request).id)
+    return [s.model_copy(update={"role": roles[s.id]}) for s in summaries if s.id in roles]
 
 
 def register_project(request: Request, project_id: UUID, name: str) -> None:

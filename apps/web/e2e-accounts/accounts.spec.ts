@@ -1,8 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 
 /** B1d-a : comptes actifs. Sans session, la page de connexion et rien d'autre ; connexion en
  *  deux temps (adresse, puis code) ; galerie ; « Me déconnecter » ; arrivée par /nouveau
- *  (compositeur prérempli, rien ne se génère) ; lecteur sans outils ni « Générer ». */
+ *  (compositeur prérempli, rien ne se génère) ; lecteur sans outils ni « Générer ». B1e :
+ *  lien d'invitation (propriétaire → invité sans compte), révocation, rôle sur les cartes,
+ *  pied de page réduit à la mention. */
 
 const ADMIN = "admin@example.org";
 
@@ -17,10 +19,17 @@ async function signIn(page: Page, email: string): Promise<void> {
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
-  const r = await page.request.get(
-    `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
-  );
-  const { code } = (await r.json()) as { code: string };
+  // Le code part après la réponse (tâche de fond) : on attend qu'il soit arrivé.
+  let code = "";
+  await expect
+    .poll(async () => {
+      const r = await page.request.get(
+        `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
   await page.getByLabel("Code à 6 chiffres").fill(code);
   await page.getByRole("button", { name: "Se connecter" }).click();
 }
@@ -49,10 +58,15 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   ).toEqual([]);
   await expect(page.getByText("Vos espaces de travail")).toHaveCount(0);
   await shot(page, "1-connexion-adresse");
-  // Mention de la note 17, § 11 (code e-mail, Brevo, Hostinger).
+  // Mention en une ligne (B1e), avec le lien vers la page Confidentialité du site.
   await expect(
-    page.getByText(/code envoyé à votre adresse e-mail/),
+    page.getByText(
+      "Un code vous est envoyé par e-mail. Vos données restent en France.",
+    ),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Confidentialité" }),
+  ).toHaveAttribute("href", "https://plandesign.fr/confidentialite/");
   // Mauvais code : refus, même texte quel que soit le motif.
   await page.getByLabel("Adresse e-mail").fill(ADMIN);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
@@ -80,6 +94,10 @@ test("connexion en deux temps, galerie du membre, puis « Me déconnecter »", a
     settings.getByRole("button", { name: "Me déconnecter partout" }),
   ).toBeVisible();
   await shot(page, "3-galerie-reglages-compte");
+  // B1e : connecté, le pied ne dit que la mention, plus « sur cette machine ».
+  const foot = page.locator(".boards-foot");
+  await expect(foot).toContainText("Vos données restent en France");
+  await expect(foot).not.toContainText("cette machine");
   await settings
     .getByRole("button", { name: "Me déconnecter", exact: true })
     .click();
@@ -188,4 +206,100 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
     page.getByRole("toolbar", { name: "Outils de l'espace de travail" }),
   ).toBeHidden();
   await shot(page, "5-lecteur-sans-outils");
+});
+
+/** Un navigateur à part, vu par l'API depuis sa propre adresse (plage de documentation,
+ *  transmise par le mandataire de Vite) : chacun a sa limite de tentatives de connexion. */
+async function person(browser: Browser, ip: string): Promise<Page> {
+  const context = await browser.newContext({
+    baseURL: test.info().project.use.baseURL,
+    viewport: { width: 1400, height: 900 },
+    extraHTTPHeaders: { "X-Forwarded-For": ip },
+  });
+  return context.newPage();
+}
+
+test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué refusé", async ({
+  browser,
+}) => {
+  const owner = await person(browser, "198.51.100.21");
+  await signIn(owner, "proprio@example.org");
+  await expect(
+    owner.getByRole("heading", { name: "Vos espaces de travail" }),
+  ).toBeVisible();
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Grenier partagé" },
+    headers: { Origin: new URL(owner.url()).origin },
+  });
+  const { id } = (await made.json()) as { id: string };
+  await owner.goto(`/#/projects/${id}`);
+  await owner.getByRole("button", { name: "Partager" }).click();
+  const share = owner.getByRole("dialog", { name: "Partager le projet" });
+  await share
+    .getByRole("button", { name: "Créer un lien d'invitation" })
+    .click();
+  const link = await share.getByLabel("Lien d'invitation").inputValue();
+  expect(link).toMatch(/\/#\/invitation\/[A-Za-z0-9_-]{43}$/);
+  await shot(owner, "6-partager-lien");
+  // Un second lien, révoqué aussitôt (on attend que le champ montre le nouveau lien).
+  await share
+    .getByRole("button", { name: "Créer un lien d'invitation" })
+    .click();
+  await expect(share.getByLabel("Lien d'invitation")).not.toHaveValue(link);
+  const revoked = await share.getByLabel("Lien d'invitation").inputValue();
+  expect(revoked).not.toBe(link);
+  const pending = share.getByRole("list", { name: "Liens en attente" });
+  await expect(pending.getByRole("listitem")).toHaveCount(2);
+  await pending.getByRole("button", { name: "Révoquer" }).last().click();
+  await expect(pending.getByRole("listitem")).toHaveCount(1);
+
+  // L'invité, sans compte : la page de connexion seule, avec la ligne d'invitation, et rien
+  // du projet avant la connexion.
+  const guest = await person(browser, "198.51.100.22");
+  await guest.goto(link);
+  await expect(
+    guest.getByText("Vous avez été invité à un projet PlanDesign"),
+  ).toBeVisible();
+  await expect(guest.getByText("Grenier partagé")).toHaveCount(0);
+  await shot(guest, "7-invite-connexion");
+  await guest.getByLabel("Adresse e-mail").fill("lea@example.org");
+  await guest.getByRole("button", { name: "Recevoir un code" }).click();
+  // Le code part après la réponse : on attend l'étape du code, puis qu'il soit arrivé.
+  await expect(guest.getByText("un code vient de partir")).toBeVisible();
+  let code = "";
+  await expect
+    .poll(async () => {
+      const r = await guest.request.get(
+        "/api/test/mail/last-code?email=lea@example.org",
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
+  await guest.getByLabel("Code à 6 chiffres").fill(code);
+  await guest.getByRole("button", { name: "Se connecter" }).click();
+  await expect(guest).toHaveURL(new RegExp(`#/projects/${id}(/board)?$`));
+  await expect(guest.locator(".editor.read-only")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(guest.getByRole("button", { name: "Partager" })).toHaveCount(0);
+  // Le jeton ne reste pas dans l'adresse ; la galerie dit le rôle, sans Renommer ni Supprimer.
+  expect(guest.url()).not.toContain("invitation");
+  await guest.getByRole("button", { name: "Projets" }).click();
+  const card = guest.locator(".boards-card", { hasText: "Grenier partagé" });
+  await expect(card.locator(".boards-role")).toHaveText("lecteur");
+  await expect(card.getByRole("button", { name: /Supprimer/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /Renommer/ })).toHaveCount(0);
+  await shot(guest, "8-galerie-lecteur");
+  // Le lien révoqué : un seul message, et le projet ne s'ouvre pas.
+  await guest.goto(revoked);
+  await expect(guest.getByRole("alert")).toContainText(
+    "Ce lien d'invitation n'est plus valable",
+  );
+  // Le propriétaire voit l'invitée parmi les membres.
+  await owner.reload();
+  await owner.getByRole("button", { name: "Partager" }).click();
+  await expect(
+    owner.getByRole("list", { name: "Membres" }).getByText("lea@example.org"),
+  ).toBeVisible();
 });

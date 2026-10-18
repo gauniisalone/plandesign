@@ -24,6 +24,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 ROLES = ("viewer", "commenter", "editor", "owner")
+INVITE_ROLES = ("viewer", "commenter", "editor")
+"""Rôles qu'un lien d'invitation peut donner (B1e) : jamais `owner`."""
 
 NAMING = {
     "ix": "ix_%(column_0_label)s",
@@ -124,3 +126,31 @@ class Member(Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     added_at: Mapped[datetime] = mapped_column(_utc())
+
+
+class Invitation(Base):
+    """Lien d'invitation à un projet (B1e) : un rôle, une expiration, usage unique, révocable.
+    Le jeton (32 octets) n'est gardé qu'en empreinte ; il voyage dans l'ancre du lien
+    (`#/invitation/<jeton>`), jamais dans une URL envoyée au serveur, jamais par e-mail."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        CheckConstraint("role IN ('viewer', 'commenter', 'editor')", name="role_invitable"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(_utc())
+    expires_at: Mapped[datetime] = mapped_column(_utc())
+    used_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    used_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)

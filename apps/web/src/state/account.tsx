@@ -26,6 +26,14 @@ export function useReadOnly(): boolean {
   return useContext(ReadOnlyContext);
 }
 
+/** Libellés des rôles (menu « Partager », cartes de la galerie). */
+export const ROLE_LABEL: Record<Role, string> = {
+  viewer: "Lecteur",
+  commenter: "Commentateur",
+  editor: "Éditeur",
+  owner: "Propriétaire",
+};
+
 export function canEdit(role: Role | null): boolean {
   return role === "editor" || role === "owner";
 }

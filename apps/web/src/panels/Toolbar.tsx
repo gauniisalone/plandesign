@@ -146,8 +146,11 @@ export function TopBar({
   save,
   onRetrySave,
   onNewPlan,
+  onShare,
   planName,
 }: {
+  /** B1e : ouvre le menu « Partager » (propriétaire, comptes actifs) ; absent sinon. */
+  onShare?: () => void;
   /** T7e : ouvre « + Nouveau plan » (dans l'espace de travail). */
   onNewPlan?: () => void;
   /** T7e : nom du plan ouvert, dit à côté de « Plan » quand le projet en a plusieurs. */
@@ -231,6 +234,16 @@ export function TopBar({
           title="Photos ou plan (image, DXF, PDF, SVG) : le plan se construit ou se complète"
         >
           <IconPlus /> <span className="lbl">Ajouter une source</span>
+        </button>
+      )}
+      {onShare && (
+        <button
+          type="button"
+          className="share-btn"
+          onClick={onShare}
+          title="Inviter quelqu'un par un lien, gérer les membres"
+        >
+          Partager
         </button>
       )}
       {!readOnly && (

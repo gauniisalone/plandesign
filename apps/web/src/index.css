@@ -6644,3 +6644,100 @@ button.link.home-empty-link {
 .board-rail[hidden] {
   display: none;
 }
+
+/* ---- B1e : menu « Partager », invitation, rôle sur les cartes ---- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 18, 24, 0.45);
+}
+.share-dialog {
+  width: min(520px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--panel);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 18px 20px 20px;
+}
+.share-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.share-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.share-dialog h3 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.share-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+.share-new label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.share-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 8px;
+  margin-top: 12px;
+}
+.share-link input {
+  font: 12px var(--font-mono, ui-monospace, monospace);
+  padding: 8px 10px;
+}
+.share-link p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+}
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.share-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.share-list li > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.login-invite {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.boards-role {
+  margin-right: 6px;
+}

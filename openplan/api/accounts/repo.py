@@ -8,7 +8,7 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from openplan.api.accounts.db import utcnow
-from openplan.api.accounts.models import ROLES, Member, ProjectRow, User
+from openplan.api.accounts.models import ROLES, Invitation, Member, ProjectRow, User
 
 PROJECTS_PREFIX = "projects"
 """Les projets d'un serveur à comptes vivent sous `<data>/projects/<id>/` (clé de stockage)."""
@@ -75,6 +75,7 @@ class AccountsRepo:
 
     def remove_project(self, project_id: UUID) -> None:
         with self.session() as db, db.begin():
+            db.execute(delete(Invitation).where(Invitation.project_id == project_id))
             db.execute(delete(Member).where(Member.project_id == project_id))
             db.execute(delete(ProjectRow).where(ProjectRow.id == project_id))
 
@@ -109,6 +110,18 @@ class AccountsRepo:
         with self.session() as db:
             member = db.get(Member, (project_id, user_id))
             return None if member is None else member.role
+
+    def roles_of(self, user_id: UUID) -> dict[UUID, str]:
+        """Rôle de l'utilisateur sur chacun de ses projets (galerie, B1e)."""
+        with self.session() as db:
+            rows = db.execute(
+                select(Member.project_id, Member.role).where(Member.user_id == user_id)
+            )
+            return {project_id: role for project_id, role in rows}
+
+    def project_exists(self, project_id: UUID) -> bool:
+        with self.session() as db:
+            return db.get(ProjectRow, project_id) is not None
 
     def project_ids_of(self, user_id: UUID) -> set[UUID]:
         with self.session() as db:

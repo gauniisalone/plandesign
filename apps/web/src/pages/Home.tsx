@@ -13,8 +13,13 @@ import { DoctorBlock } from "../panels/DoctorBlock";
 import { ThemeSwitch } from "../panels/SettingsPanel";
 import type { Step } from "../panels/Toolbar";
 import { useDarkTheme } from "../board/mediaItems";
-import { useAccount } from "../state/account";
-import { ACCOUNTS_PRIVACY, privacyLine, useHosting } from "../state/hosting";
+import { ROLE_LABEL, useAccount } from "../state/account";
+import {
+  ACCOUNTS_FOOT,
+  PRIVACY_URL,
+  privacyLine,
+  useHosting,
+} from "../state/hosting";
 import { IconGear, IconPlan, IconPlus, IconTrash } from "../ui/icons";
 
 interface Props {
@@ -173,14 +178,23 @@ export function Home({ onOpen }: Props) {
         )}
         {error && <p className="warn">{error}</p>}
       </main>
-      <footer className="boards-foot">
-        <b>{APP_NAME}</b>
-        {/* A1, T6 : la mention suit l'état réel (machine ou serveur, case Gemini, suivi des
+      {account ? (
+        // B1e : avec les comptes, le pied ne dit que la mention (détail sur le site).
+        <footer className="boards-foot">
+          <b>{APP_NAME}</b> · {ACCOUNTS_FOOT} ·{" "}
+          <a href={PRIVACY_URL} target="_blank" rel="noopener">
+            Confidentialité
+          </a>
+        </footer>
+      ) : (
+        <footer className="boards-foot">
+          <b>{APP_NAME}</b>
+          {/* A1, T6 : la mention suit l'état réel (machine ou serveur, case Gemini, suivi des
             erreurs) ; tant que l'hébergement n'est pas connu, elle n'affirme rien. */}
-        {hosting && <> · {privacyLine(hosting, gemini)}</>} · une reconstruction
-        estimée n'est jamais un relevé certifié.
-        {hosting?.accounts && <> {ACCOUNTS_PRIVACY}</>}
-      </footer>
+          {hosting && <> · {privacyLine(hosting, gemini)}</>} · une
+          reconstruction estimée n'est jamais un relevé certifié.
+        </footer>
+      )}
     </div>
   );
 }
@@ -246,6 +260,11 @@ function ProjectCard({
       ? "pas encore de plan"
       : `${p.wall_count} mur${p.wall_count > 1 ? "s" : ""}`;
   const info = `modifié le ${formatDate(p.updated_at)} · ${photos} · ${plan}`;
+  // B1e : « Renommer » à partir d'éditeur, « Supprimer » pour le propriétaire (le serveur
+  // refuse de toute façon) ; le rôle est dit quand on n'est pas propriétaire.
+  const role = p.role ?? "owner";
+  const canRename = role === "owner" || role === "editor";
+  const canDelete = role === "owner";
   return (
     <li className="boards-card">
       <button
@@ -293,6 +312,7 @@ function ProjectCard({
               if (clickTimer.current !== null)
                 window.clearTimeout(clickTimer.current);
               clickTimer.current = null;
+              if (!canRename) return onOpen();
               setDraft(p.name);
               setEditing(true);
             }}
@@ -300,39 +320,50 @@ function ProjectCard({
             {p.name}
           </button>
         )}
-        <span className="muted boards-card-info">{info}</span>
+        <span className="muted boards-card-info">
+          {role !== "owner" && (
+            <span className="chip muted boards-role">
+              {ROLE_LABEL[role].toLowerCase()}
+            </span>
+          )}
+          {info}
+        </span>
         <span className="boards-card-acts">
-          <button
-            type="button"
-            className="icon home-act"
-            aria-label={`Renommer « ${p.name} »`}
-            title="Renommer (ou double-clic sur le nom)"
-            onClick={() => {
-              setDraft(p.name);
-              setEditing(true);
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+          {canRename && (
+            <button
+              type="button"
+              className="icon home-act"
+              aria-label={`Renommer « ${p.name} »`}
+              title="Renommer (ou double-clic sur le nom)"
+              onClick={() => {
+                setDraft(p.name);
+                setEditing(true);
+              }}
             >
-              <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="icon home-act"
-            aria-label={`Supprimer « ${p.name} »`}
-            title="Supprimer"
-            onClick={() => void remove()}
-          >
-            <IconTrash />
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
+              </svg>
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              className="icon home-act"
+              aria-label={`Supprimer « ${p.name} »`}
+              title="Supprimer"
+              onClick={() => void remove()}
+            >
+              <IconTrash />
+            </button>
+          )}
         </span>
       </span>
     </li>

@@ -5,6 +5,7 @@ import {
   setAccountsMode,
   type Me,
 } from "./api/client";
+import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Editor } from "./pages/Editor";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
@@ -18,21 +19,37 @@ interface Route {
   step: Step | undefined;
   /** `#/nouveau?…` (B1d) : paramètres du formulaire du site ; null hors de cette route. */
   nouveau: string | null;
+  /** `#/invitation/<jeton>` (B1e) : le jeton d'un lien d'invitation ; null hors de cette route. */
+  invitation: string | null;
 }
 
 /** `#/projects/<id>` ouvre l'atelier ; `#/projects/<id>/import` l'ouvre sur « Ajouter une
  *  source », `/board` sur l'espace de travail ; `#/nouveau?…` crée l'espace prérempli
- *  depuis le site. */
+ *  depuis le site ; `#/invitation/<jeton>` ouvre un lien d'invitation (B1e). */
 function routeFromHash(): Route {
   const hash = window.location.hash;
   const nouveau = hash.match(/^#\/nouveau(?:\?(.*))?$/);
   if (nouveau)
-    return { projectId: null, step: undefined, nouveau: nouveau[1] ?? "" };
+    return {
+      projectId: null,
+      step: undefined,
+      nouveau: nouveau[1] ?? "",
+      invitation: null,
+    };
+  const invited = hash.match(/^#\/invitation\/([A-Za-z0-9_-]{16,128})$/);
+  if (invited)
+    return {
+      projectId: null,
+      step: undefined,
+      nouveau: null,
+      invitation: invited[1]!,
+    };
   const m = hash.match(/^#\/projects\/([0-9a-f-]{36})(?:\/(import|board))?$/);
   return {
     projectId: m?.[1] ?? null,
     step: (m?.[2] as Step | undefined) ?? undefined,
     nouveau: null,
+    invitation: null,
   };
 }
 
@@ -81,14 +98,16 @@ export function App() {
 
   const open = useCallback((id: string, step?: Step) => {
     const target = `#/projects/${id}${step === "import" || step === "board" ? `/${step}` : ""}`;
-    // Depuis #/nouveau, l'adresse est remplacée : « Précédent » ne recrée pas d'espace.
-    if (window.location.hash.startsWith("#/nouveau"))
+    // Depuis #/nouveau ou #/invitation, l'adresse est remplacée : « Précédent » ne recrée
+    // pas d'espace, et le jeton d'invitation ne reste pas dans l'historique.
+    const hash = window.location.hash;
+    if (hash.startsWith("#/nouveau") || hash.startsWith("#/invitation"))
       window.location.replace(target);
     else window.location.hash = target;
   }, []);
-  const home = () => {
+  const home = useCallback(() => {
     window.location.hash = "";
-  };
+  }, []);
 
   const signedOut = useCallback(() => setSession({ kind: "signed-out" }), []);
   const account = useMemo<Account | null>(
@@ -105,11 +124,22 @@ export function App() {
 
   if (session.kind === "loading") return null;
   if (session.kind === "signed-out")
-    return <Login onSignedIn={(me) => setSession({ kind: "signed-in", me })} />;
+    return (
+      <Login
+        invitation={route.invitation ?? undefined}
+        onSignedIn={(me) => setSession({ kind: "signed-in", me })}
+      />
+    );
 
   return (
     <AccountContext.Provider value={account}>
-      {route.nouveau !== null ? (
+      {route.invitation !== null && account ? (
+        <AcceptInvitation
+          token={route.invitation}
+          onOpen={open}
+          onHome={home}
+        />
+      ) : route.nouveau !== null ? (
         <NewFromSite query={route.nouveau} onOpen={open} />
       ) : route.projectId ? (
         <Editor

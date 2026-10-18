@@ -24,6 +24,7 @@ from openplan.schemas.scene import Project
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from sqlalchemy import Engine
 
 
 def _add_materials_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -157,6 +158,16 @@ def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser
     accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
     accounts_sub.add_parser("migrate", help="applique les migrations (alembic upgrade head)")
     accounts_sub.add_parser("status", help="révision de la base et dernière migration")
+    imp = accounts_sub.add_parser(
+        "import",
+        help="copie des projets d'un dossier local vers le serveur à comptes (propriétaire donné)",
+    )
+    imp.add_argument("source", type=Path, help="dossier des projets (un sous-dossier par projet)")
+    imp.add_argument("--owner", required=True, help="adresse du propriétaire (compte existant)")
+    imp.add_argument(
+        "--only", nargs="+", default=[], metavar="ID", help="seulement ces projets (id ou 8 car.)"
+    )
+    imp.add_argument("--yes", action="store_true", help="sans confirmation, projet par projet")
 
 
 def _accounts(args: argparse.Namespace) -> int:
@@ -171,6 +182,11 @@ def _accounts(args: argparse.Namespace) -> int:
         print("extra « comptes » absent : uv sync --extra comptes")
         return 2
     engine = db.make_engine(settings.database_url)
+    if args.accounts_command == "import":
+        try:
+            return _accounts_import(args, settings, engine)
+        finally:
+            engine.dispose()
     try:
         if args.accounts_command == "migrate":
             db.upgrade(engine)
@@ -179,6 +195,29 @@ def _accounts(args: argparse.Namespace) -> int:
         engine.dispose()
     print(f"base des comptes : révision {current or 'vide'} (dernière migration : {head})")
     return 0 if current == head else 1
+
+
+def _accounts_import(args: argparse.Namespace, settings: Settings, engine: Engine) -> int:
+    """`openplan accounts import` : base migrée exigée, rien sans confirmation."""
+    from openplan.api.accounts import db
+    from openplan.api.accounts.importer import ImportRefusedError, run_import
+    from openplan.api.accounts.repo import AccountsRepo
+    from openplan.api.settings import project_root
+
+    try:
+        db.check_schema(engine)
+        run_import(
+            AccountsRepo(engine),
+            args.owner,
+            args.source,
+            project_root(settings),
+            only=args.only,
+            yes=args.yes,
+        )
+    except (db.AccountsSchemaError, ImportRefusedError) as exc:
+        print(f"import refusé : {exc}")
+        return 2
+    return 0
 
 
 def _add_diagnostic_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

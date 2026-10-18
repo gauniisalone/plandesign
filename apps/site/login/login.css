@@ -94,3 +94,6 @@
   line-height: 1.5;
   color: var(--text-muted);
 }
+.login-mention a {
+  color: var(--link);
+}

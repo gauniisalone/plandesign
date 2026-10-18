@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -301,13 +302,20 @@ def create_app(
     ):
         app.include_router(router, prefix="/api", dependencies=guarded)
     if app.state.accounts is not None:
-        from openplan.api.accounts.routes import router as auth_router
-
-        app.include_router(auth_router, prefix="/api", dependencies=guarded)
-        if settings.mailer == "fake":
-            from openplan.api.accounts.routes import test_router
-
-            app.include_router(test_router, prefix="/api", dependencies=guarded)
+        _include_accounts_routes(app, settings, guarded)
     if settings.web_dir is not None:
         _mount_web(app, settings.web_dir)
     return app
+
+
+def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:
+    """Comptes actifs : connexion, partage (B1e) et, avec le mailer `fake` seulement, le point
+    de test des codes. Importés ici : le mode local n'en charge rien."""
+    from openplan.api.accounts.routes import router as auth_router
+    from openplan.api.accounts.routes import test_router
+    from openplan.api.accounts.sharing_routes import router as sharing_router
+
+    app.include_router(auth_router, prefix="/api", dependencies=guarded)
+    app.include_router(sharing_router, prefix="/api", dependencies=guarded)
+    if settings.mailer == "fake":
+        app.include_router(test_router, prefix="/api", dependencies=guarded)

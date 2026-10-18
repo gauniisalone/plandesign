@@ -61,6 +61,8 @@ class ProjectSummary(StrictModel):
     image_count: int = 0
     wall_count: int = 0
     has_thumbnail: bool = False
+    role: str = "owner"
+    """Rôle de l'utilisateur sur le projet (comptes, B1e) ; toujours `owner` en mode local."""
 
 
 class ProjectStore:

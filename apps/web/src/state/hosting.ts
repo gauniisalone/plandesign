@@ -43,13 +43,13 @@ export function useHosting(): Hosting | null {
   return hosting;
 }
 
-/** Note 17, § 11 (avenant B1b2 : un code, plus de lien) : la mention des comptes, sur la
- *  page de connexion et au pied de l'application. */
-export const ACCOUNTS_PRIVACY =
-  "La connexion se fait par un code envoyé à votre adresse e-mail ; PlanDesign ne garde que " +
-  "cette adresse (et le nom que vous donnez), et l'e-mail part par notre service d'envoi " +
-  "(Brevo). Vos projets sont stockés sur plandesign.fr (Hostinger, France) et visibles de " +
-  "leurs membres.";
+/** Note 17, § 11, en une ligne (demande d'augus, B1e : moins de texte) ; le détail est sur
+ *  la page Confidentialité du site. */
+export const ACCOUNTS_LINE =
+  "Un code vous est envoyé par e-mail. Vos données restent en France.";
+/** Pied de l'application connectée. */
+export const ACCOUNTS_FOOT = "Vos données restent en France";
+export const PRIVACY_URL = "https://plandesign.fr/confidentialite/";
 
 /** Où sont gardés photos et plans. */
 export function storedWhere(hosting: Hosting | null): string {

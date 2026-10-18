@@ -35,6 +35,7 @@ from openplan.api.accounts.service import (
     LoginRefusedError,
     safe_next,
 )
+from openplan.api.accounts.sharing import INVITE_REFUSED, InvitationRefusedError
 from openplan.brand import APP_NAME
 from openplan.schemas.common import StrictModel
 
@@ -73,6 +74,8 @@ def clear_session_cookie(response: Response) -> None:
 class StartBody(StrictModel):
     email: str = Field(min_length=3, max_length=320)
     next: str | None = Field(default=None, max_length=512)
+    invitation: str | None = Field(default=None, max_length=128)
+    """B1e : jeton d'un lien d'invitation (inscription « sur invitation »)."""
 
 
 class StartResult(StrictModel):
@@ -82,6 +85,16 @@ class StartResult(StrictModel):
 class VerifyBody(StrictModel):
     email: str = Field(min_length=3, max_length=320)
     code: str = Field(min_length=1, max_length=32)
+    invitation: str | None = Field(default=None, max_length=128)
+
+
+class AcceptBody(StrictModel):
+    token: str = Field(min_length=1, max_length=128)
+
+
+class Accepted(StrictModel):
+    project_id: UUID
+    role: str
 
 
 class Me(StrictModel):
@@ -113,7 +126,10 @@ def email_start(body: StartBody, request: Request, background: BackgroundTasks) 
     accounts = service(request)
     try:
         message = accounts.start_login(
-            body.email, body.next, request.client.host if request.client else None
+            body.email,
+            body.next,
+            request.client.host if request.client else None,
+            body.invitation,
         )
     except InvalidEmailError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -236,12 +252,25 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
     """Le front (B1d) : le code de cette adresse ; juste, la session s'ouvre (cookie)."""
     agent = request.headers.get("user-agent", "")
     try:
-        user, raw, _ = service(request).complete_login(body.email, body.code, agent)
+        user, raw, _ = service(request).complete_login(
+            body.email, body.code, agent, body.invitation
+        )
     except LoginRefusedError as exc:
         status = 403 if exc.reason is LoginRefusal.CLOSED else 400
         raise HTTPException(status_code=status, detail=REFUSAL_TEXT[exc.reason]) from exc
     set_session_cookie(response, raw)
     return Me(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+
+
+@router.post("/auth/invitation/accept")
+def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> Accepted:
+    """B1e : le lien d'invitation ouvert par un utilisateur connecté (jeton lu dans l'ancre
+    du lien par le front, jamais dans une URL) ; il devient membre avec le rôle du lien."""
+    try:
+        project_id, role = service(request).accept_invitation(body.token, user.id)
+    except InvitationRefusedError as exc:
+        raise HTTPException(status_code=410, detail=INVITE_REFUSED) from exc
+    return Accepted(project_id=project_id, role=role)
 
 
 @router.get("/auth/me")

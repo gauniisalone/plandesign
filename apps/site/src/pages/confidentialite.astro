@@ -1,5 +1,8 @@
 ---
+// B1e : la version « comptes » (code par e-mail, Brevo, Hostinger, durées) n'est produite
+// qu'avec l'option de build PUBLIC_LOGIN_WINDOW=1 ; sans elle, la page d'avant, inchangée.
 import Base from "../layouts/Base.astro";
+import { LOGIN_WINDOW } from "../config";
 ---
 
 <Base
@@ -9,7 +12,11 @@ import Base from "../layouts/Base.astro";
 >
   <article class="wrap prose">
     <h1>Confidentialité</h1>
+    {LOGIN_WINDOW ? (
+      <p class="updated">Dernière mise à jour : 18 octobre 2026</p>
+    ) : (
     <p class="updated">Dernière mise à jour : 16 octobre 2026</p>
+    )}
 
     <h2>Responsable du traitement</h2>
     <p>
@@ -20,20 +27,40 @@ import Base from "../layouts/Base.astro";
     <h2>Ce site</h2>
     <ul>
       <li>Aucun cookie, aucune mesure d'audience, aucun traceur publicitaire, aucun appel à un service tiers : les polices et les images sont servies par nos propres serveurs.</li>
+      {LOGIN_WINDOW ? (
+        <li>
+          Le formulaire « Décrivez le projet » n'est conservé par ce site : après la connexion, votre description
+          préremplit votre premier espace de travail, dans l'application.
+        </li>
+      ) : (
       <li>
         Le formulaire « Décrivez le projet » ne s'envoie pas : tant que les comptes ne sont pas ouverts, rien de ce
         que vous y saisissez n'est transmis ni conservé.
       </li>
+      )}
       <li>
         Comme tout serveur web, le nôtre consigne des journaux techniques (adresse IP, date, page demandée, navigateur)
         pour la sécurité et le diagnostic.
       </li>
     </ul>
 
+    {LOGIN_WINDOW ? (
+      <h2>Comptes</h2>
+    ) : (
     <h2>À l'ouverture des comptes</h2>
+    )}
     <ul>
+      {LOGIN_WINDOW ? (
+        <li>
+          Compte : votre adresse e-mail (et le nom que vous donnez). La connexion se fait par un code à 6 chiffres
+          envoyé à cette adresse, sans mot de passe ; l'e-mail part par notre service d'envoi, Brevo (texte seul, sans
+          lien ni pixel de suivi). Un cookie de session, posé par l'application (app.plandesign.fr) et nécessaire à la
+          connexion, vous garde connecté.
+        </li>
+      ) : (
       <li>Compte : votre adresse e-mail, utilisée pour vous envoyer un lien de connexion (sans mot de passe) et pour les messages liés au service.</li>
-      <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>
+      )}
+      <li>Projets : photos, plans, descriptions, images d'inspiration et rendus que vous créez. Ils servent uniquement à faire fonctionner le service.</li>{LOGIN_WINDOW && <li>Partage : un projet n'est visible que de ses membres ; vous invitez quelqu'un par un lien que vous lui transmettez vous-même.</li>}
       <li>Hébergement : chez Hostinger, dans un centre de données à Paris (France).</li>
       <li>Vos photos ne sont transmises à aucun service tiers.</li>
       <li>
@@ -45,7 +72,7 @@ import Base from "../layouts/Base.astro";
     <h2>Durées de conservation</h2>
     <ul>
       <li>Journaux techniques du serveur web : quelques semaines au plus (rotation automatique).</li>
-      <li>Rapports d'erreur techniques : 30 jours.</li>
+      <li>Rapports d'erreur techniques : 30 jours.</li>{LOGIN_WINDOW && <li>Codes de connexion : 15 minutes (effacés après 24 heures) ; sessions : 30 jours après la dernière visite ; liens d'invitation : 30 jours au plus.</li>}
       <li>
         Données d'un compte supprimé : effacées du service dès la suppression ; elles peuvent subsister dans les
         sauvegardes chiffrées jusqu'à 6 mois, puis sont effacées.
@@ -60,11 +87,18 @@ import Base from "../layouts/Base.astro";
     </p>
 
     <h2>Vos droits</h2>
+    {LOGIN_WINDOW ? (
+      <p>
+        Vous pouvez exercer vos droits (accès, rectification, suppression, limitation, opposition, portabilité) ; un
+        moyen de contact sera ajouté prochainement. Vous pouvez aussi adresser une réclamation à la CNIL (cnil.fr).
+      </p>
+    ) : (
     <p>
       Le site ne collecte aujourd'hui aucune donnée personnelle : pas de compte, pas de cookie, et le formulaire de
       l'accueil n'est pas envoyé. Un moyen de contact sera ajouté prochainement pour exercer vos droits (accès,
       rectification, suppression, limitation, opposition, portabilité). Vous pouvez aussi adresser une réclamation à
       la CNIL (cnil.fr).
     </p>
+    )}
   </article>
 </Base>

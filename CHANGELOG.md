@@ -7,6 +7,31 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 18 octobre 2026 (B1e, partage)
+
+- **Inviter quelqu'un à un projet** (comptes) : menu « Partager », pour le propriétaire seul.
+  Un lien d'invitation par personne, avec un rôle (lecteur, commentateur ou éditeur) et une
+  durée (1, 7 ou 30 jours) ; il n'est montré qu'une fois, avec « Copier », et c'est le
+  propriétaire qui le transmet (aucun e-mail d'invitation). Le secret est dans l'ancre du lien
+  (`#/invitation/…`) : il n'est jamais envoyé au serveur dans une adresse, et la base n'en garde
+  que l'empreinte. Un lien sert une fois et se révoque tant qu'il n'a pas servi. Le menu liste
+  aussi les membres : changer un rôle, retirer quelqu'un (jamais le dernier propriétaire).
+- **L'invité sans compte** voit la page de connexion avec une ligne « Vous avez été invité à
+  un projet », sans rien du projet ; le lien lui ouvre l'inscription même « sur invitation ».
+  Après le code, il devient membre avec le rôle du lien et le projet s'ouvre. Lien expiré,
+  révoqué ou déjà servi : un seul message.
+- **Galerie selon le rôle** : « Renommer » à partir d'éditeur, « Supprimer » pour le
+  propriétaire, et le rôle affiché sur les projets partagés.
+- **Moins de texte** : la mention de connexion tient en une ligne, « Un code vous est envoyé
+  par e-mail. Vos données restent en France. », avec un lien « Confidentialité » vers le site ;
+  connecté, le pied de l'app dit seulement « Vos données restent en France · Confidentialité ».
+  Sur le site, la page Confidentialité « comptes » (code, Brevo, Hostinger, durées) n'est
+  produite qu'avec l'option de build ; la sortie par défaut reste celle de la production.
+- **`openplan accounts import --owner <email> <dossier>`** : liste les projets de la machine,
+  demande confirmation (ou `--yes`, `--only`), copie la scène, les photos, les vignettes et les
+  rendus (pas les scènes Blender ni les cartes de profondeur), et donne le projet au
+  propriétaire, dont le compte doit exister. Migration `b1e_0003` (table des invitations).
+
 ### 18 octobre 2026 (B1d-b, site public)
 
 - **Fenêtre « Se connecter » sur plandesign.fr, derrière une option de build**

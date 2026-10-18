@@ -39,14 +39,20 @@ def test_migrations_up_and_down(db_url: str) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert {"token_hash", "expires_at", "used_at", "next", "ip", "attempts"} <= columns
     assert "token" not in columns and "code" not in columns  # jamais le secret en clair
-    assert head_revision() == "b1b2_0002"
-    # B1b2 se défait seule : retour à b1a_0001 sans la colonne des essais, puis remontée.
+    assert head_revision() == "b1e_0003"
+    invitations = {c["name"] for c in inspect(engine).get_columns("invitations")}
+    assert {"token_hash", "role", "expires_at", "used_at", "revoked_at"} <= invitations
+    assert "token" not in invitations  # jamais le jeton en clair
+    # B1e se défait seule (la table des invitations part), puis B1b2 (la colonne des essais).
+    downgrade(engine, "b1b2_0002")
+    assert "invitations" not in inspect(engine).get_table_names()
     downgrade(engine, "b1a_0001")
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert "attempts" not in columns and "token_hash" in columns
     upgrade(engine)
-    assert current_revision(engine) == "b1b2_0002"
+    assert current_revision(engine) == "b1e_0003"
     downgrade(engine, "base")
+    assert "invitations" not in inspect(engine).get_table_names()
     assert not (set(inspect(engine).get_table_names()) & TABLES)
     engine.dispose()
 
