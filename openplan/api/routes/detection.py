@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Response
 from pydantic import Field
 
 from openplan.api.deps import DepthEstimatorDep, OpeningDetectorDep, ProjectDep, StoreDep
+from openplan.api.files import served_file
 from openplan.api.routes.scene import EditResult, _result
 from openplan.pipeline.depthplan import DepthPlanRun, run_depthplan
 from openplan.pipeline.detection import DetectionRun, detect_and_propose
@@ -124,9 +124,7 @@ def detect_openings(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/openings/{name}")
-def openings_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
+def openings_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise DetectionError(msg)
@@ -134,7 +132,7 @@ def openings_artifact(
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise DetectionError(msg)
-    return FileResponse(path)
+    return served_file(store, path)
 
 
 @router.post("/projects/{project_id}/levels/{level_id}/views/{camera_id}/adopt")
@@ -172,9 +170,7 @@ def rotate_view_route(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/detection/{name}")
-def detection_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
+def detection_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise DetectionError(msg)
@@ -182,4 +178,4 @@ def detection_artifact(
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise DetectionError(msg)
-    return FileResponse(path)
+    return served_file(store, path)

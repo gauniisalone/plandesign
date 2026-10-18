@@ -7,8 +7,7 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Response
 from pydantic import Field
 
 from openplan.adapters.neural.weights import is_installed, license_accepted
@@ -22,6 +21,7 @@ from openplan.api.deps import (
     SettingsDep,
     StoreDep,
 )
+from openplan.api.files import served_file
 from openplan.api.jobs import JobStatus
 from openplan.pipeline.attic import AtticRun, run_attic
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic
@@ -168,10 +168,8 @@ def job_status(job_id: UUID, project: ProjectDep, jobs: JobsDep) -> JobStatus:
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/inspiration/{name}")
-def inspiration_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "inspiration", name))
+def inspiration_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "inspiration", name))
 
 
 @router.post("/projects/{project_id}/images/{image_id}/depth")
@@ -189,8 +187,8 @@ def depth(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/depth/{name}")
-def depth_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "depth", name))
+def depth_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "depth", name))
 
 
 class AtticRequest(StrictModel):
@@ -218,8 +216,8 @@ def attic(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/attic/{name}")
-def attic_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> FileResponse:
-    return FileResponse(_artifact(store, project, run_id, "attic", name))
+def attic_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
+    return served_file(store, _artifact(store, project, run_id, "attic", name))
 
 
 class AtticApplyResult(StrictModel):

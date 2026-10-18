@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import Field
 
 from openplan.api.deps import ProjectDep, StoreDep
+from openplan.api.guards import Role, require_role
 from openplan.pipeline import journal
 from openplan.pipeline.guided import has_answers
 from openplan.pipeline.journal import JournalEvent, UiEvent
@@ -34,7 +35,12 @@ class ProjectSettingsUpdate(StrictModel):
 
 
 @router.patch("/projects/{project_id}")
-def update_settings(body: ProjectSettingsUpdate, project: ProjectDep, store: StoreDep) -> Project:
+def update_settings(
+    body: ProjectSettingsUpdate, project: ProjectDep, store: StoreDep, request: Request
+) -> Project:
+    if body.privacy is not None and body.privacy != project.privacy:
+        # Confidentialité (accord pour un modèle distant, journal) : propriétaire seulement.
+        require_role(request, project.id, Role.OWNER)
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     if "privacy" in update:
         update["privacy"] = body.privacy

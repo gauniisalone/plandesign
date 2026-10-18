@@ -39,6 +39,21 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   serveur), « fake » (boîte en mémoire des tests) et un squelette Brevo par API HTTPS qui
   n'envoie rien (service d'envoi pas encore choisi). Le journal des accès note `user:<id>`,
   jamais l'adresse. Avec les comptes, le jeton Bearer et le cookie de lecture ne servent plus.
+- **Droits par projet sur toutes les routes (B1c)**, avec les comptes seulement : chaque route
+  `/api` passe par une garde unique qui la cherche dans une table explicite ; une route de
+  projet déclare son rôle minimal (`viewer` < `commenter` < `editor` < `owner` : lecture,
+  modification du plan, de l'espace de travail et rendus, suppression et confidentialité), les
+  autres sont publiques (santé, connexion), réservées aux personnes connectées ou aux
+  administrateurs (réglages du serveur, bilan de l'installation). Une route absente des tables
+  est refusée. Un non-membre reçoit la même 404 qu'un projet inexistant ; un rôle insuffisant,
+  403. La liste des projets ne montre que ceux dont on est membre, la création fait de vous le
+  propriétaire, la suppression retire aussi les droits ; changer l'accord pour un modèle
+  distant demande le propriétaire. Les photos, rendus, fichiers joints et artefacts passent
+  tous par la couche `Storage` (`served_file`), jamais par un chemin statique. Deux dépendances
+  pour les routes à venir : `current_user` et `project_member(rôle)`. Un test parcourt toutes
+  les routes (routeurs inclus) et échoue s'il en trouve une sans garde, une absente des tables
+  ou une entrée de table sans route ; un autre essaie chaque rôle sur un échantillon de routes.
+  Sans comptes, la garde ne refuse rien : le mode local ne change pas.
 
 ### 4 octobre 2026
 

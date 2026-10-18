@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Response, UploadFile
 
 from openplan.api.deps import ProjectDep, StoreDep
+from openplan.api.files import served_file
 from openplan.pipeline.ingestion import ImageNotFoundError, import_image, remove_image
 from openplan.pipeline.quality import quality_warnings
 from openplan.schemas.common import StrictModel
@@ -39,13 +39,13 @@ async def upload_image(file: UploadFile, project: ProjectDep, store: StoreDep) -
 
 
 @router.get("/projects/{project_id}/images/{image_id}/file")
-def image_file(image_id: UUID, project: ProjectDep, store: StoreDep) -> FileResponse:
+def image_file(image_id: UUID, project: ProjectDep, store: StoreDep) -> Response:
     ref = _ref(project, image_id)
     path = store.project_dir(project.id) / ref.path
     if not path.is_file():
         msg = f"fichier image absent : {ref.path}"
         raise ImageNotFoundError(msg)
-    return FileResponse(path)
+    return served_file(store, path)
 
 
 @router.get("/projects/{project_id}/images/{image_id}/quality")

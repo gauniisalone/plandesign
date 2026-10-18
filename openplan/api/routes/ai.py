@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Response
 
 from openplan.adapters.gateway import NETWORK_LOG, ModelGateway, NetworkLogEntry, read_network_log
 from openplan.api.deps import LanguageModelDep, ProjectDep, StoreDep
+from openplan.api.files import served_file
 from openplan.pipeline.floorplan import DetectionError
 from openplan.pipeline.intention import (
     IntentionBody,
@@ -99,9 +99,7 @@ def brief(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/intention/{name}")
-def intention_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
+def intention_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise DetectionError(msg)
@@ -109,7 +107,7 @@ def intention_artifact(
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise DetectionError(msg)
-    return FileResponse(path)
+    return served_file(store, path)
 
 
 @router.get("/projects/{project_id}/network-log")
@@ -118,9 +116,7 @@ def network_log(project: ProjectDep, store: StoreDep) -> list[NetworkLogEntry]:
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/perception/{name}")
-def perception_artifact(
-    project: ProjectDep, run_id: UUID, name: str, store: StoreDep
-) -> FileResponse:
+def perception_artifact(project: ProjectDep, run_id: UUID, name: str, store: StoreDep) -> Response:
     if not _SAFE_NAME.match(name):
         msg = f"nom d'artefact invalide : {name!r}"
         raise DetectionError(msg)
@@ -128,4 +124,4 @@ def perception_artifact(
     if not path.is_file():
         msg = f"artefact introuvable : {name}"
         raise DetectionError(msg)
-    return FileResponse(path)
+    return served_file(store, path)

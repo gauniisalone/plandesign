@@ -32,7 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
@@ -42,6 +42,7 @@ from openplan.api.access import (
     SESSION_MAX_AGE_S,
     AccountsBackend,
 )
+from openplan.api.guards import route_guard
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 from openplan.scene.history import USER_ACTOR, user_actor
@@ -221,7 +222,7 @@ def install_security(app: FastAPI, settings: Settings) -> None:
     log = AccessLog(settings.data_dir / ACCESS_LOG) if exposed else None
     secret = read_secret(settings.data_dir) if exposed else b""
 
-    @app.post("/api/session", tags=["security"])
+    @app.post("/api/session", tags=["security"], dependencies=[Depends(route_guard)])
     def open_session(request: Request, response: Response) -> SessionState:
         """Pose le cookie de lecture (API exposée ; l'intergiciel a déjà exigé le Bearer) :
         les images, téléchargements et le GLB du front passent ensuite sans en-tête, en lecture
@@ -243,7 +244,9 @@ def install_security(app: FastAPI, settings: Settings) -> None:
         )
         return SessionState(exposed=True, cookie=True, name=name, expires_in_s=READ_COOKIE_MAX_AGE)
 
-    @app.delete("/api/session", tags=["security"], status_code=204)
+    @app.delete(
+        "/api/session", tags=["security"], status_code=204, dependencies=[Depends(route_guard)]
+    )
     def close_session() -> Response:
         """Efface le cookie de lecture (déconnexion de l'onglet)."""
         gone = Response(status_code=204)
