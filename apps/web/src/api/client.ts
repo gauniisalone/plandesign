@@ -677,11 +677,14 @@ export interface InspirationRun {
   result: StepResult;
 }
 
-/** Tâche de fond côté serveur (génération d'image) : la requête ne l'attend pas. */
+/** Tâche de fond côté serveur (génération d'image) : la requête ne l'attend pas. Lancée
+ *  pendant un autre calcul, elle attend (`queued`) et démarre seule ensuite. */
 export interface JobStatus {
   id: string;
   kind: string;
-  status: "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  /** Place dans la file quand la tâche attend (1 = la prochaine), sinon absent. */
+  queue_position?: number | null;
   device: string;
   expected_s: number | null;
   elapsed_s: number;
@@ -692,6 +695,11 @@ export interface JobStatus {
   remaining_s?: number | null;
   result: unknown;
   error: string | null;
+}
+
+/** Une tâche à suivre encore : elle calcule, ou elle attend son tour. */
+export function jobActive(job: JobStatus | null | undefined): boolean {
+  return job?.status === "running" || job?.status === "queued";
 }
 
 /* Construction automatique du plan à l'import : photo d'une pièce ou image d'un plan. */
@@ -921,6 +929,9 @@ export const inspirationApi = {
     ),
   job: (pid: string, jobId: string) =>
     request<JobStatus>(`/projects/${pid}/jobs/${jobId}`),
+  /** Annule une tâche en attente (409 si elle a déjà démarré). */
+  cancel: (pid: string, jobId: string) =>
+    request<JobStatus>(`/projects/${pid}/jobs/${jobId}`, { method: "DELETE" }),
   device: () => request<DeviceInfo>("/device"),
   artifactUrl: (pid: string, runId: string, name: string) =>
     `${BASE}/projects/${pid}/runs/${runId}/inspiration/${name}`,

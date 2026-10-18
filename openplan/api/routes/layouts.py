@@ -232,7 +232,13 @@ def render_variant(
         return BlenderRun(run_id=run_id, result=result)
 
     return jobs.submit(
-        "render", work, device=device, expected_s=expected, message=message, owner=actor
+        "render",
+        work,
+        device=device,
+        expected_s=expected,
+        message=message,
+        owner=actor,
+        project_id=project.id,
     )
 
 

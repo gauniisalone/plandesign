@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, journalApi, type JobStatus } from "../api/client";
+import { api, jobActive, journalApi, type JobStatus } from "../api/client";
 import type { Point2 } from "../api/types.gen";
 import {
   PlanCanvas,
@@ -632,7 +632,12 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   const show3d = viewMode !== "2d" || rendersPane;
   const tab = tabOf(step, viewMode);
   const stale = staleCameraIds(state.project, state.renders);
-  const renderRunning = state.renderJob?.status === "running";
+  // File d'attente : un rendu qui attend son tour occupe les boutons comme un rendu lancé.
+  const renderRunning = jobActive(state.renderJob);
+  /** Ce qui attend son tour (construction du plan, chemin automatique, rendus). */
+  const queued = [state.autoJob, state.pilotJob, state.renderJob].some(
+    (j) => j?.status === "queued",
+  );
   /** « Affiner cette vue » (P3) : l'onglet 3D à la caméra du rendu, la pièce regardée
    *  choisie et sa fiche ouverte (ambiance, meubles) ; la bande dira quoi re-rendre. */
   const refineView = (cameraId: string, elementId?: string) => {
@@ -988,7 +993,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onClose: () => setShowArrival(false),
               onCatalogue: actions.catalogueRender,
               onUndoAreaGuard: actions.undoAreaGuard,
-              busy: state.renderJob?.status === "running",
+              busy: jobActive(state.renderJob),
             }
           : null
       }
@@ -1184,13 +1189,18 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               actions.generateNow();
             }}
             onPhotoDropped={actions.planFromPhoto}
+            queued={queued}
+            onCancelQueued={actions.cancelQueued}
             hasRenders={state.renders.length > 0}
             planProgress={
-              state.autoJob?.status === "running"
-                ? `Construction du plan : ${jobSentence(state.autoJob)}`
-                : state.pilotJob?.status === "running"
-                  ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
-                  : null
+              state.autoJob?.status === "queued" ||
+              state.pilotJob?.status === "queued"
+                ? "En attente"
+                : state.autoJob?.status === "running"
+                  ? `Construction du plan : ${jobSentence(state.autoJob)}`
+                  : state.pilotJob?.status === "running"
+                    ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
+                    : null
             }
             onAddSource={() => goStep("import")}
             focusRenders={rendersFocus}

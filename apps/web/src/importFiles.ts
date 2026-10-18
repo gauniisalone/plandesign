@@ -19,8 +19,14 @@ export const PLAN_KIND_LABEL: Record<string, string> = {
 
 export const PAPER_SCALES = [20, 25, 50, 100, 200, 500];
 
-/** Phrase de progression d'une tâche de fond : étape en cours, temps écoulé, durée annoncée. */
+/** File d'attente : un calcul attend que celui en cours finisse (une seule ligne). */
+export const QUEUED_TEXT =
+  "En attente : démarre dès que le calcul en cours se termine";
+
+/** Phrase de progression d'une tâche de fond : étape en cours, temps écoulé, durée annoncée ;
+ *  une tâche qui attend son tour le dit, sans plus. */
 export function jobSentence(job: JobStatus): string {
+  if (job.status === "queued") return QUEUED_TEXT;
   const stage = job.stage || "Préparation…";
   const expected = job.expected_s
     ? ` · environ ${Math.round(job.expected_s)} s`

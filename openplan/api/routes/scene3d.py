@@ -280,6 +280,8 @@ def autopilot(
         expected_s=expected,
         message=f"Chemin automatique : environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
+        dedup=(project.id, level_id),
     )
 
 
@@ -350,6 +352,8 @@ def render_all(
         expected_s=expected,
         message=f"{len(cameras)} vues à rendre, environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
+        dedup=(project.id, level_id),
     )
 
 
@@ -418,6 +422,7 @@ def render_views(
         expected_s=expected,
         message=f"{count} vue{'s' if count > 1 else ''} à re-rendre, environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
     )
 
 
@@ -468,7 +473,13 @@ def render_camera(  # noqa: PLR0913, PLR0917 - paramètres de requête FastAPI
         return BlenderRun(run_id=run_id, result=result)
 
     return jobs.submit(
-        "render", work, device=device, expected_s=expected, message=message, owner=actor
+        "render",
+        work,
+        device=device,
+        expected_s=expected,
+        message=message,
+        owner=actor,
+        project_id=project.id,
     )
 
 
@@ -562,6 +573,7 @@ def finish(
         expected_s=25.0,
         message="Finition IA, environ 25 s",
         owner=actor,
+        project_id=project.id,
     )
 
 
@@ -601,6 +613,7 @@ def catalogue(
         expected_s=45.0,
         message="Version catalogue, environ 45 s",
         owner=actor,
+        project_id=project.id,
     )
 
 

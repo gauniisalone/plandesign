@@ -21,7 +21,7 @@ import {
   type RenderEntry,
 } from "../api/client";
 import type { Project } from "../api/types.gen";
-import { PHOTO_TYPES } from "../importFiles";
+import { PHOTO_TYPES, QUEUED_TEXT } from "../importFiles";
 import { walls } from "../model";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
@@ -87,6 +87,10 @@ interface Props {
    *  tâche en cours (construction du plan, chemin automatique), montrée dans le cadre. */
   onGeneratePlan: () => void;
   planProgress: string | null;
+  /** File d'attente : un calcul de ce projet attend son tour (le cadre Rendus du plan
+   *  ouvert le dit, en une ligne, avec « Annuler »). */
+  queued?: boolean;
+  onCancelQueued?: () => void;
   /** T4 : une photo réelle déposée (projet à jour, id de la première) ; le chemin décide
    *  selon la bascule « générer au dépôt d'une photo ». */
   onPhotoDropped: (project: Project, imageId: string) => void;
@@ -1117,7 +1121,22 @@ export function BoardCanvas(props: Props) {
       case "frame":
         return (
           <>
-            {FRAME_HINTS[item.role ?? ""] &&
+            {props.queued &&
+            item.role === "renders" &&
+            frameLevel(item) === (props.activeLevelId ?? firstLevelId) ? (
+              <span
+                className="board-frame-hint board-frame-queued"
+                role="status"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <span className="spinner" aria-hidden="true" />
+                {QUEUED_TEXT}
+                <button type="button" onClick={props.onCancelQueued}>
+                  Annuler
+                </button>
+              </span>
+            ) : (
+              FRAME_HINTS[item.role ?? ""] &&
               !items.some((i) => i.frame === item.id) && (
                 <span
                   className="board-frame-hint"
@@ -1125,7 +1144,8 @@ export function BoardCanvas(props: Props) {
                 >
                   {FRAME_HINTS[item.role ?? ""]}
                 </span>
-              )}
+              )
+            )}
             <span
               className={
                 item.role

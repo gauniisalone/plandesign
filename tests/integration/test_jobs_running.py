@@ -31,6 +31,9 @@ def test_running_job_is_reported_then_cleared(tmp_path: Path) -> None:
     body = client.get("/api/jobs/running").json()
     assert body["running"] is True and body["kind"] == "autopilot"
     assert set(body) == {"running", "kind", "elapsed_s"}
+    # File d'attente : la tâche suivante attend ; `queued` le dit tant qu'elle n'a pas démarré.
+    app.state.jobs.submit("render", work, device="cpu", expected_s=5, message="test")
+    assert client.get("/api/jobs/running").json()["queued"] == 1
     release.set()
     for _ in range(50):
         if client.get("/api/jobs/running").json() == {"running": False}:

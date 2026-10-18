@@ -125,6 +125,7 @@ def contextual_generate(
         expected_s=expected,
         message=f"Rendu contextualisé, {len(body.variants)} variante(s), environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
     )
 
 

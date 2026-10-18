@@ -143,4 +143,6 @@ def autoplan(
         expected_s=expected,
         message=f"Construction du plan, environ {expected:.0f} s",
         owner=actor,
+        project_id=project.id,
+        dedup=(project.id, level_id),
     )
