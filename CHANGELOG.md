@@ -7,6 +7,12 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (démarrage plus rapide)
+
+- L'application ne lit plus `/api/health` qu'une fois avant de s'afficher : les mentions
+  (hébergement) et ce que le serveur sait calculer partagent la même réponse ; seules les
+  relectures périodiques des capacités refont une requête.
+
 ### 19 octobre 2026 (MVP en ligne sans GPU)
 
 Le MVP ouvre sans rendus en ligne (décision d'augus) : ce qui marche marche, ce qui manque le

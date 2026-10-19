@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api } from "../api/client";
+import { bootHealth, freshHealth } from "./health";
 
 /** Ce que ce serveur sait calculer (lot « MVP en ligne sans GPU », 19 oct.). On décide sur les
  *  CAPACITÉS réelles, lues dans /api/health, et non sur le seul mode : la machine d'augus (avec
@@ -75,9 +75,13 @@ export function currentCapabilities(): Capabilities {
   return current;
 }
 
-export async function refreshCapabilities(): Promise<Capabilities> {
+/** `boot` : la réponse partagée du démarrage (aucune requête de plus, même si le démarrage
+ *  se rejoue, comme en mode strict de React) ; sinon une relecture du serveur. */
+export async function refreshCapabilities(
+  { boot = false }: { boot?: boolean } = {},
+): Promise<Capabilities> {
   try {
-    set(capabilitiesFrom((await api.health()) as Health));
+    set(capabilitiesFrom((await (boot ? bootHealth() : freshHealth())) as Health));
   } catch {
     /* serveur injoignable : on garde la dernière lecture */
   }

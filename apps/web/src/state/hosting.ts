@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { bootHealth } from "./health";
 
 /** Où tourne PlanDesign (T6), pour des mentions de confidentialité justes : « local » (sur la
  *  machine de la personne : rien ne part) ou « online » (serveur PlanDesign : les projets y
@@ -16,7 +16,7 @@ const LOCAL: Hosting = { online: false, errorReports: false, accounts: false };
 let pending: Promise<Hosting> | null = null;
 
 export function loadHosting(): Promise<Hosting> {
-  pending ??= api.health().then(
+  pending ??= bootHealth().then(
     (h) => ({
       online: Boolean(h.exposed),
       errorReports: Boolean(h.error_reports),

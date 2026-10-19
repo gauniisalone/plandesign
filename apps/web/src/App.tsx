@@ -80,7 +80,7 @@ export function App() {
     let alive = true;
     // Ce que le serveur sait calculer, lu avant d'afficher quoi que ce soit, puis relu
     // régulièrement (un poste de calcul peut se connecter en cours de session).
-    void Promise.all([loadHosting(), refreshCapabilities()]).then(
+    void Promise.all([loadHosting(), refreshCapabilities({ boot: true })]).then(
       async ([hosting]) => {
         watchCapabilities();
         if (!hosting.accounts) {

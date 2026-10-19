@@ -79,6 +79,9 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   expect(
     apiCalls.filter((p) => p !== "/api/health" && p !== "/api/auth/me"),
   ).toEqual([]);
+  // Une seule lecture de /api/health avant l'affichage (hébergement et capacités partagent
+  // la même réponse).
+  expect(apiCalls.filter((p) => p === "/api/health")).toHaveLength(1);
   await expect(page.getByText("Vos espaces de travail")).toHaveCount(0);
   await shot(page, "1-connexion-adresse");
   // Mention en une ligne (B1e), avec le lien vers la page Confidentialité du site.
