@@ -218,6 +218,42 @@ def test_a_wall_glued_to_the_lens_counts_as_near_whatever_the_surface() -> None:
     assert glued.near > 0.9 and open_view.near < NEAR_MAX
 
 
+def test_a_plant_under_the_lens_is_cut_by_the_bottom_edge() -> None:
+    """KAN-26 : une plante juste devant l'objectif baissé occupe le bord inférieur de l'image,
+    à moins de 1,50 m ; plus loin dans le champ, elle n'est plus coupée par le bas (le cas
+    réel, sous le seuil de `NEAR_MAX`, est mesuré sur le grenier plus bas)."""
+    pose = Pose(2.0, 2.0, 1.3, 0.0, math.radians(-11.0), 762.7, WIDTH, HEIGHT)
+
+    def plant(x: float) -> FramingScene:
+        box = Box(x, 2.0, 0.0, 0.2, 0.2, 0.0, 1.1)
+        return FramingScene.build(Polygon([(0, 0), (4, 0), (4, 4), (0, 4)]), [], 2.5, [box])
+
+    under = plant(2.15).shares(pose)
+    assert under.low_cut > 0.5, under
+    assert plant(3.6).shares(pose).low_cut == 0.0
+    assert _box_room().shares(pose).low_cut == 0.0
+
+
+def test_the_low_attic_overview_no_longer_stands_over_a_plant() -> None:
+    """KAN-26 (vrai grenier, 18 oct.) : la vue d'ensemble choisie avant tombait juste au-dessus
+    d'une plante du décor (près de 4 % de l'image à moins de 1,20 m, sous le seuil) ; une
+    feuille dépassait en bas au centre. Place maintenant écartée : aucune vue large ne coupe
+    plus un meuble ni un décor par le bas, et le premier plan reste dégagé."""
+    project = low_attic()
+    level = only_level(project)
+    room = _room(level)
+    before = Pose(3.475, 3.345, 1.30, math.pi, -0.1919, 762.7, WIDTH, HEIGHT)
+    s = room.framing.shares(before)
+    assert s.near <= NEAR_MAX and s.low_cut > 0.5, s
+    plans, skipped = plan_views(project, level.id)
+    assert [p.role for p in plans] == ["overall", "zone", "detail"], skipped
+    for plan in plans:
+        measured = plan_shares(room, plan)
+        assert measured.near <= NEAR_MAX, (plan.name, measured)
+        if _wide(plan):
+            assert measured.low_cut == 0.0, (plan.name, measured)
+
+
 def test_a_room_without_slopes_keeps_level_eye_height_views() -> None:
     """Témoin : rien ne change sans pente (vues larges de niveau, à 1,50 m)."""
     project = straight_room()

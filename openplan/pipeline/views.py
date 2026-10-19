@@ -426,6 +426,20 @@ une surface à moins de 1,20 m (`framing.NEAR_M`), quelle qu'elle soit (pente, m
 meuble, décor). 10 % laisse passer un bout de panne ou un coin de lit au bord du cadre (une
 bande de bord d'image), pas un premier plan bouché : le contrechamp refusé en couvrait 100 %.
 Si toutes les places sont bouchées, la moins bouchée reste (jamais de vue manquante pour ça)."""
+LOW_CUT_MAX = 0.0
+"""KAN-26 : une vue large sous les combles est aussi écartée si un meuble ou un décor est coupé
+par le bord inférieur de l'image à moins de 1,50 m (`framing.CUT_LOW_M`) : la pointe de plante
+sous l'objectif du vrai grenier (4 % de l'image, sous `NEAR_MAX`) dépassait en bas au centre."""
+
+
+def _blocked(shares: Shares) -> float:
+    """Ce qui bouche une vue large : la part proche au-delà de `NEAR_MAX`, plus la part du bord
+    inférieur coupée au premier plan ; 0 si la place est libre."""
+    if shares.near <= NEAR_MAX and shares.low_cut <= LOW_CUT_MAX:
+        return 0.0
+    return shares.near + shares.low_cut
+
+
 TILT_STEP = math.radians(1.0)
 RANKED = 12
 """Places les mieux notées par la profondeur, remesurées sous les combles."""
@@ -486,10 +500,11 @@ def _attic_rank(
         if z is None:
             continue
         pitch, shares = _attic_tilt(room, x, y, z, yaw, focal, aspect)
-        if shares.near > NEAR_MAX:
-            # Premier plan bouché (pente collée, panne, meuble, décor) : écartée.
-            if blocked is None or shares.near < blocked[0]:
-                blocked = (shares.near, (x, y, z, yaw, pitch))
+        if cost := _blocked(shares):
+            # Premier plan bouché (pente collée, panne, meuble, décor) ou meuble, décor coupé
+            # par le bas du cadre (KAN-26) : écartée.
+            if blocked is None or cost < blocked[0]:
+                blocked = (cost, (x, y, z, yaw, pitch))
             continue
         measured += 1
         total = score - ROOF_PENALTY * max(0.0, shares.roof - ROOF_MAX)
@@ -557,7 +572,7 @@ def _overall(
             # Puis plus bas que l'œil, objectif baissé (horizon au tiers).
             def clear(px: float, py: float, a: float) -> bool:
                 pz = max(1.0, min(ATTIC_EYE_M, room.clearance(px, py) - HEADROOM_M))
-                return _attic_tilt(room, px, py, pz, a, focal, aspect)[1].near <= NEAR_MAX
+                return not _blocked(_attic_tilt(room, px, py, pz, a, focal, aspect)[1])
 
             x, y, yaw = _attic_axis_start(room, x, y, op.yaw, clear)
             z = max(1.0, min(ATTIC_EYE_M, room.clearance(x, y) - HEADROOM_M))

@@ -40,6 +40,10 @@ NEAR_M = 1.2
 """Distance sous laquelle une surface « bouche » l'image : à 24–28 mm, à moins de 1,2 m, une
 planche ou une panne couvre une large part du cadre, floue et sans échelle lisible (le premier
 plan d'une vue d'intérieur commence vers 1,5 m)."""
+CUT_LOW_M = 1.5
+"""KAN-26 : un meuble ou un décor coupé par le bord inférieur de l'image à moins de 1,5 m (le
+premier plan d'une vue d'intérieur) dépasse en bas du cadre, flou, même s'il en couvre peu
+(une pointe de plante sous l'objectif : 4 % de l'image, sous le seuil de `NEAR_M`)."""
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,9 @@ class Shares:
     horizon: float
     near: float = 0.0
     """Part de l'image dont la première surface est à moins de `NEAR_M`, quelle qu'elle soit."""
+    low_cut: float = 0.0
+    """Part du bord inférieur de l'image (dernière rangée de la grille) où la première surface
+    est un meuble ou un décor à moins de `CUT_LOW_M` : coupé au premier plan."""
 
 
 @dataclass
@@ -237,6 +244,8 @@ class FramingScene:
             furniture=part[FURNITURE],
             horizon=pose.horizon(),
             near=float(np.count_nonzero(dist < NEAR_M)) / total,
+            low_cut=float(np.count_nonzero((lab[-1] == FURNITURE) & (dist[-1] < CUT_LOW_M)))
+            / lab.shape[1],
         )
 
 
