@@ -45,6 +45,10 @@ jobs:
           cache-dependency-path: apps/site/package-lock.json
       - name: Construire (check-dist compris)
         working-directory: apps/site
+        env:
+          # Fenêtre « Se connecter » : variable de dépôt SITE_LOGIN_WINDOW=1 (ouverture du MVP, 19 oct.) ;
+          # la supprimer et relancer deploy-site rend le site sans fenêtre.
+          PUBLIC_LOGIN_WINDOW: ${{ vars.SITE_LOGIN_WINDOW }}
         run: |
           npm ci --no-audit --no-fund
           npm run build
