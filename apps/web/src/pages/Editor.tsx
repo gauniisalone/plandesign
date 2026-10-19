@@ -51,6 +51,7 @@ import {
   useAccount,
   useRole,
 } from "../state/account";
+import { importGate } from "../state/roleGate";
 import {
   BottomBar,
   type Step,
@@ -179,6 +180,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // n'est pas connu, rien d'éditable n'est montré.
   const role = useRole(projectId);
   const readOnly = !canEdit(role);
+  /** KAN-47 : lien direct vers l'import, rôle pas encore lu → l'atelier attend. */
+  const gate = importGate(role);
   // B1e : « Partager » pour le propriétaire, avec les comptes seulement.
   const account = useAccount();
   const canShare = account !== null && role === "owner";
@@ -492,6 +495,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     else if (next === "edit") setViewMode((m) => (m === "3d" ? "2d" : m));
     else setViewMode("2d");
   }, []);
+  // KAN-47 : sur l'import, une fois le rôle lu, qui ne peut pas éditer passe à l'espace de
+  // travail (en lecture seule) ; qui peut éditer reste sur l'import.
+  useEffect(() => {
+    if (step === "import" && gate === "board") goStep("board");
+  }, [step, gate, goStep]);
   /** Espaces du projet : l'espace de travail, le plan, la 3D. */
   const goTab = useCallback(
     (next: Tab) => {
@@ -1122,7 +1130,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     <ReadOnlyContext.Provider value={readOnly}>
       <div
         className={`editor${readOnly ? " read-only" : ""}`}
-        data-space={arrived ? (tab ?? "source") : "loading"}
+        data-space={
+          arrived && !(step === "import" && gate === "waiting")
+            ? (tab ?? "source")
+            : "loading"
+        }
       >
         <div className={`stage view-${viewMode}`} ref={stageRef}>
           {state.pilotJob?.status === "running" && (
@@ -1334,6 +1346,12 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 setPane("contextual");
               }}
             />
+          )}
+          {step === "import" && gate === "waiting" && (
+            // KAN-47 : rôle pas encore lu ; ni import ni espace de travail, rien d'éditable.
+            <div className="import-waiting" role="status" aria-busy="true">
+              Ouverture du projet…
+            </div>
           )}
           {step === "import" && !readOnly && (
             <ImportScreen

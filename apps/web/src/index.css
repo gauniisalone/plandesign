@@ -1103,6 +1103,18 @@ button.cta:hover:not(:disabled) {
   padding: 92px 24px 110px;
 }
 
+/* KAN-47 : lien direct vers l'import, rôle pas encore lu (le même fond, sans saut). */
+.import-waiting {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--canvas) 88%, var(--mix));
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .import-card {
   max-width: 820px;
   margin: 0 auto;

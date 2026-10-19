@@ -34,9 +34,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   owner: "Propriétaire",
 };
 
-export function canEdit(role: Role | null): boolean {
-  return role === "editor" || role === "owner";
-}
+export { canEdit } from "./roleGate";
 
 /** Rôle sur le projet : `owner` sans comptes ; null tant que la réponse n'est pas là. */
 export function useRole(projectId: string): Role | null {
