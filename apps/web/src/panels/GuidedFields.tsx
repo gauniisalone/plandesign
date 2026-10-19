@@ -100,6 +100,8 @@ function NumberField({
           } else {
             setBad(false);
             onError(null);
+            // Arrondi au dixième : le champ montre ce qui est enregistré (35,55 → 35,6).
+            if (n !== null && parse(text, decimal) !== n) setText(shown(n));
             send(n);
           }
         }}

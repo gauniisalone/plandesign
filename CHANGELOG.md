@@ -63,6 +63,10 @@ le défaut) ; ouverte, elles disparaissent sans changer de code.
   dans l'espace de travail, sous les rangées), `e2e-online` (arrivée déconnectée par
   /nouveau, connexion, plan généré, aucun calcul de rendu ; description illisible),
   `e2e-accounts` (/nouveau : plan généré).
+- Intégration (avec B2b) : la surface affichée est arrondie au dixième à la sortie du champ,
+  comme la valeur enregistrée (« 35,55 » devient « 35,6 ») ; le plan de l'arrivée par /nouveau
+  attend aussi que le plan ouvert soit chargé. `make e2e` lance aussi `e2e:site` (fenêtre
+  « Se connecter » du site construit avec l'option, KAN-36).
 
 ### 19 octobre 2026 (site, page relue par augus)
 

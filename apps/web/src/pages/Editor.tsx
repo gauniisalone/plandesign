@@ -430,7 +430,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     if (walls(level).length > 0) return;
     actions.generatePlan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrived, readOnly, projectLoaded]);
+  }, [arrived, readOnly, projectLoaded, level]);
 
   // L'adresse suit l'écran « Ajouter une source » (adressable), sans empiler d'historique.
   useEffect(() => {
