@@ -166,3 +166,5 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/e2e/screenshots/
 apps/web/test-results-audit/
+apps/web/.e2e-site/
+apps/web/test-results-site/
