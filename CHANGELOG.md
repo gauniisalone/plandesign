@@ -7,6 +7,26 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (KAN-12 : place disque par compte)
+
+Avec les comptes seulement ; le mode local n'a pas de limite.
+
+- Chaque compte a une place disque : la taille des projets dont il est le premier propriétaire
+  (photos, fichiers joints, plans, rendus, tableau), mesurée par le serveur.
+  `OPENPLAN_QUOTA_MB` (500 par défaut ; 0 = sans limite), documentée dans `.env.example`.
+- Un envoi (photo, fichier joint) qui ferait dépasser la place est refusé avant toute
+  écriture (413) : « Votre espace est plein (480 Mo sur 500 Mo) : supprimez des fichiers ou
+  des projets. » Un calcul qui écrit des fichiers (rendus, détections, chemin automatique) est
+  refusé avant son lancement s'il reste moins de 20 Mo (réserve d'un jeu de rendus) : il ne
+  dépasse jamais la limite en cours de route. Les rendus comptent dans la place.
+- Un membre invité consomme la place du propriétaire du projet ; le refus le dit, sans
+  révéler la place de ce dernier.
+- Réglages du compte : « Votre espace : 120 Mo sur 500 Mo », avec une barre. Sur ses propres
+  projets, l'atelier prévient avant d'envoyer un fichier trop gros (rien ne part).
+- Supprimer un fichier, une photo ou un projet libère la place tout de suite.
+- `make check` et la CI lancent aussi les tests unitaires du front (`npm run test:unit`,
+  `node --test`, KAN-47).
+
 ### 19 octobre 2026 (B2d : bail d'édition du plan, curseurs en mètres, KAN-11)
 
 Avec les comptes seulement ; le mode local ne change pas.

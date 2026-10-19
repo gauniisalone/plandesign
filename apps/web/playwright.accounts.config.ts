@@ -19,6 +19,9 @@ const env = [
   "OPENPLAN_SIGNUP=open",
   "OPENPLAN_ADMIN_EMAIL=admin@example.org",
   `OPENPLAN_PUBLIC_URL=http://localhost:${webPort}`,
+  // KAN-12 : une place d'un Mo par compte, pour éprouver le refus (aucun autre test ici
+  // n'envoie de fichier).
+  "OPENPLAN_QUOTA_MB=1",
 ].join(" ");
 
 export default defineConfig({

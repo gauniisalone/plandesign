@@ -324,6 +324,7 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     from openplan.api.accounts.lease import router as lease_router
     from openplan.api.accounts.live import MemoryHub
     from openplan.api.accounts.live import router as live_router
+    from openplan.api.accounts.quota import router as quota_router
     from openplan.api.accounts.routes import router as auth_router
     from openplan.api.accounts.routes import test_router
     from openplan.api.accounts.sharing_routes import router as sharing_router
@@ -337,5 +338,7 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     # Bail d'édition du plan (B2d) : en mémoire, comme la présence.
     app.state.leases = PlanLeases()
     app.include_router(lease_router, dependencies=guarded)
+    # Place disque par compte (KAN-12).
+    app.include_router(quota_router, dependencies=guarded)
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)

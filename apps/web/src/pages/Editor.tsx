@@ -44,7 +44,7 @@ import {
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
 import { useLive } from "../state/live";
-import { leaseApi } from "../api/client";
+import { authApi, leaseApi, setSpaceLeft } from "../api/client";
 import {
   ReadOnlyContext,
   canEdit,
@@ -186,6 +186,24 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   const account = useAccount();
   const canShare = account !== null && role === "owner";
   const [shareOpen, setShareOpen] = useState(false);
+  // KAN-12 : sur mon projet, la place qui me reste (prévenir avant d'envoyer un gros
+  // fichier) ; jamais sur le projet d'un autre (sa place reste à lui). Relue à l'ouverture
+  // et quand le nombre de photos ou de rendus change (ajout, suppression), pas à chaque geste.
+  const projectStamp = `${Object.keys(state.project?.images ?? {}).length}|${state.renders.length}`;
+  useEffect(() => {
+    if (!account || role !== "owner") {
+      setSpaceLeft(projectId, null);
+      return;
+    }
+    authApi.usage().then(
+      (u) =>
+        setSpaceLeft(
+          projectId,
+          u.quota_bytes === null ? null : u.quota_bytes - u.used_bytes,
+        ),
+      () => setSpaceLeft(projectId, null),
+    );
+  }, [account, role, projectId, projectStamp]);
   const [tool, setTool] = useState<Tool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [step, setStep] = useState<Step>(initialStep ?? "edit");

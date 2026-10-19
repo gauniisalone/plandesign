@@ -19,6 +19,8 @@ DOTENV = Path(".env")
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 DEFAULT_PUBLIC_URL = "https://app.plandesign.fr"
 DEFAULT_MAIL_FROM = "connexion@plandesign.fr"
+DEFAULT_QUOTA_MB = 500
+"""KAN-12 : place disque par compte par défaut (décision du PO, 19 oct. 2026)."""
 DOTENV_VAR = "OPENPLAN_DOTENV"
 """Chemin du fichier `.env` à lire ; vide = n'en lire aucun (tests, serveurs jetables), pour
 qu'une configuration personnelle (clé d'API distante) ne s'invite pas dans un environnement
@@ -104,6 +106,11 @@ class Settings:
     du code (et la lecture de `/api/auth/me`), avec CORS à cookies ; vide (défaut) : aucune
     origine extérieure n'est acceptée, nulle part."""
 
+    quota_mb: int = DEFAULT_QUOTA_MB
+    """OPENPLAN_QUOTA_MB (KAN-12) : place disque par compte, en Mo, pour les projets dont il est
+    le premier propriétaire (photos, fichiers joints, plans, rendus) ; 0 = sans limite. Avec
+    les comptes seulement : le mode local n'a pas de limite."""
+
     @property
     def local_only(self) -> bool:
         return self.host in LOCAL_HOSTS
@@ -156,6 +163,7 @@ class Settings:
             brevo_api_key=merged.get("OPENPLAN_BREVO_API_KEY", "").strip() or None,
             site_origin=parse_origin(merged.get("OPENPLAN_SITE_ORIGIN")),
             contact_to=merged.get("OPENPLAN_CONTACT_TO", "").strip() or None,
+            quota_mb=parse_quota(merged.get("OPENPLAN_QUOTA_MB")),
         )
 
     @property
@@ -168,6 +176,18 @@ class Settings:
 ACCOUNTS_PROJECTS_DIR = "projects"
 SIGNUP_VALUES = {"invite": "invite", "invitation": "invite", "open": "open", "ouvert": "open"}
 MAILERS = frozenset({"console", "fake", "smtp_api"})
+
+
+def parse_quota(text: str | None) -> int:
+    """OPENPLAN_QUOTA_MB : un entier de Mo, 0 ou plus (0 = sans limite) ; vide : la valeur par
+    défaut."""
+    raw = (text or "").strip()
+    if not raw:
+        return DEFAULT_QUOTA_MB
+    if not raw.isdigit():
+        msg = "OPENPLAN_QUOTA_MB : un nombre entier de Mo, 0 pour sans limite"
+        raise ValueError(msg)
+    return int(raw)
 
 
 def parse_signup(text: str | None) -> str:

@@ -202,6 +202,7 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",
     ("POST", "/api/projects"): "user",
+    ("GET", "/api/auth/usage"): "user",  # KAN-12 : ma place disque
     # Lecture de l'installation et du catalogue
     ("GET", "/api/ai"): "user",
     ("GET", "/api/models"): "user",
@@ -294,8 +295,11 @@ def route_guard(request: Request) -> None:
         user = check_member(request, accounts, _project_id(request), role)
         # B2d : une écriture d'une personne sur un plan prend ou prolonge son bail, ou 409.
         from openplan.api.accounts.lease import guard_plan_write
+        from openplan.api.accounts.quota import guard_space
 
         guard_plan_write(request, key, user)
+        # KAN-12 : un envoi ou un calcul qui dépasserait la place du propriétaire : 413.
+        guard_space(request, accounts, key, user)
         return
     policy = GLOBAL_ROUTES.get(key)
     if policy == "public":

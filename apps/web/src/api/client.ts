@@ -315,7 +315,31 @@ export const authApi = {
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   logoutAll: () => request<void>("/auth/logout-all", { method: "POST" }),
   role: (pid: string) => request<{ role: Role }>(`/projects/${pid}/role`),
+  /** KAN-12 : ma place disque (octets) ; `quota_bytes` null : sans limite. */
+  usage: () =>
+    request<{ used_bytes: number; quota_bytes: number | null }>("/auth/usage"),
 };
+
+/** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 413) ; connue
+ *  pour un projet dont je suis propriétaire, jamais pour celui d'un autre (sa place reste à
+ *  lui). Sert à prévenir AVANT d'envoyer un fichier trop gros, pas après un long envoi. */
+const spaceLeft = new Map<string, number>();
+
+export function setSpaceLeft(pid: string, left: number | null): void {
+  if (left === null) spaceLeft.delete(pid);
+  else spaceLeft.set(pid, left);
+}
+
+const MiB = 1024 * 1024;
+function tooBig(pid: string, file: File): ApiError | null {
+  const left = spaceLeft.get(pid);
+  if (left === undefined || file.size <= left) return null;
+  const mo = (n: number) => `${Math.max(0, Math.round(n / MiB))} Mo`;
+  return new ApiError(
+    `Pas assez de place : ce fichier (${mo(file.size)}) dépasse la place qui reste (${mo(left)}). Supprimez des fichiers ou des projets.`,
+    413,
+  );
+}
 
 /** Bilan de l'installation (`openplan doctor`) : chaque manque avec sa commande. */
 export interface DoctorCheck {
@@ -469,6 +493,8 @@ export const api = {
   blenderArtifactUrl: (pid: string, runId: string, name: string) =>
     `${BASE}/projects/${pid}/runs/${runId}/blender/${name}`,
   uploadImage: (pid: string, file: File) => {
+    const refused = tooBig(pid, file);
+    if (refused) return Promise.reject(refused);
     const form = new FormData();
     form.append("file", file, file.name);
     return request<ImageImportResult>(`/projects/${pid}/images`, {
@@ -1966,6 +1992,8 @@ export const boardApi = {
     }),
   media: (pid: string) => request<MediaRef[]>(`/projects/${pid}/media`),
   upload: (pid: string, file: File) => {
+    const refused = tooBig(pid, file);
+    if (refused) return Promise.reject(refused);
     const body = new FormData();
     body.append("file", file);
     return request<MediaRef>(`/projects/${pid}/media`, {

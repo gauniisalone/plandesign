@@ -60,6 +60,11 @@ async function slowRole(page: Page, as?: "viewer"): Promise<void> {
 test("KAN-47 : lien direct vers l'import, l'éditeur arrive sur l'import après une attente sans rien d'éditable", async ({
   page,
 }) => {
+  // Une adresse propre (comme person() dans accounts.spec) : les connexions des autres
+  // fichiers depuis 127.0.0.1 n'épuisent pas la limite des tentatives (10 par minute).
+  await page
+    .context()
+    .setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.81" });
   await signIn(page, "editrice@example.org");
   const id = await emptyProject(page, "Lien direct (éditeur)");
   await slowRole(page);
@@ -96,6 +101,9 @@ test("KAN-47 : lien direct vers l'import, l'éditeur arrive sur l'import après 
 test("KAN-47 : le même lien mène un lecteur à l'espace de travail, en lecture seule", async ({
   page,
 }) => {
+  await page
+    .context()
+    .setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.82" });
   await signIn(page, "lecteur-kan47@example.org");
   const id = await emptyProject(page, "Lien direct (lecteur)");
   // Le serveur dit « lecteur » (même procédé que le test du lecteur sans outils).

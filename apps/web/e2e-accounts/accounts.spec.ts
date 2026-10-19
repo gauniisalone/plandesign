@@ -864,6 +864,74 @@ test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async
   ).toHaveCount(0, { timeout: 15_000 });
 });
 
+test("KAN-12 : ma place affichée, un envoi trop gros refusé avant l'envoi et par le serveur", async ({
+  browser,
+}) => {
+  // La config de ces e2e donne un Mo par compte (OPENPLAN_QUOTA_MB=1).
+  const page = await person(browser, "198.51.100.71");
+  await gotoApp(page, "/");
+  await signInHere(page, "hugo@example.org", "Hugo");
+  const origin = { Origin: new URL(page.url()).origin };
+  const made = await page.request.post("/api/projects", {
+    data: { name: "Projet de Hugo" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  // Réglages : « Votre espace : 0 Mo sur 1 Mo », avec la barre.
+  await gotoApp(page, "/");
+  await page.getByRole("button", { name: "Réglages" }).click();
+  const settings = page.getByRole("dialog", { name: "Réglages" });
+  await expect(
+    settings.getByText(/Votre espace : \d+ Mo sur 1 Mo/),
+  ).toBeVisible();
+  await expect(
+    settings.getByRole("progressbar", { name: "Place utilisée" }),
+  ).toBeVisible();
+  await shot(page, "15-place-du-compte");
+  // Le serveur refuse un envoi qui dépasserait la place, avant toute écriture.
+  const big = Buffer.alloc(1_200_000, 7);
+  const refused = await page.request.post(`/api/projects/${id}/media`, {
+    multipart: {
+      file: {
+        name: "gros.bin",
+        mimeType: "application/octet-stream",
+        buffer: big,
+      },
+    },
+    headers: origin,
+  });
+  expect(refused.status()).toBe(413);
+  expect(((await refused.json()) as { detail: string }).detail).toContain(
+    "Votre espace est plein",
+  );
+  const media = (await (
+    await page.request.get(`/api/projects/${id}/media`)
+  ).json()) as unknown[];
+  expect(media).toHaveLength(0);
+  // Dans l'espace de travail : l'atelier prévient avant d'envoyer (rien ne part).
+  await gotoApp(page, `/#/projects/${id}`);
+  await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  const sent: string[] = [];
+  page.on("request", (r) => {
+    if (
+      r.method() === "POST" &&
+      /\/(media|images)$/.test(new URL(r.url()).pathname)
+    )
+      sent.push(r.url());
+  });
+  await page
+    .locator('.board-stage ~ input[type="file"], input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "gros.pdf",
+      mimeType: "application/pdf",
+      buffer: big,
+    });
+  await expect(page.getByText(/Pas assez de place/)).toBeVisible();
+  expect(sent).toHaveLength(0);
+  await shot(page, "16-envoi-refuse");
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

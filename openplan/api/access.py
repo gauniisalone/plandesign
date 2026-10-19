@@ -53,6 +53,10 @@ class AccountsBackend(Protocol):
 
     def roles_of(self, user_id: UUID) -> dict[UUID, str]: ...
 
+    def payer_of(self, project_id: UUID) -> UUID | None: ...
+
+    def paid_project_ids(self, user_id: UUID) -> set[UUID]: ...
+
 
 def accounts_of(request: Request) -> AccountsBackend | None:
     backend: AccountsBackend | None = getattr(request.app.state, "accounts", None)

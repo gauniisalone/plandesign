@@ -67,9 +67,12 @@ web-types:
 	$(RUN) openplan schemas $(WEB)/schemas
 	cd $(WEB) && npm run gen-types
 
-## Tests
+## Tests (KAN-47 : tests unitaires du front, node --test, sans navigateur)
 test:
 	$(RUN) pytest
+ifneq ($(HAS_WEB),)
+	cd $(WEB) && npm run test:unit
+endif
 
 ## Lint
 lint-imports:

@@ -119,6 +119,22 @@ class AccountsRepo:
             )
             return {project_id: role for project_id, role in rows}
 
+    def payer_of(self, project_id: UUID) -> UUID | None:
+        """KAN-12 : le compte dont la place compte pour ce projet, son premier propriétaire."""
+        with self.session() as db:
+            first: UUID | None = db.scalar(
+                select(Member.user_id)
+                .where(Member.project_id == project_id, Member.role == "owner")
+                .order_by(Member.added_at)
+                .limit(1)
+            )
+            return first
+
+    def paid_project_ids(self, user_id: UUID) -> set[UUID]:
+        """KAN-12 : les projets dont ce compte est le premier propriétaire."""
+        owned = [pid for pid, role in self.roles_of(user_id).items() if role == "owner"]
+        return {pid for pid in owned if self.payer_of(pid) == user_id}
+
     def project_exists(self, project_id: UUID) -> bool:
         with self.session() as db:
             return db.get(ProjectRow, project_id) is not None

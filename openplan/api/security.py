@@ -238,8 +238,9 @@ SITE_CORS = SITE_CREDENTIALS | {CONTACT_PATH, "/api/health"}
 SITE_PREFLIGHT_MAX_AGE_S = 600
 """Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
 AUTH_PREFIX = "/api/auth/"
-AUTH_RATE_EXEMPT = frozenset({"/api/auth/me"})
-"""`/api/auth/me` est lu à chaque chargement du front : hors de la limite des tentatives."""
+AUTH_RATE_EXEMPT = frozenset({"/api/auth/me", "/api/auth/usage"})
+"""`/api/auth/me` est lu à chaque chargement du front, `/api/auth/usage` (KAN-12) à chaque
+changement d'un de mes projets : des lectures, hors de la limite des tentatives."""
 AUTH_RATE_LIMIT = 10
 AUTH_RATE_WINDOW_S = 60.0
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
