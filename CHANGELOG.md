@@ -7,6 +7,24 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (B2b : curseurs, sélections, « Suivre »)
+
+Avec les comptes, dans l'espace de travail ; éphémère, rien n'est écrit ni stocké.
+
+- Curseurs des autres membres, nommés et à leur couleur, en coordonnées de l'espace de travail
+  (10 envois par seconde au plus ; disparus quand la personne quitte le canevas). Les curseurs
+  en mètres dans l'onglet Plan iront avec le bail du plan (B2d).
+- Sélections des autres : contour à leur couleur, avec leur nom ; un nouvel arrivant reçoit les
+  sélections en cours.
+- « Suivre » : un clic sur un avatar, et ma vue suit la sienne (centre et zoom, 4 fois par
+  seconde au plus, envoyés seulement quand quelqu'un suit, et seulement à ceux qui suivent).
+  Bandeau « Vous suivez … · Arrêter » ; tout geste de ma part, ou son départ, arrête de suivre.
+- WebSocket : le serveur valide et relaie (jamais vers ses propres onglets), ignore un message
+  invalide ; débit et taille toujours limités.
+- Reconnexion : après deux échecs d'affilée sans réponse du serveur (un refus de poignée de
+  main derrière l'intergiciel n'est qu'un échec), l'application lit /api/auth/me : en 401,
+  retour à la connexion ; sinon, l'attente croissante continue.
+
 ### 19 octobre 2026 (bêta sur invitation, annoncée)
 
 Un visiteur non invité ne croit plus le site cassé, sans qu'on lui dise si son adresse a un

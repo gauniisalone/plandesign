@@ -35,6 +35,8 @@ import { IconPlus, IconSliders, IconUpload } from "../ui/icons";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
+import { PresenceLayer } from "./PresenceLayer";
+import { usePresence, type Peer, type PresenceOut } from "../state/live";
 import {
   hostOf,
   linkFrom,
@@ -132,6 +134,9 @@ interface Props {
     id: string;
     label: string;
   }) => void;
+  /** B2b : présence des autres (curseurs, sélections, « Suivre ») ; absente sans comptes. */
+  presence?: PresenceOut;
+  peers?: Peer[];
 }
 
 /** T2, T7d1 : ce qu'un cadre fixe attend, tant qu'il est vide : une ligne courte (retour
@@ -314,8 +319,45 @@ export function BoardCanvas(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.focusRenders]);
 
+  // B2b : « Suivre ». Un geste de ma part (clic, molette, zoom, cadrage) arrête de suivre ; la
+  // vue de la personne suivie s'applique à la taille de mon écran, sans être enregistrée.
+  const presence = props.presence;
+  const stopFollowing = () => {
+    if (presence?.following) presence.follow(null);
+  };
+  const followView = usePresence(presence?.store).view;
+  useEffect(() => {
+    const el = stage.current;
+    if (!followView || !presence?.following || !el) return;
+    const rect = el.getBoundingClientRect();
+    setViewState({
+      zoom: followView.zoom,
+      x: rect.width / 2 - followView.cx * followView.zoom,
+      y: rect.height / 2 - followView.cy * followView.zoom,
+    });
+  }, [followView, presence?.following]);
+  // Ma vue, si quelqu'un me suit (centre et zoom, à la taille de l'autre écran chez lui).
+  const followed = presence?.followed ?? 0;
+  const sendView = presence?.view;
+  useEffect(() => {
+    const el = stage.current;
+    if (!followed || !el || !sendView) return;
+    const rect = el.getBoundingClientRect();
+    sendView({
+      cx: (rect.width / 2 - view.x) / view.zoom,
+      cy: (rect.height / 2 - view.y) / view.zoom,
+      zoom: view.zoom,
+    });
+  }, [view, followed, sendView]);
+  // Ma sélection, à chaque changement.
+  const sendSelection = presence?.select;
+  useEffect(() => {
+    sendSelection?.([...selected]);
+  }, [selected, sendSelection]);
+
   const applyView = useCallback(
     (next: BoardView) => {
+      if (props.presence?.following) props.presence.follow(null);
       setViewState(next);
       props.onView(next);
     },
@@ -1532,7 +1574,14 @@ export function BoardCanvas(props: Props) {
         className={`board-stage tool-${tool}${drag?.kind === "pan" ? " panning" : ""}`}
         data-world="1"
         onPointerDown={onStageDown}
-        onPointerMove={onMove}
+        onPointerMove={(e) => {
+          props.presence?.cursor(toWorld(e.clientX, e.clientY));
+          onMove(e);
+        }}
+        onPointerLeave={() => props.presence?.cursor(null)}
+        // B2b : tout geste de ma part arrête de suivre.
+        onPointerDownCapture={stopFollowing}
+        onWheelCapture={stopFollowing}
         onPointerUp={onUp}
         onWheel={onWheel}
         onDragOver={(e) => {
@@ -1595,6 +1644,13 @@ export function BoardCanvas(props: Props) {
               )}
             </div>
           ))}
+          {props.presence && (
+            <PresenceLayer
+              store={props.presence.store}
+              peers={props.peers ?? []}
+              items={items}
+            />
+          )}
           {marquee && (
             <div
               className={`board-marquee${marquee.kind === "frame" ? " frame" : ""}`}

@@ -360,6 +360,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     // Session perdue : la prochaine requête répond 401 et ramène à la connexion.
     onSignedOut: () => actions.reload(),
   });
+  // B2b : la personne que je suis, si elle est toujours là.
+  const followedPeer =
+    live.peers.find((p) => p.user_id === live.presence.following) ?? null;
   // T7e : le plan ouvert (celui qu'on édite, visé par le chemin automatique) ; le premier
   // par défaut.
   const level = state.project
@@ -1247,6 +1250,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 actions.importFile(file);
               }}
               focusRenders={rendersFocus}
+              presence={account ? live.presence : undefined}
+              peers={live.peers}
               onRerender={rerenderViews}
               onOpenRendersPane={(levelId) => {
                 if (levelId) actions.openLevel(levelId);
@@ -1313,12 +1318,34 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
             onShare={canShare ? () => setShareOpen(true) : undefined}
             peers={live.peers}
+            following={live.presence.following}
+            onFollow={(userId) => {
+              live.presence.follow(userId);
+              // Suivre, c'est voir ce que l'autre voit : l'espace de travail.
+              if (userId && step !== "board") goTab("board");
+            }}
             planName={
               Object.keys(state.project.levels).length > 1
                 ? level.name
                 : undefined
             }
           />
+          {followedPeer && live.status !== "reconnecting" && (
+            <div
+              className="follow-banner"
+              role="status"
+              ref={(el) => el?.style.setProperty("--peer", followedPeer.color)}
+            >
+              Vous suivez {followedPeer.name}
+              <button
+                type="button"
+                className="link"
+                onClick={() => live.presence.follow(null)}
+              >
+                Arrêter
+              </button>
+            </div>
+          )}
           {live.status === "reconnecting" && (
             <div className="live-banner" role="status">
               <span className="spinner" aria-hidden="true" /> Reconnexion…

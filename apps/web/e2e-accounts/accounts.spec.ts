@@ -473,3 +473,187 @@ test("B2a : présence, puis coupure, reconnexion et resynchronisation", async ({
   );
   await expect(ownerPresence.getByLabel("Bruno")).toHaveCount(0);
 });
+
+/** B2b : connexion sur la page de connexion déjà ouverte, avec un nom. */
+async function signInHere(page: Page, email: string, name: string) {
+  await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(page.getByText("un code vient de partir")).toBeVisible();
+  let code = "";
+  await expect
+    .poll(async () => {
+      const r = await page.request.get(
+        `/api/test/mail/last-code?email=${email}`,
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
+  await page.getByLabel("Code à 6 chiffres").fill(code);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await passNameStep(page, name);
+}
+
+/** Échelle appliquée au monde de l'espace de travail (la vue de la page). */
+async function worldZoom(page: Page): Promise<number> {
+  const transform = await page
+    .locator(".board-world")
+    .evaluate((el) => (el as HTMLElement).style.transform);
+  return Number(/scale\(([\d.]+)\)/.exec(transform)?.[1] ?? "NaN");
+}
+
+test("B2b : curseur et sélection de l'autre, puis « Suivre » jusqu'à mon premier geste", async ({
+  browser,
+}) => {
+  const owner = await person(browser, "198.51.100.41");
+  await gotoApp(owner, "/");
+  await signInHere(owner, "carla@example.org", "Carla");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Atelier partagé" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  // Une note posée par l'API, que l'invité sélectionnera.
+  const board = (await (
+    await owner.request.get(`/api/projects/${id}/board`)
+  ).json()) as { items: unknown[] };
+  const noteId = "5b2b0000-0000-4000-8000-000000000001";
+  const put = await owner.request.put(`/api/projects/${id}/board`, {
+    data: {
+      ...board,
+      items: [
+        ...board.items,
+        {
+          id: noteId,
+          kind: "note",
+          x: 40,
+          y: 40,
+          w: 220,
+          h: 140,
+          text: "Idée",
+        },
+      ],
+    },
+    headers: origin,
+  });
+  expect(put.ok()).toBe(true);
+  const invite = await owner.request.post(`/api/projects/${id}/invitations`, {
+    data: { role: "editor" },
+    headers: origin,
+  });
+  const { token } = (await invite.json()) as { token: string };
+  await gotoApp(owner, `/#/projects/${id}`);
+  await expect(owner.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+
+  const guest = await person(browser, "198.51.100.42");
+  await gotoApp(guest, `/#/invitation/${token}`);
+  await signInHere(guest, "dario@example.org", "Dario");
+  await expect(guest.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  const ownerPresence = owner.getByRole("list", {
+    name: "Présents sur le projet",
+  });
+  await expect(ownerPresence.getByLabel("Dario")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Son curseur : nommé, chez moi.
+  const stage = await guest.locator(".board-stage").boundingBox();
+  if (!stage) throw new Error("espace de travail absent");
+  await guest.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await guest.mouse.move(
+    stage.x + stage.width / 2 + 30,
+    stage.y + stage.height / 2 + 20,
+  );
+  await expect(
+    owner.getByRole("img", { name: "Curseur de Dario" }),
+  ).toBeVisible();
+  // Sa sélection : contour à sa couleur, avec son nom.
+  await guest.locator(`.board-item[data-kind="note"]`).click();
+  await expect(guest.locator(".board-item.selected")).toHaveCount(1);
+  await expect(owner.locator('.peer-select[data-peer="Dario"]')).toHaveCount(1);
+  await expect(owner.locator(".peer-select .peer-label")).toHaveText("Dario");
+  await shot(owner, "10-curseur-selection");
+  // Il sort du canevas (vers la barre du haut) : son curseur disparaît.
+  await guest.locator(".topbar .project-name").hover();
+  await expect(
+    owner.getByRole("img", { name: "Curseur de Dario" }),
+  ).toHaveCount(0);
+
+  // Je le suis : ma vue prend son zoom quand il zoome.
+  await ownerPresence.getByRole("button", { name: "Dario" }).click();
+  await expect(
+    ownerPresence.getByRole("button", { name: "Dario" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    owner.getByRole("status").filter({ hasText: "Vous suivez Dario" }),
+  ).toBeVisible();
+  // « Zoomer » exactement : « Dézoomer » le contient aussi.
+  const zoomIn = guest.getByRole("button", { name: "Zoomer", exact: true });
+  await zoomIn.click();
+  await zoomIn.click();
+  const theirs = await worldZoom(guest);
+  await expect.poll(() => worldZoom(owner)).toBeCloseTo(theirs, 2);
+  await shot(owner, "11-suivre");
+  // Mon premier geste (la molette) : je ne suis plus personne.
+  const mine = await owner.locator(".board-stage").boundingBox();
+  if (!mine) throw new Error("espace de travail absent");
+  await owner.mouse.move(mine.x + 200, mine.y + 200);
+  await owner.mouse.wheel(0, 120);
+  await expect(owner.getByText("Vous suivez Dario")).toHaveCount(0);
+  await expect(
+    ownerPresence.getByRole("button", { name: "Dario" }),
+  ).toHaveAttribute("aria-pressed", "false");
+  // Il zoome encore : ma vue ne bouge plus.
+  const before = await worldZoom(owner);
+  await zoomIn.click();
+  await guest.waitForTimeout(600); // au-delà d'une période d'envoi de la vue (250 ms)
+  expect(await worldZoom(owner)).toBeCloseTo(before, 3);
+});
+
+test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
+  browser,
+}) => {
+  // Derrière l'intergiciel, un refus de poignée de main n'arrive au navigateur que comme un
+  // échec, sans code 4401 : le test refuse de même toute nouvelle connexion.
+  const page = await person(browser, "198.51.100.43");
+  let refuse = false;
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/ws\/projects\//, (ws) => {
+    if (refuse) {
+      void ws.close({ code: 1011, reason: "refusé" });
+      return;
+    }
+    ws.connectToServer();
+    sockets.push(ws);
+  });
+  await gotoApp(page, "/");
+  await signInHere(page, "elsa@example.org", "Elsa");
+  const origin = { Origin: new URL(page.url()).origin };
+  const made = await page.request.post("/api/projects", {
+    data: { name: "Projet d'Elsa" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  await gotoApp(page, `/#/projects/${id}`);
+  await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => sockets.length).toBeGreaterThan(0);
+
+  // « Me déconnecter partout » depuis un autre appareil, puis la connexion tombe.
+  const asked: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/api/auth/me") asked.push(r.url());
+  });
+  const revoked = await page.request.post("/api/auth/logout-all", {
+    headers: origin,
+  });
+  expect(revoked.ok()).toBe(true);
+  refuse = true;
+  for (const ws of sockets.splice(0))
+    await ws.close({ code: 1012, reason: "redémarrage" });
+  // Après deux échecs d'affilée, /api/auth/me répond 401 : la page de connexion revient.
+  await expect(
+    page.getByRole("heading", { name: "Se connecter à PlanDesign" }),
+  ).toBeVisible({ timeout: 20_000 });
+  expect(asked.length).toBeGreaterThan(0);
+});

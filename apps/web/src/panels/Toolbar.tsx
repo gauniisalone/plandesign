@@ -149,10 +149,15 @@ export function TopBar({
   onNewPlan,
   onShare,
   peers = [],
+  following = null,
+  onFollow,
   planName,
 }: {
   /** B2a : les autres membres présents sur le projet (avatars). */
   peers?: Peer[];
+  /** B2b : la personne que je suis (null : personne), et le clic sur un avatar. */
+  following?: string | null;
+  onFollow?: (userId: string | null) => void;
   /** B1e : ouvre le menu « Partager » (propriétaire, comptes actifs) ; absent sinon. */
   onShare?: () => void;
   /** T7e : ouvre « + Nouveau plan » (dans l'espace de travail). */
@@ -245,13 +250,26 @@ export function TopBar({
           {peers.slice(0, 5).map((p) => (
             <li
               key={p.user_id}
-              className="avatar"
-              title={p.name}
-              aria-label={p.name}
+              className={`avatar${following === p.user_id ? " following" : ""}`}
               data-color={p.color}
               ref={(el) => el?.style.setProperty("--avatar", p.color)}
             >
-              {p.name.slice(0, 1).toUpperCase()}
+              {/* B2b : un clic suit cette personne (encore un : arrête). */}
+              <button
+                type="button"
+                aria-label={p.name}
+                aria-pressed={following === p.user_id}
+                title={
+                  following === p.user_id
+                    ? `Arrêter de suivre ${p.name}`
+                    : `Suivre ${p.name}`
+                }
+                onClick={() =>
+                  onFollow?.(following === p.user_id ? null : p.user_id)
+                }
+              >
+                {p.name.slice(0, 1).toUpperCase()}
+              </button>
             </li>
           ))}
           {peers.length > 5 && (
