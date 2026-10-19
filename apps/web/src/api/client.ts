@@ -342,6 +342,8 @@ export const api = {
       error_reports?: boolean;
       /** B1d : comptes actifs (page de connexion, session). */
       accounts?: boolean;
+      /** Avec les comptes : inscription sur invitation (bêta) ou ouverte. */
+      signup?: "invite" | "open";
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),

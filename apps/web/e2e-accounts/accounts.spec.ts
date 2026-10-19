@@ -84,6 +84,8 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   // la même réponse).
   expect(apiCalls.filter((p) => p === "/api/health")).toHaveLength(1);
   await expect(page.getByText("Vos espaces de travail")).toHaveCount(0);
+  // Serveur de test en inscription ouverte : aucune mention « bêta ».
+  await expect(page.getByText(/en bêta, sur invitation/)).toHaveCount(0);
   await shot(page, "1-connexion-adresse");
   // Mention en une ligne (B1e), avec le lien vers la page Confidentialité du site.
   await expect(
@@ -105,6 +107,41 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page.getByRole("alert")).toContainText("ce code n'est pas bon");
   await shot(page, "2-connexion-code-faux");
+});
+
+test("bêta sur invitation : annoncée avant l'adresse, réponse neutre, lien d'invitation à part", async ({
+  page,
+}) => {
+  // Le serveur de test est en inscription ouverte : /api/health dit ici « invite ».
+  await page.route("**/api/health", async (route) => {
+    const response = await route.fetch();
+    const health = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...health, signup: "invite" } });
+  });
+  const BETA =
+    "PlanDesign est en bêta, sur invitation. Déjà inscrit ou invité ? Connectez-vous.";
+  await gotoApp(page, "/");
+  await expect(page.getByText(BETA)).toBeVisible();
+  await expect(page.getByText("Vos designs et plans en un clic.")).toHaveCount(
+    0,
+  );
+  await shot(page, "1b-connexion-beta");
+  // Adresse inconnue : même réponse qu'une adresse connue, sans rien révéler.
+  await page.getByLabel("Adresse e-mail").fill("inconnu@example.org");
+  await page.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Si cette adresse a un compte ou une invitation, un code vient de partir.",
+  );
+  await expect(
+    page.getByText("Pas reçu ? Regardez dans vos courriers indésirables."),
+  ).toBeVisible();
+  // Arrivée par un lien d'invitation : la ligne d'invitation remplace la ligne « bêta ».
+  await gotoApp(page, `/#/invitation/${"x".repeat(32)}`);
+  await reloadApp(page);
+  await expect(page.locator(".login-invite")).toContainText(
+    "Vous avez été invité à un projet PlanDesign",
+  );
+  await expect(page.getByText(BETA)).toHaveCount(0);
 });
 
 test("connexion en deux temps, galerie du membre, puis « Me déconnecter »", async ({

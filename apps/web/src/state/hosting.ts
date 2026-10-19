@@ -10,9 +10,16 @@ export interface Hosting {
   errorReports: boolean;
   /** B1d : comptes actifs (connexion par code e-mail, projets visibles de leurs membres). */
   accounts: boolean;
+  /** Bêta sur invitation (PO, 19 oct.) : la connexion le dit tant que le mode est « invite ». */
+  inviteOnly: boolean;
 }
 
-const LOCAL: Hosting = { online: false, errorReports: false, accounts: false };
+const LOCAL: Hosting = {
+  online: false,
+  errorReports: false,
+  accounts: false,
+  inviteOnly: false,
+};
 let pending: Promise<Hosting> | null = null;
 
 export function loadHosting(): Promise<Hosting> {
@@ -21,6 +28,7 @@ export function loadHosting(): Promise<Hosting> {
       online: Boolean(h.exposed),
       errorReports: Boolean(h.error_reports),
       accounts: Boolean(h.accounts),
+      inviteOnly: Boolean(h.accounts) && h.signup === "invite",
     }),
     () => LOCAL,
   );

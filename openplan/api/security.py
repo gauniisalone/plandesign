@@ -232,8 +232,9 @@ SITE_MUTATIONS = frozenset({"/api/auth/email/start", "/api/auth/email/verify"})
 """Les seules mutations acceptées depuis l'origine du site (OPENPLAN_SITE_ORIGIN)."""
 SITE_CREDENTIALS = SITE_MUTATIONS | {"/api/auth/me"}
 """Routes de la fenêtre « Se connecter » : CORS avec cookies (la session de l'app)."""
-SITE_CORS = SITE_CREDENTIALS | {CONTACT_PATH}
-"""Routes lisibles par la fenêtre du site (CORS avec cookies)."""
+SITE_CORS = SITE_CREDENTIALS | {CONTACT_PATH, "/api/health"}
+"""Routes lisibles par la fenêtre du site (CORS avec cookies sur SITE_CREDENTIALS seulement ;
+`/api/health` sans cookies : la fenêtre y lit le mode d'inscription)."""
 SITE_PREFLIGHT_MAX_AGE_S = 600
 """Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4)."""
 AUTH_PREFIX = "/api/auth/"

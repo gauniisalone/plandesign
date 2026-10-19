@@ -7,6 +7,23 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (bêta sur invitation, annoncée)
+
+Un visiteur non invité ne croit plus le site cassé, sans qu'on lui dise si son adresse a un
+compte. Les mentions n'apparaissent qu'en inscription sur invitation (`OPENPLAN_SIGNUP=invite`,
+le défaut) ; ouverte, elles disparaissent sans changer de code.
+
+- `/api/health` donne `signup` (« invite » ou « open »), avec les comptes seulement, et se lit
+  depuis l'origine du site (CORS sans cookies).
+- Page de connexion de l'app et fenêtre du site (option de build) : « PlanDesign est en bêta,
+  sur invitation. Déjà inscrit ou invité ? Connectez-vous. » au-dessus du champ ; après
+  l'envoi, « Si cette adresse a un compte ou une invitation, un code vient de partir. ».
+  Arrivée par un lien d'invitation : la ligne d'invitation remplace la ligne « bêta ».
+- Accueil du site, option de build seulement : « Bêta sur invitation » à côté de « Connexion
+  par e-mail, sans mot de passe ». Le formulaire reste.
+- Sitemap : `/contact/` ajouté avec l'option seulement (`scripts/login-assets.mjs`) ; sortie par
+  défaut inchangée.
+
 ### 19 octobre 2026 (site, page relue par augus)
 
 Avec l'option de build seulement (la sortie par défaut reste celle de la production) :

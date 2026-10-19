@@ -6733,7 +6733,8 @@ button.link.home-empty-link {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.login-invite {
+.login-invite,
+.login-beta {
   margin: 0;
   padding: 10px 12px;
   border-radius: 10px;

@@ -103,9 +103,24 @@ def test_health_says_only_whether_accounts_are_on(tmp_path: Path, migrated_url: 
     client, _, _ = accounts_client(tmp_path, migrated_url)
     health = client.get("/api/health").json()
     assert health["accounts"] is True
-    assert not any(k in health for k in ("signup", "mailer", "admin", "users", "site_origin"))
+    # Bêta sur invitation (19 oct.) : le mode d'inscription, et rien d'autre sur les comptes.
+    assert health["signup"] == "invite"
+    assert not any(k in health for k in ("mailer", "admin", "users", "site_origin"))
+    opened, _, _ = accounts_client(tmp_path / "o", migrated_url, signup="open")
+    assert opened.get("/api/health").json()["signup"] == "open"
     local = TestClient(create_app(settings=Settings(data_dir=tmp_path / "local")))
     assert local.get("/api/health").json()["accounts"] is False
+    assert "signup" not in local.get("/api/health").json()
+
+
+def test_site_window_reads_health_without_cookies(tmp_path: Path, migrated_url: str) -> None:
+    client, _, _ = accounts_client(tmp_path, migrated_url, site_origin=SITE)
+    health = client.get("/api/health", headers={"Origin": SITE})
+    assert health.status_code == 200 and health.json()["signup"] == "invite"
+    assert health.headers["access-control-allow-origin"] == SITE
+    assert "access-control-allow-credentials" not in health.headers
+    other = client.get("/api/health", headers={"Origin": "https://ailleurs.example.org"})
+    assert "access-control-allow-origin" not in other.headers
 
 
 def test_role_is_exposed_and_gallery_is_the_members_own(tmp_path: Path, migrated_url: str) -> None:

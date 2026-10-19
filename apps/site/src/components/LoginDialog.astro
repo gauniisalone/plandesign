@@ -10,6 +10,7 @@ import { APP_ORIGIN } from "../config";
   </form>
   <h2 id="connexion-titre">Se connecter à PlanDesign</h2>
   <form class="login-step" data-step="email">
+    <p class="login-text login-beta" data-signup-invite hidden>PlanDesign est en bêta, sur invitation. Déjà inscrit ou invité ? Connectez-vous.</p>
     <p class="login-text">Sans mot de passe.</p>
     <label class="mono" for="connexion-email">Adresse e-mail</label>
     <input id="connexion-email" name="email" type="email" autocomplete="email" required maxlength="320" />
@@ -17,7 +18,7 @@ import { APP_ORIGIN } from "../config";
     <button type="submit" class="btn btn-primary btn-block">Recevoir un code</button>
   </form>
   <form class="login-step" data-step="code" hidden>
-    <p class="login-text" role="status">Si cette adresse peut se connecter, un code vient de partir. Il expire dans 15 minutes.</p>
+    <p class="login-text" role="status"><span data-signup-open>Si cette adresse peut se connecter, un code vient de partir.</span><span data-signup-invite hidden>Si cette adresse a un compte ou une invitation, un code vient de partir.</span> Il expire dans 15 minutes.</p>
     <p class="login-text">Pas reçu ? Regardez dans vos courriers indésirables.</p>
     <label class="mono" for="connexion-code">Code à 6 chiffres</label>
     <input id="connexion-code" name="code" class="login-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" maxlength="8" required />

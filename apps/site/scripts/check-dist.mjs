@@ -72,6 +72,10 @@ for (const name of ["login.js", "login.css", "contact.js", "contact/index.html"]
   if (!LOGIN && there) problems.push(`${name} : présent sans l'option de build`);
   if (LOGIN && !there) problems.push(`${name} : absent avec l'option de build`);
 }
+// B2b : /contact/ au sitemap avec l'option seulement, comme la page elle-même.
+const inSitemap = readFileSync(join(DIST, "sitemap.xml"), "utf8").includes("https://plandesign.fr/contact/");
+if (!LOGIN && inSitemap) problems.push("sitemap.xml : /contact/ sans l'option de build");
+if (LOGIN && !inSitemap) problems.push("sitemap.xml : /contact/ absent avec l'option de build");
 if (problems.length) {
   console.error("check-dist : problèmes trouvés\n" + [...new Set(problems)].join("\n"));
   process.exit(1);

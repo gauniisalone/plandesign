@@ -52,10 +52,11 @@ Avec l'option :
   origine extérieure ; avec, seulement sur la demande et la vérification du code, et sur le
   formulaire de contact) ;
 - sur l'app : `OPENPLAN_CONTACT_TO=<adresse>`, destinataire du formulaire de contact
-  (`/contact/`, avec l'option seulement ; par défaut `OPENPLAN_ADMIN_EMAIL`) ;
-- dans `public/sitemap.xml` : ajouter `https://plandesign.fr/contact/` (le sitemap est un
-  fichier fixe, laissé tel quel tant que la sortie par défaut doit rester celle de la
-  production).
+  (`/contact/`, avec l'option seulement ; par défaut `OPENPLAN_ADMIN_EMAIL`).
+
+Le sitemap n'est pas à retoucher : avec l'option, `scripts/login-assets.mjs` ajoute
+`https://plandesign.fr/contact/` à `dist/sitemap.xml` ; sans elle, `public/sitemap.xml` est
+copié tel quel (sortie identique à la production).
 
 ## Contrat /nouveau v1 (site → app) — ACTIF avec la fenêtre
 

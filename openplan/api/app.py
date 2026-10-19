@@ -250,6 +250,11 @@ def create_app(
             for e in load_registry()
             if e.kind == "weights" and is_installed(e.id, settings.models_dir, e.sentinel)
         ]
+        extra: dict[str, object] = {}
+        if settings.accounts_enabled:
+            # Bêta sur invitation (PO, 19 oct.) : le front et la fenêtre du site disent « sur
+            # invitation » tant que le mode est « invite » ; ouvert, les mentions disparaissent.
+            extra["signup"] = settings.signup
         return {
             "status": "ok",
             "version": __version__,
@@ -264,6 +269,7 @@ def create_app(
             "web": settings.web_dir is not None,
             # B1d : le front choisit la page de connexion ; rien d'autre sur les comptes.
             "accounts": settings.accounts_enabled,
+            **extra,
         }
 
     @app.get("/nouveau", include_in_schema=False)

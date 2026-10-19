@@ -11,6 +11,24 @@
   var dialog = document.getElementById("connexion");
   if (!dialog || typeof dialog.showModal !== "function") return;
   var app = dialog.getAttribute("data-app-origin") || "";
+
+  // Bêta sur invitation (PO, 19 oct.) : le mode d'inscription est lu sur /api/health de l'app
+  // (public, sans cookies). En mode « invite », les mentions [data-signup-invite] s'affichent
+  // à la place de [data-signup-open] ; ouvert, ou sans réponse, rien ne change.
+  fetch(app + "/api/health", { credentials: "omit" })
+    .then(function (response) {
+      return response.ok ? response.json() : {};
+    })
+    .then(function (health) {
+      if (!health || health.signup !== "invite") return;
+      document.querySelectorAll("[data-signup-invite]").forEach(function (el) {
+        el.hidden = false;
+      });
+      document.querySelectorAll("[data-signup-open]").forEach(function (el) {
+        el.hidden = true;
+      });
+    })
+    .catch(function () {});
   var emailForm = dialog.querySelector('[data-step="email"]');
   var codeForm = dialog.querySelector('[data-step="code"]');
   var emailInput = document.getElementById("connexion-email");

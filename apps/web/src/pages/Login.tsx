@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ApiError, authApi, type Me } from "../api/client";
 import { APP_NAME } from "../brand";
-import { ACCOUNTS_LINE, PRIVACY_URL } from "../state/hosting";
+import { ACCOUNTS_LINE, PRIVACY_URL, useHosting } from "../state/hosting";
 import { IconPlan } from "../ui/icons";
 
 /** B1d : sans session, la page de connexion et rien d'autre (note 17, § 5). Deux temps :
@@ -11,6 +11,12 @@ import { IconPlan } from "../ui/icons";
  *  elle le dit (sans rien du projet) et passe le jeton, qui ouvre l'inscription. */
 
 const NEUTRAL = "Si cette adresse peut se connecter, un code vient de partir.";
+/** Bêta sur invitation (PO, 19 oct.) : un visiteur non invité ne croit plus le site cassé,
+ *  sans qu'on lui dise si son adresse a un compte. Seulement en mode « invite ». */
+const BETA_LINE =
+  "PlanDesign est en bêta, sur invitation. Déjà inscrit ou invité ? Connectez-vous.";
+const NEUTRAL_INVITE =
+  "Si cette adresse a un compte ou une invitation, un code vient de partir.";
 
 function message(e: unknown): string {
   if (e instanceof ApiError) {
@@ -37,6 +43,8 @@ export function Login({
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Lu au démarrage (App attend /api/health avant cette page) : pas d'attente ici.
+  const inviteOnly = useHosting()?.inviteOnly ?? false;
 
   const ask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,6 +137,8 @@ export function Login({
                 Vous avez été invité à un projet {APP_NAME} : connectez-vous
                 avec votre adresse e-mail pour l'ouvrir.
               </p>
+            ) : inviteOnly ? (
+              <p className="login-beta">{BETA_LINE}</p>
             ) : (
               <p className="muted">Vos designs et plans en un clic.</p>
             )}
@@ -155,9 +165,11 @@ export function Login({
         ) : (
           <form onSubmit={(e) => void verify(e)}>
             <p className="muted" role="status">
-              {NEUTRAL} Il expire dans 15 minutes.
+              {inviteOnly ? NEUTRAL_INVITE : NEUTRAL} Il expire dans 15 minutes.
             </p>
-            <p className="muted login-spam">Pas reçu ? Regardez dans vos courriers indésirables.</p>
+            <p className="muted login-spam">
+              Pas reçu ? Regardez dans vos courriers indésirables.
+            </p>
             <label htmlFor="login-code">Code à 6 chiffres</label>
             <input
               id="login-code"
