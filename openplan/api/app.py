@@ -272,10 +272,11 @@ def create_app(
             **extra,
         }
 
-    @app.get("/nouveau", include_in_schema=False)
+    @app.api_route("/nouveau", methods=["GET", "HEAD"], include_in_schema=False)
     def nouveau(request: Request) -> RedirectResponse:
         """Contrat « /nouveau v1 » du site : le front est routé par l'ancre ; les paramètres
-        passent tels quels, le front les revalide."""
+        passent tels quels, le front les revalide. HEAD comme GET (KAN-35) : sans lui, le
+        front monté sur « / » répondait 404 aux sondes."""
         query = request.url.query
         return RedirectResponse("/#/nouveau" + (f"?{query}" if query else ""), status_code=303)
 

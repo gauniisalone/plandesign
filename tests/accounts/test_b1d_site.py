@@ -152,6 +152,22 @@ def test_nouveau_redirects_to_the_front_route(tmp_path: Path) -> None:
     assert bare.headers["location"] == "/#/nouveau"
 
 
+def test_nouveau_answers_head_like_get_with_the_front_mounted(tmp_path: Path) -> None:
+    """KAN-35 : HEAD /nouveau répondait 404 en production (la route ne prenait que GET, le
+    front monté sur « / » répondait à sa place). Sondes et robots : HEAD comme GET."""
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<!doctype html><title>PlanDesign</title>", encoding="utf-8")
+    client = TestClient(create_app(settings=Settings(data_dir=tmp_path / "d", web_dir=web)))
+    query = "v=1&source=site&description=x"
+    head = client.head(f"/nouveau?{query}", follow_redirects=False)
+    assert head.status_code == 303 and head.headers["location"] == f"/#/nouveau?{query}"
+    assert head.content == b""
+    assert client.head("/nouveau", follow_redirects=False).headers["location"] == "/#/nouveau"
+    # Le front lui-même répondait déjà à HEAD : inchangé.
+    assert client.head("/").status_code == 200
+
+
 def test_fake_mailer_test_route_and_its_guards(tmp_path: Path, migrated_url: str) -> None:
     client, _, _ = accounts_client(tmp_path, migrated_url)
     client.post("/api/auth/email/start", json={"email": ADMIN})
