@@ -69,6 +69,9 @@ const ENTER_MARGIN = 24;
 const ENTER_MS = 280;
 /** Deux appuis sur le même élément en moins de ce délai : un double-clic (T7d2). */
 const DOUBLE_MS = 450;
+/** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
+const NEW_PLAN_GAP = 32;
+const NEW_PLAN_BOX = { w: 180, h: 48 };
 
 interface Props {
   project: Project;
@@ -128,6 +131,9 @@ interface Props {
   activeLevelId?: string;
   /** T7e : ouvrir un autre plan. */
   onOpenLevel?: (levelId: string) => void;
+  /** « + Nouveau plan » (T7e ; retour d'augus du 19 oct. : sous la dernière rangée Plan +
+   *  Rendus, plus dans la barre du haut) ; absent pour un lecteur. */
+  onNewPlan?: () => void;
   /** A1 : « Rendu contextualisé… » depuis une photo, un rendu ou le plan. */
   onContextual: (pick: {
     kind: "photo" | "render" | "plan";
@@ -280,6 +286,22 @@ export function BoardCanvas(props: Props) {
   const readOnly = useReadOnly();
   const space = useRef(false);
   const items = live ?? board.items;
+  // « + Nouveau plan » : sous la dernière rangée Plan + Rendus, aligné sur les plans. Sa
+  // place compte dans le cadrage d'ensemble (une boîte approchée, le bouton garde sa taille
+  // à l'écran).
+  const rows = items.filter(
+    (i) => i.kind === "plan" || (i.kind === "frame" && i.role === "renders"),
+  );
+  const plans = rows.filter((i) => i.kind === "plan");
+  const newPlanAt =
+    !readOnly && props.onNewPlan && plans.length > 0
+      ? {
+          x: Math.min(...plans.map((i) => i.x)),
+          y: Math.max(...rows.map((i) => i.y + i.h)) + NEW_PLAN_GAP,
+          w: NEW_PLAN_BOX.w,
+          h: NEW_PLAN_BOX.h,
+        }
+      : null;
   const byRun = useMemo(
     () => new Map(renders.map((r) => [r.run_id, r])),
     [renders],
@@ -367,7 +389,12 @@ export function BoardCanvas(props: Props) {
   /** Cadre la vue sur `subset` (sinon sur tout ce qui est posé). */
   const fit = (persist = true, subset?: BoardItem[]) => {
     const el = stage.current;
-    const pool = subset && subset.length > 0 ? subset : items;
+    const pool: { x: number; y: number; w: number; h: number }[] =
+      subset && subset.length > 0
+        ? subset
+        : newPlanAt
+          ? [...items, newPlanAt]
+          : items;
     if (!el || pool.length === 0) return;
     const minX = Math.min(...pool.map((i) => i.x));
     const minY = Math.min(...pool.map((i) => i.y));
@@ -1650,6 +1677,18 @@ export function BoardCanvas(props: Props) {
               peers={props.peers ?? []}
               items={items}
             />
+          )}
+          {newPlanAt && (
+            <button
+              type="button"
+              className="board-new-plan"
+              style={{ left: newPlanAt.x, top: newPlanAt.y }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={props.onNewPlan}
+              title="Variante de ce plan, nouvel étage ou plan vide"
+            >
+              <IconPlus aria-hidden="true" /> Nouveau plan
+            </button>
           )}
           {marquee && (
             <div

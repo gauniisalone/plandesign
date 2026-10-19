@@ -639,7 +639,7 @@ export function useProject(projectId: string) {
         setState((s) => ({
           ...s,
           error:
-            "Rien à lire pour générer le plan : déposez une photo de la pièce ou remplissez la note Exigences (surface, logement, envies), ou tracez le plan vous-même.",
+            "Rien à lire pour générer le plan : décrivez la pièce dans le compositeur (surface, logement, envies), ou tracez le plan vous-même.",
         }));
         return;
       }
@@ -649,7 +649,7 @@ export function useProject(projectId: string) {
         setState((s) => ({ ...s, arrival: s.arrival + 1 }));
         if (result.kind === "none")
           throw new ApiError(
-            "Sans surface ni logement décrit, pas de plan à proposer : donnez une surface dans la note Exigences, déposez une photo, ou tracez la pièce.",
+            "Plan impossible sans surface : indiquez-la dans « Questions guidées ».",
             409,
           );
         if (result.project.render.auto_path && currentCapabilities().renders)

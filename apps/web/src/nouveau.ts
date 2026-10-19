@@ -3,7 +3,8 @@ import type { GuidedAnswers } from "./api/client";
 /** Contrat « /nouveau v1 » (site → app, apps/site/README.md) : le formulaire de plandesign.fr
  *  préremplit le premier espace de travail. Les limites du site ne sont garanties que par le
  *  navigateur : tout est revalidé ici, un paramètre inconnu est ignoré, un champ hors bornes
- *  est traité comme absent. Rien ne se génère : le compositeur s'ouvre prérempli. */
+ *  est traité comme absent. Le compositeur s'ouvre prérempli et le plan se génère depuis ces
+ *  exigences (retour d'augus, 19 oct. ; voir NewFromSite). */
 
 /** Valeurs de `ROOM_TYPES` (openplan/schemas/assistant.py), reprises par le site. */
 const ROOM_TYPES = [
@@ -50,9 +51,10 @@ export function parseNouveau(query: string): SitePrefill | null {
       answers.room_type = piece;
     }
   }
-  const surfaceText = (params.get("surface") ?? "").trim();
-  const surface = /^\d{1,4}(\.\d)?$/.test(surfaceText)
-    ? Number(surfaceText)
+  // « 35 », « 35.5 », « 35,5 », « 35.55 » (arrondi au dixième, comme le champ du site).
+  const surfaceText = (params.get("surface") ?? "").trim().replace(",", ".");
+  const surface = /^\d{1,4}(\.\d{1,3})?$/.test(surfaceText)
+    ? Math.round(Number(surfaceText) * 10) / 10
     : NaN;
   if (Number.isFinite(surface) && surface >= AREA_MIN && surface <= AREA_MAX)
     answers.area_m2 = surface;

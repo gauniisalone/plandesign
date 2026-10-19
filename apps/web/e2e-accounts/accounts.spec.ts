@@ -9,7 +9,7 @@ import { gotoApp, reloadApp } from "../e2e/app-ready";
 
 /** B1d-a : comptes actifs. Sans session, la page de connexion et rien d'autre ; connexion en
  *  deux temps (adresse, puis code) ; galerie ; « Me déconnecter » ; arrivée par /nouveau
- *  (compositeur prérempli, rien ne se génère) ; lecteur sans outils ni « Générer ». B1e :
+ *  (compositeur prérempli, le plan se génère seul) ; lecteur sans outils ni « Générer ». B1e :
  *  lien d'invitation (propriétaire → invité sans compte), révocation, rôle sur les cartes,
  *  pied de page réduit à la mention. */
 
@@ -171,7 +171,7 @@ test("connexion en deux temps, galerie du membre, puis « Me déconnecter »", a
   expect((await page.request.get("/api/auth/me")).status()).toBe(401);
 });
 
-test("arrivée par /nouveau : compositeur ouvert et prérempli, rien ne se génère", async ({
+test("arrivée par /nouveau : compositeur ouvert et prérempli, le plan se génère seul", async ({
   page,
 }) => {
   await signIn(page, "marie@example.org");
@@ -206,6 +206,12 @@ test("arrivée par /nouveau : compositeur ouvert et prérempli, rien ne se gén�
   expect(project.pending_instruction).toBe(description);
   expect(project.pending_answers.space).toBe("combles");
   expect(project.pending_answers.area_m2).toBe(35.5);
+  // Retour d'augus (19 oct.) : le plan se génère depuis les exigences, sans geste ; ici le
+  // chemin automatique est coupé (OPENPLAN_AUTO_PATH=0), donc aucun rendu derrière.
+  await expect(
+    page.locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(composer).toBeVisible();
   const running = (await (
     await page.request.get("/api/jobs/running")
   ).json()) as {

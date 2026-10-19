@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { parseNouveau } from "../nouveau";
+import { setPendingPlan } from "../state/pendingArrival";
 
 /** `#/nouveau?…` (B1d) : arrivée depuis le formulaire du site. Un projet au nom automatique,
  *  ses exigences préremplies (consigne et réponses guidées, lues par le compositeur), puis
- *  l'espace de travail s'ouvre, compositeur ouvert. Rien ne se génère tout seul. */
+ *  l'espace de travail s'ouvre, compositeur ouvert, et le plan se génère depuis ces exigences
+ *  sans geste (retour d'augus du 19 oct. ; « Générer le plan », moteur à règles, sans GPU). Les
+ *  rendus suivent seulement là où le chemin habituel les lance (Blender, chemin automatique). */
 
 /** Une seule création par adresse, même si React monte deux fois (mode strict) ou si la page
  *  est rechargée avant la redirection. */
@@ -19,7 +22,7 @@ async function create(query: string): Promise<Project> {
     (!prefill.instruction && !Object.keys(prefill.answers).length)
   )
     return project;
-  return api.updateSettings(project.id, {
+  const filled = await api.updateSettings(project.id, {
     ...(prefill.instruction
       ? { pending_instruction: prefill.instruction }
       : {}),
@@ -27,6 +30,9 @@ async function create(query: string): Promise<Project> {
       ? { pending_answers: prefill.answers }
       : {}),
   });
+  // Retour d'augus (19 oct.) : le plan se génère depuis ces exigences à l'ouverture.
+  setPendingPlan(filled.id);
+  return filled;
 }
 
 export function NewFromSite({

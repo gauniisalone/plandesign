@@ -65,7 +65,7 @@ import { RenderStrip } from "../panels/RenderStrip";
 import { LevelBar } from "../panels/LevelBar";
 import type { PickAction } from "../panels/PickCard";
 import { latestRenders, staleCameraIds } from "../staleViews";
-import { takePendingNotices } from "../state/pendingArrival";
+import { takePendingNotices, takePendingPlan } from "../state/pendingArrival";
 import { takePendingFile } from "../state/pendingFile";
 import { useProject } from "../state/useProject";
 import { BoardCanvas } from "../board/BoardCanvas";
@@ -419,6 +419,18 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendersLoaded]);
+
+  // Arrivée par /nouveau avec des exigences (retour d'augus, 19 oct.) : le plan se génère
+  // depuis elles, sans geste, une fois l'espace affiché et le rôle connu (propriétaire). En
+  // échec (rien de lisible), le message s'affiche et le compositeur reste ouvert.
+  const projectLoaded = state.project?.id ?? null;
+  useEffect(() => {
+    if (!arrived || readOnly || !projectLoaded || !level) return;
+    if (!takePendingPlan(projectLoaded)) return;
+    if (walls(level).length > 0) return;
+    actions.generatePlan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived, readOnly, projectLoaded]);
 
   // L'adresse suit l'écran « Ajouter une source » (adressable), sans empiler d'historique.
   useEffect(() => {
@@ -1213,6 +1225,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               activeLevelId={level.id}
               onOpenLevel={actions.openLevel}
+              onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
               onOpenViewer={(lid) => {
                 if (lid !== level.id) actions.openLevel(lid);
                 openViewer("");
@@ -1315,7 +1328,6 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   : "saved"
             }
             onRetrySave={board.save === "error" ? board.retry : undefined}
-            onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
             onShare={canShare ? () => setShareOpen(true) : undefined}
             peers={live.peers}
             following={live.presence.following}

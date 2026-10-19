@@ -42,6 +42,28 @@ le défaut) ; ouverte, elles disparaissent sans changer de code.
 - Sitemap : `/contact/` ajouté avec l'option seulement (`scripts/login-assets.mjs`) ; sortie par
   défaut inchangée.
 
+### 19 octobre 2026 (retours d'augus en production)
+
+- **Surface (m²) des Questions guidées** : on peut de nouveau taper un nombre. Le champ était
+  contrôlé par la valeur numérique bornée (8 à 400 m²) : chaque frappe sous 8 (« 3 » en route
+  vers « 35 ») était effacée, et la virgule disparaissait. Le texte tapé est maintenant gardé
+  (« 3 », « 35 », « 35,5 », « 35.5 ») ; la validation se fait à la sortie du champ, avec un
+  message clair hors bornes (« Entre 8 et 400 m². »). Même règle pour « Chambres » (0 à 6),
+  qui était ramené en silence à 6.
+- **« + Nouveau plan »** quitte la barre du haut : il est dans l'espace de travail, sous la
+  dernière rangée Plan + Rendus (même petite fenêtre), et reste absent pour un lecteur.
+- **Arrivée depuis le site (/nouveau)** : le plan se génère seul depuis les exigences
+  préremplies (« Générer le plan », moteur à règles, sans GPU), sans aucun geste ; pas de
+  rendus en ligne, chemin automatique habituel sur une machine avec Blender. Si rien n'est
+  lisible, le compositeur reste ouvert avec un message court (« Plan impossible sans
+  surface : indiquez-la dans « Questions guidées ». »). Le préremplissage lui-même marchait
+  (vérifié : redirection de production et paramètres gardés après la connexion) ; la surface
+  du lien accepte aussi la virgule et plus d'une décimale (arrondie au dixième).
+- e2e : `e2e/composer-numbers.spec.ts` (frappe touche par touche), `plans.spec.ts` (bouton
+  dans l'espace de travail, sous les rangées), `e2e-online` (arrivée déconnectée par
+  /nouveau, connexion, plan généré, aucun calcul de rendu ; description illisible),
+  `e2e-accounts` (/nouveau : plan généré).
+
 ### 19 octobre 2026 (site, page relue par augus)
 
 Avec l'option de build seulement (la sortie par défaut reste celle de la production) :

@@ -4439,6 +4439,17 @@ button.link.home-empty-link {
   box-sizing: border-box;
 }
 
+/* Retour d'augus (19 oct.) : un nombre hors bornes, dit à la sortie du champ. */
+.home-grid input[aria-invalid="true"] {
+  border-color: var(--warn);
+}
+
+.home-field-error {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--warn);
+}
+
 .home-options {
   margin-top: 10px;
 }
@@ -5055,7 +5066,7 @@ button.link.home-empty-link {
 }
 
 .topbar .add-source,
-.topbar .new-plan-btn {
+.board-new-plan {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -5069,9 +5080,24 @@ button.link.home-empty-link {
 }
 
 .topbar .add-source svg,
-.topbar .new-plan-btn svg {
+.board-new-plan svg {
   width: 16px;
   height: 16px;
+}
+
+/* Retour d'augus (19 oct.) : « + Nouveau plan » dans l'espace de travail, sous la dernière
+   rangée Plan + Rendus ; même taille à l'écran quel que soit le zoom. */
+.board-new-plan {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  transform: scale(var(--inv, 1));
+  transform-origin: 0 0;
+  cursor: pointer;
+}
+
+.board-new-plan:hover {
+  border-color: var(--primary);
 }
 
 .topbar .add-source.active {

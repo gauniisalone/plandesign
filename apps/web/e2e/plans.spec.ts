@@ -51,13 +51,31 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
   const id = await createRoom(page, "E2E plusieurs plans");
   await goSpace(page, "board");
   const nav = page.getByRole("navigation", { name: "Espaces du projet" });
   await expect(nav.locator(".space-name")).toHaveText("Espace de travail");
 
+  // Retour d'augus (19 oct.) : « + Nouveau plan » est dans l'espace de travail, sous la
+  // dernière rangée Plan + Rendus, et plus dans la barre du haut.
+  await expect(
+    page.locator(".topbar").getByRole("button", { name: /Nouveau plan/ }),
+  ).toHaveCount(0);
+  const board = page.getByRole("region", { name: "Espace de travail" });
+  const open = board.getByRole("button", { name: "Nouveau plan" });
+  await expect(open).toBeVisible();
+  const below = async () => {
+    const button = (await open.boundingBox())!;
+    const rows = await board
+      .locator(".board-item.kind-plan, .board-item.kind-frame.role-renders")
+      .evaluateAll((els) =>
+        Math.max(...els.map((e) => e.getBoundingClientRect().bottom)),
+      );
+    return button.y >= rows;
+  };
+  expect(await below()).toBe(true);
   // La petite fenêtre : deux champs, les trois sortes avec les mots d'augus, rien d'autre.
-  const open = page.getByRole("button", { name: "Nouveau plan" });
   await open.click();
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await expect(dialog).toBeVisible();
@@ -96,7 +114,14 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
   await expect(
     frames.filter({ hasText: `Rendus · ${base!.name}` }),
   ).toHaveCount(1);
+  // Le bouton suit : toujours sous la dernière rangée.
+  await expect(open).toBeVisible();
+  expect(await below()).toBe(true);
   await page.screenshot({ path: path.join(SHOTS, "t7e_rangees.png") });
+  if (process.env.E2E_CAPTURE_DIR)
+    await page.screenshot({
+      path: path.join(process.env.E2E_CAPTURE_DIR, "nouveau-plan-rangees.png"),
+    });
 
   // Ouvrir le premier plan depuis son cadre.
   await page

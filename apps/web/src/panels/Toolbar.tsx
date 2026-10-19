@@ -146,7 +146,6 @@ export function TopBar({
   onToggleAdvanced,
   save,
   onRetrySave,
-  onNewPlan,
   onShare,
   peers = [],
   following = null,
@@ -160,8 +159,6 @@ export function TopBar({
   onFollow?: (userId: string | null) => void;
   /** B1e : ouvre le menu « Partager » (propriétaire, comptes actifs) ; absent sinon. */
   onShare?: () => void;
-  /** T7e : ouvre « + Nouveau plan » (dans l'espace de travail). */
-  onNewPlan?: () => void;
   /** T7e : nom du plan ouvert, dit à côté de « Plan » quand le projet en a plusieurs. */
   planName?: string;
   /** B4 : état réel de l'enregistrement (plan, tableau) ; jamais « Enregistré » avant la
@@ -222,17 +219,6 @@ export function TopBar({
           </span>
         )}
       </nav>
-      {/* T7e : « + Nouveau plan », à la place qu'avait « Ajouter une source » (maquette). */}
-      {tab === "board" && onNewPlan && (
-        <button
-          type="button"
-          className="new-plan-btn"
-          onClick={onNewPlan}
-          title="Variante de ce plan, nouvel étage ou plan vide"
-        >
-          <IconPlus /> <span className="lbl">Nouveau plan</span>
-        </button>
-      )}
       {/* T7c : dans l'espace de travail, l'import est dans la barre d'outils de gauche. */}
       {tab !== "board" && !readOnly && (
         <button

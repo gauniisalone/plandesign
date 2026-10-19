@@ -35,6 +35,121 @@ async function signIn(page: Page, email: string): Promise<void> {
   await expect(home).toBeVisible();
 }
 
+async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.E2E_CAPTURE_DIR;
+  if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
+}
+
+/** Retour d'augus (19 oct., en production) : formulaire du site rempli, connexion, et aucun
+ *  plan. Nouvelle règle : à l'arrivée par /nouveau avec une description, le plan se génère
+ *  depuis les exigences (règles, sans GPU), sans aucun geste ; pas de rendus en ligne. Les
+ *  paramètres survivent à la connexion (on arrive déconnecté, comme depuis le site). */
+test("arrivée par /nouveau en ligne : connexion, puis le plan se génère seul", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const failures: string[] = [];
+  const compute: string[] = [];
+  page.on("response", (r) => {
+    const p = new URL(r.url()).pathname;
+    if (!p.startsWith("/api/")) return;
+    if (r.status() === 409 || r.status() >= 500)
+      failures.push(`${r.status()} ${p}`);
+  });
+  page.on("request", (r) => {
+    const p = new URL(r.url()).pathname;
+    if (
+      /\/(autopilot|autoplan|render|inspire|finish|catalogue)(\/|$)/.test(p) &&
+      r.method() === "POST"
+    )
+      compute.push(p);
+  });
+  // Ce que /nouveau (route de l'API, testée côté Python) renvoie : l'ancre du front.
+  const query = new URLSearchParams({
+    v: "1",
+    source: "site",
+    piece: "bedroom",
+    surface: "12",
+    description: "Une chambre lumineuse, bois clair",
+  });
+  await gotoApp(page, `/#/nouveau?${query.toString()}`);
+  const email = "nouveau@example.org";
+  await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(page.getByText("un code vient de partir")).toBeVisible();
+  let code = "";
+  await expect
+    .poll(async () => {
+      const r = await page.request.get(
+        `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
+      );
+      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
+      return code;
+    })
+    .toMatch(/^\d{6}$/);
+  await page.getByLabel("Code à 6 chiffres").fill(code);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  const skip = page.getByRole("button", { name: "Passer" });
+  await expect(skip.or(page.locator(".editor"))).toBeVisible({
+    timeout: 30_000,
+  });
+  if (await skip.isVisible()) await skip.click();
+
+  await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}(\/board)?$/);
+  const composer = page.getByRole("region", { name: "Compositeur" });
+  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(
+    "Une chambre lumineuse, bois clair",
+  );
+  const board = page.getByRole("region", { name: "Espace de travail" });
+  await expect(
+    board.locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({ timeout: 60_000 });
+  await shot(page, "nouveau-plan-genere");
+  const id = page.url().split("/projects/")[1]!.split("/")[0];
+  const project = (await (
+    await page.request.get(`/api/projects/${id}`)
+  ).json()) as { pending_answers: { area_m2: number; room_type: string } };
+  expect(project.pending_answers.area_m2).toBe(12);
+  expect(project.pending_answers.room_type).toBe("bedroom");
+  // Un seul espace, et aucun calcul de rendu.
+  const list = (await (await page.request.get("/api/projects")).json()) as {
+    id: string;
+  }[];
+  expect(list.map((p) => p.id)).toEqual([id]);
+  await page.waitForLoadState("networkidle");
+  expect(compute).toEqual([]);
+  expect(failures).toEqual([]);
+
+  // Description illisible, sans surface ni pièce : le compositeur reste ouvert, un message
+  // court, rien ne casse (le plan reste vide, ses deux boutons sont là).
+  const bad = new URLSearchParams({
+    v: "1",
+    source: "site",
+    piece: "",
+    surface: "",
+    description: "zzz",
+  });
+  await gotoApp(page, `/#/nouveau?${bad.toString()}`);
+  await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}(\/board)?$/);
+  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("alert")).toContainText(
+    "Plan impossible sans surface",
+    { timeout: 30_000 },
+  );
+  await expect(
+    board.locator(".board-item.kind-plan img.board-plan"),
+  ).toHaveCount(0);
+  await expect(
+    board
+      .locator(".board-item.kind-plan")
+      .getByRole("button", { name: "Générer le plan" }),
+  ).toBeVisible();
+  expect(page.url()).not.toContain(id);
+  await shot(page, "nouveau-description-illisible");
+  expect(compute).toEqual([]);
+});
+
 test("en ligne sans GPU : ce qui marche marche, rien ne mène à une erreur de calcul", async ({
   page,
 }) => {

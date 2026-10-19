@@ -75,7 +75,10 @@ Après la connexion, la fenêtre envoie le visiteur, en `GET`, vers
 Les champs vides sont envoyés vides (`piece=&surface=`) : l'app les traite comme absents.
 L'app revalide tout (pièce de la liste, surface de 8 à 400 m², description coupée à 300
 caractères au dernier mot), ignore tout paramètre inconnu, crée un espace de travail au nom
-automatique, préremplit ses exigences et l'ouvre compositeur ouvert, **sans rien générer**.
+automatique, préremplit ses exigences et l'ouvre compositeur ouvert ; **le plan se génère
+seul** depuis ces exigences (moteur à règles, sans GPU ; retour d'augus du 19 oct. 2026). Pas
+de rendus en ligne ; sur une machine avec Blender, le chemin automatique habituel s'applique.
+Surface acceptée avec un point ou une virgule, arrondie au dixième.
 Le site ne stocke rien et ne pose aucun cookie.
 
 Exemple :
