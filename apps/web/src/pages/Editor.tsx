@@ -44,7 +44,12 @@ import {
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
 import { useLive } from "../state/live";
-import { authApi, leaseApi, setSpaceLeft } from "../api/client";
+import {
+  authApi,
+  leaseApi,
+  setSpaceLeft,
+  signalSignedOut,
+} from "../api/client";
 import {
   ReadOnlyContext,
   canEdit,
@@ -387,8 +392,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       actions.reload();
       setLiveTick((n) => n + 1);
     },
-    // Session perdue : la prochaine requête répond 401 et ramène à la connexion.
-    onSignedOut: () => actions.reload(),
+    // Session perdue (KAN-49) : la page de connexion tout de suite, sans attendre la 401
+    // d'un rechargement du projet.
+    onSignedOut: signalSignedOut,
   });
   // B2b : la personne que je suis, si elle est toujours là.
   const followedPeer =

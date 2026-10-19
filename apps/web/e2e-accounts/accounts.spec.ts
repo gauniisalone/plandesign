@@ -960,22 +960,10 @@ test("B2b : session révoquée, poignée de main refusée : retour à la connexi
   await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => sockets.length).toBeGreaterThan(0);
 
-  // « Me déconnecter partout » depuis un autre appareil, puis la connexion tombe.
-  const asked: string[] = [];
-  page.on("request", (r) => {
-    if (new URL(r.url()).pathname === "/api/auth/me") asked.push(r.url());
-  });
-  // Le chemin du WebSocket doit être le premier à interroger /api/auth/me : les autres appels
-  // de la page sont retardés de 6 s (puis passent, et répondent 401). Course existante : un
-  // remontage de l'espace de travail relance des lectures qui répondraient 401 avant lui.
-  await page.route(
-    (url) =>
-      url.pathname.startsWith("/api/") && url.pathname !== "/api/auth/me",
-    async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 6_000));
-      await route.continue().catch(() => undefined);
-    },
-  );
+  // « Me déconnecter partout » depuis un autre appareil, puis la connexion tombe : la page
+  // de connexion revient, par le premier chemin qui voit la 401 (une lecture de la page, ou
+  // la connexion de présence après deux échecs). Le chemin de la présence seul, réseau /api
+  // coupé, est vérifié par le test KAN-49 ci-dessous.
   const revoked = await page.request.post("/api/auth/logout-all", {
     headers: origin,
   });
@@ -983,9 +971,76 @@ test("B2b : session révoquée, poignée de main refusée : retour à la connexi
   refuse = true;
   for (const ws of sockets.splice(0))
     await ws.close({ code: 1012, reason: "redémarrage" });
-  // Après deux échecs d'affilée, /api/auth/me répond 401 : la page de connexion revient.
   await expect(
     page.getByRole("heading", { name: "Se connecter à PlanDesign" }),
   ).toBeVisible({ timeout: 20_000 });
-  expect(asked.length).toBeGreaterThan(0);
+});
+
+test("KAN-49 : session révoquée, /api coupé sauf /api/auth/me : la connexion en moins de 2 s, puis retour au projet", async ({
+  browser,
+}) => {
+  // Sa propre adresse : deux connexions seulement (avant et après), loin de la limite.
+  const page = await person(browser, "198.51.100.49");
+  let refuse = false;
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/ws\/projects\//, (ws) => {
+    if (refuse) {
+      void ws.close({ code: 1011, reason: "refusé" });
+      return;
+    }
+    ws.connectToServer();
+    sockets.push(ws);
+  });
+  await gotoApp(page, "/");
+  await signInHere(page, "noe@example.org", "Noé");
+  const origin = { Origin: new URL(page.url()).origin };
+  const made = await page.request.post("/api/projects", {
+    data: { name: "Projet de Noé" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  await gotoApp(page, `/#/projects/${id}`);
+  await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => sockets.length).toBeGreaterThan(0);
+
+  // Réseau /api coupé, sauf /api/auth/me : avant le correctif, la connexion attendait la 401
+  // d'un rechargement du projet, qui ne venait jamais.
+  const cut = (url: URL) =>
+    url.pathname.startsWith("/api/") && url.pathname !== "/api/auth/me";
+  await page.route(cut, (route) => route.abort("failed"));
+  let me401 = 0;
+  page.on("response", (r) => {
+    if (new URL(r.url()).pathname === "/api/auth/me" && r.status() === 401)
+      me401 ||= Date.now();
+  });
+  const revoked = await page.request.post("/api/auth/logout-all", {
+    headers: origin,
+  });
+  expect(revoked.ok()).toBe(true);
+  refuse = true;
+  for (const ws of sockets.splice(0))
+    await ws.close({ code: 1012, reason: "redémarrage" });
+  const login = page.getByRole("heading", {
+    name: "Se connecter à PlanDesign",
+  });
+  await expect.poll(() => me401, { timeout: 20_000 }).toBeGreaterThan(0);
+  // Must have 1 : moins de 2 s après la 401 de /api/auth/me.
+  await expect(login).toBeVisible({ timeout: 2_000 });
+  expect(Date.now() - me401).toBeLessThan(2_000);
+  // Must have 3 : pas de boucle de requêtes une fois la connexion affichée.
+  const after: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname.startsWith("/api/")) after.push(r.url());
+  });
+  await page.waitForTimeout(3_000);
+  expect(after.length).toBeLessThanOrEqual(2);
+  // L'adresse du projet est gardée.
+  expect(page.url()).toContain(`#/projects/${id}`);
+
+  // Must have 2 : réseau rétabli, reconnexion, retour sur le projet ouvert.
+  await page.unroute(cut);
+  refuse = false;
+  await signInHere(page, "noe@example.org", "Noé");
+  await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  expect(page.url()).toContain(`#/projects/${id}`);
 });

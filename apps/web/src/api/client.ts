@@ -175,6 +175,14 @@ export function setAccountsMode(on: boolean, onSignedOut: () => void): void {
   signedOutHandler = onSignedOut;
 }
 
+/** KAN-49 : session perdue apprise ailleurs que par une réponse 401 (connexion de présence
+ *  refusée puis /api/auth/me en 401) : la page de connexion tout de suite, sans dépendre
+ *  d'une autre requête (un rechargement lent ou coupé la retardait, parfois pour toujours).
+ *  L'adresse ne change pas : après la reconnexion, on revient où l'on était. */
+export function signalSignedOut(): void {
+  if (accountsMode) signedOutHandler?.();
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // Un corps texte est du JSON ; un FormData (import de fichier) laisse le navigateur fixer le type.
   const headers = new Headers(init.headers);
