@@ -281,9 +281,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
         palette && over(palette)
           ? Math.round(palette.right - pane.left) + 14
           : 24;
-      // En bas : seules les barres qui recouvrent le volet du plan comptent.
+      // En bas : seules les barres qui recouvrent le volet du plan comptent. Dans l'espace
+      // de travail, le bas (compositeur, barre de la sélection) aussi : les bandeaux passent
+      // au-dessus, jamais dessus (KAN-22 : replié, le compositeur est plus bas qu'avant).
       let bottom = 24;
-      for (const sel of [".bottombar", ".strip", ".render-strip"]) {
+      for (const sel of [
+        ".bottombar",
+        ".strip",
+        ".render-strip",
+        ".board-bottom",
+      ]) {
         const box = stage.querySelector(sel)?.getBoundingClientRect();
         if (box && over(box))
           bottom = Math.max(bottom, Math.round(frame.bottom - box.top) + 14);
@@ -304,6 +311,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       ".bottombar",
       ".strip",
       ".render-strip",
+      ".board-bottom",
     ]) {
       const el = stage.querySelector(sel);
       if (el) observer.observe(el);

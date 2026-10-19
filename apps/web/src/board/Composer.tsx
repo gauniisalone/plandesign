@@ -68,6 +68,18 @@ export function Composer({
 }) {
   // Ouvert d'office tant qu'il n'y a pas de rendu ; ensuite, le dernier choix du projet.
   const [open, setOpen] = useState(() => storedOpen(project.id) ?? !hasRenders);
+  // KAN-22 : replié (champ sur une ligne) tant qu'on n'y a pas touché et qu'aucune exigence
+  // n'est saisie ; déplié au focus d'un champ ou au premier clic. Avec des exigences (arrivée
+  // par /nouveau, saisie d'avant), déplié d'office. Le cadrage de départ du tableau mesure
+  // le compositeur : replié, il garde le tableau lisible sur un petit écran (navigateur à
+  // 150 %).
+  const [compact, setCompact] = useState(
+    () =>
+      !project.pending_instruction?.trim() &&
+      !Object.values(project.pending_answers ?? {}).some(
+        (v) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length),
+      ),
+  );
   const [tab, setTab] = useState<Tab>("prompt");
   const [answers, setAnswers] = useState<GuidedAnswers>(
     () => project.pending_answers ?? {},
@@ -95,6 +107,8 @@ export function Composer({
   const toggle = (next: boolean) => {
     setOpen(next);
     storeOpen(project.id, next);
+    // Rouvert par la pastille : un geste voulu, le compositeur s'ouvre déplié.
+    if (next) setCompact(false);
   };
 
   // Les réponses partent au projet après une courte pause (un pas de réglages, pas un pas
@@ -171,10 +185,17 @@ export function Composer({
 
   return (
     <section
-      className="board-composer"
+      className={`board-composer${compact ? " compact" : ""}`}
       aria-label="Compositeur"
       title={HELP}
       onPointerDown={stop}
+      // Au clic (après le relâché : rien ne bouge sous le pointeur pendant le clic), ou au
+      // focus d'un champ de saisie (clavier, remplissage).
+      onClick={() => setCompact(false)}
+      onFocus={(e) => {
+        if (e.target.matches("textarea, select, input:not([type=checkbox])"))
+          setCompact(false);
+      }}
       onWheel={(e) => e.stopPropagation()}
     >
       <header className="board-composer-head">
@@ -233,7 +254,7 @@ export function Composer({
         <div role="tabpanel" aria-label="Prompt libre">
           <textarea
             aria-label="Vos envies et contraintes"
-            rows={3}
+            rows={compact ? 1 : 3}
             maxLength={MAX_TEXT}
             placeholder="Décrivez le projet : pièce, surface, style, contraintes…"
             value={text}
@@ -272,7 +293,10 @@ export function Composer({
         ) : (
           <>
             {caps.renders && (
-              <label className="board-trigger-toggle">
+              <label
+                className="board-trigger-toggle"
+                title="Générer automatiquement au dépôt d'une photo"
+              >
                 <input
                   type="checkbox"
                   checked={project.render.auto_on_drop}
@@ -285,7 +309,10 @@ export function Composer({
                     })
                   }
                 />
-                Générer automatiquement au dépôt d'une photo
+                {/* Replié : la case seule, le texte reste son nom (lecteurs d'écran). */}
+                <span className={compact ? "sr-only" : undefined}>
+                  Générer automatiquement au dépôt d'une photo
+                </span>
               </label>
             )}
             <span className="board-composer-sp" />

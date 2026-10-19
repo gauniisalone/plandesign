@@ -59,3 +59,39 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
   for (const name of ["Tracer moi-même", "Générer le plan"])
     await inside(empty.getByRole("button", { name }), plan, name);
 });
+
+/** KAN-22 : compositeur replié tant qu'on n'y a pas touché ; le cadrage de départ reste
+ *  lisible à 150 % (≥ 30 % ; 19 % avant, compositeur déplié). La largeur de la disposition
+ *  de départ (2 292 px de tableau) plafonne ce format à ~32 %. */
+test("compositeur replié à 150 % : cadrage de départ ≥ 30 %, déplié au focus", async ({
+  page,
+}) => {
+  await createEmptyProject(page, "Compositeur replié à 150 %");
+  await goSpace(page, "board");
+  const composer = page.getByRole("region", { name: "Compositeur" });
+  await expect(composer).toBeVisible();
+  await expect(composer).toHaveClass(/\bcompact\b/);
+  // Replié : au plus deux lignes courtes à cette largeur.
+  expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(110);
+  const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
+  await expect(zoom).toContainText("%");
+  const percent = Number(/(\d+)\s*%/.exec((await zoom.textContent()) ?? "")![1]);
+  expect(percent).toBeGreaterThanOrEqual(30);
+  if (process.env.E2E_CAPTURE_DIR)
+    await page.screenshot({
+      path: `${process.env.E2E_CAPTURE_DIR}/kan22-replie-150.png`,
+    });
+
+  // Le champ se remplit comme avant ; au focus, le compositeur se déplie.
+  const field = composer.getByLabel("Vos envies et contraintes");
+  await field.fill("chambre lumineuse");
+  await expect(composer).not.toHaveClass(/\bcompact\b/);
+  await expect(field).toHaveValue("chambre lumineuse");
+  await expect(
+    composer.getByRole("tab", { name: "Questions guidées" }),
+  ).toBeVisible();
+  if (process.env.E2E_CAPTURE_DIR)
+    await page.screenshot({
+      path: `${process.env.E2E_CAPTURE_DIR}/kan22-deplie-150.png`,
+    });
+});
