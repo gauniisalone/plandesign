@@ -40,6 +40,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
 
 from openplan.api.access import SESSION_COOKIE, AuthUser
+from openplan.api.accounts.lease import leases_of
+from openplan.api.accounts.lease import message as lease_message
 from openplan.api.accounts.routes import service
 
 log = logging.getLogger("openplan.live")
@@ -104,6 +106,10 @@ class LiveHub(Protocol):
 
     async def presence(self, project_id: UUID, conn: str, message: dict[str, Any]) -> None: ...
 
+    async def tell_user(self, project_id: UUID, user_id: str, message: dict[str, Any]) -> None: ...
+
+    def present(self, project_id: UUID, user_id: str) -> bool: ...
+
     async def evict(self, project_id: UUID, user_id: UUID | None = None) -> None: ...
 
 
@@ -122,16 +128,31 @@ def _ids(value: object) -> list[str] | None:
     return list(dict.fromkeys(value))
 
 
+def _cursor(me: str, message: dict[str, Any]) -> dict[str, Any] | None:
+    """Un curseur : dans l'espace de travail, ou (B2d) sur un plan, en mètres, avec son id ;
+    `x` nul : hors du canevas."""
+    if message.get("x") is None:
+        return {"type": "cursor", "user_id": me, "x": None}
+    x, y = _coord(message.get("x")), _coord(message.get("y"))
+    level = message.get("level_id")
+    bad_level = level is not None and (
+        not isinstance(level, str) or not 0 < len(level) <= MAX_ID_CHARS
+    )
+    if x is None or y is None or bad_level:
+        return None
+    cursor: dict[str, Any] = {"type": "cursor", "user_id": me, "x": x, "y": y}
+    if level is not None:
+        cursor["level_id"] = level
+    return cursor
+
+
 def _relayed(entry: Conn, message: dict[str, Any]) -> dict[str, Any] | None:
     """Le message à relayer pour un curseur, une sélection ou une vue ; None s'il est invalide.
     Une sélection valable devient la sélection courante de la connexion."""
     me = entry.peer.user_id
     kind = message.get("type")
     if kind == "cursor":
-        if message.get("x") is None:
-            return {"type": "cursor", "user_id": me, "x": None}
-        x, y = _coord(message.get("x")), _coord(message.get("y"))
-        return None if x is None or y is None else {"type": "cursor", "user_id": me, "x": x, "y": y}
+        return _cursor(me, message)
     if kind == "select":
         ids = _ids(message.get("ids"))
         if ids is not None:
@@ -255,6 +276,13 @@ class MemoryHub:
         for changed in {before, target} - {None}:
             await self._tell_followed(project_id, str(changed))
 
+    async def tell_user(self, project_id: UUID, user_id: str, message: dict[str, Any]) -> None:
+        """B2d : un message pour une seule personne (tous ses onglets), « Demander la main »."""
+        await self._send(project_id, message, lambda _, e: e.peer.user_id == user_id)
+
+    def present(self, project_id: UUID, user_id: str) -> bool:
+        return self._present(project_id, user_id)
+
     async def evict(self, project_id: UUID, user_id: UUID | None = None) -> None:
         """Ferme les connexions de cette personne sur le projet (toutes si `user_id` est None) ;
         leur départ est annoncé aux autres par la fermeture elle-même."""
@@ -321,6 +349,8 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
                 # B2b : sélections courantes des autres, et combien me suivent déjà.
                 "selections": hub.selections(project_id, but=peer.user_id),
                 "followed": hub.followers(project_id, peer.user_id),
+                # B2d : qui tient quel plan.
+                "leases": leases_of(socket.app).state(project_id),
             }
         )
     )
@@ -351,4 +381,14 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
         # Fermée par le client, ou par le serveur (membre retiré, session révoquée).
         pass
     finally:
-        await hub.leave(project_id, conn)
+        await _left(socket.app, hub, project_id, conn, peer.user_id)
+
+
+async def _left(app: Any, hub: LiveHub, project_id: UUID, conn: str, user_id: str) -> None:
+    """Une connexion fermée ; la dernière de cette personne rend ses baux de plan (B2d)."""
+    await hub.leave(project_id, conn)
+    if hub.present(project_id, user_id):
+        return
+    leases = leases_of(app)
+    for level in leases.release(project_id, user_id):
+        await hub.publish(project_id, lease_message(level, None, leases.clock()))

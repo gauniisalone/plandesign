@@ -7,6 +7,23 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (B2d : bail d'édition du plan, curseurs en mètres, KAN-11)
+
+Avec les comptes seulement ; le mode local ne change pas.
+
+- Une seule personne modifie un plan à la fois. Le bail se prend tout seul au premier geste et
+  se prolonge à chaque geste : seule, on ne voit aucune différence.
+- Tenu par un autre membre : bandeau « Fanny modifie ce plan », outils d'édition grisés (voir et
+  se déplacer restent possibles), et toute écriture refusée par le serveur (409, même texte).
+  « Demander la main » prévient la seule personne qui tient le plan (« Gilles demande la main
+  · Rendre la main ») ; personne n'arrache la main, pas même le propriétaire.
+- Le bail est rendu en quittant l'onglet Plan, quand la personne n'a plus aucune connexion, ou
+  après 2 minutes sans geste ; « Prendre la main » n'apparaît qu'après l'expiration.
+- Les écritures du système (chemin automatique, calculs lancés) ne sont jamais bloquées.
+- Dans l'onglet Plan, les curseurs des autres apparaissent en mètres sur le même plan (10 par
+  seconde au plus), nommés et à leur couleur.
+- Bail en mémoire, dans le processus : perdu au redémarrage (le plan est alors libre).
+
 ### 19 octobre 2026 (B2c : espace de travail en dernière écriture par élément, KAN-10)
 
 - Chaque geste n'enregistre que les éléments qu'il touche (`PATCH /api/projects/{id}/board/
@@ -16,7 +33,10 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   « enregistré ailleurs, rechargé ».
 - Les écritures pas encore confirmées restent par-dessus chaque relecture (geste d'un autre
   membre, projet changé) ; un geste terminé après une attente (déplacement, import de
-  fichiers) part du tableau d'à présent, pas de celui du début.
+  fichiers) part du tableau d'à présent, pas de celui du début. Une photo déposée n'a qu'une
+  carte : celle que la synchronisation pose en même temps pour la même image (jamais vue de
+  l'atelier) est retirée par l'atelier ; une copie « Dupliquer » n'est jamais touchée, et le
+  serveur ne dédoublonne rien de lui-même.
 - Annuler / rétablir sont à chacun : ils réécrivent l'état d'avant ou d'après de mes gestes,
   comme de nouvelles écritures visibles des autres ; un élément supprimé entre-temps par
   quelqu'un d'autre n'est pas recréé, et un message court le dit.

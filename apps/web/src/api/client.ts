@@ -1937,6 +1937,23 @@ export interface MediaRef {
   thumb?: string | null;
 }
 
+/** B2d : bail d'édition d'un plan (comptes seulement). « Prendre la main » ne réussit que sur
+ *  un plan libre ou dont le bail a expiré ; « Demander la main » prévient le seul tenant. */
+export const leaseApi = {
+  take: (pid: string, levelId: string) =>
+    request<unknown>(`/projects/${pid}/levels/${levelId}/lease`, {
+      method: "POST",
+    }),
+  give: (pid: string, levelId: string) =>
+    request<void>(`/projects/${pid}/levels/${levelId}/lease`, {
+      method: "DELETE",
+    }),
+  ask: (pid: string, levelId: string) =>
+    request<void>(`/projects/${pid}/levels/${levelId}/lease/request`, {
+      method: "POST",
+    }),
+};
+
 export const boardApi = {
   get: (pid: string) => request<Board>(`/projects/${pid}/board`),
   /** B2c : les écritures d'un geste (éléments posés, modifiés, retirés ; vue). Ne touche

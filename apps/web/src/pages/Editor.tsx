@@ -44,6 +44,7 @@ import {
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
 import { useLive } from "../state/live";
+import { leaseApi } from "../api/client";
 import {
   ReadOnlyContext,
   canEdit,
@@ -379,6 +380,41 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     : undefined;
   const [newPlanOpen, setNewPlanOpen] = useState(false);
 
+  // B2d (KAN-11) : bail d'édition du plan ouvert. Tenu par un autre membre : bandeau, plan
+  // en lecture (outils grisés) et « Demander la main » ; « Prendre la main » seulement
+  // après l'expiration. Le bail se rend en quittant l'onglet Plan.
+  const onPlanTab = tabOf(step, viewMode) === "plan";
+  const lease = account && level ? live.presence.leases[level.id] : undefined;
+  const leaseOther =
+    lease && lease.holder.user_id !== live.me?.user_id ? lease : null;
+  const leaseMine = Boolean(lease && !leaseOther);
+  const [leaseNow, setLeaseNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!leaseOther) return;
+    const tick = window.setInterval(() => setLeaseNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [leaseOther]);
+  const leaseExpired = leaseOther !== null && leaseOther.expiresAt <= leaseNow;
+  const planLocked = onPlanTab && leaseOther !== null;
+  const planLockedRef = useRef(false);
+  useEffect(() => {
+    planLockedRef.current = planLocked;
+  }, [planLocked]);
+  const leaseLevel = account && onPlanTab ? (level?.id ?? null) : null;
+  useEffect(() => {
+    if (!leaseLevel) return;
+    return () => {
+      // En quittant l'onglet Plan (ou ce plan) : mon bail est rendu ; sans bail, rien.
+      void leaseApi.give(projectId, leaseLevel).catch(() => undefined);
+      live.presence.planCursor(leaseLevel, null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaseLevel, projectId]);
+  const leaseRequest =
+    leaseMine && level && live.presence.leaseRequest?.level === level.id
+      ? live.presence.leaseRequest
+      : null;
+
   const fit = useCallback(() => setFitToken((n) => n + 1), []);
   const zoom = useCallback(
     (factor: number) =>
@@ -599,6 +635,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           e.preventDefault();
         return;
       }
+      // B2d : un autre membre modifie ce plan : pas de raccourci d'édition.
+      if (planLockedRef.current) return;
       if (!e.ctrlKey && !e.metaKey && !e.altKey && barKeys.current?.(e)) {
         e.preventDefault();
         return;
@@ -1107,7 +1145,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   level={level}
                   derived={state.derived}
                   units={state.project.units_display}
-                  tool={tool}
+                  tool={planLocked && tool !== "pan" ? "select" : tool}
                   selection={state.selection}
                   background={background}
                   imageWidths={Object.fromEntries(
@@ -1125,12 +1163,23 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   onCheckPlacement={actions.checkPlacement}
                   onPlacingEnd={endPlacing}
                   onSelect={actions.select}
-                  onOp={actions.apply}
+                  // B2d : plan tenu par un autre membre : rien ne part (le serveur dirait 409).
+                  onOp={planLocked ? () => undefined : actions.apply}
                   fitToken={fitToken}
                   zoomCommand={zoomCommand}
                   onScaleChange={setScale}
                   onMeasure={(a, b) => setMeasure({ a, b })}
                   insets={insets}
+                  onCursor={
+                    account
+                      ? (p) => live.presence.planCursor(level.id, p)
+                      : undefined
+                  }
+                  peers={
+                    account
+                      ? { store: live.presence.store, peers: live.peers }
+                      : undefined
+                  }
                 />
               </div>
             )}
@@ -1350,6 +1399,65 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 : undefined
             }
           />
+          {planLocked && leaseOther && (
+            <div
+              className="lease-banner"
+              role="status"
+              ref={(el) =>
+                el?.style.setProperty("--peer", leaseOther.holder.color)
+              }
+            >
+              {leaseExpired ? (
+                <>
+                  {leaseOther.holder.name} ne modifie plus ce plan
+                  <button
+                    type="button"
+                    className="link"
+                    // Refusé (409) si la personne a repris entre-temps : le bandeau reste.
+                    onClick={() =>
+                      void leaseApi
+                        .take(projectId, level.id)
+                        .catch(() => undefined)
+                    }
+                  >
+                    Prendre la main
+                  </button>
+                </>
+              ) : (
+                <>
+                  {leaseOther.holder.name} modifie ce plan
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() =>
+                      void leaseApi
+                        .ask(projectId, level.id)
+                        .catch(() => undefined)
+                    }
+                  >
+                    Demander la main
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {leaseRequest && (
+            <div className="lease-banner" role="status">
+              {leaseRequest.from} demande la main
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  live.presence.clearLeaseRequest();
+                  void leaseApi
+                    .give(projectId, level.id)
+                    .catch(() => undefined);
+                }}
+              >
+                Rendre la main
+              </button>
+            </div>
+          )}
           {followedPeer && live.status !== "reconnecting" && (
             <div
               className="follow-banner"
@@ -1398,6 +1506,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               tool={tool}
               viewMode={viewMode}
               busy={state.busy}
+              locked={planLocked}
               hasSelection={state.selection.kind !== "none"}
               hasBackground={hasScaleTarget()}
               catalogOpen={panelOpen && pane === "catalog"}

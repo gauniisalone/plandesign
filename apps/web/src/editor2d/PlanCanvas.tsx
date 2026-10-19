@@ -9,6 +9,8 @@ import type {
   Project,
 } from "../api/types.gen";
 import type { Op } from "../api/ops";
+import type { Peer, PresenceStore } from "../state/live";
+import { PlanPeers } from "./PlanPeers";
 import {
   catalogApi,
   type Catalog,
@@ -144,6 +146,10 @@ interface Props {
   onMeasure?: (a: Point2, b: Point2) => void;
   /** Marges occupées par les barres flottantes : le recadrage évite de passer dessous. */
   insets?: Insets;
+  /** B2d : mon curseur sur ce plan, en mètres (null : hors du plan). */
+  onCursor?: (point: Point2 | null) => void;
+  /** B2d : les curseurs des autres membres sur ce plan, en mètres. */
+  peers?: { store: PresenceStore; peers: Peer[] };
 }
 
 /** Meuble de la bibliothèque en attente de pose : ses cotes par défaut suffisent au fantôme. */
@@ -334,6 +340,8 @@ export function PlanCanvas({
   onScaleChange,
   onMeasure,
   insets = NO_INSETS,
+  onCursor,
+  peers,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
@@ -1127,6 +1135,7 @@ export function PlanCanvas({
   const onMouseMove = (e: React.MouseEvent) => {
     const { x, y } = localPoint(e);
     setCursor(toWorld(view, x, y));
+    onCursor?.(toWorld(view, x, y));
     if (placing?.opening && !drag) {
       setPlaceOpening(openingAt(toWorld(view, x, y)));
       return;
@@ -1792,6 +1801,7 @@ export function PlanCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={() => onCursor?.(null)}
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -2687,6 +2697,16 @@ export function PlanCanvas({
           />
         );
       })}
+
+      {/* B2d : les curseurs des autres membres sur ce plan, en mètres. */}
+      {peers && (
+        <PlanPeers
+          store={peers.store}
+          peers={peers.peers}
+          levelId={level.id}
+          at={S}
+        />
+      )}
 
       {/* Boussole : le nord du plan (réglable dans Rendre), en haut à droite sous la rangée
           du haut, à côté de la palette : jamais sous la barre du bas ni sous la bande. */}

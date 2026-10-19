@@ -331,7 +331,11 @@ export function ToolPalette({
   onCatalog,
   onStairs,
   onLayout,
+  locked = false,
 }: {
+  /** B2d : un autre membre modifie ce plan : outils d'édition grisés (voir et se déplacer
+   *  restent possibles). */
+  locked?: boolean;
   project: Project;
   tool: Tool;
   viewMode: ViewMode;
@@ -352,7 +356,8 @@ export function ToolPalette({
 }) {
   const canUndo = project.history_cursor > 0;
   const canRedo = project.history_cursor < project.history.length;
-  const drawing = viewMode !== "3d";
+  const viewing = viewMode !== "3d";
+  const drawing = viewing && !locked;
   const toolButton = (
     id: Tool,
     label: string,
@@ -366,7 +371,7 @@ export function ToolPalette({
       more={more}
       Icon={Icon}
       active={tool === id}
-      disabled={!drawing}
+      disabled={id === "select" || id === "pan" ? !viewing : !drawing}
       onClick={() => onTool(id)}
     />
   );
@@ -428,14 +433,14 @@ export function ToolPalette({
           label="Annuler"
           shortcut="Ctrl+Z"
           Icon={IconUndo}
-          disabled={!canUndo || busy}
+          disabled={!canUndo || busy || locked}
           onClick={onUndo}
         />
         <IconButton
           label="Rétablir"
           shortcut="Ctrl+Y"
           Icon={IconRedo}
-          disabled={!canRedo || busy}
+          disabled={!canRedo || busy || locked}
           onClick={onRedo}
         />
         <IconButton
@@ -448,7 +453,7 @@ export function ToolPalette({
           }
           Icon={IconTrash}
           danger
-          disabled={!hasSelection || busy}
+          disabled={!hasSelection || busy || locked}
           onClick={onDeleteSelection}
         />
       </div>

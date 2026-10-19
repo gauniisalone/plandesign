@@ -174,6 +174,10 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", L + "/cameras/{camera_id}/render"): E,
     ("POST", L + "/blender"): E,
     ("POST", L + "/render"): E,
+    # Bail d'édition du plan (B2d, comptes seulement) : prendre, rendre, demander la main
+    ("POST", L + "/lease"): E,
+    ("DELETE", L + "/lease"): E,
+    ("POST", L + "/lease/request"): E,
 }
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
@@ -287,7 +291,11 @@ def route_guard(request: Request) -> None:
     key = _route_key(request)
     role = PROJECT_ROUTES.get(key)
     if role is not None:
-        check_member(request, accounts, _project_id(request), role)
+        user = check_member(request, accounts, _project_id(request), role)
+        # B2d : une écriture d'une personne sur un plan prend ou prolonge son bail, ou 409.
+        from openplan.api.accounts.lease import guard_plan_write
+
+        guard_plan_write(request, key, user)
         return
     policy = GLOBAL_ROUTES.get(key)
     if policy == "public":

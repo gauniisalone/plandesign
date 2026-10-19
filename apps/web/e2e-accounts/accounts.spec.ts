@@ -742,6 +742,128 @@ test("B2c : deux éditeurs, dernière écriture par élément, annuler sans recr
   expect(await xOf(bravo)).toBeUndefined();
 });
 
+test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async ({
+  browser,
+}) => {
+  const owner = await person(browser, "198.51.100.61");
+  await gotoApp(owner, "/");
+  await signInHere(owner, "fanny@example.org", "Fanny");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Plan partagé" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invite = await owner.request.post(`/api/projects/${id}/invitations`, {
+    data: { role: "editor" },
+    headers: origin,
+  });
+  const { token } = (await invite.json()) as { token: string };
+  const guest = await person(browser, "198.51.100.62");
+  await gotoApp(guest, `/#/invitation/${token}`);
+  await signInHere(guest, "gilles@example.org", "Gilles");
+  // Tous deux dans l'onglet Plan du même plan.
+  // Comme avec les comptes : depuis le cadre Plan de l'espace de travail (le bouton n'apparaît
+  // qu'une fois le rôle d'éditeur connu).
+  for (const p of [owner, guest]) {
+    await gotoApp(p, `/#/projects/${id}`);
+    const enter = p.getByRole("button", { name: /Tracer moi-même/ });
+    await expect(enter).toBeVisible({ timeout: 30_000 });
+    await enter.click();
+    await expect(p.locator("svg.plan")).toBeVisible({ timeout: 30_000 });
+  }
+  // Murs enregistrés, lus sur le serveur : un niveau les range dans `elements` (type « wall »).
+  const walls = async () => {
+    const project = (await (
+      await owner.request.get(`/api/projects/${id}`)
+    ).json()) as {
+      levels: Record<string, { elements: Record<string, { type: string }> }>;
+    };
+    return Object.values(project.levels).reduce(
+      (n, l) =>
+        n + Object.values(l.elements).filter((e) => e.type === "wall").length,
+      0,
+    );
+  };
+  const draw = async (p: Page, points: [number, number][]) => {
+    // Par la palette (comme mobile.spec) : les raccourcis dépendent du focus, qui peut être
+    // resté dans un champ de l'espace de travail.
+    const svg = p.locator("svg.plan");
+    const tools = p.getByRole("toolbar", { name: "Outils" });
+    await tools.getByRole("button", { name: "Mur", exact: true }).click();
+    for (const [x, y] of points) await svg.click({ position: { x, y } });
+    await tools.getByRole("button", { name: "Sélection", exact: true }).click();
+  };
+
+  // Fanny, seule à modifier : aucune différence, son premier geste prend le bail.
+  // Un contour fermé (comme bars-b2.spec) : les murs ne partent qu'à la fermeture.
+  await draw(owner, [
+    [300, 600],
+    [700, 600],
+    [700, 400],
+    [300, 400],
+    [300, 600],
+  ]);
+  await expect.poll(walls).toBeGreaterThan(0);
+  const afterFanny = await walls();
+  // Enregistrés, et relus chez Gilles (avis « changed ») : il les voit dans sa page.
+  await expect(guest.locator("svg.plan polygon.wall")).toHaveCount(afterFanny, {
+    timeout: 15_000,
+  });
+  // Gilles voit qui modifie, ses outils sont grisés, et il ne peut rien écrire.
+  await expect(
+    guest.getByRole("status").filter({ hasText: "Fanny modifie ce plan" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    guest.getByRole("button", { name: "Mur", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    guest.getByRole("button", { name: "Prendre la main" }),
+  ).toHaveCount(0);
+  await shot(guest, "13-plan-tenu");
+  // Son curseur, en mètres, chez Fanny.
+  const plan = (await guest.locator("svg.plan").boundingBox())!;
+  await guest.mouse.move(plan.x + plan.width / 2, plan.y + plan.height / 2);
+  await guest.mouse.move(
+    plan.x + plan.width / 2 + 40,
+    plan.y + plan.height / 2,
+  );
+  await expect(
+    owner.locator("svg.plan").getByRole("img", { name: "Curseur de Gilles" }),
+  ).toBeVisible();
+  // Gilles demande la main : seule Fanny est prévenue ; elle la rend.
+  await guest.getByRole("button", { name: "Demander la main" }).click();
+  await expect(
+    owner.getByRole("status").filter({ hasText: "Gilles demande la main" }),
+  ).toBeVisible();
+  await expect(guest.getByText("demande la main")).toHaveCount(0);
+  await shot(owner, "14-demande-la-main");
+  await owner.getByRole("button", { name: "Rendre la main" }).click();
+  await expect(
+    guest.getByRole("status").filter({ hasText: "modifie ce plan" }),
+  ).toHaveCount(0, { timeout: 15_000 });
+  // Gilles modifie à son tour ; Fanny voit le bandeau.
+  await draw(guest, [
+    [850, 600],
+    [1100, 600],
+    [1100, 400],
+    [850, 400],
+    [850, 600],
+  ]);
+  await expect.poll(walls).toBeGreaterThan(afterFanny);
+  await expect(
+    owner.getByRole("status").filter({ hasText: "Gilles modifie ce plan" }),
+  ).toBeVisible({ timeout: 15_000 });
+  // Gilles quitte l'onglet Plan : le plan est libre, Fanny peut reprendre.
+  await guest
+    .getByRole("navigation", { name: "Espaces du projet" })
+    .getByRole("button", { name: "← Espace de travail" })
+    .click();
+  await expect(
+    owner.getByRole("status").filter({ hasText: "modifie ce plan" }),
+  ).toHaveCount(0, { timeout: 15_000 });
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {
@@ -775,6 +897,17 @@ test("B2b : session révoquée, poignée de main refusée : retour à la connexi
   page.on("request", (r) => {
     if (new URL(r.url()).pathname === "/api/auth/me") asked.push(r.url());
   });
+  // Le chemin du WebSocket doit être le premier à interroger /api/auth/me : les autres appels
+  // de la page sont retardés de 6 s (puis passent, et répondent 401). Course existante : un
+  // remontage de l'espace de travail relance des lectures qui répondraient 401 avant lui.
+  await page.route(
+    (url) =>
+      url.pathname.startsWith("/api/") && url.pathname !== "/api/auth/me",
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 6_000));
+      await route.continue().catch(() => undefined);
+    },
+  );
   const revoked = await page.request.post("/api/auth/logout-all", {
     headers: origin,
   });

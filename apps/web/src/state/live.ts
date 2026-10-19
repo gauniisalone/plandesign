@@ -24,6 +24,19 @@ export interface PeerView {
   zoom: number;
 }
 
+/** B2d : qui tient un plan (le bail d'édition), et jusqu'à quand (horloge de l'onglet). */
+export interface PlanLease {
+  holder: Peer;
+  expiresAt: number;
+}
+
+type LeaseMessage = {
+  type: "lease";
+  level_id: string;
+  holder: Peer | null;
+  expires_in?: number;
+};
+
 type Message =
   | {
       type: "hello";
@@ -32,11 +45,20 @@ type Message =
       peers: Peer[];
       selections?: Record<string, string[]>;
       followed?: number;
+      leases?: Record<string, LeaseMessage>;
     }
+  | LeaseMessage
+  | { type: "lease.request"; level_id: string; from: string }
   | { type: "join"; peer: Peer }
   | { type: "leave"; user_id: string }
   | { type: "changed"; scope: "project" | "board" }
-  | { type: "cursor"; user_id: string; x: number | null; y?: number }
+  | {
+      type: "cursor";
+      user_id: string;
+      x: number | null;
+      y?: number;
+      level_id?: string;
+    }
   | { type: "select"; user_id: string; ids: string[] }
   | { type: "followed"; count: number }
   | ({ type: "view"; user_id: string } & PeerView)
@@ -61,12 +83,19 @@ export function retryDelay(attempt: number): number {
 
 export interface PresenceSnapshot {
   cursors: Record<string, { x: number; y: number }>;
+  /** B2d : curseurs sur un plan (onglet Plan), en mètres. */
+  planCursors: Record<string, { x: number; y: number; level: string }>;
   selections: Record<string, string[]>;
   /** Dernière vue reçue de la personne que je suis. */
   view: PeerView | null;
 }
 
-const EMPTY: PresenceSnapshot = { cursors: {}, selections: {}, view: null };
+const EMPTY: PresenceSnapshot = {
+  cursors: {},
+  planCursors: {},
+  selections: {},
+  view: null,
+};
 
 /** Magasin de présence (B2b) : lu par `usePresence`, hors de l'état de l'atelier. */
 export class PresenceStore {
@@ -88,10 +117,12 @@ export class PresenceStore {
   forget(userId: string): void {
     this.update((s) => {
       const cursors = { ...s.cursors };
+      const planCursors = { ...s.planCursors };
       const selections = { ...s.selections };
       delete cursors[userId];
+      delete planCursors[userId];
       delete selections[userId];
-      return { ...s, cursors, selections };
+      return { ...s, cursors, planCursors, selections };
     });
   }
 
@@ -116,6 +147,12 @@ export interface PresenceOut {
   store: PresenceStore;
   /** Mon curseur (coordonnées de l'espace de travail) ; null : hors du canevas. */
   cursor: (point: { x: number; y: number } | null) => void;
+  /** B2d : mon curseur sur un plan, en mètres ; null : hors du plan. */
+  planCursor: (level: string, point: { x: number; y: number } | null) => void;
+  /** B2d : les plans tenus (bail d'édition), et la dernière demande de main reçue. */
+  leases: Record<string, PlanLease>;
+  leaseRequest: { level: string; from: string } | null;
+  clearLeaseRequest: () => void;
   select: (ids: string[]) => void;
   /** Ma vue, envoyée seulement si quelqu'un me suit. */
   view: (view: PeerView) => void;
@@ -148,6 +185,11 @@ export function useLive(
   const [me, setMe] = useState<Peer | null>(null);
   const [following, setFollowing] = useState<string | null>(null);
   const [followed, setFollowed] = useState(0);
+  const [leases, setLeases] = useState<Record<string, PlanLease>>({});
+  const [leaseRequest, setLeaseRequest] = useState<{
+    level: string;
+    from: string;
+  } | null>(null);
   const [store] = useState(() => new PresenceStore());
   const handlersRef = useRef(handlers);
   useEffect(() => {
@@ -207,9 +249,16 @@ export function useLive(
           setFollowed(followedRef.current);
           store.update(() => ({
             cursors: {},
+            planCursors: {},
             selections: message.selections ?? {},
             view: null,
           }));
+          setLeases(
+            Object.values(message.leases ?? {}).reduce(
+              (all, l) => withLease(all, l),
+              {} as Record<string, PlanLease>,
+            ),
+          );
           sendRef.current = (out) => {
             if (current.readyState === WebSocket.OPEN)
               current.send(JSON.stringify(out));
@@ -241,13 +290,23 @@ export function useLive(
         } else if (message.type === "changed") {
           handlersRef.current.onChanged(message.scope);
         } else if (message.type === "cursor") {
-          const { user_id: who, x, y } = message;
+          const { user_id: who, x, y, level_id: level } = message;
           store.update((s) => {
             const cursors = { ...s.cursors };
-            if (x === null || y === undefined) delete cursors[who];
-            else cursors[who] = { x, y };
-            return { ...s, cursors };
+            const planCursors = { ...s.planCursors };
+            delete cursors[who];
+            delete planCursors[who];
+            if (x !== null && y !== undefined) {
+              if (level) planCursors[who] = { x, y, level };
+              else cursors[who] = { x, y };
+            }
+            return { ...s, cursors, planCursors };
           });
+        } else if (message.type === "lease") {
+          const lease = message;
+          setLeases((all) => withLease(all, lease));
+        } else if (message.type === "lease.request") {
+          setLeaseRequest({ level: message.level_id, from: message.from });
         } else if (message.type === "select") {
           const { user_id: who, ids } = message;
           store.update((s) => ({
@@ -312,6 +371,21 @@ export function useLive(
             : { type: "cursor", x: null },
         ),
       ),
+    // B2d : sur un plan, en mètres (au centimètre), avec l'id du plan ; même débit.
+    planCursor: (level: string, point: { x: number; y: number } | null) =>
+      throttles.current.cursor(() =>
+        sendRef.current(
+          point
+            ? {
+                type: "cursor",
+                x: Math.round(point.x * 100) / 100,
+                y: Math.round(point.y * 100) / 100,
+                level_id: level,
+              }
+            : { type: "cursor", x: null },
+        ),
+      ),
+    clearLeaseRequest: () => setLeaseRequest(null),
     select: (ids: string[]) => {
       mine.current.selection = ids;
       sendRef.current({ type: "select", ids });
@@ -339,8 +413,23 @@ export function useLive(
     status: enabled ? status : "off",
     peers: enabled ? peers : [],
     me,
-    presence: { ...presence, following, followed },
+    presence: { ...presence, following, followed, leases, leaseRequest },
   };
+}
+
+/** Un message « lease » appliqué aux baux connus (holder nul : le plan est libre). */
+function withLease(
+  all: Record<string, PlanLease>,
+  message: LeaseMessage,
+): Record<string, PlanLease> {
+  const next = { ...all };
+  if (message.holder === null) delete next[message.level_id];
+  else
+    next[message.level_id] = {
+      holder: message.holder,
+      expiresAt: Date.now() + (message.expires_in ?? 0) * 1000,
+    };
+  return next;
 }
 
 /** /api/auth/me répond-il encore ? Une 401 dit « session révoquée » ; une panne réseau ou un

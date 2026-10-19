@@ -320,6 +320,8 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     """Comptes actifs : connexion, partage (B1e) et, avec le mailer `fake` seulement, le point
     de test des codes. Importés ici : le mode local n'en charge rien."""
     from openplan.api.accounts.contact import router as contact_router
+    from openplan.api.accounts.lease import PlanLeases
+    from openplan.api.accounts.lease import router as lease_router
     from openplan.api.accounts.live import MemoryHub
     from openplan.api.accounts.live import router as live_router
     from openplan.api.accounts.routes import router as auth_router
@@ -332,5 +334,8 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     # Présence (B2a) : WebSocket hors de /api, qui fait ses propres contrôles.
     app.state.live = MemoryHub()
     app.include_router(live_router)
+    # Bail d'édition du plan (B2d) : en mémoire, comme la présence.
+    app.state.leases = PlanLeases()
+    app.include_router(lease_router, dependencies=guarded)
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)
