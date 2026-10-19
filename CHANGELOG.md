@@ -7,6 +7,25 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (B2c : espace de travail en dernière écriture par élément, KAN-10)
+
+- Chaque geste n'enregistre que les éléments qu'il touche (`PATCH /api/projects/{id}/board/
+  items` : éléments posés ou modifiés, retirés, vue) ; le serveur les horodate et note leur
+  auteur (`updated_at`, `updated_by` par élément). Deux personnes qui déplacent deux cartes
+  différentes ne se gênent plus ; sur la même carte, la dernière écriture gagne. Plus de refus
+  « enregistré ailleurs, rechargé ».
+- Les écritures pas encore confirmées restent par-dessus chaque relecture (geste d'un autre
+  membre, projet changé) ; un geste terminé après une attente (déplacement, import de
+  fichiers) part du tableau d'à présent, pas de celui du début.
+- Annuler / rétablir sont à chacun : ils réécrivent l'état d'avant ou d'après de mes gestes,
+  comme de nouvelles écritures visibles des autres ; un élément supprimé entre-temps par
+  quelqu'un d'autre n'est pas recréé, et un message court le dit.
+- La vue (déplacement, zoom) reste une par projet, en dernière écriture (une vue par personne :
+  ticket à part).
+- Compatibilité : le `PUT /api/projects/{id}/board` du tableau entier (avec son 409) ne sert
+  plus qu'aux onglets ouverts sur une version d'avant B2c ; le front ne l'utilise plus. Il
+  est gardé jusqu'au déploiement de B2d, et au moins jusqu'au 2 novembre 2026, puis retiré.
+
 ### 19 octobre 2026 (B2b : curseurs, sélections, « Suivre »)
 
 Avec les comptes, dans l'espace de travail ; éphémère, rien n'est écrit ni stocké.

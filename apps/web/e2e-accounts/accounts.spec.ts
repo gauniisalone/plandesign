@@ -617,6 +617,131 @@ test("B2b : curseur et sélection de l'autre, puis « Suivre » jusqu'à mon pre
   expect(await worldZoom(owner)).toBeCloseTo(before, 3);
 });
 
+test("B2c : deux éditeurs, dernière écriture par élément, annuler sans recréer", async ({
+  browser,
+}) => {
+  const owner = await person(browser, "198.51.100.51");
+  await gotoApp(owner, "/");
+  await signInHere(owner, "fanny@example.org", "Fanny");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Tableau à deux" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const alpha = "b2c0a000-0000-4000-8000-000000000001";
+  const bravo = "b2c0b000-0000-4000-8000-000000000002";
+  const note = (nid: string, text: string, x: number) => ({
+    id: nid,
+    kind: "note",
+    x,
+    y: -300,
+    w: 220,
+    h: 140,
+    text,
+  });
+  const placed = await owner.request.patch(`/api/projects/${id}/board/items`, {
+    data: { set: [note(alpha, "Alpha", -900), note(bravo, "Bravo", -600)] },
+    headers: origin,
+  });
+  expect(placed.ok()).toBe(true);
+  const invite = await owner.request.post(`/api/projects/${id}/invitations`, {
+    data: { role: "editor" },
+    headers: origin,
+  });
+  const { token } = (await invite.json()) as { token: string };
+  await gotoApp(owner, `/#/projects/${id}`);
+  const guest = await person(browser, "198.51.100.52");
+  await gotoApp(guest, `/#/invitation/${token}`);
+  await signInHere(guest, "gilles@example.org", "Gilles");
+  for (const p of [owner, guest])
+    await expect(p.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  await expect(
+    owner
+      .getByRole("list", { name: "Présents sur le projet" })
+      .getByLabel("Gilles"),
+  ).toBeVisible({ timeout: 15_000 });
+
+  type Saved = { items: { id: string; x: number; updated_by?: string }[] };
+  const saved = async () =>
+    (await (
+      await owner.request.get(`/api/projects/${id}/board`)
+    ).json()) as Saved;
+  const xOf = async (nid: string) =>
+    (await saved()).items.find((i) => i.id === nid)?.x;
+  const card = (p: Page, text: string) =>
+    p.locator(".board-item.kind-note", { hasText: text });
+  const drag = async (p: Page, text: string, dx: number) => {
+    const box = (await card(p, text).boundingBox())!;
+    await p.mouse.move(box.x + 30, box.y + 20);
+    await p.mouse.down();
+    await p.mouse.move(box.x + 30 + dx / 2, box.y + 20, { steps: 4 });
+    await p.mouse.move(box.x + 30 + dx, box.y + 20, { steps: 4 });
+    await p.mouse.up();
+  };
+
+  // Deux cartes différentes, chacun la sienne, en même temps : les deux sont gardées.
+  const [a0, b0] = [await xOf(alpha), await xOf(bravo)];
+  await Promise.all([drag(owner, "Alpha", 120), drag(guest, "Bravo", 160)]);
+  await expect.poll(async () => (await xOf(alpha)) !== a0).toBe(true);
+  await expect.poll(async () => (await xOf(bravo)) !== b0).toBe(true);
+  // Plus de « enregistré ailleurs, rechargé » : aucun des deux gestes n'est refusé.
+  for (const p of [owner, guest])
+    await expect(
+      p.getByRole("alert").filter({ hasText: "enregistré ailleurs" }),
+    ).toHaveCount(0);
+  // Chacun voit le geste de l'autre (relecture à l'avis « changed »).
+  const bravoX = await xOf(bravo);
+  await expect
+    .poll(async () =>
+      card(owner, "Bravo").evaluate((el) =>
+        parseFloat((el as HTMLElement).style.left),
+      ),
+    )
+    .toBeCloseTo(bravoX!, 0);
+  await shot(owner, "12-deux-editeurs");
+
+  // La même carte, l'un après l'autre : la dernière écriture gagne, chez les deux.
+  await drag(owner, "Alpha", 80);
+  await expect
+    .poll(
+      async () => (await saved()).items.find((i) => i.id === alpha)?.updated_by,
+    )
+    .toMatch(/^user:/);
+  const afterOwner = await xOf(alpha);
+  await expect
+    .poll(async () =>
+      card(guest, "Alpha").evaluate((el) =>
+        parseFloat((el as HTMLElement).style.left),
+      ),
+    )
+    .toBeCloseTo(afterOwner!, 0);
+  await drag(guest, "Alpha", -200);
+  await expect.poll(async () => (await xOf(alpha)) !== afterOwner).toBe(true);
+  const last = await xOf(alpha);
+  await expect
+    .poll(async () =>
+      card(owner, "Alpha").evaluate((el) =>
+        parseFloat((el as HTMLElement).style.left),
+      ),
+    )
+    .toBeCloseTo(last!, 0);
+
+  // Gilles a déplacé Bravo ; Fanny le supprime ; « Annuler » chez Gilles ne le recrée pas.
+  await card(owner, "Bravo").click();
+  await owner.keyboard.press("Delete");
+  await expect.poll(async () => (await xOf(bravo)) === undefined).toBe(true);
+  await expect(card(guest, "Bravo")).toHaveCount(0, { timeout: 15_000 });
+  await guest.keyboard.press("Control+z"); // annule son dernier geste (Alpha) : rétabli
+  await guest.keyboard.press("Control+z"); // celui d'avant (Bravo) : supprimé ailleurs
+  await expect(guest.getByRole("alert")).toContainText(
+    "supprimé par quelqu'un d'autre n'a pas été recréé",
+  );
+  await expect(card(guest, "Bravo")).toHaveCount(0);
+  await expect.poll(async () => (await xOf(alpha)) === afterOwner).toBe(true);
+  expect(await xOf(bravo)).toBeUndefined();
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

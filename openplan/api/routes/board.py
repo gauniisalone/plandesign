@@ -9,11 +9,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, UploadFile
 
-from openplan.api.deps import ProjectDep, StoreDep
+from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.pipeline import board as b
 from openplan.pipeline.board import MediaError
-from openplan.schemas.board import Board, MediaRef
+from openplan.schemas.board import Board, BoardPatch, MediaRef
 
 router = APIRouter(tags=["board"])
 
@@ -40,7 +40,11 @@ def put_board(body: Board, project: ProjectDep, store: StoreDep) -> Board:
     """Enregistre la disposition (positions, tailles, ordre, verrous, cadres, notes, vue). Ne
     touche jamais la géométrie du plan. Ce qui a été retiré parmi ce que le projet fournit
     n'est pas remis ensuite. 409 si l'envoi part d'une révision périmée (le tableau a été
-    enregistré ailleurs entre-temps, deux onglets) : rien n'est écrasé, l'atelier recharge."""
+    enregistré ailleurs entre-temps, deux onglets) : rien n'est écrasé, l'atelier recharge.
+
+    Depuis B2c, compatibilité seulement (onglets ouverts sur une version d'avant B2c) : le
+    front écrit par `PATCH …/board/items`. Gardé jusqu'au déploiement de B2d, et au moins
+    jusqu'au 2 novembre 2026."""
     project_dir = store.project_dir(project.id)
     frames = {i.id for i in body.items if i.kind == "frame"}
     items = [
@@ -53,6 +57,23 @@ def put_board(body: Board, project: ProjectDep, store: StoreDep) -> Board:
             return b.save_board(project_dir, after, expect=body.revision)
         except b.StaleBoardError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.patch("/projects/{project_id}/board/items")
+def patch_board_items(
+    body: BoardPatch, project: ProjectDep, store: StoreDep, actor: ActorDep
+) -> Board:
+    """B2c : les écritures d'un geste (éléments posés ou modifiés, éléments retirés, vue), en
+    une fois sous le verrou du projet. La dernière écriture reçue gagne, élément par élément :
+    deux personnes qui déplacent deux cartes différentes ne se gênent plus, et rien n'est
+    refusé en 409. Le serveur horodate chaque élément écrit et note son acteur."""
+    project_dir = store.project_dir(project.id)
+    with store.lock(project.id):
+        try:
+            after = b.patched(b.load_board(project_dir), body, actor)
+        except b.TooManyItemsError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return b.save_board(project_dir, after)
 
 
 @router.get("/projects/{project_id}/exports/archive")

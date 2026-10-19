@@ -1896,6 +1896,16 @@ export interface BoardItem {
   kept?: boolean;
   /** Commentaire attaché à la carte (A3). */
   comment?: string;
+  /** B2c : heure et acteur de la dernière écriture de cet élément, posés par le serveur. */
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+/** B2c : les écritures d'un geste ; la dernière écriture gagne, élément par élément. */
+export interface BoardPatch {
+  set: BoardItem[];
+  delete: string[];
+  view?: BoardView;
 }
 
 export interface BoardView {
@@ -1929,11 +1939,13 @@ export interface MediaRef {
 
 export const boardApi = {
   get: (pid: string) => request<Board>(`/projects/${pid}/board`),
-  /** Enregistre la disposition ; ne touche jamais la géométrie du plan. */
-  put: (pid: string, board: Board) =>
-    request<Board>(`/projects/${pid}/board`, {
-      method: "PUT",
-      body: JSON.stringify(board),
+  /** B2c : les écritures d'un geste (éléments posés, modifiés, retirés ; vue). Ne touche
+   *  jamais la géométrie du plan. Le PUT du tableau entier ne sert plus qu'aux onglets d'avant
+   *  B2c. */
+  patch: (pid: string, patch: BoardPatch) =>
+    request<Board>(`/projects/${pid}/board/items`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
   media: (pid: string) => request<MediaRef[]>(`/projects/${pid}/media`),
   upload: (pid: string, file: File) => {
@@ -1952,16 +1964,18 @@ export const boardApi = {
     request<void>(`/projects/${pid}/media/${mediaId}`, { method: "DELETE" }),
   /** B4 : dernier envoi quand la page se cache ou se ferme ; `keepalive` laisse la
    *  requête partir même si l'onglet disparaît. Pas de réponse lue. */
-  putKeepalive: (pid: string, board: Board): void => {
+  patchKeepalive: (pid: string, patch: BoardPatch): void => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     const token = readToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    void fetch(`${BASE}/projects/${pid}/board`, {
-      method: "PUT",
+    // B2c : comme toute écriture, sans s'annoncer à soi-même.
+    if (liveConn) headers["X-Live-Conn"] = liveConn;
+    void fetch(`${BASE}/projects/${pid}/board/items`, {
+      method: "PATCH",
       headers,
-      body: JSON.stringify(board),
+      body: JSON.stringify(patch),
       keepalive: true,
     }).catch(() => undefined);
   },

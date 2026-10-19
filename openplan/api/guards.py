@@ -73,7 +73,8 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("DELETE", P + "/jobs/{job_id}"): E,  # annuler un calcul en attente (file d'attente)
     # Espace de travail et fichiers joints
     ("GET", P + "/board"): V,
-    ("PUT", P + "/board"): E,
+    ("PUT", P + "/board"): E,  # compatibilité (onglets d'avant B2c)
+    ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément
     ("GET", P + "/media"): V,
     ("POST", P + "/media"): E,
     ("GET", P + "/media/{media_id}/thumb"): V,

@@ -73,6 +73,11 @@ class BoardItem(StrictModel):
     """« À conserver » (A3) : une variante retenue, marquée sur sa carte."""
     comment: str = Field(default="", max_length=2000)
     """Commentaire attaché à la carte (A3), montré sous ses métadonnées."""
+    updated_at: datetime | None = None
+    """B2c : posé par le serveur à chaque écriture de cet élément (la dernière gagne) ; ce que
+    le client envoie est ignoré. Absent d'un tableau d'avant B2c."""
+    updated_by: str | None = Field(default=None, max_length=120)
+    """B2c : l'acteur de cette écriture (`user`, `user:<id>`), posé par le serveur."""
 
     @field_validator("url")
     @classmethod
@@ -101,6 +106,16 @@ class Board(StrictModel):
     dismissed: list[str] = Field(default_factory=list, max_length=MAX_ITEMS)
     """Références retirées à la main : la synchronisation ne les remet pas."""
     updated_at: datetime = Field(default_factory=now_utc)
+
+
+class BoardPatch(StrictModel):
+    """B2c : les éléments écrits par un geste, en une fois. Chaque élément de `set` remplace
+    (ou ajoute) celui de même id, `delete` retire ; la dernière écriture reçue gagne, élément
+    par élément, sans révision ni 409. `view` : où regarde l'espace de travail (facultatif)."""
+
+    set: list[BoardItem] = Field(default_factory=list, max_length=MAX_ITEMS)
+    delete: list[UUID] = Field(default_factory=list, max_length=MAX_ITEMS)
+    view: BoardView | None = None
 
 
 class MediaRef(StrictModel):

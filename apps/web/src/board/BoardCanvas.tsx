@@ -286,6 +286,11 @@ export function BoardCanvas(props: Props) {
   const readOnly = useReadOnly();
   const space = useRef(false);
   const items = live ?? board.items;
+  /** B2c : le tableau d'à présent, pour un geste qui se termine après une attente. */
+  const itemsNow = useRef(board.items);
+  useEffect(() => {
+    itemsNow.current = board.items;
+  }, [board.items]);
   // « + Nouveau plan » : sous la dernière rangée Plan + Rendus, aligné sur les plans. Sa
   // place compte dans le cadrage d'ensemble (une boîte approchée, le bouton garde sa taille
   // à l'écran).
@@ -703,8 +708,11 @@ export function BoardCanvas(props: Props) {
     }
     if (added.length) {
       const grown = target;
+      // B2c : le tableau d'à présent (l'envoi des fichiers a pris du temps).
       commit([
-        ...items.map((i) => (grown && i.id === grown.id ? grown : i)),
+        ...itemsNow.current.map((i) =>
+          grown && i.id === grown.id ? grown : i,
+        ),
         ...added,
       ]);
       setSelected(new Set(added.map((a) => a.id)));
@@ -876,13 +884,18 @@ export function BoardCanvas(props: Props) {
       // Rangement : un élément lâché dans un cadre lui appartient, hors de tout cadre il
       // n'appartient à aucun.
       const frames = live.filter((i) => i.kind === "frame");
-      commit(
-        live.map((i) => {
-          if (i.kind === "frame" || !selected.has(i.id)) return i;
-          const host = frames.find((f) => f.id !== i.id && inside(i, f));
-          return { ...i, frame: host ? host.id : null };
-        }),
+      const next = live.map((i) => {
+        if (i.kind === "frame" || !selected.has(i.id)) return i;
+        const host = frames.find((f) => f.id !== i.id && inside(i, f));
+        return { ...i, frame: host ? host.id : null };
+      });
+      // B2c : seuls les éléments de ce geste partent, posés sur le tableau d'à présent (un
+      // autre membre a pu en changer d'autres pendant le geste).
+      const base = new Set(drag.kind === "move" ? drag.start : board.items);
+      const touched = new Map(
+        next.filter((i) => !base.has(i)).map((i) => [i.id, i]),
       );
+      commit(board.items.map((i) => touched.get(i.id) ?? i));
     } else if (drag.kind === "marquee") {
       const x0 = Math.min(drag.x, drag.to.x);
       const y0 = Math.min(drag.y, drag.to.y);

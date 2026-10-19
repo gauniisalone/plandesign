@@ -113,43 +113,60 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
   await expectSpace(page, "board");
   await expect(world).toHaveAttribute("style", seen ?? "");
 
-  // Un autre onglet enregistre entre-temps : le geste suivant est refusé, le tableau
-  // rechargé, et l'atelier le dit.
-  const other = (await (
-    await page.request.get(`/api/projects/${id}/board`)
-  ).json()) as {
-    revision: number;
+  // B2c : un autre onglet écrit entre-temps une autre carte ; mon geste suivant passe sans
+  // conflit ni rechargement, et les deux écritures sont gardées (dernière écriture par
+  // élément).
+  type Saved = {
+    items: { id: string; kind: string; x: number; text: string }[];
   };
-  await page.request.put(`/api/projects/${id}/board`, {
-    data: { ...other, view: { x: 0, y: 0, zoom: 1 } },
+  const onServer = async () =>
+    (await (
+      await page.request.get(`/api/projects/${id}/board`)
+    ).json()) as Saved;
+  const mine = (b: Saved) => b.items.find((i) => i.text.includes("banquette"))!;
+  const otherId = "b2c00000-0000-4000-8000-000000000001";
+  const wrote = await page.request.patch(`/api/projects/${id}/board/items`, {
+    data: {
+      set: [
+        {
+          id: otherId,
+          kind: "note",
+          x: -600,
+          y: -400,
+          w: 200,
+          h: 120,
+          text: "Autre onglet",
+        },
+      ],
+    },
   });
+  expect(wrote.ok()).toBe(true);
+  const xMine = mine(await onServer()).x;
   await note.dragTo(stage, {
     targetPosition: { x: box.width / 2, y: box.height / 2 },
   });
-  await expect(board.getByRole("alert")).toContainText("enregistré ailleurs", {
-    timeout: 10_000,
-  });
+  await expect
+    .poll(async () => {
+      const after = await onServer();
+      return (
+        after.items.some((i) => i.id === otherId) && mine(after).x !== xMine
+      );
+    })
+    .toBe(true);
+  await expect(
+    board.getByRole("alert").filter({ hasText: "enregistré ailleurs" }),
+  ).toHaveCount(0);
   await page.screenshot({
     path: path.resolve("e2e/screenshots/b2_tableau.png"),
   });
 
   // A1 : un geste suivi d'un rechargement immédiat n'est pas perdu (envoi `keepalive`
   // quand la page se cache ou se ferme).
-  const noteBefore = (await (
-    await page.request.get(`/api/projects/${id}/board`)
-  ).json()) as { items: { kind: string; x: number }[] };
-  const xBefore = noteBefore.items.find((i) => i.kind === "note")!.x;
+  const xBefore = mine(await onServer()).x;
   await note.dragTo(stage, {
     targetPosition: { x: box.width - 200, y: box.height - 200 },
   });
   await reloadApp(page);
   await expectSpace(page, "board");
-  await expect
-    .poll(async () => {
-      const after = (await (
-        await page.request.get(`/api/projects/${id}/board`)
-      ).json()) as { items: { kind: string; x: number }[] };
-      return after.items.find((i) => i.kind === "note")!.x;
-    })
-    .not.toBe(xBefore);
+  await expect.poll(async () => mine(await onServer()).x).not.toBe(xBefore);
 });

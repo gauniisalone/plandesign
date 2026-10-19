@@ -21,7 +21,15 @@ from pydantic import TypeAdapter
 
 from openplan.pipeline.mainroom import main_room
 from openplan.pipeline.render import RenderEntry, list_renders
-from openplan.schemas.board import Board, BoardItem, BoardRole, MediaKind, MediaRef
+from openplan.schemas.board import (
+    MAX_ITEMS,
+    Board,
+    BoardItem,
+    BoardPatch,
+    BoardRole,
+    MediaKind,
+    MediaRef,
+)
 from openplan.schemas.common import now_utc
 from openplan.schemas.scene import Project
 
@@ -119,6 +127,48 @@ def replaced(before: Board | None, after: Board) -> Board:
     ]
     dismissed = list(dict.fromkeys([*after.dismissed, *(k for k in gone if k)]))
     return after.model_copy(update={"dismissed": dismissed})
+
+
+class TooManyItemsError(ValueError):
+    """Un geste qui porterait le tableau au-delà de `MAX_ITEMS` éléments."""
+
+
+def patched(before: Board | None, patch: BoardPatch, actor: str) -> Board:
+    """B2c : applique les écritures d'un geste (dernière écriture gagne, élément par élément).
+    Chaque élément écrit reçoit l'heure du serveur et son acteur. Ce qui est retiré parmi ce
+    que le projet fournit est noté dans `dismissed`, comme pour un tableau entier ; un élément
+    dont le cadre a disparu n'est plus dans un cadre."""
+    board = before if before is not None else Board()
+    stamp = now_utc()
+    items = {i.id: i for i in board.items}
+    gone = [items.pop(i) for i in patch.delete if i in items]
+    for item in patch.set:
+        items[item.id] = item.model_copy(update={"updated_at": stamp, "updated_by": actor})
+    if len(items) > MAX_ITEMS:
+        msg = f"l'espace de travail est limité à {MAX_ITEMS} éléments"
+        raise TooManyItemsError(msg)
+    frames = {i.id for i in items.values() if i.kind == "frame"}
+    kept = [
+        i if i.frame is None or i.frame in frames else i.model_copy(update={"frame": None})
+        for i in items.values()
+    ]
+    # Retiré pour de bon seulement si plus aucune carte ne montre la même chose (une copie
+    # « Dupliquer », ou la carte du client qui remplace le doublon de la synchronisation).
+    remaining = {_key(i) for i in kept}
+    dismissed = [
+        _key(i)
+        for i in gone
+        if i.id not in items
+        and _key(i) not in remaining
+        and (i.kind in AUTO_KINDS or i.role == "prompt" or _key(i).startswith("frame:"))
+    ]
+    return board.model_copy(
+        update={
+            "items": kept,
+            "view": patch.view or board.view,
+            "dismissed": list(dict.fromkeys([*board.dismissed, *(k for k in dismissed if k)])),
+        }
+    )
 
 
 def _key(item: BoardItem) -> str:
