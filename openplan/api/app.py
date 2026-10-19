@@ -240,10 +240,11 @@ def create_app(
     # Droits route par route (note 17, § 4) : sans comptes, la garde ne refuse rien.
     guarded = [Depends(route_guard)]
 
-    @app.get("/api/health", dependencies=guarded)
+    @app.api_route("/api/health", methods=["GET", "HEAD"], dependencies=guarded)
     def health() -> dict[str, object]:
         """Public, sans jeton : ce qui marche sur cette installation, sans rien de sensible
-        (ni noms de jetons, ni chemins, ni adresses)."""
+        (ni noms de jetons, ni chemins, ni adresses). HEAD comme GET pour les sondes (KAN-44) :
+        sans lui, le front monté sur « / » répondait 404."""
         device, device_label = _device_label(settings.device)
         weights = [
             e.id

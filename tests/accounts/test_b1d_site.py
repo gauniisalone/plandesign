@@ -168,6 +168,26 @@ def test_nouveau_answers_head_like_get_with_the_front_mounted(tmp_path: Path) ->
     assert client.head("/").status_code == 200
 
 
+def test_health_answers_head_like_get_with_the_front_mounted(
+    tmp_path: Path, migrated_url: str
+) -> None:
+    """KAN-44 : HEAD /api/health répondait 404 en production (même cause que KAN-35). Avec le
+    front monté, sans comptes puis avec (public, sans session ni cookie)."""
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<!doctype html><title>PlanDesign</title>", encoding="utf-8")
+    local = TestClient(create_app(settings=Settings(data_dir=tmp_path / "d", web_dir=web)))
+    head = local.head("/api/health")
+    assert head.status_code == 200
+    assert head.headers["content-type"] == "application/json"
+    client, service, _ = accounts_client(tmp_path / "c", migrated_url, web_dir=web)
+    assert client.head("/api/health").status_code == 200
+    assert client.get("/api/health").json()["accounts"] is True
+    # Le reste de l'API ne s'ouvre pas à HEAD pour autant.
+    assert client.head("/api/auth/me").status_code != 200
+    service.engine.dispose()
+
+
 def test_fake_mailer_test_route_and_its_guards(tmp_path: Path, migrated_url: str) -> None:
     client, _, _ = accounts_client(tmp_path, migrated_url)
     client.post("/api/auth/email/start", json={"email": ADMIN})

@@ -177,6 +177,8 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("GET", "/api/health"): "public",
+    # Sondes (KAN-44) : déclarée pour l'audit ; à l'exécution, HEAD est lu comme GET.
+    ("HEAD", "/api/health"): "public",
     ("POST", "/api/auth/email/start"): "public",
     ("POST", "/api/auth/email/verify"): "public",
     ("GET", "/api/auth/login"): "public",
