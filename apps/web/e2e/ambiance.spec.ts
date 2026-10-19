@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, showPanel } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** V1 (note 10, point 1) : fiche « Ambiance » de la pièce, lisible ; ce que l'utilisateur
  *  choisit est marqué « choisi » (prioritaire sur l'automatique) ; annulable. */
@@ -8,7 +9,7 @@ import { createEmptyProject, showPanel } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");

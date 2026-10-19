@@ -6,6 +6,7 @@ import {
   openRendersPane,
   showPanel,
 } from "./helpers";
+import { gotoApp, reloadApp } from "./app-ready";
 
 /** Barres compactes (étape b) : raccourcis, infobulles, aucune fonction perdue, poignée du
  *  panneau, thème sombre sur le canevas, le plan, la 3D et les cartes. */
@@ -13,7 +14,7 @@ import {
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");
@@ -269,7 +270,7 @@ test("poignée du panneau : 300 px, 260 à 480 px, largeur retenue", async ({
   await expect(handle).toHaveAttribute("aria-valuenow", "480");
 
   // Retenue après rechargement (le panneau, fermé au départ, se rouvre à sa largeur).
-  await page.reload();
+  await reloadApp(page);
   await showPanel(page);
   await expect(handle).toHaveAttribute("aria-valuenow", "480");
   expect(await width()).toBe(480);

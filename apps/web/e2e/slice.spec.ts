@@ -9,6 +9,7 @@ import {
   showPanel,
   waitNoHeavyJob,
 } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 // T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
 // encore pour le précédent (même s'il a échoué).
@@ -29,7 +30,7 @@ test.beforeAll(() => {
 });
 
 async function createProject(page: Page, name: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await expect(
     page.getByRole("heading", {
       name: "Vos espaces de travail",
@@ -425,7 +426,7 @@ test("première photo d'un projet neuf (tableau) : plan construit sans autre act
   test.skip(!existsSync(FIXTURE), "fixture image.png absente");
   // T5 : « Nouveau projet » ouvre le tableau ; la photo importée sur le tableau construit le
   // plan (bascule « générer au dépôt d'une photo », activée par défaut).
-  await page.goto("/");
+  await gotoApp(page, "/");
   await page.getByRole("button", { name: "Nouveau projet" }).click();
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}$/, {
     timeout: 30_000,
@@ -702,7 +703,7 @@ test("importer un plan DXF : murs observés tout de suite, correction des calque
   test.skip(!existsSync(PLAN_DXF), "fixture plan_rect.dxf absente");
   // Un rendu Blender y est attendu : 180 s, le GPU peut être partagé avec le 8000.
   test.setTimeout(180_000);
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, "E2E plan DXF");
   await expect(
     page.getByRole("heading", { name: "Ajouter une source" }),
@@ -815,7 +816,7 @@ test("importer un plan PDF vectoriel : échelle papier lue, murs tout de suite, 
   page,
 }) => {
   test.skip(!existsSync(PLAN_PDF), "fixture plan_rect.pdf absente");
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, "E2E plan PDF");
   await page
     .locator(".import-screen .dropzone input[type=file]")
@@ -1047,7 +1048,7 @@ test("disposition 1366 × 768 : aucune zone flottante n'en chevauche une autre",
   expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThan(20);
   await page.screenshot({ path: path.join(SHOTS, "08-1366x768.png") });
   // 4.10a : l'accueil dit l'état de l'installation, replié, avec la commande de chaque manque.
-  await page.goto("/");
+  await gotoApp(page, "/");
   // Lot 4 : dates françaises fixes (« 1er oct. 2026 à 10:56 »), quel que soit le navigateur.
   await expect(page.locator(".home-name").first()).toHaveAttribute(
     "title",

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, goSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** T7a : l'accent se compare en un clic dans Réglages, à côté du thème : Indigo (défaut,
  *  tant qu'augus n'a pas tranché), Violet, Provence ; retenu par le navigateur ; clair et
@@ -67,7 +68,7 @@ test("T7a : accent Indigo / Violet / Provence dans Réglages, clair et sombre", 
     .getByRole("group", { name: "Accent" })
     .getByRole("button", { name: "Provence" })
     .click();
-  await page.reload();
+  await reloadApp(page);
   await expect(html).toHaveAttribute("data-accent", "provence");
   await expect(generate).toBeVisible();
   await page.keyboard.press(",");
@@ -75,6 +76,6 @@ test("T7a : accent Indigo / Violet / Provence dans Réglages, clair et sombre", 
     .getByRole("group", { name: "Accent" })
     .getByRole("button", { name: "Indigo" })
     .click();
-  await page.reload();
+  await reloadApp(page);
   await expect(html).not.toHaveAttribute("data-accent", /.+/);
 });

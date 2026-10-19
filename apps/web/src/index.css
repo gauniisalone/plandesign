@@ -3709,6 +3709,12 @@ input:disabled {
   font-weight: 600;
 }
 
+/* Squelette du démarrage, le temps de lire /api/health : jamais de page blanche. */
+.boot-wait {
+  margin: 48px auto 0;
+  color: var(--muted);
+}
+
 .boards-sp {
   flex: 1;
 }

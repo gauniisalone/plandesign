@@ -1,13 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, goSpace, openRendersPane } from "./helpers";
+import { gotoApp, reloadApp } from "./app-ready";
 
 /** E3 (aperçu 3D) : plan de coupe déplaçable, maison de poupée, rayons X, état mémorisé. */
 
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");
@@ -81,7 +82,7 @@ test("aperçu 3D : coupe horizontale et verticale, maison de poupée, rayons X, 
   await page.screenshot({ path: path.join(SHOTS, "e3_rayons_x.png") });
 
   // Rechargé (l'atelier s'ouvre sur l'éditeur, B3) : les réglages de ce projet reviennent.
-  await page.reload();
+  await reloadApp(page);
   await goSpace(page, "plan");
   await page.getByRole("button", { name: "Plan + 3D" }).click();
   await expect(

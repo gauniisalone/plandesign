@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** E4 : tourner sur le plan. Meubles et tapis (rond au-delà de la face avant, angle en
  *  direct, 90° en priorité, Maj libre) ; escalier (crans de 90°, trémie vérifiée en direct,
@@ -10,7 +11,7 @@ import { createEmptyProject } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");

@@ -14,6 +14,8 @@ import type { Step } from "./panels/Toolbar";
 import { AccountContext, type Account } from "./state/account";
 import { refreshCapabilities, watchCapabilities } from "./state/capabilities";
 import { loadHosting } from "./state/hosting";
+import { APP_NAME } from "./brand";
+import { IconPlan } from "./ui/icons";
 
 interface Route {
   projectId: string | null;
@@ -69,6 +71,32 @@ type Session =
   | { kind: "local" }
   | { kind: "signed-out" }
   | { kind: "signed-in"; me: Me };
+
+/** Pendant la lecture de /api/health : la barre du haut et le fond, jamais une page blanche ;
+ *  au-delà de 10 s sans réponse, une ligne courte dit ce qu'on attend. */
+const BOOT_SLOW_MS = 10_000;
+function BootSkeleton() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), BOOT_SLOW_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return (
+    <div className="boards" aria-busy="true">
+      <header className="boards-top">
+        <span className="brand-mark">
+          <IconPlan />
+        </span>
+        <span className="boards-brand">{APP_NAME}</span>
+      </header>
+      {slow && (
+        <p className="boot-wait" role="status">
+          Connexion au serveur…
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function App() {
   const [route, setRoute] = useState<Route>(routeFromHash);
@@ -128,7 +156,13 @@ export function App() {
     [session, signedOut],
   );
 
-  if (session.kind === "loading") return null;
+  // Repère des e2e : l'application est affichée, plus seulement son squelette.
+  const ready = session.kind !== "loading";
+  useEffect(() => {
+    if (ready) document.documentElement.dataset.appReady = "";
+  }, [ready]);
+
+  if (session.kind === "loading") return <BootSkeleton />;
   if (session.kind === "signed-out")
     return (
       <Login

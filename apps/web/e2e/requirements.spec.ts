@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** T1, T7b : les exigences dans le compositeur flottant. Deux onglets (prompt libre, questions
  *  guidées), la ligne « compris » ; le contenu est gardé dans le projet (réponses et
@@ -76,7 +77,7 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
   );
 
   // Réouverture de la page : mêmes valeurs ; « Nouvelle variante » envoie à l'assistant.
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   await expect(composer).toHaveCount(1);
   await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(

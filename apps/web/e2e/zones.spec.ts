@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** V1 (note 10, point 2) : « Brief par zones » dans Aménager, sans modèle : zones et kits de
  *  meubles d'après l'ambiance et la surface, puis des dispositions à comparer. */
@@ -8,7 +9,7 @@ import { createEmptyProject } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");

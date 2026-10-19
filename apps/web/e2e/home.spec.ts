@@ -7,11 +7,40 @@ import {
 } from "./helpers";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { gotoApp } from "./app-ready";
 
 // T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
 // encore pour le précédent (même s'il a échoué).
 test.afterEach(async ({ page }) => {
   await waitNoHeavyJob(page);
+});
+
+test("démarrage lent : le squelette tout de suite, « Connexion au serveur… » après 10 s, puis l'app", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  // Seule la première lecture de /api/health traîne (11 s) ; les relectures passent.
+  let first = true;
+  await page.route("**/api/health", async (route) => {
+    if (first) {
+      first = false;
+      await new Promise((resolve) => setTimeout(resolve, 11_000));
+    }
+    await route.continue();
+  });
+  await page.goto("/");
+  const top = page.locator(".boards-top");
+  await expect(top).toBeVisible();
+  await expect(top).toContainText("PlanDesign");
+  await expect(page.locator("html[data-app-ready]")).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("Connexion au serveur…", {
+    timeout: 15_000,
+  });
+  await expect(page.locator("html[data-app-ready]")).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  await expect(page.getByText("Connexion au serveur…")).toHaveCount(0);
+  await expect(page.locator(".boards-foot")).toBeVisible();
 });
 
 /** T5 : la galerie de tableaux remplace l'accueil à prompt (principe d'augus : un projet =
@@ -62,7 +91,7 @@ const idOf = (page: Page) => /projects\/([0-9a-f-]{36})/.exec(page.url())![1]!;
 /** « + Nouveau projet » dans la galerie : le tableau s'ouvre ; renvoie le compositeur (T7b),
  *  ouvert d'office sur un projet sans rendu, sur l'onglet « Prompt libre ». */
 async function newBoard(page: Page): Promise<Locator> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await page.getByRole("button", { name: "Nouveau projet" }).click();
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}$/, {
     timeout: 30_000,
@@ -134,7 +163,7 @@ test("galerie : nouveau projet → tableau, consigne et photos → plan, vignett
 }) => {
   test.skip(!existsSync(PHOTO), "fixture image.png absente");
   test.setTimeout(240_000);
-  await page.goto("/");
+  await gotoApp(page, "/");
   await expect(
     page.getByRole("heading", { name: "Vos espaces de travail" }),
   ).toBeVisible();
@@ -252,7 +281,7 @@ test("à l'ouverture : un nom tapé à la main reste, même s'il ressemble à un
   const created = (await (
     await page.request.post("/api/projects", { data: { name } })
   ).json()) as { id: string };
-  await page.goto(`/#/projects/${created.id}`);
+  await gotoApp(page, `/#/projects/${created.id}`);
   await expect(page.locator(".topbar .project-name")).toHaveText(name);
   expect((await project(page, created.id)).name_auto).toBe(false);
 });
@@ -452,7 +481,7 @@ test("L2 : case Gemini (galerie et note Exigences) → aperçu par Gemini, menti
     });
   });
   // La galerie : la case dans les Réglages, la mention du pied suit.
-  await page.goto("/");
+  await gotoApp(page, "/");
   const foot = page.locator(".boards-foot");
   await expect(foot).toContainText(
     "vos photos et plans restent sur cette machine ; rien ne part",
@@ -493,7 +522,7 @@ test("T6 : en ligne, la mention dit le serveur PlanDesign et les rapports d'erre
       json: { ...body, exposed: true, error_reports: true },
     });
   });
-  await page.goto("/");
+  await gotoApp(page, "/");
   const foot = page.locator(".boards-foot");
   await expect(foot).toContainText(
     "vos photos et plans sont gardés sur le serveur PlanDesign ; rien n'est envoyé ailleurs",

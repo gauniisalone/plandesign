@@ -9,6 +9,7 @@ import {
   openViewer,
   waitNoHeavyJob,
 } from "./helpers";
+import { gotoApp, reloadApp } from "./app-ready";
 
 // T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
 // encore pour le précédent (même s'il a échoué).
@@ -30,7 +31,7 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
 }) => {
   test.skip(!existsSync(PLAN_DXF), "fixture plan_rect.dxf absente");
   test.setTimeout(300_000);
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, "E2E zéro geste");
   await expect(
     page.getByRole("heading", { name: "Ajouter une source" }),
@@ -206,7 +207,7 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
     },
   );
   expect(moved.ok()).toBeTruthy();
-  await page.reload();
+  await reloadApp(page);
   // T7d1 : la réouverture se fait sur l'espace de travail ; l'en-tête du cadre Rendus dit
   // la vue périmée et la refait en un clic.
   await expectSpace(page, "board");
@@ -332,7 +333,7 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await page.keyboard.press("/");
   await expect(assistant).toBeVisible();
   // Le fil est relu du journal local après un rechargement.
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   await page.getByRole("button", { name: "Assistant", exact: true }).click();
   await expect(

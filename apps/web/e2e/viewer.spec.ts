@@ -8,6 +8,7 @@ import {
   goSpace,
   openViewer,
 } from "./helpers";
+import { gotoApp, reloadApp } from "./app-ready";
 
 /** T7d2 : la visionneuse plein écran remplace l'écran Résultats. Rendus posés directement
  *  dans le dossier du projet (comme les écrirait Blender), un par vue automatique, pour
@@ -20,7 +21,7 @@ const PHOTO = path.resolve("../../tests/fixtures/rect_room/image.png");
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");
@@ -107,7 +108,7 @@ test("T7d2 : visionneuse plein écran des rendus, à la place de l'écran Résul
   expect(cams.length).toBeGreaterThanOrEqual(2);
   cams.forEach((c, i) => seedRender(id, c.id, c.name ?? `Vue ${i + 1}`, i));
   const n = cams.length;
-  await page.reload();
+  await reloadApp(page);
 
   // Arrivée sur l'espace de travail (des rendus existent) ; plus d'écran de résultats.
   await expectSpace(page, "board");

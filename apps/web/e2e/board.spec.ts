@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** B2 : le tableau du projet. Le plan y est posé ; une note s'écrit, s'annule et se
  *  rétablit sans toucher l'historique du plan ; redimensionner le cadre du plan ne change
@@ -86,7 +87,7 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
   await page.request.post(`/api/projects/${id}/images`, {
     multipart: { file: { name: "p.png", mimeType: "image/png", buffer: PNG } },
   });
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   await expect(note).toBeVisible();
   await expect(board.locator(".board-item.kind-photo")).toHaveCount(1);
@@ -141,7 +142,7 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
   await note.dragTo(stage, {
     targetPosition: { x: box.width - 200, y: box.height - 200 },
   });
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   await expect
     .poll(async () => {

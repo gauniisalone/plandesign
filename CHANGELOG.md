@@ -7,6 +7,28 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 19 octobre 2026 (site, page relue par augus)
+
+Avec l'option de build seulement (la sortie par défaut reste celle de la production) :
+
+- Plus aucune promesse de rendus ni de plan depuis une photo : intro de « Comment ça marche »,
+  étape 2, cartes « Plan tracé ou généré » et « Un espace de travail », appel final, « Vos
+  données » ; « Rendus réalistes : bientôt » au plus une fois par section.
+- Six cartes de fonctionnalités, dont « Partage et collaboration » (lien d'invitation, rôles,
+  présence en temps réel).
+- Illustrations redessinées : étape 1, une note de texte et un plan DXF ; étape 3, la pièce en
+  3D isométrique. L'encart « Visuel à fournir » est retiré.
+- Téléphone : l'en-tête ne déborde plus (« Ouvrir mon espace » masqué sous 520 px, comme en
+  production) ; la fenêtre de connexion dit seulement « Sans mot de passe. » en tête.
+
+Application :
+
+- Démarrage : pendant la lecture de /api/health, l'application affiche son squelette (barre du
+  haut et fond), jamais une page blanche ; au-delà de 10 s sans réponse, « Connexion au
+  serveur… ».
+- e2e : après chaque chargement, les tests attendent l'application affichée (repère
+  `data-app-ready`) et non son squelette ; un e2e couvre le démarrage lent.
+
 ### 19 octobre 2026 (démarrage plus rapide)
 
 - L'application ne lit plus `/api/health` qu'une fois avant de s'afficher : les mentions

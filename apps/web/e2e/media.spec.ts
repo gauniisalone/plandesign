@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** C1 : vidéo, PDF et liens sur le tableau, sans aucune requête vers l'extérieur ; un fichier
  *  joint par l'API entre dans le cadre Fichiers ; la vignette du plan suit le thème. */
@@ -78,7 +79,7 @@ test("médias : vidéo, PDF avec vignette, lien jamais récupéré, fichiers de 
       },
     },
   });
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   await expect(
     board.locator(".board-item.kind-file", { hasText: "notes.txt" }),

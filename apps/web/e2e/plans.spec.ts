@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** T7e : plusieurs plans par espace de travail. « + Nouveau plan » : une petite fenêtre à
  *  deux champs (nom libre, sorte : « Variante de ce plan », « Nouvel étage », « Plan vide ») ;
@@ -9,7 +10,7 @@ import { createEmptyProject, expectSpace, goSpace } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");

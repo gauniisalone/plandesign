@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { gotoApp } from "./app-ready";
 
 /** Projet vide au nom choisi, ouvert sur « Ajouter une source ». Depuis US1, l'accueil ne propose
  *  plus de champ de nom (« Commencer par un plan vide » donne un nom automatique, testé dans
@@ -9,7 +10,7 @@ export async function createEmptyProject(
 ): Promise<string> {
   const response = await page.request.post("/api/projects", { data: { name } });
   const { id } = (await response.json()) as { id: string };
-  await page.goto(`/#/projects/${id}/import`);
+  await gotoApp(page, `/#/projects/${id}/import`);
   return id;
 }
 

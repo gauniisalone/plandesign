@@ -1,6 +1,7 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { goSpace } from "../e2e/helpers";
+import { gotoApp } from "../e2e/app-ready";
 
 /** MVP en ligne sans GPU (décision d'augus, 19 oct.) : ni Blender ni poids. Ce qui marche
  *  marche (plan depuis les exigences, import DXF, 3D, export), ce qui manque le dit en une
@@ -11,7 +12,7 @@ const PHOTO = path.resolve("../../tests/fixtures/rect_room/image.png");
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
 
 async function signIn(page: Page, email: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
@@ -64,7 +65,7 @@ test("en ligne sans GPU : ce qui marche marche, rien ne mène à une erreur de c
       headers: origin,
     })
   ).json()) as { id: string };
-  await page.goto(`/#/projects/${a.id}/board`);
+  await gotoApp(page, `/#/projects/${a.id}/board`);
   const board = page.getByRole("region", { name: "Espace de travail" });
   await expect(
     board.getByText("Rendus réalistes : bientôt en ligne"),
@@ -125,7 +126,7 @@ test("en ligne sans GPU : ce qui marche marche, rien ne mène à une erreur de c
       headers: origin,
     })
   ).json()) as { id: string };
-  await page.goto(`/#/projects/${b.id}/board`);
+  await gotoApp(page, `/#/projects/${b.id}/board`);
   const photosB = page
     .getByRole("region", { name: "Espace de travail" })
     .locator(".board-item.kind-frame.role-photos");

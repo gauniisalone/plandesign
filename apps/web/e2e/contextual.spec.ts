@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createEmptyProject, expectSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** A1 : rendu contextualisé depuis le tableau. Le prompt enrichi par le plan est montré et
  *  modifiable avant toute génération ; le plan choisi comme source renvoie vers une vue 3D ;
@@ -35,7 +36,7 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
       },
     },
   });
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
 
@@ -191,7 +192,7 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
     });
     await route.fulfill({ json });
   });
-  await page.reload();
+  await reloadApp(page);
   await expectSpace(page, "board");
   const card = board.locator(".board-item.kind-contextual");
   await expect(card).toContainText("proportions estimées");

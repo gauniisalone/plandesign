@@ -2,6 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
+import { reloadApp } from "./app-ready";
 
 /** T7a (demande d'augus, 18 oct.) : importer droit dans les cadres Photos et Inspirations.
  *  Cadre vide : « Importer » sous sa ligne ; cadre rempli : « + » dans l'en-tête. Le
@@ -45,7 +46,7 @@ test("T7a : importer dans les cadres Photos et Inspirations", async ({
     data: { render: { auto_on_drop: false, auto_path: false } },
   });
   expect(patched.ok()).toBeTruthy();
-  await page.reload();
+  await reloadApp(page);
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");

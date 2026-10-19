@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, goSpace, openRendersPane } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** V1 (note 10, point 4) : vues automatiques posées en un clic dans Rendre, format 4:5,
  *  vues manquées expliquées, annulables ; « Rendre toutes les vues » proposé. */
@@ -8,7 +9,7 @@ import { createEmptyProject, goSpace, openRendersPane } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");

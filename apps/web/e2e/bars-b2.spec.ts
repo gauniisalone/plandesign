@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject } from "./helpers";
+import { gotoApp, reloadApp } from "./app-ready";
 
 /** Retouches b2 des barres compactes : état des commandes 3D en plan seul, nom de pièce qui
  *  évite l'escalier, champs lisibles dans un panneau de 300 px, thème Clair / Sombre /
@@ -9,7 +10,7 @@ import { createEmptyProject } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createRoom(page: Page, name: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   const svg = page.locator("svg.plan");
@@ -100,7 +101,7 @@ test("b2 : thème Clair / Sombre / Système, retenu par le navigateur", async ({
   await button(page, "Sombre").click();
   await expect(html).toHaveAttribute("data-theme", "dark");
   await expect.poll(canvasLight).not.toBe(light);
-  await page.reload();
+  await reloadApp(page);
   await expect(html).toHaveAttribute("data-theme", "dark");
   await page.screenshot({ path: path.join(SHOTS, "b2_theme_sombre.png") });
 
@@ -117,6 +118,6 @@ test("b2 : thème Clair / Sombre / Système, retenu par le navigateur", async ({
   await button(page, "Système").click();
   await expect(html).not.toHaveAttribute("data-theme", /.+/);
   await expect.poll(canvasLight).not.toBe(light);
-  await page.reload();
+  await reloadApp(page);
   await expect(html).not.toHaveAttribute("data-theme", /.+/);
 });

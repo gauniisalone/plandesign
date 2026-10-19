@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { createEmptyProject } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** Téléphone (4.9) : émulation tactile 412 × 915. Créer un projet, tracer une pièce au doigt
  *  avec l'outil Mur de la palette, aucun débordement horizontal, capture d'écran. */
@@ -19,7 +20,7 @@ const SHOTS = path.join(
 test("téléphone : tracer une pièce au doigt, sans débordement", async ({
   page,
 }) => {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await expect(
     page.getByRole("heading", {
       name: "Vos espaces de travail",

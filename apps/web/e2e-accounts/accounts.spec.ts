@@ -5,6 +5,7 @@ import {
   type Page,
   type WebSocketRoute,
 } from "@playwright/test";
+import { gotoApp, reloadApp } from "../e2e/app-ready";
 
 /** B1d-a : comptes actifs. Sans session, la page de connexion et rien d'autre ; connexion en
  *  deux temps (adresse, puis code) ; galerie ; « Me déconnecter » ; arrivée par /nouveau
@@ -21,7 +22,7 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 async function signIn(page: Page, email: string): Promise<void> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
@@ -70,7 +71,7 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
     const path = new URL(r.url()).pathname;
     if (path.startsWith("/api/")) apiCalls.push(path);
   });
-  await page.goto("/");
+  await gotoApp(page, "/");
   await expect(
     page.getByRole("heading", { name: "Se connecter à PlanDesign" }),
   ).toBeVisible();
@@ -149,7 +150,7 @@ test("arrivée par /nouveau : compositeur ouvert et prérempli, rien ne se gén�
     description,
     inconnu: "ignoré",
   });
-  await page.goto(`/#/nouveau?${query.toString()}`);
+  await gotoApp(page, `/#/nouveau?${query.toString()}`);
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}(\/board)?$/);
   const composer = page.getByRole("region", { name: "Compositeur" });
   await expect(composer).toBeVisible({ timeout: 30_000 });
@@ -194,7 +195,7 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
     headers: { Origin: new URL(page.url()).origin },
   });
   const { id } = (await made.json()) as { id: string };
-  await page.goto(`/#/projects/${id}`);
+  await gotoApp(page, `/#/projects/${id}`);
   await expect(
     page
       .getByRole("button", { name: "Ouvrir le compositeur" })
@@ -211,7 +212,7 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
   await page.route("**/api/projects/*/role", (route) =>
     route.fulfill({ json: { role: "viewer" } }),
   );
-  await page.reload();
+  await reloadApp(page);
   await expect(page.locator(".editor.read-only")).toBeVisible({
     timeout: 30_000,
   });

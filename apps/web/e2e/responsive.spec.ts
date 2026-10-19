@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createEmptyProject } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** Responsive (directive du 29 sept. 2026) : à chaque largeur d'ordinateur, aucun défilement
  *  horizontal, aucune zone flottante qui en chevauche une autre (vue Plan et vue Plan + 3D),
@@ -70,7 +71,7 @@ for (const [width, height] of SIZES) {
     page,
   }) => {
     await page.setViewportSize({ width, height });
-    await page.goto("/");
+    await gotoApp(page, "/");
     await expect(
       page.getByRole("heading", {
         name: "Vos espaces de travail",

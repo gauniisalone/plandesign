@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject } from "./helpers";
+import { gotoApp } from "./app-ready";
 
 /** E1 : tracé « cranté » (angles par crans, accroches intelligentes, Maj libre), joué dans un
  *  vrai navigateur ; les murs enregistrés sont relus par l'API. */
@@ -8,7 +9,7 @@ import { createEmptyProject } from "./helpers";
 const SHOTS = path.resolve("e2e/screenshots");
 
 async function createProject(page: Page, name: string): Promise<string> {
-  await page.goto("/");
+  await gotoApp(page, "/");
   await createEmptyProject(page, name);
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   await expect(page.locator("svg.plan")).toBeVisible();

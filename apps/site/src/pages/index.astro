@@ -134,14 +134,33 @@ const jsonLd = {
       ) : (
       <h2 id="titre-comment">Une photo suffit pour commencer.</h2>
       )}
+      {LOGIN_WINDOW ? (
+        <p class="intro">
+          Pas de logiciel à apprendre : vous décrivez, PlanDesign construit le plan, l'aménage et le montre en 3D. Vous
+          corrigez ce que vous voulez, quand vous voulez.
+        </p>
+      ) : (
       <p class="intro">
         Pas de logiciel à apprendre : vous déposez, PlanDesign construit le plan puis propose des rendus. Vous corrigez
         ce que vous voulez, quand vous voulez.
       </p>
+      )}
 
       <ol class="steps">
         <li class="step">
           <div class="step-art">
+            {LOGIN_WINDOW ? (
+            <svg viewBox="0 0 240 180" role="img" aria-labelledby="art1">
+              <title id="art1">Illustration : une description en quelques mots et un plan 2D (DXF)</title>
+              <rect x="22" y="30" width="96" height="120" rx="10" fill="#f6f0e5" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M36 54 H104 M36 72 H96 M36 90 H104 M36 108 H84" fill="none" stroke="#2a2420" stroke-width="2" stroke-linecap="round"></path>
+              <rect x="36" y="124" width="40" height="12" rx="3" fill="#a63a2e"></rect>
+              <rect x="128" y="22" width="92" height="136" rx="6" fill="#ede3d1" stroke="#2a2420" stroke-width="2"></rect>
+              <path d="M144 44 H204 V112 H144 Z M144 82 H172 V112" fill="none" stroke="#2a2420" stroke-width="3" stroke-linejoin="round"></path>
+              <rect x="160" y="40" width="22" height="8" fill="#9fb3ce" stroke="#2a2420" stroke-width="1.5"></rect>
+              <text x="174" y="142" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" fill="#3e5a7e">DXF</text>
+            </svg>
+            ) : (
             <svg viewBox="0 0 240 180" role="img" aria-labelledby="art1">
               <title id="art1">Illustration : une photo de pièce déposée dans l'espace de travail</title>
               <rect x="34" y="22" width="172" height="136" rx="10" fill="#f6f0e5" stroke="#2a2420" stroke-width="2"></rect>
@@ -152,6 +171,7 @@ const jsonLd = {
               <circle cx="186" cy="146" r="18" fill="#a63a2e"></circle>
               <path d="M186 154 V138 M179 145 L186 138 L193 145" fill="none" stroke="#ede3d1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
+            )}
           </div>
           <span class="step-num" aria-hidden="true">1</span>
           {LOGIN_WINDOW ? (
@@ -180,10 +200,27 @@ const jsonLd = {
           </div>
           <span class="step-num" aria-hidden="true">2</span>
           <h3>Le plan se construit</h3>
+          {LOGIN_WINDOW ? (
+            <p>Le plan est proposé d'après votre description, ou lu dans votre fichier. Vous pouvez aussi le tracer à la main.</p>
+          ) : (
           <p>Murs, ouvertures et dimensions sont estimés automatiquement. Vous pouvez aussi tracer le plan à la main ou le générer depuis un programme.</p>
+          )}
         </li>
         <li class="step">
           <div class="step-art">
+            {LOGIN_WINDOW ? (
+            <svg viewBox="0 0 240 180" role="img" aria-labelledby="art3">
+              <title id="art3">Illustration : la pièce aménagée, en 3D</title>
+              <polygon points="120,154 204,112 120,70 36,112" fill="#dccfb8" stroke="#2a2420" stroke-width="2" stroke-linejoin="round"></polygon>
+              <polygon points="36,112 120,70 120,18 36,60" fill="#f6f0e5" stroke="#2a2420" stroke-width="2" stroke-linejoin="round"></polygon>
+              <polygon points="120,70 204,112 204,60 120,18" fill="#ede3d1" stroke="#2a2420" stroke-width="2" stroke-linejoin="round"></polygon>
+              <polygon points="146,56 178,72 178,94 146,78" fill="#9fb3ce" stroke="#2a2420" stroke-width="1.6"></polygon>
+              <polygon points="72,112 104,96 136,112 104,128" fill="#a63a2e" stroke="#2a2420" stroke-width="1.6" stroke-linejoin="round"></polygon>
+              <polygon points="72,112 104,128 104,138 72,122" fill="#8e3026" stroke="#2a2420" stroke-width="1.6" stroke-linejoin="round"></polygon>
+              <polygon points="104,128 136,112 136,122 104,138" fill="#7a2920" stroke="#2a2420" stroke-width="1.6" stroke-linejoin="round"></polygon>
+              <polygon points="150,118 166,110 182,118 166,126" fill="#6f7d4e" stroke="#2a2420" stroke-width="1.6" stroke-linejoin="round"></polygon>
+            </svg>
+            ) : (
             <svg viewBox="0 0 240 180" role="img" aria-labelledby="art3">
               <title id="art3">Illustration : trois vues rendues de la même pièce</title>
               <rect x="20" y="40" width="96" height="72" rx="8" fill="#ede3d1" stroke="#2a2420" stroke-width="2"></rect>
@@ -196,6 +233,7 @@ const jsonLd = {
               <path d="M72 150 L104 130 H136 L168 150" fill="none" stroke="#2a2420" stroke-width="1.6"></path>
               <rect x="108" y="136" width="24" height="12" rx="3" fill="#c4743f"></rect>
             </svg>
+            )}
           </div>
           <span class="step-num" aria-hidden="true">3</span>
           {LOGIN_WINDOW ? (
@@ -211,12 +249,14 @@ const jsonLd = {
         </li>
       </ol>
 
+      {!LOGIN_WINDOW && (
       <div class="placeholder" role="note">
         <p>
           <strong>Visuel à fournir</strong>
           Exemple réel : la photo d'une pièce et ses trois rendus (accord du propriétaire des images requis avant publication).
         </p>
       </div>
+      )}
 
       {!LOGIN_WINDOW && (
       <p class="note">
@@ -236,12 +276,20 @@ const jsonLd = {
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect x="3" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="16" y="3" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect><rect x="3" y="16" width="22" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect></svg>
           <h3>Un espace de travail par projet</h3>
+          {LOGIN_WINDOW ? (
+            <p>Exigences, photos, inspirations et plan réunis au même endroit.</p>
+          ) : (
           <p>Exigences, photos, inspirations, plan et rendus réunis au même endroit.</p>
+          )}
         </li>
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M4 4h20v20H4z M4 14h9 M13 14v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
           <h3>Plan tracé ou généré</h3>
+          {LOGIN_WINDOW ? (
+            <p>Importé depuis un plan 2D (DXF, PDF), tracé à la main, ou généré depuis une description.</p>
+          ) : (
           <p>Construit depuis vos photos ou un plan 2D, tracé à la main, ou généré depuis une liste de pièces.</p>
+          )}
         </li>
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M2 14s4.5-8 12-8 12 8 12 8-4.5 8-12 8S2 14 2 14z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><circle cx="14" cy="14" r="3.5" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>
@@ -262,6 +310,12 @@ const jsonLd = {
           <h3>Planche d'inspiration</h3>
           <p>Des images d'ambiance générées d'après votre projet et vos références, calculées sans service tiers.</p>
         </li>
+        )}{LOGIN_WINDOW && (
+          <li class="feature">
+            <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><circle cx="10" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="2"></circle><circle cx="20" cy="11" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle><path d="M3 24c0-4 3-7 7-7s7 3 7 7 M17 23c0-3 1.5-5 3.5-5s4 2 4 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+            <h3>Partage et collaboration</h3>
+            <p>Invitez par un lien, choisissez le rôle de chacun, et voyez qui est là en temps réel.</p>
+          </li>
         )}
         <li class="feature">
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M14 3v14 M8 11l6 6 6-6 M4 21v3h20v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
@@ -283,7 +337,11 @@ const jsonLd = {
       <h2 id="titre-donnees">Hébergé en France, sans traceur.</h2>
       <ul class="data-list">
         <li><p><strong>Hébergé en France</strong><span>Les projets sont hébergés chez Hostinger, dans un centre de données à Paris.</span></p></li>
+        {LOGIN_WINDOW ? (
+          <li><p><strong>Aucune photo envoyée à un tiers</strong><span>Vos photos ne sont transmises à aucun service tiers.</span></p></li>
+        ) : (
         <li><p><strong>Aucune photo envoyée à un tiers</strong><span>Vos photos ne sont transmises à aucun service tiers, ni pour le plan ni pour les rendus.</span></p></li>
+        )}
         <li><p><strong>Aucun traceur publicitaire</strong><span>Pas de publicité, pas de mesure d'audience tierce, pas de cookie sur ce site.</span></p></li>
         <li><p><strong>Assistant externe sur demande</strong><span>Un modèle de langage externe (Gemini, texte seul) n'est utilisé que si vous cochez la case prévue.</span></p></li>
       </ul>
@@ -295,7 +353,7 @@ const jsonLd = {
     <div class="wrap">
       <h2 id="titre-cta">Prêt à dessiner votre pièce ?</h2>
       {LOGIN_WINDOW ? (
-        <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail, puis déposez votre première photo.</p>
+        <p class="intro">Décrivez le projet en deux lignes, connectez-vous par e-mail : le plan se construit, puis la 3D.</p>
       ) : (
       <p class="intro">À l'ouverture : décrivez le projet en deux lignes, connectez-vous par e-mail, puis déposez votre première photo.</p>
       )}

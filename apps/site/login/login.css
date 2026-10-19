@@ -136,3 +136,11 @@
 .login-mention a {
   color: var(--link);
 }
+
+/* En-tête sur téléphone : comme en production (bouton « Ouvrir mon espace » masqué sous 520 px),
+   pour le bouton actif de la fenêtre de connexion. */
+@media (max-width: 520px) {
+  .header-actions .btn-outline {
+    display: none;
+  }
+}
