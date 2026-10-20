@@ -87,7 +87,7 @@ def test_run_command_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[st
     )
     assert code == 0
     printed = capsys.readouterr().out
-    assert "hypothèse (high) : Hauteur de caméra supposée 1.40 m" in printed
+    assert "hypothèse (high) : Hauteur de caméra supposée 1,40 m" in printed
     assert "calibré sur « Mur" in printed
     for name in ("project.json", "plan.svg", "scene.glb", "export.json"):
         assert (out / name).is_file(), name
@@ -102,7 +102,7 @@ def test_run_command_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[st
     level = only_level(project)
     measured = [e for e in level.elements.values() if e.type == "wall" and e.source == "measured"]
     assert len(measured) == 1 and measured[0].name in ("Mur haut", "Mur bas")
-    assert "3.85 m" in (out / "plan.svg").read_text(encoding="utf-8")
+    assert "3,85 m" in (out / "plan.svg").read_text(encoding="utf-8")
 
 
 def test_serve_settings_keep_ai_and_blender(tmp_path: Path) -> None:

@@ -57,6 +57,7 @@ from typing import Literal
 
 from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.schemas.common import StrictModel
+from openplan.schemas.numbers import metres
 
 ScaleSource = Literal["reference", "entered", "assumed"]
 Level = Literal["fiable", "a_verifier", "approximatif"]
@@ -85,10 +86,6 @@ FLOOR_UNSEEN_ERROR = 0.14
 """Erreur ajoutée quand le sol est hors champ (KAN-45)."""
 EAVE_UNSEEN_ERROR = 0.40
 """Erreur ajoutée sur les combles quand l'égout n'est pas vu (KAN-61)."""
-
-
-def _m(value: float) -> str:
-    return f"{value:.2f}".replace(".", ",") + " m"
 
 
 class Factor(StrictModel):
@@ -123,7 +120,7 @@ def scale_factor(source: ScaleSource, camera_height_m: float | None = None) -> F
             advice="échelle calée sur votre mesure : vérifiez les autres cotes à vue",
         )
     if source == "entered":
-        height = _m(camera_height_m) if camera_height_m else ""
+        height = metres(camera_height_m) if camera_height_m else ""
         return Factor(
             key="scale",
             label=f"hauteur de prise de vue saisie {height}".strip(),
@@ -132,7 +129,7 @@ def scale_factor(source: ScaleSource, camera_height_m: float | None = None) -> F
         )
     return Factor(
         key="scale",
-        label=f"hauteur supposée {_m(DEFAULT_CAMERA_HEIGHT_M)} (par défaut)",
+        label=f"hauteur supposée {metres(DEFAULT_CAMERA_HEIGHT_M)} (par défaut)",
         error=SCALE_ERROR["assumed"],
         advice="échelle supposée : ajoutez une mesure de référence",
     )

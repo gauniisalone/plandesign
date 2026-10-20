@@ -349,7 +349,7 @@ test("tracer, détecter la pièce, mesurer, calibrer, annuler, vue 3D", async ({
   await expect(page.getByText(/Ce mur a une mesure/)).toBeVisible();
   await page.getByRole("button", { name: "Calibrer le plan" }).click();
   // Le mur mesuré et son opposé (même longueur tracée) affichent tous deux 3,10 m.
-  await expect(page.locator("text.dim", { hasText: "3.10 m" })).toHaveCount(2);
+  await expect(page.locator("text.dim", { hasText: "3,10 m" })).toHaveCount(2);
   await expect(page.locator("text.dim", { hasText: "≈" })).toHaveCount(
     0,
     "murs saisis : pas de ≈",
@@ -512,11 +512,11 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
   await expect(card).toBeVisible();
   await expect(card.getByText(/Cliquez les deux bouts/)).toBeVisible();
   await card.getByLabel("Hauteur sous plafond").fill("3");
-  await expect(card.getByText(/× \d\.\d{3}/)).toBeVisible();
+  await expect(card.getByText(/× \d,\d{3}/)).toBeVisible();
   await card.getByRole("button", { name: "Appliquer les dimensions" }).click();
   const done = page.locator(".auto-banner.done");
-  await expect(done).toContainText(/Plan mis à l'échelle × \d\.\d{3}/);
-  await expect(done).toContainText("la hauteur sous plafond = 3.00 m");
+  await expect(done).toContainText(/Plan mis à l'échelle × \d,\d{3}/);
+  await expect(done).toContainText("la hauteur sous plafond = 3,00 m");
   await expect(page.locator(".auto-banner.estimated")).toHaveCount(0);
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await done.getByRole("button", { name: "annuler" }).click();
@@ -592,7 +592,7 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
     wallBefore ?? "",
   );
   await expect(page.locator(".auto-banner.done")).toContainText(
-    "la distance cliquée = 3.00 m",
+    "la distance cliquée = 3,00 m",
   );
   await page
     .locator(".auto-banner.done")
@@ -827,7 +827,7 @@ test("importer un plan PDF vectoriel : échelle papier lue, murs tout de suite, 
   await expect(
     page.getByText(/échelle 1:50 \(lue sur le plan\)/),
   ).toBeVisible();
-  await expect(page.getByText(/emprise 4\.00 × 3\.35 m/)).toBeVisible();
+  await expect(page.getByText(/emprise 4,00 × 3,35 m/)).toBeVisible();
   await page.locator("details.plan-fix summary").click();
   // Le trait fin (cote) n'est pas coché, le trait gras (murs) l'est.
   await expect(page.getByLabel(/calque trait 0\.5 pt/)).not.toBeChecked();
@@ -835,9 +835,9 @@ test("importer un plan PDF vectoriel : échelle papier lue, murs tout de suite, 
   // Autre échelle papier : le même fichier est relu et les murs refaits, l'emprise double,
   // puis retour.
   await page.getByLabel("Échelle papier").selectOption("100");
-  await expect(page.getByText(/emprise 8\.00 × 6\.7\d m/)).toBeVisible();
+  await expect(page.getByText(/emprise 8,00 × 6,7\d m/)).toBeVisible();
   await page.getByLabel("Échelle papier").selectOption("50");
-  await expect(page.getByText(/emprise 4\.00 × 3\.35 m/)).toBeVisible();
+  await expect(page.getByText(/emprise 4,00 × 3,35 m/)).toBeVisible();
   await page.getByRole("button", { name: "Continuer vers le plan" }).click();
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await expect(page.locator("text.room-label")).toHaveCount(1);

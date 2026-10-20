@@ -30,6 +30,8 @@ from openplan.schemas.common import StrictModel
 from openplan.schemas.elements import Furniture, Room
 from openplan.schemas.home import GuidedAnswers
 from openplan.schemas.intent import MOOD_LABELS, STYLES, ZONE_LABELS
+from openplan.schemas.numbers import area as area_text
+from openplan.schemas.numbers import decimal
 from openplan.schemas.scene import Level, Project
 
 AREA_GUARD_KEY = "area_guard"
@@ -251,7 +253,8 @@ def _choice(label: str, wanted: str, ok: bool, why: str = "") -> RequestItem:
 
 
 def _area_item(level: Level, wanted_m2: float) -> RequestItem:
-    wanted = f"{wanted_m2:g} m²"
+    # Autant de décimales que l'ancien `:g` (« 30 m² », « 12,5 m² »), virgule décimale.
+    wanted = area_text(wanted_m2, len(f"{wanted_m2:g}".partition(".")[2]))
     if is_generated(level):
         total = sum(d.area_m2 for d in compute_derived(level).rooms.values())
         close = abs(total - wanted_m2) / wanted_m2 <= AREA_TOLERANCE
@@ -259,24 +262,24 @@ def _area_item(level: Level, wanted_m2: float) -> RequestItem:
             label="Surface",
             wanted=wanted,
             status="ok" if close else "partial",
-            detail=f"plan {total:.1f} m²".replace(".", ","),
+            detail=f"plan {area_text(total)}",
         )
     found = _single_room(level)
     if found is None:
         return RequestItem(
             label="Surface", wanted=wanted, status="missing", detail="pas de pièce fermée à mesurer"
         )
-    room, area = found
+    room, measured = found
     guard = room.metadata.get(AREA_GUARD_KEY)
     if isinstance(guard, dict):
         factor = float(str(guard.get("factor", 1.0)))
-        before = float(str(guard.get("before_m2", area)))
-        detail = f"plan recalé ×{factor:.2f} sur votre surface (estimée {before:.0f} m²)"
+        before = float(str(guard.get("before_m2", measured)))
+        detail = f"plan recalé ×{decimal(factor)} sur votre surface (estimée {before:.0f} m²)"
     elif STARTER_KEY in room.metadata:
         detail = "plan de départ simplifié de cette surface"
     else:
-        detail = f"{area:.0f} m² mesurés"
-    close = abs(area - wanted_m2) / wanted_m2 <= AREA_TOLERANCE
+        detail = f"{measured:.0f} m² mesurés"
+    close = abs(measured - wanted_m2) / wanted_m2 <= AREA_TOLERANCE
     return RequestItem(
         label="Surface", wanted=wanted, status="ok" if close else "partial", detail=detail
     )

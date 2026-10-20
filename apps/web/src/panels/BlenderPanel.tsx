@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { StepResult } from "../api/types.gen";
+import { decimal } from "../format";
 
 interface Props {
   projectId: string;
@@ -107,7 +108,7 @@ export function BlenderPanel({ projectId, levelId }: Props) {
         <div>
           <p className="muted">
             {run.result.model_ids.join(", ")} ·{" "}
-            {run.result.duration_s.toFixed(1)} s
+            {decimal(run.result.duration_s, 1)} s
           </p>
           {preview && (
             <a

@@ -245,8 +245,8 @@ def test_contradiction_message_names_walls_and_gap_in_cm() -> None:
     )
     (violation,) = check_views(after)
     text = violation.message
-    assert text.startswith("Photo « Photo 2 » voit Mur gauche et Mur droit à 4.43 m")
-    assert "dans le plan ils sont à 3.73 m" in text and "écart +70 cm" in text
+    assert text.startswith("Photo « Photo 2 » voit Mur gauche et Mur droit à 4,43 m")
+    assert "dans le plan ils sont à 3,73 m" in text and "écart +70 cm" in text
     assert "Garder la photo" in text and "l'écarter" in text
 
 

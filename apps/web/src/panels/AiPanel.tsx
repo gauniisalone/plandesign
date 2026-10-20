@@ -9,6 +9,7 @@ import {
 } from "../api/client";
 import type { Op } from "../api/ops";
 import type { Level, Project } from "../api/types.gen";
+import { decimal, typed } from "../format";
 import { formatTime, walls } from "../model";
 
 interface Props {
@@ -222,8 +223,8 @@ function PerceptionView({
     <section>
       <h2>Perception</h2>
       <p className="muted">
-        {run.result.model_ids.join(", ")} · {run.result.duration_s.toFixed(1)} s
-        · confiance déclarée {pct(run.result.confidence)}
+        {run.result.model_ids.join(", ")} · {decimal(run.result.duration_s, 1)}{" "}
+        s · confiance déclarée {pct(run.result.confidence)}
       </p>
       {overlay && (
         <a
@@ -249,8 +250,10 @@ function PerceptionView({
       </ul>
       <h3>Dimensions déclarées (estimées, non mesurées)</h3>
       <p>
-        forme : {room.shape} · largeur {room.width_m ?? "?"} m · profondeur{" "}
-        {room.depth_m ?? "?"} m · hauteur {room.ceiling_height_m ?? "?"} m ·
+        forme : {room.shape} · largeur{" "}
+        {room.width_m == null ? "?" : typed(room.width_m)} m · profondeur{" "}
+        {room.depth_m == null ? "?" : typed(room.depth_m)} m · hauteur{" "}
+        {room.ceiling_height_m == null ? "?" : typed(room.ceiling_height_m)} m ·
         confiance {pct(room.confidence)}
       </p>
       <div className="row">
@@ -315,7 +318,7 @@ function NetworkLog({ entries }: { entries: NetworkLogEntry[] }) {
               {e.probe ? " (vérification sans image)" : ""} → {e.destination} (
               {e.remote ? "distant" : "local"}) · {e.images} image(s) · ↑{" "}
               {kb(e.request_bytes)} ↓ {kb(e.response_bytes)} ·{" "}
-              {e.duration_s.toFixed(1)} s
+              {decimal(e.duration_s, 1)} s
               {e.ok ? "" : ` · ${e.error ?? "échec"}`}
             </li>
           ))}

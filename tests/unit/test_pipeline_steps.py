@@ -102,9 +102,9 @@ def test_render_svg_content(rect_project: Project) -> None:
     assert svg.startswith("<svg") and svg.rstrip().endswith("</svg>")
     assert svg.count('class="wall"') == 1, "seul W1 est mesuré"
     assert svg.count('class="wall uncertain"') == 3
-    assert "4.00 m" in svg and "≈ 3.00 m" in svg
+    assert "4,00 m" in svg and "≈ 3,00 m" in svg
     assert 'class="opening window' in svg and 'class="swing"' in svg
-    assert "R1" in svg and "10.97 m²" in svg
+    assert "R1" in svg and "10,97 m²" in svg
     assert "relevé certifié" in svg
 
 
@@ -124,8 +124,8 @@ def test_render_pdf_scale_dimensions_and_title_block(rect_project: Project) -> N
     pdf = render_pdf(rect_project, level.id)
     assert pdf.startswith(b"%PDF-") and pdf.rstrip().endswith(b"%%EOF")
     # Flux non compressés : les textes sont lisibles dans le fichier (polices standard).
-    assert b"(4.00 m)" in pdf and b"(env. 3.00 m)" in pdf, "cote mesurée et cote estimée"
-    assert b"(R1)" in pdf and b"10.97 m" in pdf
+    assert b"(4,00 m)" in pdf and b"(env. 3,00 m)" in pdf, "cote mesurée et cote estimée"
+    assert b"(R1)" in pdf and b"10,97 m" in pdf
     assert b"chelle 1:50" in pdf and b"relev" in pdf, "cartouche : échelle et avertissement"
     assert b"Helvetica-Oblique" in pdf, "cotes estimées en italique"
     assert choose_scale(4.0, 3.0, PAGE_SIZES["A4"]) == 50
@@ -193,6 +193,6 @@ def test_edit_move_then_svg_reflects_change(rect_project: Project) -> None:
     lid = only_level(rect_project).id
     w1 = by_name(only_level(rect_project), "W1", Wall)
     after, _ = edit(rect_project, lid, MoveVertex(vertex_id=w1.end_vertex, to=Point2(x=5, y=0)))
-    assert "5.00 m" in render_svg(after, lid)
+    assert "5,00 m" in render_svg(after, lid)
     door = by_name(only_level(after), "door", Opening)
     assert door.host_wall == w1.id

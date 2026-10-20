@@ -50,6 +50,7 @@ from openplan.schemas.common import (
     source_rank,
 )
 from openplan.schemas.elements import Camera, Vertex, Wall
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import Level, Project
 from openplan.validation.consistency import (
@@ -343,7 +344,7 @@ def rotate_view(
     )
     warnings = [
         f"Vue tournée de {k} quart{'s' if k > 1 else ''} de tour : caméra en "
-        f"({turned.position.x:.2f} ; {turned.position.y:.2f}), regarde vers "
+        f"({decimal(turned.position.x)} ; {decimal(turned.position.y)}), regarde vers "
         f"{math.degrees(yaw):.0f}°."
     ]
     if any(f.residual >= OUTSIDE_PENALTY for f in fits.values()):
@@ -466,7 +467,7 @@ def add_view(
     )
     assumptions = [
         Assumption(
-            text=f"Hauteur de caméra supposée {h:.2f} m : toutes les distances en dépendent.",
+            text=f"Hauteur de caméra supposée {metres(h)} : toutes les distances en dépendent.",
             impact="high",
         ),
         Assumption(text="Pièce supposée rectangulaire (hypothèse Manhattan).", impact="medium"),

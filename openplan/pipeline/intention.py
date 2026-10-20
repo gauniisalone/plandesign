@@ -33,6 +33,7 @@ from openplan.schemas.elements import (
     Wall,
 )
 from openplan.schemas.layout import MAX_BRIEF_CONFIDENCE, LayoutBrief
+from openplan.schemas.numbers import area, decimal, metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Level, Project
 
@@ -114,9 +115,9 @@ def describe_room(project: Project, level_id: UUID, room_id: UUID | None = None)
     if room is not None and room.id in derived.rooms:
         d = derived.rooms[room.id]
         usage = f" ({room.room_type})" if room.room_type else ""
-        line = f"Pièce « {room.name or 'sans nom'} »{usage} : {d.area_m2:.1f} m² au sol"
+        line = f"Pièce « {room.name or 'sans nom'} »{usage} : {area(d.area_m2)} au sol"
         if d.usable_area_m2 is not None:
-            line += f", dont {d.usable_area_m2:.1f} m² à plus de 1,80 m (combles)"
+            line += f", dont {area(d.usable_area_m2)} à plus de 1,80 m (combles)"
         lines.append(line + ".")
         wall_ids = list(room.boundary_walls)
     else:
@@ -126,18 +127,19 @@ def describe_room(project: Project, level_id: UUID, room_id: UUID | None = None)
         else:
             lines.append(
                 f"Niveau « {level.name} » sans pièce détectée : emprise "
-                f"{bounds.max.x - bounds.min.x:.2f} × {bounds.max.y - bounds.min.y:.2f} m."
+                f"{decimal(bounds.max.x - bounds.min.x)} × "
+                f"{metres(bounds.max.y - bounds.min.y)}."
             )
         wall_ids = [e.id for e in level.elements.values() if isinstance(e, Wall)]
     if level.kind is not None:
         lines.append(f"Niveau « {level.name} » ({LEVEL_KIND_WORDS[level.kind]}).")
     lines.append(
-        f"Hauteur sous plafond {level.height:.2f} m (cote {SOURCE_LABELS[level.height_source]})."
+        f"Hauteur sous plafond {metres(level.height)} (cote {SOURCE_LABELS[level.height_source]})."
     )
     walls = [w for wid in wall_ids if isinstance(w := level.elements.get(wid), Wall) and w.visible]
     if walls:
         parts = [
-            f"{w.name or 'mur'} {derived.walls[w.id].length_m:.2f} m"
+            f"{w.name or 'mur'} {metres(derived.walls[w.id].length_m)}"
             for w in walls
             if w.id in derived.walls
         ]
@@ -153,9 +155,9 @@ def describe_room(project: Project, level_id: UUID, room_id: UUID | None = None)
         for o in openings:
             host = level.elements[o.host_wall]
             kind = OPENING_LABELS.get(o.kind, "passage")
-            part = f"{kind} de {o.width:.2f} m sur {host.name or 'un mur'}"
+            part = f"{kind} de {metres(o.width)} sur {host.name or 'un mur'}"
             if o.kind is OpeningKind.WINDOW:
-                part += f" (allège {o.sill_height:.2f} m)"
+                part += f" (allège {metres(o.sill_height)})"
             parts.append(part)
         lines.append("Ouvertures : " + " ; ".join(parts) + ".")
     else:
@@ -167,22 +169,23 @@ def describe_room(project: Project, level_id: UUID, room_id: UUID | None = None)
     ]
     if radiators:
         parts = [
-            f"{r.width:.2f} m sur {level.elements[r.host_wall].name or 'un mur'}" for r in radiators
+            f"{metres(r.width)} sur {level.elements[r.host_wall].name or 'un mur'}"
+            for r in radiators
         ]
         lines.append(f"Radiateurs : {len(radiators)} ({', '.join(parts)}).")
     if derived.roofs:
         parts = []
         for roof in derived.roofs.values():
-            part = f"égout à {roof.eave_height:.2f} m, pente {roof.pitch_deg:.0f}°"
+            part = f"égout à {metres(roof.eave_height)}, pente {roof.pitch_deg:.0f}°"
             if roof.usable_offset_m is not None:
-                part += f", on tient debout à {roof.usable_offset_m:.2f} m de l'égout"
+                part += f", on tient debout à {metres(roof.usable_offset_m)} de l'égout"
             parts.append(part)
         lines.append(f"Pentes de toit : {len(derived.roofs)} ({' ; '.join(parts)}).")
     furniture = [e for e in level.elements.values() if isinstance(e, Furniture) and e.visible]
     if furniture:
         parts = [
-            f"{f.name or f.category} {f.bbox.width:.2f} × {f.bbox.depth:.2f} × "
-            f"{f.bbox.height:.2f} m" + (" (à conserver)" if f.preserve else "")
+            f"{f.name or f.category} {decimal(f.bbox.width)} × {decimal(f.bbox.depth)} × "
+            f"{metres(f.bbox.height)}" + (" (à conserver)" if f.preserve else "")
             for f in furniture
         ]
         lines.append("Meubles déjà présents : " + " ; ".join(parts) + ".")

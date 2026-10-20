@@ -9,6 +9,8 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
+from openplan.schemas.numbers import decimal
+
 ANALYSIS_LONG_SIDE = 1024
 """La netteté est mesurée sur une version réduite : les métriques dépendent de la
 résolution, on les normalise en ramenant le grand côté à cette taille."""
@@ -109,7 +111,7 @@ def quality_warnings(quality: dict[str, float]) -> list[str]:
     blur = quality.get("blur_reblur_ratio")
     if blur is not None and blur > BLUR_RATIO_WARN:
         out.append(
-            f"Image probablement floue (flou {blur:.2f} > {BLUR_RATIO_WARN:.2f}, "
+            f"Image probablement floue (flou {decimal(blur)} > {decimal(BLUR_RATIO_WARN)}, "
             "net vers 0,1) : les lignes détectées seront peu fiables."
         )
     mean = quality.get("mean_luminance")

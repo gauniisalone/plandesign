@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, jobActive, journalApi, type JobStatus } from "../api/client";
 import type { Point2 } from "../api/types.gen";
+import { decimal, metres, typed } from "../format";
 import {
   PlanCanvas,
   type Background,
@@ -1186,8 +1187,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
         view3d.section === "none"
           ? null
           : view3d.section === "z"
-            ? `horizontale à ${view3d.value.toFixed(2).replace(".", ",")} m`
-            : `verticale ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
+            ? `horizontale à ${metres(view3d.value)}`
+            : `verticale ${view3d.section} = ${metres(view3d.value)}`
       }
       northDeg={level.north_deg ?? 90}
       onNorth={(deg) =>
@@ -1237,7 +1238,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       }
       sectionViewName={
         view3d.section === "x" || view3d.section === "y"
-          ? `Coupe ${view3d.section} = ${view3d.value.toFixed(2).replace(".", ",")} m`
+          ? `Coupe ${view3d.section} = ${metres(view3d.value)}`
           : null
       }
       onFinish={actions.finishRender}
@@ -1821,10 +1822,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   ) : (
                     <span>
                       <strong>Plan mis à l'échelle</strong> ×{" "}
-                      {state.lastRecalibration.factor.toFixed(3)} :{" "}
+                      {decimal(state.lastRecalibration.factor, 3)} :{" "}
                       {state.lastRecalibration.what} ={" "}
-                      {state.lastRecalibration.real_m.toFixed(2)} m (était{" "}
-                      {state.lastRecalibration.current_m.toFixed(2)} m).
+                      {metres(state.lastRecalibration.real_m)} (était{" "}
+                      {metres(state.lastRecalibration.current_m)}).
                     </span>
                   )}
                   <button
@@ -1921,9 +1922,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 <div className="auto-banner estimated" role="status">
                   <span>
                     <strong>Plan de départ simplifié</strong> : une pièce de{" "}
-                    {String(starterArea).replace(".", ",")} m² en rectangle,
-                    déduite de votre texte ; ce n'est pas un relevé. Corrigez
-                    murs et ouvertures ici.
+                    {typed(starterArea)} m² en rectangle, déduite de votre texte
+                    ; ce n'est pas un relevé. Corrigez murs et ouvertures ici.
                   </span>
                   <button
                     className="link"

@@ -40,6 +40,7 @@ from openplan.pipeline.confidence import EstimateConfidence, ScaleSource, assess
 from openplan.pipeline.depthplan import observe_room
 from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.schemas.common import StrictModel
+from openplan.schemas.numbers import decimal, metres
 
 Float = NDArray[np.float64]
 REPORT_NAME = "rapport-kan33"
@@ -215,7 +216,7 @@ def bench_control(depth_path: Path = CONTROL_DEPTH) -> tuple[list[Row], dict[str
     # Focale faussée.
     for k in FOCAL_SPREAD:
         est, *_ = analyse_attic(depth, focal * k, pp)
-        case = f"contrôle · focale × {k:.2f}".replace(".", ",")
+        case = f"contrôle · focale × {decimal(k)}"
         add(case, _control_rows(case, rescale(est, CONTROL_CAMERA), camera=False))
     return rows, medians
 
@@ -432,7 +433,7 @@ def run_bench(
 
 # ------------------------------------------------------------------ rapport
 def _fmt_m(v: float | None) -> str:
-    return "—" if v is None else f"{v:.2f} m".replace(".", ",")
+    return "—" if v is None else metres(v)
 
 
 def _fmt_pct(v: float | None) -> str:

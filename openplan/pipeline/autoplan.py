@@ -55,6 +55,7 @@ from openplan.pipeline.reference import camera_basis, save_depth, with_basis
 from openplan.scene import history
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Opening, RoofWindow, Wall
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import ConfidenceInputs, Project
 from openplan.validation.invariants import validate_invariants
@@ -217,7 +218,7 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
         # KAN-61 : égout non vu (sol hors champ) : la borne tirée de la photo plutôt que 0.
         eave = _inferred(
             bound.value,
-            f"égout non vu sur la photo : au plus {bound.value:.2f} m (bas de pente le plus "
+            f"égout non vu sur la photo : au plus {metres(bound.value)} (bas de pente le plus "
             "bas vu)",
         )
     unseen = (
@@ -244,11 +245,6 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
         return None
 
 
-def _fr(value: float) -> str:
-    """Virgule décimale du texte affiché (« 1,50 »)."""
-    return f"{value:.2f}".replace(".", ",")
-
-
 def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]:
     """KAN-45/KAN-61 : ce que l'écran doit dire des combles devinés sur une photo levée (les
     avertissements de l'estimation ne remontent pas jusqu'au bandeau « Plan estimé »)."""
@@ -264,12 +260,12 @@ def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]
     if estimate.camera_height is not None:
         out.append(
             f"Sol hors champ (photo prise en levant l'appareil) : verticale prise entre les deux "
-            f"pentes, sol supposé {_fr(estimate.camera_height.value)} m sous l'appareil."
+            f"pentes, sol supposé {metres(estimate.camera_height.value)} sous l'appareil."
         )
     if not estimate.eave_heights:
         eave = geometry.eave_height.value
         guess = (
-            f"supposée au plus {_fr(eave)} m" if eave > 0.0 else "pentes prolongées jusqu'au sol"
+            f"supposée au plus {metres(eave)}" if eave > 0.0 else "pentes prolongées jusqu'au sol"
         )
         out.append(
             f"Hauteur d'égout non visible sur la photo : {guess}, à corriger dans l'inspecteur."
@@ -495,9 +491,7 @@ def guess_plan_scale(
         if doors:
             refined = scale * DOOR_WIDTH_M / float(np.median(doors))
             if lo <= refined * extent <= hi:
-                return ScaleGuess(
-                    refined, f"largeur de porte standard ≈ {DOOR_WIDTH_M:.2f} m".replace(".", ",")
-                )
+                return ScaleGuess(refined, f"largeur de porte standard ≈ {metres(DOOR_WIDTH_M)}")
         return ScaleGuess(scale, "épaisseur des murs supposée ≈ 20 cm")
     return ScaleGuess(
         FALLBACK_EXTENT_M / extent,
@@ -586,7 +580,7 @@ def _plan_chain(
         "deskew",
         "Redressement",
         "done",
-        f"dessin tourné de {math.degrees(skew):.1f}°, redressé" if skew else "dessin droit",
+        f"dessin tourné de {decimal(math.degrees(skew), 1)}°, redressé" if skew else "dessin droit",
     )
     chain.say("Lecture des traits et de l'échelle…")
     provisional = 4.0 / image.width
@@ -675,7 +669,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
         score = lines.detection.confidence * _seen_fraction(lines.project, level_id)
         if _walls(lines.project, level_id) and _valid(lines.project):
             candidates.append(_Candidate("lines", lines.project, score, lines.floorplan))
-            chain.stage("lines", "Lignes de fuite", "done", f"confiance {score:.2f}")
+            chain.stage("lines", "Lignes de fuite", "done", f"confiance {decimal(score)}")
         else:
             chain.stage("lines", "Lignes de fuite", "failed", "aucun mur proposé")
     except (DetectionError, ValueError) as exc:
@@ -723,7 +717,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
         score = 0.6 * _seen_fraction(run.project, level_id) * (1.0 if trusted else 0.7)
         if run.walls_seen > 0 and _walls(run.project, level_id) and _valid(run.project):
             candidates.append(_Candidate("depth", run.project, score, run.result))
-            chain.stage("depth", "Profondeur", "done", f"confiance {score:.2f}")
+            chain.stage("depth", "Profondeur", "done", f"confiance {decimal(score)}")
         else:
             chain.stage("depth", "Profondeur", "failed", "aucun mur vu dans la profondeur")
     except (DetectionError, ValueError) as exc:
@@ -753,7 +747,7 @@ def _ceiling(project: Project, level_id: UUID, estimate: AtticEstimate | None) -
     )
     after = project.model_copy(update={"levels": {**project.levels, level_id: new_level}})
     return history.commit(
-        project, after, actor=ACTOR, label=f"Hauteur sous plafond estimée ({height:.2f} m)"
+        project, after, actor=ACTOR, label=f"Hauteur sous plafond estimée ({metres(height)})"
     )
 
 
@@ -872,7 +866,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
         assumptions.append(
             Assumption(
                 text=f"Hauteur de l'appareil {'saisie' if entered else 'supposée'} "
-                f"{height:.2f} m : toutes les distances en dépendent. « Recalibrer » sur une "
+                f"{metres(height)} : toutes les distances en dépendent. « Recalibrer » sur une "
                 "longueur connue corrige tout.",
                 impact="high",
             )
@@ -936,7 +930,9 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                         name=path.name,
                         path=path,
                         media_type="application/json",
-                        description=f"Plan de secours ({other.method}, score {other.score:.2f})",
+                        description=(
+                            f"Plan de secours ({other.method}, score {decimal(other.score)})"
+                        ),
                     )
                 )
             backup = ranked[1].method if len(ranked) > 1 else None

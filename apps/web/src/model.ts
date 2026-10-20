@@ -1,5 +1,6 @@
 /** Aides de lecture du format de scène côté client. Aucune géométrie ici : le serveur calcule. */
 import type { Op } from "./api/ops";
+import { length } from "./format";
 import type { Point2 } from "./api/types.gen";
 import type {
   DerivedRoof,
@@ -339,9 +340,7 @@ export function formatLength(
   valueM: number,
   units: Project["units_display"],
 ): string {
-  if (units === "cm") return `${(valueM * 100).toFixed(0)} cm`;
-  if (units === "mm") return `${(valueM * 1000).toFixed(0)} mm`;
-  return `${valueM.toFixed(2)} m`;
+  return length(valueM, units);
 }
 
 const MONTHS = [

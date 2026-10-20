@@ -59,6 +59,7 @@ from openplan.pipeline.render import list_renders
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Furniture, Opening, OpeningKind, Radiator, Room, Wall
 from openplan.schemas.intent import DesignIntent
+from openplan.schemas.numbers import area, decimal, metres
 from openplan.schemas.scene import Level, Project
 
 Variant = Literal["conservatrice", "creative", "radicale"]
@@ -310,7 +311,7 @@ def _wall_outward_bearing(level: Level, wall: Wall, centroid: tuple[float, float
 
 
 def _approx(value: float, estimated: bool) -> str:
-    return f"{'≈ ' if estimated else ''}{value:.2f} m"
+    return f"{'≈ ' if estimated else ''}{metres(value)}"
 
 
 def context_lines(  # noqa: PLR0912, PLR0915 - une ligne par sorte d'information
@@ -337,13 +338,13 @@ def context_lines(  # noqa: PLR0912, PLR0915 - une ligne par sorte d'information
         centroid = (d.centroid.x, d.centroid.y)
         kind = ROOM_FR.get(room.room_type or "", room.room_type or "pièce")
         name = room.name or "sans nom"
-        lines.append(f"Pièce « {name} » ({kind}) : {'≈ ' if estimated else ''}{d.area_m2:.1f} m².")
+        lines.append(f"Pièce « {name} » ({kind}) : {'≈ ' if estimated else ''}{area(d.area_m2)}.")
         width = _approx(max(xs) - min(xs), estimated)
         depth = _approx(max(ys) - min(ys), estimated)
         height = _approx(level.height, level.height_source in _UNCERTAIN)
         lines.append(f"Emprise {width} × {depth}, hauteur sous plafond {height}.")
         if d.usable_area_m2 is not None and d.usable_area_m2 < d.area_m2 - 1e-6:
-            lines.append(f"Combles : {d.usable_area_m2:.1f} m² à plus de 1,80 m.")
+            lines.append(f"Combles : {area(d.usable_area_m2)} à plus de 1,80 m.")
     elif derived.bounds is not None:
         b = derived.bounds
         lines.append(
@@ -368,9 +369,9 @@ def context_lines(  # noqa: PLR0912, PLR0915 - une ligne par sorte d'information
             bearing = _wall_outward_bearing(level, host, centroid)
             if bearing is not None:
                 where = f" côté {_cardinal(bearing)}"
-        part = f"{word} de {o.width:.2f} m{where}"
+        part = f"{word} de {metres(o.width)}{where}"
         if o.kind is OpeningKind.WINDOW and o.sill_height > 0:
-            part += f" (allège {o.sill_height:.2f} m)"
+            part += f" (allège {metres(o.sill_height)})"
         lines.append(f"Ouverture : {part}.")
         if o.kind is not OpeningKind.DOOR and where:
             windows.append(where.removeprefix(" côté "))
@@ -383,7 +384,7 @@ def context_lines(  # noqa: PLR0912, PLR0915 - une ligne par sorte d'information
     ]
     if radiators:
         lines.append(
-            f"Radiateurs : {len(radiators)} ({', '.join(f'{r.width:.2f} m' for r in radiators)})."
+            f"Radiateurs : {len(radiators)} ({', '.join(metres(r.width) for r in radiators)})."
         )
     if windows:
         lines.append(
@@ -449,7 +450,9 @@ def _geometry_words_fr(project: Project, level_id: UUID, room: Room | None) -> l
         d = derived.rooms[room.id]
         xs = [p.x for p in d.polygon]
         ys = [p.y for p in d.polygon]
-        words.append(f"pièce d'environ {max(xs) - min(xs):.1f} × {max(ys) - min(ys):.1f} m")
+        words.append(
+            f"pièce d'environ {decimal(max(xs) - min(xs), 1)} × {metres(max(ys) - min(ys), 1)}"
+        )
         wall_ids = set(room.boundary_walls)
     else:
         wall_ids = {e.id for e in level.elements.values() if isinstance(e, Wall)}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReadOnly } from "../state/account";
 import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
+import { metres } from "../format";
 import type { Tool } from "../editor2d/PlanCanvas";
 import {
   IconActivity,
@@ -701,9 +702,7 @@ export function ViewBar({
             value={sectionValue}
             onChange={(e) => onSectionValue(Number(e.target.value))}
           />
-          <span className="value">
-            {sectionValue.toFixed(2).replace(".", ",")} m
-          </span>
+          <span className="value">{metres(sectionValue)}</span>
           {sectionPdfUrl && (
             <a href={sectionPdfUrl} download>
               PDF de la coupe

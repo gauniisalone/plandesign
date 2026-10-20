@@ -53,6 +53,7 @@ from openplan.scene import history
 from openplan.scene.ops import detect_rooms
 from openplan.schemas.common import Point2, Point3, Provenance, Source, StrictModel, Uncertainty
 from openplan.schemas.elements import Camera, Vertex, Wall
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -195,7 +196,7 @@ def _bounds(
         assumptions.append(
             Assumption(
                 text=f"Aucun mur {label} vu dans la profondeur : largeur supposée "
-                f"{2 * UNKNOWN_HALF_WIDTH_M:.1f} m centrée sur la caméra.",
+                f"{metres(2 * UNKNOWN_HALF_WIDTH_M, 1)} centrée sur la caméra.",
                 impact="high",
             )
         )
@@ -203,7 +204,7 @@ def _bounds(
     if lo is None or hi is None:
         assumptions.append(
             Assumption(
-                text=f"Mur {label} opposé non vu : placé à {HIDDEN_WALL_MARGIN_M:.1f} m "
+                text=f"Mur {label} opposé non vu : placé à {metres(HIDDEN_WALL_MARGIN_M, 1)} "
                 "derrière la caméra.",
                 impact="high",
             )
@@ -310,7 +311,7 @@ def propose_floorplan_from_depth(
                 # KAN-62 : la hauteur par défaut de l'app n'est pas une saisie.
                 text=f"Distances recalées sur la hauteur de prise de vue "
                 f"{'saisie' if camera_height_entered else 'supposée (par défaut)'} "
-                f"({camera_height_m:.2f} m) : facteur {scale:.2f} sur l'échelle du modèle.",
+                f"({metres(camera_height_m)}) : facteur {decimal(scale)} sur l'échelle du modèle.",
                 impact="high",
             )
         )
@@ -318,7 +319,7 @@ def propose_floorplan_from_depth(
         assumptions.append(
             Assumption(
                 text=f"Échelle du modèle de profondeur gardée (hauteur de caméra trouvée "
-                f"{observation.camera_height_m:.2f} m) : ±{SCALE_SIGMA:.0%} attendu.",
+                f"{metres(observation.camera_height_m)}) : ±{SCALE_SIGMA:.0%} attendu.",
                 impact="high",
             )
         )

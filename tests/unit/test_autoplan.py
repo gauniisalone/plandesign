@@ -100,7 +100,7 @@ def test_photo_without_models_builds_the_plan_from_lines(tmp_path: Path) -> None
     assert run.notices == ["poids absents : uv run openplan models pull x"]
     assert said[0] == "Lecture du fichier…" and "Lecture de la photo…" in said
     assert not any("RANSAC" in s or "@" in s for s in said), "pas de jargon ni de nom de modèle"
-    assert any("1.50 m" in a.text for a in run.result.assumptions)
+    assert any("1,50 m" in a.text for a in run.result.assumptions)
     assert (tmp_path / "runs" / str(run.run_id) / "autoplan" / "autoplan.json").is_file()
     assert all(e.actor.startswith("pipeline:") for e in run.project.history)
 

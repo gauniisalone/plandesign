@@ -20,6 +20,7 @@ import {
   type ReviseBody,
 } from "../api/client";
 import type { Level, Project } from "../api/types.gen";
+import { decimal } from "../format";
 import { rooms } from "../model";
 
 interface Props {
@@ -153,7 +154,7 @@ function describeItem(item: BriefItem): string {
   if (item.dimensions_m) {
     const d = item.dimensions_m;
     const dims = [d.width, d.depth, d.height]
-      .map((v) => (v == null ? "?" : v.toFixed(2)))
+      .map((v) => (v == null ? "?" : decimal(v)))
       .join(" × ");
     parts.push(`dimensions demandées ${dims} m`);
   }
@@ -312,7 +313,7 @@ function IntentionSection({
           {last && (
             <p className="muted">
               {last.result.model_ids.join(", ")} ·{" "}
-              {last.result.duration_s.toFixed(1)} s
+              {decimal(last.result.duration_s, 1)} s
               {last.brief.room_use ? ` · usage : ${last.brief.room_use}` : ""}
             </p>
           )}
@@ -472,7 +473,7 @@ function LayoutsSection({
         <span className="step">3</span> Les dispositions
       </h2>
       <p className="muted">
-        Calcul local en {run.result.duration_s.toFixed(1)} s ·{" "}
+        Calcul local en {decimal(run.result.duration_s, 1)} s ·{" "}
         {run.proposals.length} variante(s) sans collision, hors des débattements
         de porte et sous la hauteur libre. Rien n'est dans le plan tant que vous
         n'appliquez pas.
@@ -509,7 +510,7 @@ function LayoutsSection({
                 <summary>détail</summary>
                 <p className="muted small">
                   Score {p.score >= 0 ? "+" : ""}
-                  {p.score.toFixed(1)} (plus il est haut, mieux les souhaits et
+                  {decimal(p.score, 1)} (plus il est haut, mieux les souhaits et
                   les règles sont tenus)
                 </p>
                 <ul className="list">
@@ -676,7 +677,7 @@ function CritiqueBlock({
         {critique.result.model_ids.length > 0
           ? ` (${critique.result.model_ids.join(", ")})`
           : ""}{" "}
-        · {critique.result.duration_s.toFixed(1)} s. Rien n'est appliqué :
+        · {decimal(critique.result.duration_s, 1)} s. Rien n'est appliqué :
         chaque action recalcule une variante à relire.
       </p>
       {c.verdict && (
@@ -759,7 +760,7 @@ function CompareTable({
   const names = (p: LayoutProposal) =>
     p.furniture.map((f) => f.name ?? f.category).join(", ") || "—";
   const rows: [string, string, string][] = [
-    ["Score", a.score.toFixed(1), b.score.toFixed(1)],
+    ["Score", decimal(a.score, 1), decimal(b.score, 1)],
     ["Meubles placés", names(a), names(b)],
     [
       "Non placés",

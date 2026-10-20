@@ -64,6 +64,7 @@ from openplan.schemas.elements import (
     Stairs,
 )
 from openplan.schemas.intent import DesignIntent, ViewsIntent, merge_intent
+from openplan.schemas.numbers import metres
 from openplan.schemas.scene import Level, Project
 from openplan.validation.layout import clearance_at
 
@@ -790,7 +791,7 @@ def _zone(
                 yaw=yaw,
                 pitch=pitch,
                 focal_px=focal_px(ZONE_FOCAL_MM),
-                note=f"zone {label}, à {math.hypot(c.x - x, c.y - y):.1f} m, "
+                note=f"zone {label}, à {metres(math.hypot(c.x - x, c.y - y), 1)}, "
                 f"{ZONE_FOCAL_MM:.0f} mm",
             )
     return None
@@ -923,7 +924,7 @@ def _built_in_under_slope(
         pitch=pitch,
         focal_px=focal_px(mm),
         note=f"lit encastré sous la pente, de trois quarts, à "
-        f"{math.hypot(c.x - x, c.y - y):.1f} m, {mm:.0f} mm",
+        f"{metres(math.hypot(c.x - x, c.y - y), 1)}, {mm:.0f} mm",
     )
 
 
@@ -961,7 +962,7 @@ def _built_in_detail(room: _Room, bed: Furniture, aspect: str) -> ViewPlan | Non
             yaw=yaw,
             pitch=pitch,
             focal_px=focal_px(BUILT_IN_FOCAL_MM),
-            note=f"lit encastré de trois quarts, à {math.hypot(c.x - x, c.y - y):.1f} m, "
+            note=f"lit encastré de trois quarts, à {metres(math.hypot(c.x - x, c.y - y), 1)}, "
             f"{BUILT_IN_FOCAL_MM:.0f} mm",
         )
     return None
@@ -1040,7 +1041,7 @@ def _detail(room: _Room, aspect: str, prefer: str | None = None) -> ViewPlan | N
                 yaw=yaw,
                 pitch=pitch,
                 focal_px=focal_px(DETAIL_FOCAL_MM),
-                note=f"{label}, à {math.hypot(target[0] - x, target[1] - y):.1f} m, "
+                note=f"{label}, à {metres(math.hypot(target[0] - x, target[1] - y), 1)}, "
                 f"{DETAIL_FOCAL_MM:.0f} mm",
             )
     return None

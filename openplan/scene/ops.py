@@ -52,6 +52,7 @@ from openplan.schemas.elements import (
     Wall,
 )
 from openplan.schemas.intent import DesignIntent, merge_intent
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.scene import Level, Project
 
 _SNAP = 1e-9
@@ -445,8 +446,8 @@ def _add_roof_window(level: Level, op: AddRoofWindow) -> Level:
         raise OpError(msg)
     if op.offset + op.width > eave + 1e-6 or op.distance + op.length > slope + 1e-6:
         msg = (
-            f"le velux ({op.width:.2f} × {op.length:.2f} m) dépasse de la pente "
-            f"({eave:.2f} m le long de l'égout, {slope:.2f} m le long de la pente)"
+            f"le velux ({decimal(op.width)} × {metres(op.length)}) dépasse de la pente "
+            f"({metres(eave)} le long de l'égout, {metres(slope)} le long de la pente)"
         )
         raise OpError(msg)
     count = sum(1 for e in level.elements.values() if isinstance(e, RoofWindow))
@@ -568,8 +569,8 @@ def _check_built_in_bed(level: Level, furniture: Furniture) -> None:
     free = headroom_at(roofs, level.height, t.position.x, t.position.y, t.yaw, furniture.bbox.depth)
     if free + 1e-6 < MIN_HEADROOM_M:
         msg = (
-            f"lit encastré refusé : {free:.2f} m libres au-dessus du matelas à l'oreiller, il en "
-            f"faut {MIN_HEADROOM_M:.2f} m (éloignez-le de la jambette ou tournez la tête vers "
+            f"lit encastré refusé : {metres(free)} libres au-dessus du matelas à l'oreiller, il en "
+            f"faut {metres(MIN_HEADROOM_M)} (éloignez-le de la jambette ou tournez la tête vers "
             "le faîtage)"
         )
         raise OpError(msg)
@@ -633,8 +634,8 @@ def _check_catalog_size(furniture: Furniture) -> None:
     ):
         if not rng.min - 1e-6 <= value <= rng.max + 1e-6:
             msg = (
-                f"{label} de {value:.2f} m hors de la plage du catalogue pour « {item.label} » "
-                f"({rng.min:.2f} à {rng.max:.2f} m)"
+                f"{label} de {metres(value)} hors de la plage du catalogue pour « {item.label} » "
+                f"({decimal(rng.min)} à {metres(rng.max)})"
             )
             raise OpError(msg)
 

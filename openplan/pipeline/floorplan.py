@@ -19,6 +19,7 @@ from openplan.scene import history
 from openplan.scene.ops import detect_rooms
 from openplan.schemas.common import Point2, Point3, Provenance, Source, Uncertainty
 from openplan.schemas.elements import Camera, Vertex, Wall
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -71,7 +72,7 @@ def propose_floorplan(
     h = camera_height_m
     assumptions = [
         Assumption(
-            text=f"Hauteur de caméra supposée {h:.2f} m : toutes les distances en dépendent.",
+            text=f"Hauteur de caméra supposée {metres(h)} : toutes les distances en dépendent.",
             impact="high",
         ),
         Assumption(text="Pièce supposée rectangulaire (hypothèse Manhattan).", impact="medium"),
@@ -159,7 +160,7 @@ def _bounds(
         assumptions.append(
             Assumption(
                 text=f"Aucun mur {label} détecté : largeur supposée "
-                f"{2 * UNKNOWN_HALF_WIDTH_M:.1f} m centrée sur la caméra.",
+                f"{metres(2 * UNKNOWN_HALF_WIDTH_M, 1)} centrée sur la caméra.",
                 impact="high",
             )
         )
@@ -170,7 +171,7 @@ def _bounds(
     offset, edge = scaled[-1] if scaled[-1][0] > 0 else scaled[0]
     assumptions.append(
         Assumption(
-            text=f"Mur {label} opposé non visible : placé à {HIDDEN_WALL_MARGIN_M:.1f} m "
+            text=f"Mur {label} opposé non visible : placé à {metres(HIDDEN_WALL_MARGIN_M, 1)} "
             "derrière la caméra.",
             impact="high",
         )

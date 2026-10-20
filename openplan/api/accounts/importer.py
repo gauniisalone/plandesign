@@ -20,6 +20,7 @@ from pathlib import Path
 from uuid import UUID
 
 from openplan.api.accounts.repo import AccountsRepo
+from openplan.schemas.numbers import decimal
 
 PROJECT_FILE = "project.json"
 HEAVY_SUFFIXES = frozenset({".blend", ".blend1", ".npy", ".npz"})
@@ -115,7 +116,7 @@ def copy_project(candidate: Candidate, destination: Path) -> int:
 
 
 def _size(n: int) -> str:
-    return f"{n / 1_000_000:.1f} Mo"
+    return f"{decimal(n / 1_000_000, 1)} Mo"
 
 
 def run_import(

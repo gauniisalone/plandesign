@@ -64,6 +64,7 @@ from openplan.schemas.layout import (
     LayoutBrief,
     Place,
 )
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Assumption, StepResult, Violation
 from openplan.schemas.scene import Level, Project
 from openplan.validation.layout import (
@@ -641,8 +642,9 @@ def expand_brief(brief: LayoutBrief, ctx: Context) -> tuple[list[Want], list[Unp
                     dims[key] = wanted
                 else:
                     notes.append(
-                        f"{asset.label} : {key} {wanted:.2f} m hors de la plage du catalogue "
-                        f"[{rng.min} ; {rng.max}], défaut {rng.default:.2f} m gardé"
+                        f"{asset.label} : {key} {metres(wanted)} hors de la plage du catalogue "
+                        f"[{decimal(rng.min)} ; {decimal(rng.max)}], "
+                        f"défaut {metres(rng.default)} gardé"
                     )
         bbox = asset.bbox(dims["width"], dims["depth"], dims["height"])
         bay = ctx.bays.get(item.zone) if item.zone else None

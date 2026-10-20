@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Op } from "../api/ops";
 import type { Level, Project } from "../api/types.gen";
+import { typed } from "../format";
 import { parseLength, toDisplay } from "../model";
 
 /** T7d1 (décision PO du 16 octobre) : le panneau de droite est fermé par défaut ; le nom et la
@@ -23,11 +24,11 @@ export function LevelBar({
     setName(level.name);
   }
   const shown = toDisplay(level.height, units);
-  const [height, setHeight] = useState(String(shown));
+  const [height, setHeight] = useState(typed(shown));
   const [prevHeight, setPrevHeight] = useState(shown);
   if (prevHeight !== shown) {
     setPrevHeight(shown);
-    setHeight(String(shown));
+    setHeight(typed(shown));
   }
   const commitName = () => {
     const value = name.trim();
@@ -42,7 +43,7 @@ export function LevelBar({
         op: "update_level",
         fields: { height: m, height_source: "measured" },
       });
-    else setHeight(String(shown));
+    else setHeight(typed(shown));
   };
   return (
     <div className="level-bar" role="group" aria-label="Niveau">

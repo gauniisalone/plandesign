@@ -24,6 +24,7 @@ from openplan.adapters.remote.vlm_detector import (
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.pipeline.quality import quality_warnings
 from openplan.schemas.common import StrictModel
+from openplan.schemas.numbers import decimal
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -148,7 +149,7 @@ def _overlay(path: Path, pixels: object, elements: list[DetectedElement]) -> Art
         color = colors.get(e.category, (200, 60, 200))
         x0, y0, x1, y1 = e.bbox_px
         draw.rectangle([x0, y0, x1, y1], outline=color, width=4)
-        text = f"{e.category} {e.score:.2f}" + (f" · {e.label}" if e.label else "")
+        text = f"{e.category} {decimal(e.score)}" + (f" · {e.label}" if e.label else "")
         draw.text((x0 + 4, max(0, y0 - 14)), text[:60], fill=color)
     image.save(path, format="PNG")
     return Artifact(

@@ -1,5 +1,6 @@
 import type { Op } from "../api/ops";
 import type { Camera, Violation } from "../api/types.gen";
+import { decimal, metres } from "../format";
 import {
   excludeViewOp,
   hasObservations,
@@ -16,7 +17,7 @@ export function ViewSummary({ camera }: { camera: Camera }) {
   const seen = Object.entries(extents)
     .map(
       ([axis, m]) =>
-        `${axis === "x" ? "largeur" : "profondeur"} vue ${m.toFixed(2)} m`,
+        `${axis === "x" ? "largeur" : "profondeur"} vue ${metres(m)}`,
     )
     .join(", ");
   const ambiguous = camera.metadata["orientation_ambiguous"] === true;
@@ -29,7 +30,7 @@ export function ViewSummary({ camera }: { camera: Camera }) {
         {camera.name ?? "Photo"}
         {excluded ? " · écartée" : ""}
       </span>{" "}
-      caméra en ({camera.position.x.toFixed(2)} ; {camera.position.y.toFixed(2)}
+      caméra en ({decimal(camera.position.x)} ; {decimal(camera.position.y)}
       ), regarde vers {Math.round((camera.yaw * 180) / Math.PI)}°
       {seen ? ` · ${seen}` : " · aucun couple de murs opposés vu"}
       {turned

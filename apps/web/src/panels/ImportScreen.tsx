@@ -15,6 +15,7 @@ import {
   PHOTO_TYPES,
   PLAN_KIND_LABEL,
 } from "../importFiles";
+import { decimal, metres } from "../format";
 import { photosMayLeave, walls } from "../model";
 import { useHosting } from "../state/hosting";
 import { IconUpload } from "../ui/icons";
@@ -91,7 +92,7 @@ export function ImportScreen({
   };
   const kindLabel = planPreview ? PLAN_KIND_LABEL[planPreview.kind] : "";
   const size = planPreview?.bounds
-    ? `${(planPreview.bounds.max.x - planPreview.bounds.min.x).toFixed(2)} × ${(planPreview.bounds.max.y - planPreview.bounds.min.y).toFixed(2)} m`
+    ? `${decimal(planPreview.bounds.max.x - planPreview.bounds.min.x)} × ${metres(planPreview.bounds.max.y - planPreview.bounds.min.y)}`
     : null;
   const chosen = new Set(planLayers);
 

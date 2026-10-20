@@ -31,6 +31,7 @@ from openplan.scene import history
 from openplan.scene.ops import AddOpening, AddWall, DetectRooms, OpError, apply_to_level
 from openplan.schemas.common import Point2, Source
 from openplan.schemas.elements import OpeningKind, Room, Wall
+from openplan.schemas.numbers import area
 from openplan.schemas.scene import Level, Project
 
 LABEL = "Plan généré depuis votre programme"
@@ -541,7 +542,7 @@ def generate_plan(
     got = _net_areas(built)
     for s in spaces:
         if s.service and s.key in got and got[s.key] > wanted[s.key] * 1.4:
-            notes.append(f"{s.label} de {got[s.key]:.1f} m² : trop étroit pour y loger un placard")
+            notes.append(f"{s.label} de {area(got[s.key])} : trop étroit pour y loger un placard")
     closets = {c.key for c, _ in layout.placards}
     hosts = [s.label for s in spaces if f"placard-{s.key}" in closets]
     if hosts:

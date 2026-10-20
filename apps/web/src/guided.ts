@@ -2,6 +2,7 @@
  *  « Compris »). Jumeau de `openplan/schemas/home.py` et `openplan/pipeline/guided.py`. */
 
 import type { GuidedAnswers } from "./api/client";
+import { typed } from "./format";
 
 export const SPACES: {
   value: string;
@@ -119,7 +120,7 @@ export function answersSummary(a: GuidedAnswers): string[] {
   );
   if (a.space && space)
     out.push(space.label.replace("Une pièce : ", "").toLowerCase());
-  if (a.area_m2) out.push(`${String(a.area_m2).replace(".", ",")} m²`);
+  if (a.area_m2) out.push(`${typed(a.area_m2)} m²`);
   if (a.bedrooms !== undefined && a.bedrooms !== null)
     out.push(
       a.bedrooms === 0

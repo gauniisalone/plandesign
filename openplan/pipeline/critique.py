@@ -44,6 +44,7 @@ from openplan.schemas.layout import (
     action_label,
     sort_remarks,
 )
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -252,11 +253,12 @@ def describe_furniture(ctx: Context, furniture: list[Furniture], brief: LayoutBr
         for place in _DISTANCE_PLACES:
             d = ctx.landmarks.distance(place, placed.polygon)
             if math.isfinite(d):
-                distances.append(f"{d:.2f} m {_DISTANCE_LABELS[place]}")
+                distances.append(f"{metres(d)} {_DISTANCE_LABELS[place]}")
         lines.append(
-            f"{index + 1}. {label[1]} ({f.category}) {f.bbox.width:.2f} × {f.bbox.depth:.2f} × "
-            f"{f.bbox.height:.2f} m, centre ({f.transform.position.x:.2f} ; "
-            f"{f.transform.position.y:.2f}), à " + ", ".join(distances or ["repères inconnus"])
+            f"{index + 1}. {label[1]} ({f.category}) {decimal(f.bbox.width)} × "
+            f"{decimal(f.bbox.depth)} × {metres(f.bbox.height)}, "
+            f"centre ({decimal(f.transform.position.x)} ; "
+            f"{decimal(f.transform.position.y)}), à " + ", ".join(distances or ["repères inconnus"])
         )
     return "\n".join(lines) or "aucun meuble"
 

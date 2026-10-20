@@ -8,6 +8,7 @@ import {
 } from "../api/client";
 import type { Op } from "../api/ops";
 import type { Level, Project } from "../api/types.gen";
+import { typed } from "../format";
 import {
   loadAccent,
   loadTheme,
@@ -73,7 +74,7 @@ export function SettingsPanel({
             title="Oriente la boussole du plan et le soleil des rendus"
           >
             {!NORTH_OPTIONS.some((o) => o.value === north) && (
-              <option value="">{north}°</option>
+              <option value="">{typed(north)}°</option>
             )}
             {NORTH_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>

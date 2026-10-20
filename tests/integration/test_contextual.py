@@ -139,7 +139,7 @@ def test_prompt_is_enriched_from_the_plan_and_shown_before_generating(tmp_path: 
         assert word in fr, (word, fr)
     assert "metres" not in fr and "premium" not in fr
     context = "\n".join(out["context"])
-    assert "Ouverture : fenêtre de 1.20 m côté" in context and "allège 0.90 m" in context
+    assert "Ouverture : fenêtre de 1,20 m côté" in context and "allège 0,90 m" in context
     assert "Lumière naturelle" in context and "Contraintes : murs, portes et fenêtres" in context
     assert out["estimated"] == ("≈" in context)
     # Sans intention : le prompt reste construit (pièce, géométrie), lecteur « none ».
@@ -198,7 +198,7 @@ def test_estimated_walls_are_marked_with_approx() -> None:
         )
 
     lines, flagged, _ = context_lines(with_walls(Source.ESTIMATED), level.id, None)
-    assert flagged and any("≈ 4.85 m" in line for line in lines), lines
+    assert flagged and any("≈ 4,85 m" in line for line in lines), lines
     lines, flagged, _ = context_lines(with_walls(Source.USER_DEFINED), level.id, None)
     assert not flagged and not any("≈ 4.85" in line for line in lines), lines
 

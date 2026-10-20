@@ -22,6 +22,7 @@ import {
   type ProjectSettingsUpdate,
 } from "../api/client";
 import type { Op } from "../api/ops";
+import { area, centimetres, decimal, metres, percent } from "../format";
 import type {
   RoofWindow,
   Calibration,
@@ -203,9 +204,9 @@ function Badge({ source, confidence }: { source: Source; confidence: number }) {
   return (
     <span
       className={`badge source-${source}`}
-      title={`confiance ${(confidence * 100).toFixed(0)} %`}
+      title={`confiance ${percent(confidence)}`}
     >
-      {SOURCE_LABEL[source]} · {(confidence * 100).toFixed(0)} %
+      {SOURCE_LABEL[source]} · {percent(confidence)}
     </span>
   );
 }
@@ -787,10 +788,10 @@ function RoomPanel({
       <AmbianceField room={room} onOp={onOp} onAskAssistant={onAskAssistant} />
       {d && (
         <p>
-          Surface intérieure : <strong>{d.area_m2.toFixed(2)} m²</strong> ·
-          périmètre {d.perimeter_m.toFixed(2)} m
+          Surface intérieure : <strong>{area(d.area_m2, 2)}</strong> · périmètre{" "}
+          {metres(d.perimeter_m)}
           {d.usable_area_m2 != null && d.usable_area_m2 < d.area_m2 - 1e-6
-            ? ` · ${d.usable_area_m2.toFixed(2)} m² à plus de 1,80 m sous pente`
+            ? ` · ${area(d.usable_area_m2, 2)} à plus de 1,80 m sous pente`
             : ""}
         </p>
       )}
@@ -856,7 +857,7 @@ function RoofPanel({
         />
       )}
       <p className="muted">
-        {run > 0 ? `Course ${run.toFixed(2)} m · ` : ""}
+        {run > 0 ? `Course ${metres(run)} · ` : ""}
         la ligne d'égout se déplace par ses murs.
       </p>
       {d && run > 0 && (
@@ -1353,11 +1354,10 @@ function StairsPanel({
       />
       {d && (
         <p>
-          {d.risers} marches de {(d.riser_m * 100).toFixed(1)} cm, giron{" "}
-          {(d.going_m * 100).toFixed(0)} cm (Blondel{" "}
-          {(d.blondel_m * 100).toFixed(0)} cm)
+          {d.risers} marches de {centimetres(d.riser_m, 1)}, giron{" "}
+          {centimetres(d.going_m)} (Blondel {centimetres(d.blondel_m)})
           {d.headroom_m != null &&
-            ` · échappée ${d.headroom_m.toFixed(2)} m${d.headroom_m < 1.9 ? " (moins de 1,90 m)" : ""}`}
+            ` · échappée ${metres(d.headroom_m)}${d.headroom_m < 1.9 ? " (moins de 1,90 m)" : ""}`}
         </p>
       )}
       <button
@@ -1519,7 +1519,7 @@ export function MeasurementsPanel({
       </div>
       {lastCalibration && (
         <p className="muted">
-          Facteur ×{lastCalibration.scale_factor.toFixed(4)} · RMS{" "}
+          Facteur ×{decimal(lastCalibration.scale_factor, 4)} · RMS{" "}
           {formatLength(lastCalibration.rms_m, units)}
           {lastCalibration.inconsistent.length > 0 && (
             <>

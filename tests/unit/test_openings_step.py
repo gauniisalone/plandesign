@@ -173,7 +173,7 @@ def test_filters_are_explained() -> None:
     assert "recouvre" in by_reason["deja_present"].reason
     assert "tableau" in by_reason["trop_bas_pour_une_fenetre"].reason
     wide = by_reason["largeur_implausible"]
-    assert wide.width_m is not None and wide.width_m > 3.0 and "3.0 m" in wide.reason
+    assert wide.width_m is not None and wide.width_m > 3.0 and "3,0 m" in wide.reason
     assert len(warnings) == 3 and all("écartée" in w for w in warnings)
     added = [
         e
@@ -192,7 +192,7 @@ def test_box_above_the_ceiling_is_filtered() -> None:
         project, level_id, image_id, [_element("window", (600, 0, 800, 100))]
     )
     (obs,) = observations
-    assert obs.filtered == "depasse_plafond" and "plafond à 2.50 m" in obs.reason
+    assert obs.filtered == "depasse_plafond" and "plafond à 2,50 m" in obs.reason
 
 
 def test_requires_the_camera_of_the_photo() -> None:

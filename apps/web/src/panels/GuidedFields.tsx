@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { GuidedAnswers } from "../api/client";
+import { typed } from "../format";
 import { FURNITURE, LIGHTS, MOODS, SPACES, STYLES } from "../guided";
 
 /** Bornes des réponses guidées (`GuidedAnswers`, openplan/schemas/home.py). */
@@ -9,7 +10,7 @@ const BEDROOMS_MAX = 6;
 
 /** Ce que le champ montre pour une valeur gardée : la virgule française. */
 function shown(value: number | null): string {
-  return value === null ? "" : String(value).replace(".", ",");
+  return value === null ? "" : typed(value);
 }
 
 /** Lecture d'une saisie : « 35 », « 35,5 », « 35.5 » ; null si ce n'est pas un nombre. */

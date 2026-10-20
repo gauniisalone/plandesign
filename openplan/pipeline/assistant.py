@@ -50,6 +50,7 @@ from openplan.schemas.assistant import (
 from openplan.schemas.common import Provenance, StrictModel
 from openplan.schemas.elements import Furniture
 from openplan.schemas.layout import PLACE_OF, BriefItem, LayoutBrief
+from openplan.schemas.numbers import metres
 from openplan.schemas.scene import Project
 
 STEP = "assistant.act"
@@ -413,7 +414,7 @@ def _ambiguous(intent: AssistantIntent, resolved: _Resolved) -> AssistantAction:
     if len(ordered) == 2:
         names = f"{_label(ordered[0])} (à gauche), {_label(ordered[1])} (à droite)"
     else:
-        names = ", ".join(f"{_label(f)} (x {f.transform.position.x:.1f} m)" for f in ordered)
+        names = ", ".join(f"{_label(f)} (x {metres(f.transform.position.x, 1)})" for f in ordered)
     return AssistantAction(
         kind=intent.kind,
         status="question",

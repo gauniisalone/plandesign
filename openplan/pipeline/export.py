@@ -24,6 +24,7 @@ from openplan.pipeline.derived import compute_derived
 from openplan.schemas.common import Point2, Source
 from openplan.schemas.derived import DerivedLevel, DerivedRoom, DerivedStairs
 from openplan.schemas.elements import Furniture, Opening, OpeningKind, RoofWindow
+from openplan.schemas.numbers import area, centimetres, decimal, length
 from openplan.schemas.results import Artifact
 from openplan.schemas.scene import Level, Project
 
@@ -96,7 +97,21 @@ USABLE_LABEL = "1,80 m sous pente"
 
 
 def area_label(room: DerivedRoom) -> str:
-    """« 28.37 m² », complété par la surface à plus de 1,80 m quand des pentes la réduisent."""
+    """« 28,37 m² », complété par la surface à plus de 1,80 m quand des pentes la réduisent."""
+    label = area(room.area_m2, 2)
+    usable = room.usable_area_m2
+    if usable is not None and usable < room.area_m2 - 1e-6:
+        label += f" · {area(usable, 2)} à plus de 1,80 m"
+    return label
+
+
+def format_length(value_m: float, units: str) -> str:
+    """Cote affichée dans l'unité du projet (« 1,20 m », « 120 cm », « 1200 mm »)."""
+    return length(value_m, units)
+
+
+def _dxf_area_label(room: DerivedRoom) -> str:
+    """KAN-71 : le DXF est un format technique, il garde ses textes d'avant (« 28.37 m² »)."""
     label = f"{room.area_m2:.2f} m²"
     usable = room.usable_area_m2
     if usable is not None and usable < room.area_m2 - 1e-6:
@@ -104,7 +119,8 @@ def area_label(room: DerivedRoom) -> str:
     return label
 
 
-def format_length(value_m: float, units: str) -> str:
+def _dxf_length(value_m: float, units: str) -> str:
+    """KAN-71 : cote du DXF, au point comme avant."""
     if units == "cm":
         return f"{value_m * 100:.0f} cm"
     if units == "mm":
@@ -285,7 +301,7 @@ def _stairs_svg(
 
 def stairs_label(s: DerivedStairs) -> str:
     """« 15 × 18,0 / 27 cm » : contremarches × hauteur / giron."""
-    return f"{s.risers} × {s.riser_m * 100:.1f} / {s.going_m * 100:.0f} cm".replace(".", ",")
+    return f"{s.risers} × {decimal(s.riser_m * 100, 1)} / {centimetres(s.going_m)}"
 
 
 def _furniture_layer_svg(level: Level, pts: Callable[[list[Point2]], str]) -> list[str]:
@@ -756,7 +772,7 @@ def render_dxf(project: Project, level_id: UUID) -> str:
             [(p.x, p.y) for p in room.polygon], close=True, dxfattribs={"layer": "PIECES"}
         )
         text(element.name or "Pièce", room.centroid.x, room.centroid.y + 0.12, "PIECES", 0.2)
-        text(area_label(room), room.centroid.x, room.centroid.y - 0.15, "PIECES", 0.14)
+        text(_dxf_area_label(room), room.centroid.x, room.centroid.y - 0.15, "PIECES", 0.14)
     for roof in derived.roofs.values():
         a, b = roof.eave
         msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs={"layer": "PENTES"})
@@ -773,7 +789,7 @@ def render_dxf(project: Project, level_id: UUID) -> str:
             [(p.x, p.y) for p in wall.polygon], close=True, dxfattribs={"layer": layer}
         )
         gap = element.thickness / 2.0 + 0.16
-        label = format_length(wall.length_m, units)
+        label = _dxf_length(wall.length_m, units)
         if element.source in UNCERTAIN:
             label = f"≈ {label}"
         angle = math.degrees(math.atan2(wall.normal.x, -wall.normal.y))

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from openplan.adapters.protocols import LanguageModel, LlmMessage, LlmRequest, LlmResponse
 from openplan.schemas.layout import PLACE_LABELS, BriefItem, ItemDimensions, LayoutBrief
+from openplan.schemas.numbers import metres
 
 SYSTEM_PROMPT = (
     "Tu es un assistant d'aménagement intérieur. Tu transformes le souhait d'un utilisateur "
@@ -90,8 +91,10 @@ def _dimensions(
         if _written_by_user(float(value), mentioned):
             kept[key] = float(value)
         else:
+            # Les décimales telles que le modèle les a écrites (« 1,6 m », « 2 m »).
+            shown = metres(value, len(str(value).partition(".")[2]))
             dropped.append(
-                f"{label} : {key} {value} m proposé par le modèle mais non écrit par vous : "
+                f"{label} : {key} {shown} proposé par le modèle mais non écrit par vous : "
                 "dimension du catalogue conservée"
             )
     if not kept:

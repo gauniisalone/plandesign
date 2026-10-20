@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Literal
 
 from openplan.schemas.elements import Camera, Wall
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import Violation
 from openplan.schemas.scene import Level, Project
 
@@ -117,8 +118,8 @@ def check_views(project: Project) -> list[Violation]:
                             severity="medium",
                             element_ids=[element.id],
                             message=(
-                                f"Photo « {element.name} » voit {pair} à {observed:.2f} m "
-                                f"l'un de l'autre ; dans le plan ils sont à {scene:.2f} m "
+                                f"Photo « {element.name} » voit {pair} à {metres(observed)} "
+                                f"l'un de l'autre ; dans le plan ils sont à {metres(scene)} "
                                 f"(écart {gap_cm:+.0f} cm, {ratio * 100:+.0f} %). Garder la "
                                 "photo déplace le mur le moins sûr ; l'écarter la laisse dans "
                                 "le projet sans peser sur le plan."

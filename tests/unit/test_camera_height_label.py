@@ -108,8 +108,8 @@ def test_depthplan_assumption_says_supposed_for_the_default_height() -> None:
         )
         results[entered] = (only_level(after), result)
     texts = {k: " ".join(a.text for a in r.assumptions) for k, (_l, r) in results.items()}
-    assert "hauteur de prise de vue saisie (1.50 m)" in texts[True]
-    assert "hauteur de prise de vue supposée (par défaut) (1.50 m)" in texts[False]
+    assert "hauteur de prise de vue saisie (1,50 m)" in texts[True]
+    assert "hauteur de prise de vue supposée (par défaut) (1,50 m)" in texts[False]
     assert "saisie" not in texts[False]
     sizes = {
         k: sorted((round(v.position.x, 6), round(v.position.y, 6)) for v in level.vertices.values())
@@ -144,7 +144,7 @@ def test_autoplan_default_height_is_never_user_defined(tmp_path: Path) -> None:
         camera = next(e for e in only_level(run.project).elements.values() if isinstance(e, Camera))
         word = "saisie" if entered else "supposée"
         assert camera.source is (Source.USER_DEFINED if entered else Source.INFERRED)
-        assert any(f"Hauteur de l'appareil {word} 1.50 m" in a.text for a in run.result.assumptions)
+        assert any(f"Hauteur de l'appareil {word} 1,50 m" in a.text for a in run.result.assumptions)
     shapes = {
         k: sorted(
             (round(r.eave_height, 6), round(r.pitch, 6), round(r.eave_start.x, 6))

@@ -32,7 +32,7 @@ def test_unknown_eave_takes_the_bound_from_the_photo() -> None:
     assert geometry is not None
     assert geometry.eave_height.value == pytest.approx(1.01)
     assert geometry.eave_height.source is Source.INFERRED
-    assert geometry.eave_height.note is not None and "au plus 1.01 m" in geometry.eave_height.note
+    assert geometry.eave_height.note is not None and "au plus 1,01 m" in geometry.eave_height.note
     notices = attic_notices(est, geometry)
     assert any(n.startswith("Sol hors champ") for n in notices)
     assert any(

@@ -35,6 +35,7 @@ from openplan.pipeline.ingestion import IMAGES_DIR, ImageNotFoundError, load_ima
 from openplan.pipeline.recalibrate import room_axes
 from openplan.scene import history
 from openplan.schemas.common import Point2, StrictModel
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.scene import (
     REFERENCE_LENGTH_M,
     Calibration,
@@ -65,10 +66,6 @@ META_SUFFIX = ".depth.json"
 
 class ReferenceRefusedError(ValueError):
     """Mesure de référence refusée ; le message est montré tel quel."""
-
-
-def _fr(value: float, digits: int = 2) -> str:
-    return f"{value:.{digits}f}".replace(".", ",")
 
 
 def check_length(meters: float) -> float:
@@ -140,7 +137,7 @@ def reference_factor(model_distance: float, length_m: float, current_factor: flo
     relative = length_m / model_distance / current_factor
     if not FACTOR_RANGE[0] <= relative <= FACTOR_RANGE[1]:
         msg = (
-            f"cette mesure changerait l'échelle de ×{_fr(relative)} : vérifiez les deux points "
+            f"cette mesure changerait l'échelle de ×{decimal(relative)} : vérifiez les deux points "
             "et la longueur (une erreur de cm et de m ?)"
         )
         raise ReferenceRefusedError(msg)
@@ -299,7 +296,7 @@ def camera_basis(
     inputs = inputs or ConfidenceInputs()
     return ScaleBasis(
         source="camera_height" if entered else "default",
-        text=f"Échelle : hauteur de prise de vue {words} {_fr(camera_height_m)} m{tail}",
+        text=f"Échelle : hauteur de prise de vue {words} {metres(camera_height_m)}{tail}",
         image_id=image_id,
         factor=factor,
         camera_height_m=camera_height_m,
@@ -432,7 +429,7 @@ def apply_reference(
         update={
             "scale_basis": ScaleBasis(
                 source="reference",
-                text=f"Échelle calée sur votre mesure de {_fr(length)} m{what}",
+                text=f"Échelle calée sur votre mesure de {metres(length)}{what}",
                 image_id=image_id,
                 segment_id=segment.id,
                 factor=basis.factor * relative,
@@ -454,7 +451,7 @@ def apply_reference(
         }
     )
     return history.commit(
-        project, after, actor=actor, label=f"Mesure de référence : {_fr(length)} m{what}"
+        project, after, actor=actor, label=f"Mesure de référence : {metres(length)}{what}"
     )
 
 

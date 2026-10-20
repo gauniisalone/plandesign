@@ -30,6 +30,7 @@ from openplan.scene.ops import OpError, RemoveElement, UpdateElement, apply_ops
 from openplan.schemas.assistant import ASSISTANT_ACTOR, AssistantAction, AssistantIntent
 from openplan.schemas.common import USER_AUTHORITATIVE
 from openplan.schemas.elements import OPENING_LABELS, Opening, OpeningKind, Room
+from openplan.schemas.numbers import metres
 from openplan.schemas.scene import Level, Project
 from openplan.validation.invariants import validate_invariants
 
@@ -352,11 +353,11 @@ def _end_margin(graph: WallGraph, o: Opening, at_start: bool) -> float:
 
 def _misfit_height(level: Level, o: Opening, height: float) -> str | None:
     if height < MIN_SIZE_M - 1e-9:
-        return f"une ouverture fait au moins {_m(MIN_SIZE_M)} de haut"
+        return f"une ouverture fait au moins {metres(MIN_SIZE_M)} de haut"
     if o.sill_height + height > level.height - CEILING_GAP_M + 1e-9:
         return (
-            f"elle monterait à {_m(o.sill_height + height)}, au ras ou au-dessus du plafond "
-            f"({_m(level.height)})"
+            f"elle monterait à {metres(o.sill_height + height)}, au ras ou au-dessus du plafond "
+            f"({metres(level.height)})"
         )
     return None
 
@@ -365,15 +366,15 @@ def _misfit(graph: WallGraph, level: Level, o: Opening, offset: float, width: fl
     """Pourquoi la nouvelle place (ou largeur) le long du mur ne va pas, ou None."""
     length = graph.wall_length(o.host_wall)
     if width < MIN_SIZE_M - 1e-9:
-        return f"une ouverture fait au moins {_m(MIN_SIZE_M)} de large"
+        return f"une ouverture fait au moins {metres(MIN_SIZE_M)} de large"
     if width > MAX_WIDTH_M + 1e-9:
-        return f"au plus {_m(MAX_WIDTH_M)} de large"
+        return f"au plus {metres(MAX_WIDTH_M)} de large"
     start, end = _end_margin(graph, o, True), _end_margin(graph, o, False)
     if offset < -1e-9 or offset + width > length + 1e-9:
-        return f"elle sortirait de son mur ({_m(length)} de long)"
+        return f"elle sortirait de son mur ({metres(length)} de long)"
     if offset < start - 1e-9 or offset + width > length - end + 1e-9:
         return (
-            f"elle mordrait sur l'angle du mur (il faut {_m(min(start, end))} au moins entre "
+            f"elle mordrait sur l'angle du mur (il faut {metres(min(start, end))} au moins entre "
             "l'ouverture et l'angle)"
         )
     for other in level.elements.values():
@@ -386,10 +387,6 @@ def _misfit(graph: WallGraph, level: Level, o: Opening, offset: float, width: fl
         ):
             return f"elle chevaucherait la {_noun(other)} du même mur"
     return None
-
-
-def _m(value: float) -> str:
-    return f"{value:.2f}".replace(".", ",") + " m"
 
 
 def _low(title: str) -> str:
@@ -490,7 +487,7 @@ def move_opening(
         return project, AssistantAction(
             kind=intent.kind,
             status="refused",
-            summary=f"Déplacer {_low(title)} de {_m(shift)} vers {toward}",
+            summary=f"Déplacer {_low(title)} de {metres(shift)} vers {toward}",
             reason=f"{why} : {_the(o)} reste où elle est"
             if _e(o)
             else f"{why} : {_the(o)} reste où il est",
@@ -501,8 +498,8 @@ def move_opening(
         level_id,
         intent,
         UpdateElement(element_id=o.id, fields={"offset": offset}),
-        f"Assistant : déplacer {_low(title)} de {_m(shift)} vers {toward}",
-        f"{title} déplacé{_e(o)} de {_m(shift)} vers {toward} (vu de la pièce, face au mur)",
+        f"Assistant : déplacer {_low(title)} de {metres(shift)} vers {toward}",
+        f"{title} déplacé{_e(o)} de {metres(shift)} vers {toward} (vu de la pièce, face au mur)",
         o,
     )
 
@@ -559,7 +556,7 @@ def resize_opening(
         return project, AssistantAction(
             kind=intent.kind,
             status="done",
-            summary=f"{title} : {what} déjà de {_m(value)}",
+            summary=f"{title} : {what} déjà de {metres(value)}",
             element_ids=[o.id],
         )
     level = project.levels[level_id]
@@ -576,7 +573,7 @@ def resize_opening(
         return project, AssistantAction(
             kind=intent.kind,
             status="refused",
-            summary=f"{title} à {_m(value)} de {what}",
+            summary=f"{title} à {metres(value)} de {what}",
             reason=f"{why} : {_the(o)} garde sa taille",
             element_ids=[o.id],
         )
@@ -585,8 +582,8 @@ def resize_opening(
         level_id,
         intent,
         UpdateElement(element_id=o.id, fields=dict(fields)),
-        f"Assistant : {what} de {_low(title)} à {_m(value)}",
-        f"{title} : {what} {_m(current)} → {_m(value)}",
+        f"Assistant : {what} de {_low(title)} à {metres(value)}",
+        f"{title} : {what} {metres(current)} → {metres(value)}",
         o,
     )
 

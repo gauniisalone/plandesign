@@ -42,7 +42,7 @@ def test_section_pdf_is_dimensioned() -> None:
     pdf = render_section_pdf(project, level.id, "y", 1.5)
     assert pdf.startswith(b"%PDF-")
     assert b"hors tout" in pdf and b"rieur" in pdf  # intérieur (accent encodé)
-    assert b"Coupe y = 1.50 m" in pdf
+    assert b"Coupe y = 1,50 m" in pdf
 
 
 def test_section_pdf_outside_the_building_says_so() -> None:

@@ -40,6 +40,7 @@ from openplan.schemas.elements import (
     Swing,
     Wall,
 )
+from openplan.schemas.numbers import metres
 from openplan.schemas.scene import Level, Project
 from openplan.validation.invariants import validate_invariants
 from openplan.validation.layout import _inside_sign, _room_polygons
@@ -86,7 +87,7 @@ class WallPick:
 
 
 def _wall_label(level: Level, wall: Wall, graph: WallGraph) -> str:
-    return wall.name or f"mur de {graph.wall_length(wall.id):.2f} m"
+    return wall.name or f"mur de {metres(graph.wall_length(wall.id))}"
 
 
 def _midpoints(graph: WallGraph, walls: list[Wall]) -> dict[UUID, tuple[float, float]]:
@@ -258,7 +259,9 @@ def set_dimension(  # noqa: PLR0911
                 reason="vous l'avez déjà fixée vous-même : changez-la dans la fiche Niveau",
             )
         return after, AssistantAction(
-            kind=intent.kind, status="done", summary=f"Hauteur sous plafond réglée à {value:.2f} m"
+            kind=intent.kind,
+            status="done",
+            summary=f"Hauteur sous plafond réglée à {metres(value)}",
         )
     graph = WallGraph.from_level(level)
     if intent.dimension in ("length", "width"):
@@ -295,9 +298,9 @@ def set_dimension(  # noqa: PLR0911
     return after, AssistantAction(
         kind=intent.kind,
         status="done",
-        summary=f"{what} : {value:.2f} m"
+        summary=f"{what} : {metres(value)}"
         if intent.dimension == "wall"
-        else f"{what.capitalize()} de la pièce : {value:.2f} m",
+        else f"{what.capitalize()} de la pièce : {metres(value)}",
         element_ids=[w.id for w in pair],
     )
 
@@ -391,7 +394,7 @@ def add_opening(
     return after, AssistantAction(
         kind=intent.kind,
         status="done",
-        summary=f"{word} de {width:.2f} m posée sur {_wall_label(level, wall, graph)}, au "
+        summary=f"{word} de {metres(width)} posée sur {_wall_label(level, wall, graph)}, au "
         "milieu de la place libre",
         element_ids=list(new_ids),
     )

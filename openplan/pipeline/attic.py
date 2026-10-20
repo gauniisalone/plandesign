@@ -45,6 +45,7 @@ from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.pipeline.roof_windows import RoofWindowSighting, locate_roof_windows
 from openplan.schemas.common import Source, StrictModel
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -72,7 +73,7 @@ class Estimate(StrictModel):
 
     @property
     def text(self) -> str:
-        return f"{self.value:.2f} ± {self.sigma:.2f} m"
+        return f"{decimal(self.value)} ± {metres(self.sigma)}"
 
 
 class PlaneSummary(StrictModel):
@@ -158,13 +159,8 @@ SCALE_DISAGREEMENT = 2.0
 def height_words(camera_height_m: float, *, entered: bool) -> str:
     """KAN-62 : « hauteur de prise de vue saisie 1,45 m » ou « … supposée 1,50 m (par défaut) »."""
     if entered:
-        return f"hauteur de prise de vue saisie {_fr(camera_height_m)} m"
-    return f"hauteur de prise de vue supposée {_fr(camera_height_m)} m (par défaut)"
-
-
-def _fr(value: float) -> str:
-    """Virgule décimale du texte affiché (« 1,50 »)."""
-    return f"{value:.2f}".replace(".", ",")
+        return f"hauteur de prise de vue saisie {metres(camera_height_m)}"
+    return f"hauteur de prise de vue supposée {metres(camera_height_m)} (par défaut)"
 
 
 def rescale(
@@ -213,9 +209,9 @@ def rescale(
             ],
             "roof_windows": [w.scaled(factor) for w in estimate.roof_windows],
             "scale_factor": estimate.scale_factor * factor,
-            "scale_note": f"Échelle recalée sur la {words} : facteur {_fr(factor)} appliqué aux "
-            f"longueurs du modèle de profondeur (qui donnait "
-            f"{_fr(estimate.camera_height.value)} m).",
+            "scale_note": f"Échelle recalée sur la {words} : facteur {decimal(factor)} "
+            f"appliqué aux longueurs du modèle de profondeur (qui donnait "
+            f"{metres(estimate.camera_height.value)}).",
         }
     )
     return plausible_eaves(scaled_estimate)  # KAN-73 : seuils en mètres, après recalage
@@ -844,7 +840,7 @@ def _with_assumed_floor(
     )
     if out.eave_bound is not None:
         warnings.append(
-            f"Hauteur d'égout non visible sur la photo : au plus {out.eave_bound.value:.2f} m "
+            f"Hauteur d'égout non visible sur la photo : au plus {metres(out.eave_bound.value)} "
             "(bas de pente le plus bas vu)."
         )
     elif not out.eave_heights:
@@ -899,7 +895,7 @@ def analyse_attic(  # noqa: PLR0912
         floor_idx = len(planes) - 1
         warnings.append(
             f"Sol hors champ (photo levée) : verticale prise entre les deux pentes (toit "
-            f"supposé symétrique), sol à {_fr(assumed_floor)} m sous l'appareil "
+            f"supposé symétrique), sol à {metres(assumed_floor)} sous l'appareil "
             f"({'hauteur saisie' if entered else 'hauteur supposée'})."
         )
     cls = classify(planes, floor_idx)
@@ -944,7 +940,7 @@ def analyse_attic(  # noqa: PLR0912
             )
             warnings.append(
                 f"Pignon du fond non reconnu comme plan : distance prise aux points les plus "
-                f"lointains dans l'axe du faîtage ({far:.1f} m)."
+                f"lointains dans l'axe du faîtage ({metres(far, 1)})."
             )
         else:
             warnings.append("Aucun pignon vu : longueur des combles non estimée.")
@@ -1015,8 +1011,8 @@ def run_attic(
             warnings.append(
                 f"Le modèle de profondeur et la hauteur "
                 f"{'saisie' if entered else 'supposée'} divergent d'un facteur "
-                f"{max(f, 1.0 / f):.1f} : l'un des deux est faux (photo prise accroupi ou en "
-                "plongée, ou échelle du modèle hors de son domaine)."
+                f"{decimal(max(f, 1.0 / f), 1)} : l'un des deux est faux (photo prise accroupi "
+                "ou en plongée, ou échelle du modèle hors de son domaine)."
             )
     out_dir = runs_dir / str(rid) / "attic"
     out_dir.mkdir(parents=True, exist_ok=True)

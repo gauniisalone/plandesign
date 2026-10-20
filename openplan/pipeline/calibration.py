@@ -12,6 +12,7 @@ from openplan.geom.scale import CalibrationError, apply_scale, solve_scale
 from openplan.scene import history
 from openplan.schemas.common import Source, Uncertainty
 from openplan.schemas.elements import Opening, Wall
+from openplan.schemas.numbers import decimal
 from openplan.schemas.scene import Calibration, Project
 
 ACTOR = "pipeline:calibration"
@@ -56,5 +57,5 @@ def calibrate_level(
         }
     )
     count = len(calibration.measurement_ids)
-    label = f"Calibrer ({count} mesure(s), ×{calibration.scale_factor:.4f})"
+    label = f"Calibrer ({count} mesure(s), ×{decimal(calibration.scale_factor, 4)})"
     return history.commit(project, after, actor=ACTOR, label=label), calibration

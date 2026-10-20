@@ -20,6 +20,7 @@ from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene import history
 from openplan.schemas.common import Point2, Source, StrictModel, Uncertainty
 from openplan.schemas.elements import Room, Wall
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.scene import Calibration, Level, Measurement, MeasurementKind, Project
 
 MIN_CURRENT_M = 0.05
@@ -107,13 +108,13 @@ def recalibrate_level(  # noqa: PLR0912
         msg = "donnez deux points, un mur ou la hauteur sous plafond"
         raise CalibrationError(msg)
     if current < MIN_CURRENT_M:
-        msg = f"{what} est trop courte dans le plan ({current:.2f} m) pour servir de référence"
+        msg = f"{what} est trop courte dans le plan ({metres(current)}) pour servir de référence"
         raise CalibrationError(msg)
     factor = body.real_m / current
     if not FACTOR_RANGE[0] <= factor <= FACTOR_RANGE[1]:
         msg = (
-            f"{what} mesure {current:.2f} m dans le plan et {body.real_m:.2f} m en vrai : le "
-            f"facteur ×{factor:.2f} est invraisemblable, vérifiez l'unité"
+            f"{what} mesure {metres(current)} dans le plan et {metres(body.real_m)} en vrai : le "
+            f"facteur ×{decimal(factor)} est invraisemblable, vérifiez l'unité"
         )
         raise CalibrationError(msg)
 
@@ -157,7 +158,7 @@ def recalibrate_level(  # noqa: PLR0912
             "calibrations": calibrations,
         }
     )
-    label = f"Recalibrer : {what} = {body.real_m:.2f} m (×{factor:.3f})"
+    label = f"Recalibrer : {what} = {metres(body.real_m)} (×{decimal(factor, 3)})"
     committed = history.commit(project, after, actor=actor, label=label)
     return committed, RecalibrateSummary(
         factor=factor, current_m=current, real_m=body.real_m, what=what
@@ -192,10 +193,6 @@ class DimensionsSummary(StrictModel):
     text: str
     """« 9,65 × 5,00 m → 8,00 × 4,20 m » (et la hauteur si elle change)."""
     notes: list[str] = Field(default_factory=list)
-
-
-def _fr(value: float) -> str:
-    return f"{value:.2f}".replace(".", ",")
 
 
 def room_axes(project: Project, level_id: UUID) -> tuple[float, float, float]:
@@ -254,8 +251,8 @@ def _factors(
     for factor in (sx, sy, sz):
         if not FACTOR_RANGE[0] <= factor <= FACTOR_RANGE[1]:
             msg = (
-                f"facteur ×{factor:.2f} invraisemblable pour {what} : vérifiez l'unité "
-                f"(aujourd'hui {_fr(length)} × {_fr(width)} m, hauteur {_fr(height)} m)"
+                f"facteur ×{decimal(factor)} invraisemblable pour {what} : vérifiez l'unité "
+                f"(aujourd'hui {decimal(length)} × {decimal(width)} m, hauteur {decimal(height)} m)"
             )
             raise CalibrationError(msg)
     return sx, sy, sz, what, current, real
@@ -275,9 +272,11 @@ def preview_dimensions(project: Project, level_id: UUID, body: DimensionsBody) -
         )
     sx, sy, sz, _, _, _ = _factors(body, length, width, level.height)
     after = RoomSize(length_m=length * sx, width_m=width * sy, height_m=level.height * sz)
-    text = f"{_fr(length)} × {_fr(width)} m → {_fr(after.length_m)} × {_fr(after.width_m)} m"
+    text = (
+        f"{decimal(length)} × {metres(width)} → {decimal(after.length_m)} × {metres(after.width_m)}"
+    )
     if abs(sz - 1.0) > 1e-9:
-        text += f" · hauteur {_fr(level.height)} → {_fr(after.height_m)} m"
+        text += f" · hauteur {decimal(level.height)} → {metres(after.height_m)}"
     return DimensionsSummary(
         before=before, after=after, sx=sx, sy=sy, sz=sz, uniform=abs(sx - sy) < 1e-9, text=text
     )

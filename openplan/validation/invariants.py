@@ -22,6 +22,7 @@ from openplan.schemas.elements import (
     Vertex,
     Wall,
 )
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import ValidationReport, Violation
 from openplan.schemas.scene import Level, Project
 from openplan.validation.consistency import check_views
@@ -111,8 +112,8 @@ def _check_openings_overlap(level: Level) -> list[Violation]:
                         element_ids=[previous.id, current.id],
                         message=(
                             f"Deux ouvertures se chevauchent sur le même mur "
-                            f"({previous.kind.value} à {previous.offset:.2f} m, "
-                            f"{current.kind.value} à {current.offset:.2f} m)."
+                            f"({previous.kind.value} à {metres(previous.offset)}, "
+                            f"{current.kind.value} à {metres(current.offset)})."
                         ),
                     )
                 )
@@ -169,8 +170,8 @@ def _check_hosted(
                 severity="high",
                 element_ids=[element.id, wall.id],
                 message=(
-                    f"L'élément dépasse le mur : décalage {element.offset:.2f} m + largeur "
-                    f"{element.width:.2f} m > longueur {length:.2f} m."
+                    f"L'élément dépasse le mur : décalage {metres(element.offset)} + largeur "
+                    f"{metres(element.width)} > longueur {metres(length)}."
                 ),
             )
         ]

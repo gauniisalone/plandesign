@@ -28,6 +28,7 @@ from pydantic import Field
 from openplan.adapters.protocols import DetectedElement
 from openplan.geom.planes import FittedPlane, Float, Plane
 from openplan.schemas.common import StrictModel
+from openplan.schemas.numbers import decimal
 
 MIN_SCORE = 0.30
 MAX_AREA_FRACTION = 0.25
@@ -148,12 +149,14 @@ def locate_roof_windows(
             continue
         x0, y0, x1, y1 = box.bbox_px
         if (x1 - x0) * (y1 - y0) > MAX_AREA_FRACTION * area:
-            notes.append(f"Fenêtre de toit écartée (score {box.score:.2f}) : boîte trop grande.")
+            notes.append(
+                f"Fenêtre de toit écartée (score {decimal(box.score)}) : boîte trop grande."
+            )
             continue
         fraction, index = _ring_slope(box.bbox_px, label, grid, slopes)
         if index is None or fraction < MIN_SLOPE_RING:
             notes.append(
-                f"Fenêtre de toit écartée (score {box.score:.2f}) : pas posée sur une pente "
+                f"Fenêtre de toit écartée (score {decimal(box.score)}) : pas posée sur une pente "
                 f"({fraction:.0%} du pourtour)."
             )
             continue
@@ -163,7 +166,9 @@ def locate_roof_windows(
         plane = planes[index if first is None else first].plane
         hit = center_on_plane(box.bbox_px, plane, axes, focal_px, principal_point)
         if hit is None:
-            notes.append(f"Fenêtre de toit écartée (score {box.score:.2f}) : hors de la pente.")
+            notes.append(
+                f"Fenêtre de toit écartée (score {decimal(box.score)}) : hors de la pente."
+            )
             continue
         fit = fit_rectangle(box.bbox_px, plane, axes, focal_px, principal_point)
         standard = not (fit is not None and _credible(fit[1], fit[2]))
@@ -176,7 +181,8 @@ def locate_roof_windows(
             z_bottom = float(center[2] - length / 2.0 * rise[2])
             z_top = float(center[2] + length / 2.0 * rise[2])
             notes.append(
-                f"Fenêtre de toit (score {box.score:.2f}) : taille standard 78 × 98 cm supposée."
+                f"Fenêtre de toit (score {decimal(box.score)}) : taille standard "
+                "78 × 98 cm supposée."
             )
         z_bottom, z_top = z_bottom + camera_height, z_top + camera_height
         sighting = RoofWindowSighting(

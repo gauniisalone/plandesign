@@ -6,6 +6,7 @@ import {
   type CatalogAsset,
   type CatalogRoom,
 } from "../api/client";
+import { decimal, metres } from "../format";
 import { STAIR_CARDS, type StairCard } from "../model";
 import {
   OPENING_CARDS,
@@ -239,7 +240,7 @@ export function LibraryPanel({
                   data-asset={id}
                   aria-pressed={id === chosen}
                   disabled={busy}
-                  title={`${c.label} : ${c.width.toFixed(2)} × ${c.height.toFixed(2)} m, posée d'un clic sur un mur, puis redimensionnable et retournable`}
+                  title={`${c.label} : ${decimal(c.width)} × ${metres(c.height)}, posée d'un clic sur un mur, puis redimensionnable et retournable`}
                   onClick={() => onChooseOpening(id === chosen ? null : c)}
                 >
                   <OpeningThumb card={c} />
@@ -295,7 +296,7 @@ export function LibraryPanel({
               data-asset={a.id}
               aria-pressed={a.id === chosen}
               disabled={busy}
-              title={`${a.label} : ${a.width.default.toFixed(2)} × ${a.depth.default.toFixed(2)} × ${a.height.default.toFixed(2)} m${a.notes ? ` · ${a.notes}` : ""}`}
+              title={`${a.label} : ${decimal(a.width.default)} × ${decimal(a.depth.default)} × ${metres(a.height.default)}${a.notes ? ` · ${a.notes}` : ""}`}
               onClick={() => onChoose(a.id === chosen ? null : a)}
             >
               {a.preview ? (

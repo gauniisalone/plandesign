@@ -5,6 +5,7 @@ import type {
   RecalibrateBody,
 } from "../api/client";
 import type { Point2 } from "../api/types.gen";
+import { decimal, metres, typed } from "../format";
 
 interface Props {
   /** Dans le panneau de droite (hors du plan) ; sinon flottante, en bas à droite. */
@@ -21,10 +22,6 @@ interface Props {
   ) => Promise<DimensionsSummary | string>;
   onApplyDimensions: (body: DimensionsBody) => void;
   onCancel: () => void;
-}
-
-function fr(v: number): string {
-  return v.toFixed(2).replace(".", ",");
 }
 
 const MIN_REAL_M = 0.3;
@@ -68,15 +65,15 @@ export function RecalibrateCard({
   const warnings: string[] = [];
   if (real && (real < MIN_REAL_M || real > MAX_REAL_M))
     warnings.push(
-      `${real.toFixed(2)} m est une longueur inhabituelle pour une cote de pièce (entre ${MIN_REAL_M} et ${MAX_REAL_M} m d'ordinaire) : vérifiez l'unité.`,
+      `${metres(real)} est une longueur inhabituelle pour une cote de pièce (entre ${typed(MIN_REAL_M)} et ${typed(MAX_REAL_M)} m d'ordinaire) : vérifiez l'unité.`,
     );
   if (factor && (factor < 0.2 || factor > 5))
     warnings.push(
-      `Le plan serait multiplié par ${factor.toFixed(2)} : c'est beaucoup, vérifiez les deux points cliqués.`,
+      `Le plan serait multiplié par ${decimal(factor)} : c'est beaucoup, vérifiez les deux points cliqués.`,
     );
   if (ceiling && (ceiling < MIN_CEILING_M || ceiling > MAX_CEILING_M))
     warnings.push(
-      `${ceiling.toFixed(2)} m est une hauteur sous plafond inhabituelle (entre ${MIN_CEILING_M} et ${MAX_CEILING_M} m d'ordinaire).`,
+      `${metres(ceiling)} est une hauteur sous plafond inhabituelle (entre ${typed(MIN_CEILING_M)} et ${typed(MAX_CEILING_M)} m d'ordinaire).`,
     );
   const applyDistance = () => {
     if (measure && real) onApply({ real_m: real, a: measure.a, b: measure.b });
@@ -126,8 +123,7 @@ export function RecalibrateCard({
         <>
           <p className="muted">
             Sur le plan, cette longueur mesure aujourd'hui{" "}
-            <strong>{measured.toFixed(2)} m</strong>. Quelle est sa longueur
-            réelle ?
+            <strong>{metres(measured)}</strong>. Quelle est sa longueur réelle ?
           </p>
           <div className="row">
             <input
@@ -146,7 +142,7 @@ export function RecalibrateCard({
           {factor && (
             <p className="muted preview-scale">
               Tout le plan (murs, fond, meubles, vues) sera multiplié par{" "}
-              {factor.toFixed(3)}.
+              {decimal(factor, 3)}.
             </p>
           )}
         </>
@@ -164,7 +160,7 @@ export function RecalibrateCard({
             type="text"
             inputMode="decimal"
             aria-label="Longueur de la pièce"
-            placeholder={current ? fr(current.before.length_m) : ""}
+            placeholder={current ? decimal(current.before.length_m) : ""}
             value={lengthText}
             onChange={(e) => setLengthText(e.target.value)}
             onKeyDown={keys}
@@ -176,7 +172,7 @@ export function RecalibrateCard({
             type="text"
             inputMode="decimal"
             aria-label="Largeur de la pièce"
-            placeholder={current ? fr(current.before.width_m) : ""}
+            placeholder={current ? decimal(current.before.width_m) : ""}
             value={widthText}
             onChange={(e) => setWidthText(e.target.value)}
             onKeyDown={keys}
@@ -188,8 +184,8 @@ export function RecalibrateCard({
             type="text"
             inputMode="decimal"
             aria-label="Hauteur sous plafond"
-            placeholder={fr(ceilingHeight)}
-            title={`Aujourd'hui ${fr(ceilingHeight)} m`}
+            placeholder={decimal(ceilingHeight)}
+            title={`Aujourd'hui ${metres(ceilingHeight)}`}
             value={ceilingText}
             onChange={(e) => setCeilingText(e.target.value)}
             onKeyDown={keys}
@@ -200,7 +196,7 @@ export function RecalibrateCard({
         <p className="muted preview-scale" role="status">
           <strong>{preview.text}</strong>
           {preview.uniform
-            ? ` · tout le plan × ${preview.sx.toFixed(3)}`
+            ? ` · tout le plan × ${decimal(preview.sx, 3)}`
             : " · murs, ouvertures, meubles, vues et fond suivent"}
         </p>
       )}

@@ -11,6 +11,7 @@ import {
   type RenderEstimate,
 } from "../api/client";
 import type { Level, Project } from "../api/types.gen";
+import { decimal, metres, typed } from "../format";
 import { allCameras, isFreeCamera, poseOf } from "../model";
 import { firstVariant } from "../gallery";
 import { PickableImage, type PickAction } from "./PickCard";
@@ -103,7 +104,7 @@ function sideOf(northDeg: number, compassDeg: number): string {
 
 function northSentence(northDeg: number): string {
   const north = NORTHS.find((n) => n.deg === northDeg);
-  return `Le nord est ${north ? north.label : `à ${northDeg}°`}. Le soleil du matin vient de ${sideOf(northDeg, 100)} du plan, celui de midi de ${sideOf(northDeg, 180)}, celui du soir de ${sideOf(northDeg, 260)}.`;
+  return `Le nord est ${north ? north.label : `à ${typed(northDeg)}°`}. Le soleil du matin vient de ${sideOf(northDeg, 100)} du plan, celui de midi de ${sideOf(northDeg, 180)}, celui du soir de ${sideOf(northDeg, 260)}.`;
 }
 
 const QUALITIES: { samples: number; label: string }[] = [
@@ -461,9 +462,9 @@ export function RenderPanel({
                       : isFreeCamera(cam)
                         ? "point de vue libre"
                         : "caméra de photo"}{" "}
-                    · ({cam.position.x.toFixed(2)} ; {cam.position.y.toFixed(2)}
-                    ) · {((cam.yaw * 180) / Math.PI).toFixed(0)}° · h{" "}
-                    {cam.position.z.toFixed(2)} m
+                    · ({decimal(cam.position.x)} ; {decimal(cam.position.y)}) ·{" "}
+                    {((cam.yaw * 180) / Math.PI).toFixed(0)}° · h{" "}
+                    {metres(cam.position.z)}
                   </span>
                   <div className="row">
                     <button
@@ -557,7 +558,7 @@ export function RenderPanel({
               </option>
             ))}
             {!NORTHS.some((n) => n.deg === northDeg) && (
-              <option value={String(northDeg)}>{northDeg}°</option>
+              <option value={String(northDeg)}>{typed(northDeg)}°</option>
             )}
           </select>
           <em />

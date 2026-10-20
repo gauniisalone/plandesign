@@ -9,6 +9,7 @@ import type {
   Project,
 } from "../api/types.gen";
 import type { Op } from "../api/ops";
+import { area, centimetres, decimal, metres, typed } from "../format";
 import type { Peer, PresenceStore } from "../state/live";
 import { PlanPeers } from "./PlanPeers";
 import {
@@ -1705,9 +1706,9 @@ export function PlanCanvas({
     return cy + down / 2 + 12;
   };
   const areaText = (d: DerivedRoom) =>
-    `${d.area_m2.toFixed(2)} m²${
+    `${area(d.area_m2, 2)}${
       d.usable_area_m2 != null && d.usable_area_m2 < d.area_m2 - 1e-6
-        ? ` · ${d.usable_area_m2.toFixed(2)} m² à plus de 1,80 m`
+        ? ` · ${area(d.usable_area_m2, 2)} à plus de 1,80 m`
         : ""
     }`;
   // Cotes : écart en pixels d'écran (pas en mètres), la cote ne mord jamais sur le mur, quel
@@ -2241,7 +2242,7 @@ export function PlanCanvas({
                   />
                 ))}
                 <title>
-                  {`${(level.elements[id] as { name?: string | null } | undefined)?.name ?? "Escalier"} : ${s.risers} marches de ${(s.riser_m * 100).toFixed(1)} cm, giron ${(s.going_m * 100).toFixed(0)} cm`}
+                  {`${(level.elements[id] as { name?: string | null } | undefined)?.name ?? "Escalier"} : ${s.risers} marches de ${centimetres(s.riser_m, 1)}, giron ${centimetres(s.going_m)}`}
                 </title>
               </g>
               {selected &&
@@ -2743,7 +2744,7 @@ export function PlanCanvas({
         const a = (north * Math.PI) / 180;
         return (
           <g className="compass">
-            <title>Nord du plan : {north}°</title>
+            <title>Nord du plan : {typed(north)}°</title>
             <circle cx={cx} cy={cy} r={16} />
             <line
               x1={cx}
@@ -2758,7 +2759,7 @@ export function PlanCanvas({
         );
       })()}
       <text className="hud" x={insets.left} y={insets.top - 6}>
-        {cursor ? `${cursor.x.toFixed(2)} ; ${cursor.y.toFixed(2)} m` : ""}
+        {cursor ? `${decimal(cursor.x)} ; ${metres(cursor.y)}` : ""}
         {size.width < 560 ? "" : "  ·  "}
         {size.width < 560
           ? ""

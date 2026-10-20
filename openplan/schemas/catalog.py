@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from openplan.schemas.common import BBox3, Meters, StrictModel
+from openplan.schemas.numbers import decimal, metres
 
 AssetLicense = Literal["open_source", "cc0", "cc_by", "commercial_restricted", "unknown"]
 """Même vocabulaire que `Material.license` (format de scène)."""
@@ -57,7 +58,10 @@ class DimensionRange(StrictModel):
         if wanted is None:
             return self.default
         if not self.min <= wanted <= self.max:
-            msg = f"{what} {wanted:.2f} m hors de la plage du catalogue [{self.min}, {self.max}]"
+            msg = (
+                f"{what} {metres(wanted)} hors de la plage du catalogue "
+                f"[{decimal(self.min)}, {decimal(self.max)}]"
+            )
             raise ValueError(msg)
         return wanted
 

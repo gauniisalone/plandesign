@@ -42,6 +42,7 @@ from openplan.schemas.elements import (
     Vertex,
     Wall,
 )
+from openplan.schemas.numbers import decimal
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import LEVEL_DEFAULT_NAMES, Project
 
@@ -80,7 +81,7 @@ class AtticGeometry(StrictModel):
         for name in ("length", "width", "ridge_height"):
             value = getattr(self, name).value
             if not 0.5 <= value <= 50.0:
-                msg = f"{name} hors limites (0,5 à 50 m) : {value:.2f}"
+                msg = f"{name} hors limites (0,5 à 50 m) : {decimal(value)}"
                 raise ValueError(msg)
         if self.eave_height.value < 0.0:
             msg = "la hauteur d'égout ne peut pas être négative"

@@ -26,6 +26,7 @@ from openplan.schemas.assistant import (
     OpeningWord,
 )
 from openplan.schemas.layout import PLACE_LABELS
+from openplan.schemas.numbers import metres
 
 SYSTEM_PROMPT = (
     "Tu es l'assistant d'un logiciel de plan d'intérieur. L'utilisateur te parle de sa pièce ; "
@@ -122,7 +123,9 @@ def _value_m(raw: Any, mentioned: set[float], label: str, dropped: list[str]) ->
     value = float(raw)
     if any(abs(value - m) < 0.011 for m in mentioned):
         return value
-    dropped.append(f"{label} : {value} m proposé par le modèle mais non écrit par vous, ignoré")
+    # Les décimales telles que le modèle les a écrites (« 1,6 m », « 2,0 m »).
+    shown = metres(value, len(str(value).partition(".")[2]))
+    dropped.append(f"{label} : {shown} proposé par le modèle mais non écrit par vous, ignoré")
     return None
 
 

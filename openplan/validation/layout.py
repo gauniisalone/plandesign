@@ -71,6 +71,7 @@ from openplan.schemas.elements import (
     Room,
     Stairs,
 )
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import Severity, Violation
 from openplan.schemas.scene import ConstraintKind, Level, Project
 
@@ -475,7 +476,7 @@ def _check_stairs(
                         severity="medium",
                         element_ids=[piece.element.id, stairs.id],
                         message=f"{piece.label} encombre l'arrivée de {label} : laisser "
-                        f"{ARRIVAL_DEPTH_M:.2f} m libres devant la dernière marche.",
+                        f"{metres(ARRIVAL_DEPTH_M)} libres devant la dernière marche.",
                     )
                 )
         lay = stair_layout(stairs)
@@ -490,8 +491,8 @@ def _check_stairs(
                     type="stairs_headroom",
                     severity="medium",
                     element_ids=[stairs.id],
-                    message=f"Échappée de {free:.2f} m au-dessus des marches de {label} (au "
-                    f"moins {HEADROOM_M:.2f} m) : la pente descend trop bas, tourner "
+                    message=f"Échappée de {metres(free)} au-dessus des marches de {label} (au "
+                    f"moins {metres(HEADROOM_M)}) : la pente descend trop bas, tourner "
                     "l'escalier vers le faîtage ou le déplacer.",
                 )
             )
@@ -629,8 +630,8 @@ def _check_slopes(
                     severity="high" if mode == "hard" else "medium",
                     element_ids=[piece.element.id],
                     message=(
-                        f"{piece.label} monte à {piece.top:.2f} m mais la pente ne laisse que "
-                        f"{lowest:.2f} m à l'aplomb de son emprise : à reculer vers le faîtage "
+                        f"{piece.label} monte à {metres(piece.top)} mais la pente ne laisse que "
+                        f"{metres(lowest)} à l'aplomb de son emprise : à reculer vers le faîtage "
                         "ou à abaisser."
                     ),
                 )
@@ -853,7 +854,7 @@ def _stack_room(level: Level, graph: WallGraph, door: Opening, host: str) -> lis
             element_ids=[door.id],
             message=(
                 f"Pas la place pour le vantail ouvert de la {what} de {host} : il faut "
-                f"{door.width:.2f} m de mur libre à {side} (changer de côté ou déplacer)."
+                f"{metres(door.width)} de mur libre à {side} (changer de côté ou déplacer)."
             ),
         )
     ]
@@ -878,7 +879,7 @@ def _door_violations(
                 element_ids=[piece.element.id, door.id],
                 message=(
                     f"{piece.label} est dans le débattement de la porte de {host} "
-                    f"({door.width:.2f} m) : la porte ne s'ouvre plus."
+                    f"({metres(door.width)}) : la porte ne s'ouvre plus."
                 ),
             )
         )
@@ -905,8 +906,8 @@ def _window_violations(
                 severity=severity,
                 element_ids=[piece.element.id, window.id],
                 message=(
-                    f"{piece.label} ({piece.top:.2f} m) masque la fenêtre de {host} "
-                    f"(allège {window.sill_height:.2f} m)."
+                    f"{piece.label} ({metres(piece.top)}) masque la fenêtre de {host} "
+                    f"(allège {metres(window.sill_height)})."
                 ),
             )
         )
@@ -933,7 +934,7 @@ def _check_clearances(
         clearance = element.clearance
 
         def radiator_message(p: Piece, distance: float = clearance, wall: str = host) -> str:
-            return f"{p.label} est à moins de {distance:.2f} m du radiateur de {wall}."
+            return f"{p.label} est à moins de {metres(distance)} du radiateur de {wall}."
 
         out.extend(_zone_violations(project, zone, pieces, element.id, radiator_message))
     walls = graph.walls_union() if graph.walls else None
@@ -1091,7 +1092,7 @@ def _check_passages(
                     element_ids=[piece.element.id],
                     message=(
                         f"{piece.label} n'est pas atteignable depuis la porte avec un passage de "
-                        f"{PASSAGE_WIDTH_M:.2f} m : dégager un chemin."
+                        f"{metres(PASSAGE_WIDTH_M)} : dégager un chemin."
                     ),
                 )
             )

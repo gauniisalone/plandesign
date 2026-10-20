@@ -22,6 +22,7 @@ from openplan.schemas import (
     Transform3,
 )
 from openplan.schemas.common import BBox3, Point2
+from openplan.schemas.numbers import metres
 from openplan.validation.invariants import validate_invariants
 from openplan.validation.layout import PASSAGE_WIDTH_M, check_layout
 from tests.factories import by_name, only_level, rect_room_project
@@ -126,7 +127,7 @@ def test_window_blocked_only_by_something_taller_than_the_sill() -> None:
     project = rect_room_project()
     tall = _add(project, "wardrobe_150", 2.2, 2.6, math.pi)  # 2,00 m devant la fenêtre
     (v,) = [v for v in check_layout(tall) if v.type == "window_blocked"]
-    assert v.severity == "medium" and "masque la fenêtre" in v.message and "0.90" in v.message
+    assert v.severity == "medium" and "masque la fenêtre" in v.message and "0,90" in v.message
     assert validate_invariants(tall).valid
     low = _add(project, "low_storage_eave", 2.2, 2.6, math.pi)  # 0,70 m < allège 0,90
     assert "window_blocked" not in _types(low)
@@ -242,7 +243,7 @@ def test_passage_from_the_door() -> None:
         if getattr(e, "asset_id", None) == "desk_140"
     )
     assert desk_id in [v.element_ids[0] for v in unreachable]
-    assert f"{PASSAGE_WIDTH_M:.2f} m" in unreachable[0].message
+    assert metres(PASSAGE_WIDTH_M) in unreachable[0].message
     assert validate_invariants(barred).valid, "règle souple par défaut"
     hard = Constraint(kind=ConstraintKind.MIN_PASSAGE, element_ids=[desk_id], hard=True)
     strict = barred.model_copy(update={"constraints": {hard.id: hard}})

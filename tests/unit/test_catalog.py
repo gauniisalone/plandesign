@@ -163,7 +163,7 @@ def test_furniture_from_asset_respects_the_range() -> None:
     )
     wide = furniture_from_asset(bed, Point2(x=0, y=0), width=1.8, name="Lit")
     assert wide.bbox.width == 1.8 and wide.name == "Lit"
-    with pytest.raises(CatalogError, match=r"largeur 3\.00 m hors de la plage"):
+    with pytest.raises(CatalogError, match=r"largeur 3,00 m hors de la plage"):
         furniture_from_asset(bed, Point2(x=0, y=0), width=3.0)
 
 

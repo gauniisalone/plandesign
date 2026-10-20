@@ -11,6 +11,7 @@ import {
   type RenderEntry,
 } from "../api/client";
 import type { Level, Project } from "../api/types.gen";
+import { decimal } from "../format";
 import { allCameras } from "../model";
 import { latestRenders } from "../staleViews";
 import { approxClipTokens, CLIP_LIMIT, TOKEN_BUDGET } from "./clipTokens";
@@ -329,7 +330,7 @@ export function ContextualPanel({
               disabled={running}
             />
             <span className="muted">
-              {referenceScale.toFixed(1)} — l'allure, jamais la géométrie
+              {decimal(referenceScale, 1)} — l'allure, jamais la géométrie
             </span>
           </label>
         </>

@@ -96,7 +96,7 @@ def test_parse_brief_drops_and_explains() -> None:
     assert "dimensions ou une forme de pièce" in reasons
     assert "piano" in reasons and "hors catalogue" in reasons
     assert "position proposée" in reasons and "moteur géométrique" in reasons
-    assert "width 1.8 m" in reasons and "non écrit par vous" in reasons
+    assert "width 1,8 m" in reasons and "non écrit par vous" in reasons
     assert "élément 4 : pas un objet" in reasons
     assert brief.avoid == []
 
@@ -128,12 +128,12 @@ def test_describe_room_says_the_plan_and_nothing_else() -> None:
     assert "m² au sol" in text and "à plus de 1,80 m" in text
     assert "Hauteur sous plafond" in text and "Murs :" in text
     assert "Pentes de toit : 2" in text and "égout à" in text
-    assert "Bureau 1.40 × 0.70 × 0.75 m (à conserver)" in text
+    assert "Bureau 1,40 × 0,70 × 0,75 m (à conserver)" in text
     assert "ne se modifient pas" in text
     assert "photo" not in text.lower() and "image" not in text.lower()
     rect = rect_room_project()
     plain = describe_room(rect, only_level(rect).id)
-    assert "porte de 0.83 m" in plain and "fenêtre de 1.20 m" in plain and "allège 0.90 m" in plain
+    assert "porte de 0,83 m" in plain and "fenêtre de 1,20 m" in plain and "allège 0,90 m" in plain
     assert "Aucun meuble" in plain and "Pentes" not in plain
 
 
@@ -160,7 +160,7 @@ def test_preview_shows_what_would_leave_without_calling_the_model() -> None:
     level_id = only_level(project).id
     model = ScriptedModel()
     preview = preview_intention(project, level_id, IntentionBody(text=USER_TEXT), model)
-    assert preview.text == USER_TEXT and "porte de 0.83 m" in preview.room_description
+    assert preview.text == USER_TEXT and "porte de 0,83 m" in preview.room_description
     assert preview.destination == "localhost:11434" and preview.remote is False
     assert preview.characters > len(USER_TEXT) + len(preview.room_description)
     assert set(CATEGORIES) == set(preview.categories) and model.requests == []
@@ -188,7 +188,7 @@ def test_run_intention_text_only_with_retry_and_artifacts(tmp_path: Path) -> Non
     assert len(model.requests) == 2
     retry = model.requests[1]
     assert retry.messages[-1].role == "user" and "uniquement" in retry.messages[-1].content
-    assert "porte de 0.83 m" in model.requests[0].messages[1].content
+    assert "porte de 0,83 m" in model.requests[0].messages[1].content
     assert USER_TEXT in model.requests[0].messages[1].content
     names = {a.name for a in run.result.artifacts}
     assert names == {"intention_raw.txt", "brief.json"}

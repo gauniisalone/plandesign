@@ -17,6 +17,7 @@ from pydantic import Field
 from openplan.adapters.protocols import DepthEstimator, DepthMap
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.schemas.common import StrictModel
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Project
 
@@ -113,8 +114,8 @@ def run_depth(
             path=png_path,
             media_type="image/png",
             description=(
-                f"Profondeur : clair = proche ({stats.p10_m:.1f} m), "
-                f"sombre = loin ({stats.p90_m:.1f} m)"
+                f"Profondeur : clair = proche ({metres(stats.p10_m, 1)}), "
+                f"sombre = loin ({metres(stats.p90_m, 1)})"
             ),
         ),
     ]

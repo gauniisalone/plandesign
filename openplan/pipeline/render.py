@@ -39,6 +39,7 @@ from openplan.schemas.elements import (
     RoofWindow,
     Room,
 )
+from openplan.schemas.numbers import metres
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import Level, Project
 from openplan.validation.layout import clearance_at
@@ -159,8 +160,8 @@ def section_label(section: tuple[str, float] | None) -> str | None:
     if section is None:
         return None
     axis, value = section
-    shown = f"{value:.2f}".replace(".", ",")
-    return f"horizontale à {shown} m" if axis == "z" else f"verticale {axis} = {shown} m"
+    shown = metres(value)
+    return f"horizontale à {shown}" if axis == "z" else f"verticale {axis} = {shown}"
 
 
 def section_keeps_above(section: tuple[str, float] | None, camera: RenderCamera) -> bool:
@@ -690,7 +691,7 @@ SECTION_VIEW_MARGIN_M = 0.6
 
 
 def section_view_name(axis: str, value: float) -> str:
-    return f"Coupe {axis} = {value:.2f} m".replace(".", ",")
+    return f"Coupe {axis} = {metres(value)}"
 
 
 def section_view(project: Project, level_id: UUID, axis: str, value: float) -> AddCamera:

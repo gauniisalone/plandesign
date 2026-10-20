@@ -1,4 +1,5 @@
 import type { AutoPlanResult } from "../api/client";
+import { decimal } from "../format";
 
 const STATUS_LABEL: Record<string, string> = {
   done: "fait",
@@ -39,7 +40,7 @@ export function AutoDiagnostic({ last }: { last: AutoPlanResult | null }) {
               {last.run.estimate_confidence
                 ? ` · confiance : ${last.run.estimate_confidence.label}`
                 : ""}{" "}
-              · {last.run.result.duration_s.toFixed(1).replace(".", ",")} s
+              · {decimal(last.run.result.duration_s, 1)} s
             </p>
             {last.run.estimate_confidence && (
               <p className="muted">

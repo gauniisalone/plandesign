@@ -35,6 +35,7 @@ from openplan.pipeline.perception import _overlay
 from openplan.scene import history
 from openplan.schemas.common import Provenance, Source, StrictModel, Uncertainty
 from openplan.schemas.elements import Camera, Opening, OpeningKind, Wall
+from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Artifact, Assumption, StepResult
 from openplan.schemas.scene import Level, Project
 
@@ -253,20 +254,25 @@ def project_opening(  # noqa: PLR0911 - un retour par motif de filtrage, tous ex
             update={
                 "filtered": "largeur_implausible",
                 "reason": (
-                    f"largeur projetée {width:.2f} m hors de "
-                    f"{WIDTH_RANGE_M[0]:.1f}–{WIDTH_RANGE_M[1]:.1f} m"
+                    f"largeur projetée {metres(width)} hors de "
+                    f"{decimal(WIDTH_RANGE_M[0], 1)}–{metres(WIDTH_RANGE_M[1], 1)}"
                 ),
             }
         )
     if height < MIN_HEIGHT_M:
         return base.model_copy(
-            update={"filtered": "hauteur_implausible", "reason": f"hauteur projetée {height:.2f} m"}
+            update={
+                "filtered": "hauteur_implausible",
+                "reason": f"hauteur projetée {metres(height)}",
+            }
         )
     if top > level.height + CEILING_SLACK_M:
         return base.model_copy(
             update={
                 "filtered": "depasse_plafond",
-                "reason": f"haut de la baie à {top:.2f} m pour un plafond à {level.height:.2f} m",
+                "reason": (
+                    f"haut de la baie à {metres(top)} pour un plafond à {metres(level.height)}"
+                ),
             }
         )
     kind: Literal["door", "window"] = category
@@ -276,7 +282,7 @@ def project_opening(  # noqa: PLR0911 - un retour par motif de filtrage, tous ex
         return base.model_copy(
             update={
                 "filtered": "trop_bas_pour_une_fenetre",
-                "reason": f"haut à {top:.2f} m : tableau, miroir ou plinthe plutôt qu'une baie",
+                "reason": f"haut à {metres(top)} : tableau, miroir ou plinthe plutôt qu'une baie",
             }
         )
     if kind == "door":

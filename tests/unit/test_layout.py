@@ -18,6 +18,7 @@ from openplan.schemas import (
     Source,
     Transform3,
 )
+from openplan.schemas.numbers import area, metres
 from openplan.validation.invariants import validate_invariants
 from openplan.validation.layout import check_layout, footprint_corners
 from tests.factories import ATTIC, attic_project, only_level
@@ -52,8 +53,8 @@ def test_usable_area_of_the_attic_room() -> None:
     assert room.usable_area_m2 == pytest.approx(expected, rel=1e-3)
     assert 0 < expected < room.area_m2
     svg = render_svg(project, level.id)
-    assert f"{expected:.2f} m² à plus de 1,80 m" in svg
-    assert f"{expected:.2f} m" in render_pdf(project, level.id).decode("latin-1")
+    assert f"{area(expected, 2)} à plus de 1,80 m" in svg
+    assert metres(expected) in render_pdf(project, level.id).decode("latin-1")
 
 
 def furniture(x: float, y: float, height: float, yaw: float = 0.0) -> Furniture:

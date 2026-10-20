@@ -9,6 +9,7 @@ import {
   type JobStatus,
 } from "../api/client";
 import type { Op } from "../api/ops";
+import { decimal, typed } from "../format";
 import type { Level, Project, ValidationReport } from "../api/types.gen";
 import {
   cameras,
@@ -306,9 +307,9 @@ function InspirationSection({
           <p className="muted">
             <span className="badge source-generated">générée</span>
             {last.result.model_ids.slice(1).join(" + ")} · graine {last.seed} ·{" "}
-            {last.generation_s.toFixed(1)} s
+            {decimal(last.generation_s, 1)} s
             {last.peak_vram_mb
-              ? ` · ${(last.peak_vram_mb / 1024).toFixed(1)} Go VRAM`
+              ? ` · ${decimal(last.peak_vram_mb / 1024, 1)} Go VRAM`
               : ""}
           </p>
           {image && (
@@ -430,7 +431,7 @@ function PhotoItem({
         <span className="muted">
           {image.width_px} × {image.height_px} px
           {image.focal_35mm
-            ? ` · ${image.focal_35mm} mm éq.`
+            ? ` · ${typed(image.focal_35mm)} mm éq.`
             : " · focale inconnue"}
           {image.exif_stripped ? " · EXIF retiré" : ""}
         </span>

@@ -110,10 +110,10 @@ def _check_exports(client: TestClient, pid: str, lid: str) -> None:
     """SVG, PDF, DXF et JSON du plan calibré (mur de 3,10 m)."""
     svg = client.get(f"/api/projects/{pid}/exports/svg", params={"level_id": lid})
     assert svg.status_code == 200 and svg.headers["content-type"].startswith("image/svg+xml")
-    assert "3.10 m" in svg.text
+    assert "3,10 m" in svg.text
     pdf = client.get(f"/api/projects/{pid}/exports/pdf", params={"level_id": lid})
     assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
-    assert pdf.content.startswith(b"%PDF-") and b"(3.10 m)" in pdf.content
+    assert pdf.content.startswith(b"%PDF-") and b"(3,10 m)" in pdf.content
     assert 'filename="Chambre - ' in pdf.headers["content-disposition"]
     cut = client.get(
         f"/api/projects/{pid}/exports/section-pdf",

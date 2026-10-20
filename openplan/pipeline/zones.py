@@ -19,6 +19,7 @@ from shapely.ops import unary_union
 
 from openplan.schemas.intent import DesignIntent, Zone
 from openplan.schemas.layout import BriefItem, LayoutBrief, Place, Priority
+from openplan.schemas.numbers import decimal
 
 TARGET_DENSITY = 0.35
 """Meubles par m² de sol visés (milieu de la fourchette 0,3–0,5 de la note 10)."""
@@ -172,7 +173,7 @@ def zone_brief(
         items=items,
         notes=(
             f"Brief par zones : {', '.join(zones) or 'aucune'} ; {total} meubles visés pour "
-            f"{usable:.0f} m² à plus de 1,40 m (densité cible {TARGET_DENSITY:.2f} meuble/m²)."
+            f"{usable:.0f} m² à plus de 1,40 m (densité cible {decimal(TARGET_DENSITY)} meuble/m²)."
         ),
     )
 
