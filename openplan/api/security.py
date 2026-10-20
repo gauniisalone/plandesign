@@ -467,7 +467,8 @@ async def _announce(request: Request, path: str) -> None:
     """B2a : une écriture réussie sur un projet est annoncée aux autres membres connectés ;
     la connexion de l'onglet qui l'a faite (`X-Live-Conn`) n'est pas prévenue."""
     match = LIVE_PROJECT.match(path)
-    if match is None:
+    # KAN-43 : ma vue (zoom, déplacement) ne concerne que moi : les autres n'ont rien à relire.
+    if match is None or getattr(request.state, "quiet", False):
         return
     from openplan.api.accounts.live import hub_of
 

@@ -1230,6 +1230,75 @@ test("KAN-58 : le journal d'activité, avec le détail des gestes, lu par un lec
   await shot(kim, "kan58-2-element");
 });
 
+test("KAN-43 : une vue par personne, lecteur compris, retrouvée au rechargement", async ({
+  browser,
+}) => {
+  const owner = await person(browser, "198.51.100.101");
+  await gotoApp(owner, "/");
+  await signInHere(owner, "gilles.kan43@example.org", "Gilles");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Vues" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invite = async (role: string) =>
+    (
+      (await (
+        await owner.request.post(`/api/projects/${id}/invitations`, {
+          data: { role },
+          headers: origin,
+        })
+      ).json()) as { token: string }
+    ).token;
+  const [asEditor, asViewer] = [await invite("editor"), await invite("viewer")];
+  const zoomOf = (p: Page) =>
+    p.getByRole("button", { name: /^\d+ %$/ }).textContent();
+  const viewSaved = (p: Page) =>
+    p.waitForResponse(
+      (r) =>
+        r.url().endsWith(`/projects/${id}/view`) &&
+        r.request().method() === "PUT",
+    );
+
+  // Gilles zoome : sa vue est enregistrée (PUT …/view), rien d'autre.
+  await gotoApp(owner, `/#/projects/${id}`);
+  await expect(owner.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  const start = await zoomOf(owner);
+  let saved = viewSaved(owner);
+  for (let i = 0; i < 3; i++) await owner.keyboard.press("+");
+  await saved;
+  const his = await zoomOf(owner);
+  expect(his).not.toBe(start);
+
+  // Fanny arrive : le cadrage de départ, pas la vue de Gilles.
+  const editor = await person(browser, "198.51.100.102");
+  await gotoApp(editor, `/#/invitation/${asEditor}`);
+  await signInHere(editor, "fanny.kan43@example.org", "Fanny");
+  await expect(editor.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  expect(await zoomOf(editor)).toBe(start);
+
+  // Kim, lecteur, dézoome et retrouve sa vue en rechargeant.
+  const viewer = await person(browser, "198.51.100.103");
+  await gotoApp(viewer, `/#/invitation/${asViewer}`);
+  await signInHere(viewer, "kim.kan43@example.org", "Kim");
+  await expect(viewer.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  saved = viewSaved(viewer);
+  for (let i = 0; i < 2; i++) await viewer.keyboard.press("-");
+  await saved;
+  const hers = await zoomOf(viewer);
+  await viewer.reload();
+  await expect(viewer.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => zoomOf(viewer)).toBe(hers);
+
+  // Gilles recharge : la sienne, pas celle de Kim.
+  await owner.reload();
+  await expect(owner.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => zoomOf(owner)).toBe(his);
+  await shot(owner, "kan43-1-vue-gilles");
+  await shot(viewer, "kan43-2-vue-kim");
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

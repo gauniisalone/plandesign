@@ -2121,6 +2121,23 @@ export const leaseApi = {
     }),
 };
 
+/** Une écriture qui part même quand la page se ferme (`keepalive`), sans attendre de réponse. */
+function keepalive(method: string, path: string, body: unknown): void {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const token = readToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // B2c : comme toute écriture, sans s'annoncer à soi-même.
+  if (liveConn) headers["X-Live-Conn"] = liveConn;
+  void fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 export const boardApi = {
   get: (pid: string) => request<Board>(`/projects/${pid}/board`),
   /** B2c : les écritures d'un geste (éléments posés, modifiés, retirés ; vue). Ne touche
@@ -2150,21 +2167,16 @@ export const boardApi = {
     request<void>(`/projects/${pid}/media/${mediaId}`, { method: "DELETE" }),
   /** B4 : dernier envoi quand la page se cache ou se ferme ; `keepalive` laisse la
    *  requête partir même si l'onglet disparaît. Pas de réponse lue. */
-  patchKeepalive: (pid: string, patch: BoardPatch): void => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    const token = readToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    // B2c : comme toute écriture, sans s'annoncer à soi-même.
-    if (liveConn) headers["X-Live-Conn"] = liveConn;
-    void fetch(`${BASE}/projects/${pid}/board/items`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify(patch),
-      keepalive: true,
-    }).catch(() => undefined);
-  },
+  patchKeepalive: (pid: string, patch: BoardPatch): void =>
+    keepalive("PATCH", `/projects/${pid}/board/items`, patch),
+  /** KAN-43 : MA vue de l'espace de travail (tout membre, lecteur compris). */
+  putView: (pid: string, view: BoardView) =>
+    request<BoardView>(`/projects/${pid}/view`, {
+      method: "PUT",
+      body: JSON.stringify(view),
+    }),
+  putViewKeepalive: (pid: string, view: BoardView): void =>
+    keepalive("PUT", `/projects/${pid}/view`, view),
 };
 
 /* Rendu contextualisé (A1) : une source du tableau et une intention → prompt enrichi par le

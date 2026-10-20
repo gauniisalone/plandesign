@@ -11,20 +11,47 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 
 from openplan.api import change_events
+from openplan.api.access import accounts_of
 from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
+from openplan.api.guards import role_of
 from openplan.pipeline import board as b
 from openplan.pipeline.board import MediaError
-from openplan.schemas.board import Board, BoardPatch, MediaRef
+from openplan.pipeline.board_views import ViewStore, bounded
+from openplan.schemas.board import Board, BoardPatch, BoardView, MediaRef
+from openplan.schemas.common import StrictModel
 
 router = APIRouter(tags=["board"])
 
 
+class ViewIn(StrictModel):
+    """KAN-43 : une vue reçue, bornée avant d'être gardée (`board_views.bounded`)."""
+
+    x: float
+    y: float
+    zoom: float
+
+
+def _mine(request: Request, actor: str, project_dir: Path, board: Board) -> Board:
+    """KAN-43 : le tableau tel que je le vois, avec MA vue. Sans vue enregistrée : le
+    propriétaire reprend l'ancienne vue commune (une seule fois, tant qu'il n'en a pas
+    enregistré une) ; les autres, le cadrage de départ (vue nulle : le front cadre tout)."""
+    view = ViewStore(project_dir).get(author_of(actor))
+    if view is None:
+        owner = accounts_of(request) is None or role_of(request, board_project(request)) == "owner"
+        view = bounded(board.view) if owner and board.view != BoardView() else BoardView()
+    return board.model_copy(update={"view": view})
+
+
+def board_project(request: Request) -> UUID:
+    return UUID(request.path_params["project_id"])
+
+
 @router.get("/projects/{project_id}/board")
-def get_board(project: ProjectDep, store: StoreDep) -> Board:
+def get_board(project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request) -> Board:
     """Le tableau, à jour de ce que le projet contient (mise en page de départ la première
-    fois ; photos, rendus, plan et demande ajoutés ensuite dans leur cadre)."""
+    fois ; photos, rendus, plan et demande ajoutés ensuite dans leur cadre), avec ma vue."""
     project_dir = store.project_dir(project.id)
     with store.lock(project.id):
         board, changed = b.sync_board(
@@ -35,7 +62,25 @@ def get_board(project: ProjectDep, store: StoreDep) -> Board:
         )
         if changed:
             board = b.save_board(project_dir, board)
-    return board
+        return _mine(request, actor, project_dir, board)
+
+
+@router.get("/projects/{project_id}/view")
+def get_view(project: ProjectDep, store: StoreDep, actor: ActorDep) -> BoardView | None:
+    """KAN-43 : ma vue de l'espace de travail (null : jamais enregistrée)."""
+    return ViewStore(store.project_dir(project.id)).get(author_of(actor))
+
+
+@router.put("/projects/{project_id}/view")
+def put_view(
+    body: ViewIn, project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
+) -> BoardView:
+    """KAN-43 : enregistre ma vue, et seulement la mienne (tout membre, lecteur compris). Pas
+    une modification : ni journal, ni cloche, ni avis aux autres."""
+    request.state.quiet = True
+    raw = BoardView.model_construct(x=body.x, y=body.y, zoom=body.zoom)
+    with store.lock(project.id):
+        return ViewStore(store.project_dir(project.id)).set(author_of(actor), raw)
 
 
 @router.put("/projects/{project_id}/board")
@@ -58,13 +103,17 @@ def put_board(
     ]
     with store.lock(project.id):
         before = b.load_board(project_dir)
-        after = b.replaced(before, body.model_copy(update={"items": items}))
+        # KAN-43 : la vue envoyée est la mienne (gardée seulement si l'envoi passe) ; la vue
+        # commune ne bouge plus.
+        kept = before.view if before is not None else BoardView()
+        after = b.replaced(before, body.model_copy(update={"items": items, "view": kept}))
         try:
             saved = b.save_board(project_dir, after, expect=body.revision)
         except b.StaleBoardError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        ViewStore(project_dir).set(author_of(actor), body.view)
         _journal(request, project_dir, project.id, actor, before, saved)
-    return saved
+        return _mine(request, actor, project_dir, saved)
 
 
 def _journal(
@@ -92,13 +141,21 @@ def patch_board_items(
     project_dir = store.project_dir(project.id)
     with store.lock(project.id):
         before = b.load_board(project_dir)
+        # KAN-43 : la vue envoyée (onglets d'avant KAN-43) est la mienne, pas celle du projet.
+        if body.view is not None:
+            ViewStore(project_dir).set(author_of(actor), body.view)
+        if not body.set and not body.delete:
+            # Une vue seule : rien n'est écrit dans le tableau, personne n'est prévenu.
+            request.state.quiet = True
+            current = before if before is not None else Board()
+            return _mine(request, actor, project_dir, current)
         try:
-            after = b.patched(before, body, actor)
+            after = b.patched(before, body.model_copy(update={"view": None}), actor)
         except b.TooManyItemsError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         saved = b.save_board(project_dir, after)
         _journal(request, project_dir, project.id, actor, before, saved)
-    return saved
+        return _mine(request, actor, project_dir, saved)
 
 
 @router.get("/projects/{project_id}/exports/archive")

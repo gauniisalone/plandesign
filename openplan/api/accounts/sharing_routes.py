@@ -14,6 +14,7 @@ from pydantic import Field
 from openplan.api.access import SignedInDep
 from openplan.api.accounts.routes import service
 from openplan.api.accounts.sharing import LastOwnerError, MemberView, PendingInvitation
+from openplan.pipeline.board_views import ViewStore
 from openplan.schemas.common import StrictModel
 
 router = APIRouter(tags=["partage"])
@@ -120,4 +121,8 @@ def remove_member(
     if not found:
         raise HTTPException(status_code=404, detail="ce compte n'est pas membre du projet")
     _evict(request, project_id, user_id)
+    # KAN-43 : un membre retiré perd sa vue de l'espace de travail.
+    store = request.app.state.store
+    with store.lock(project_id):
+        ViewStore(store.project_dir(project_id)).forget(str(user_id))
     return [_member(m, user.id) for m in accounts.members(project_id)]

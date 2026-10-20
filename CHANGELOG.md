@@ -7,6 +7,18 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 20 octobre 2026 (KAN-43 : une vue par personne)
+
+En local comme avec les comptes, à l'identique.
+
+- Chacun retrouve SA vue de l'espace de travail (position et zoom) en rouvrant un projet, sur
+  tous ses appareils ; lecteur et commentateur compris. Vos déplacements et vos zooms ne
+  changent plus la vue des autres, et ne leur font plus rien relire.
+- Sans vue enregistrée : le cadrage de départ (tout ce qui est posé). Le propriétaire reprend
+  l'ancienne vue commune du projet, une fois.
+- La vue n'est ni au journal, ni dans la cloche, ni dans l'archive ; un membre retiré perd la
+  sienne. Suivre quelqu'un (B2b) ne change pas votre vue enregistrée.
+
 ### 20 octobre 2026 (KAN-58 : le journal d'activité du projet)
 
 En local comme avec les comptes, à l'identique.

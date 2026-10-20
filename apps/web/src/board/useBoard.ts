@@ -145,18 +145,21 @@ export function useBoard(projectId: string, syncKey: string) {
   const flush = useCallback(async () => {
     timer.current = null;
     if (inflight.current) return;
-    const ops = pending.current;
+    // KAN-43 : ma vue part à part (PUT …/view, lecteur compris) ; elle ne touche ni le
+    // tableau ni les autres. Une vue perdue n'est pas grave : la suivante la remplace.
     const view = pendingView.current;
-    if (ops.size === 0 && !view) {
+    pendingView.current = null;
+    if (view) void boardApi.putView(projectId, view).catch(() => undefined);
+    const ops = pending.current;
+    if (ops.size === 0) {
       setSave("saved");
       return;
     }
     pending.current = new Map();
-    pendingView.current = null;
     inflight.current = ops;
     setSave("saving");
     try {
-      const saved = await boardApi.patch(projectId, toPatch(ops, view));
+      const saved = await boardApi.patch(projectId, toPatch(ops, null));
       inflight.current = null;
       show(saved);
       // Un geste fait pendant l'envoi part à son tour.
@@ -166,7 +169,6 @@ export function useBoard(projectId: string, syncKey: string) {
       // Rien n'est perdu : ces écritures repartiront, sous celles faites depuis.
       inflight.current = null;
       pending.current = new Map([...ops, ...pending.current]);
-      pendingView.current = pendingView.current ?? view;
       setSave("error");
     }
   }, [projectId, show]);
@@ -196,7 +198,8 @@ export function useBoard(projectId: string, syncKey: string) {
       timer.current = null;
       pending.current = new Map();
       pendingView.current = null;
-      boardApi.patchKeepalive(projectId, toPatch(ops, view));
+      if (view) boardApi.putViewKeepalive(projectId, view);
+      if (ops.size) boardApi.patchKeepalive(projectId, toPatch(ops, null));
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", onHide);
