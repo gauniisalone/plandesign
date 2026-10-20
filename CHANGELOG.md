@@ -7,6 +7,24 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 20 octobre 2026 (KAN-51 : commentaires de l'espace de travail)
+
+En local comme avec les comptes, à l'identique.
+
+- Outil « Commentaire » (touche c) : un clic pose une épingle n'importe où dans l'espace de
+  travail, ou sur un élément (carte, photo, rendu, cadre du plan) ; elle le suit quand il bouge
+  et reste, « détachée », s'il est supprimé. Les autres membres la voient en moins de 2 s.
+- Un fil de réponses signées (nom, couleur, heure) ; « Résoudre » masque l'épingle, le fil
+  reste dans « Résolus » et peut être rouvert ; panneau « Commentaires » ; les épingles se
+  masquent d'un clic. Texte affiché comme du texte, 2 000 caractères au plus.
+- Droits gardés par le serveur : lire, lecteur ; commenter, commentateur et plus ; seul
+  l'auteur modifie ou supprime son message ; le propriétaire supprime tout fil (l'auteur, le
+  sien tant qu'il n'a pas de réponse). Le rôle « commentateur » devient réel : il commente,
+  sans modifier l'espace de travail ni le plan. Un ancien membre est signé « Ancien membre ».
+- Stockage par projet (`comments.json`, emporté par l'archive du projet) ; chaque fil,
+  réponse, résolution ou réouverture laisse une ligne dans `events.jsonl` (qui, quoi, où,
+  quand ; jamais le texte), pour la future cloche (KAN-52).
+
 ### 19 octobre 2026 (KAN-12 : place disque par compte)
 
 Avec les comptes seulement ; le mode local n'a pas de limite.
