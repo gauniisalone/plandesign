@@ -45,6 +45,8 @@ import {
   rememberColor,
   resizedPostit,
 } from "./postits";
+import { PhotoMeasure } from "./PhotoMeasure";
+import { referenceOf } from "../state/photoReference";
 import { CommentPins, CommentsPanel } from "./comments";
 import { pinPlace, type CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
@@ -313,6 +315,11 @@ export function BoardCanvas(props: Props) {
   } | null>(null);
   /** T7c : le menu « Importer » de la barre de gauche (source du plan, ou fichiers). */
   const [importMenu, setImportMenu] = useState(false);
+  /** KAN-66 : la photo ouverte dans le calque « Mesurer sur la photo ». */
+  const [measureFor, setMeasureFor] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
   const dark = useDarkTheme();
   const caps = useCapabilities();
   // B1d : lecteur (et commentateur jusqu'à B2) : ni outils, ni compositeur, ni « Générer ».
@@ -1665,6 +1672,24 @@ export function BoardCanvas(props: Props) {
               Rendu contextualisé…
             </button>
           )}
+        {/* KAN-66 : mesure de référence sur la photo ; un lecteur voit la mesure posée. */}
+        {single?.kind === "photo" &&
+          single.ref &&
+          project.images[single.ref] &&
+          (!readOnly || referenceOf(project, single.ref)) && (
+            <button
+              type="button"
+              onClick={() =>
+                setMeasureFor({
+                  id: single.ref ?? "",
+                  label: single.text || "Photo",
+                })
+              }
+              title="Deux points sur une longueur connue (une porte de 2,04 m…) : l'estimation se recale"
+            >
+              {readOnly ? "Voir la mesure" : "Mesurer sur la photo"}
+            </button>
+          )}
         {single?.kind === "render" &&
           single.ref &&
           single.role !== "inspiration" && (
@@ -2168,6 +2193,16 @@ export function BoardCanvas(props: Props) {
               fermer
             </button>
           </div>
+        )}
+        {measureFor && project.images[measureFor.id] && (
+          <PhotoMeasure
+            project={project}
+            imageId={measureFor.id}
+            label={measureFor.label}
+            readOnly={readOnly}
+            onClose={() => setMeasureFor(null)}
+            onProjectChanged={props.onProjectChanged}
+          />
         )}
       </div>
     </section>

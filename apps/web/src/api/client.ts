@@ -1084,6 +1084,35 @@ export const recalibrateApi = {
     ),
 };
 
+/* KAN-66 : mesure de référence sur une photo (une par photo : le PUT remplace) ; le PUT et
+   le DELETE renvoient le projet entier recalé. */
+export interface PhotoReferenceBody {
+  p1: [number, number];
+  p2: [number, number];
+  length_m: number;
+  label: string | null;
+}
+
+export const referenceApi = {
+  put: (pid: string, imageId: string, body: PhotoReferenceBody) =>
+    request<Project>(`/projects/${pid}/images/${imageId}/reference`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  remove: (pid: string, imageId: string, segmentId: string) =>
+    request<Project>(
+      `/projects/${pid}/images/${imageId}/reference/${segmentId}`,
+      { method: "DELETE" },
+    ),
+  /** « Réestimer la photo pour pouvoir mesurer » : 202 et une tâche ; le projet se relit à
+   *  la fin. */
+  reestimate: (pid: string, lid: string, imageId: string) =>
+    request<JobStatus>(
+      `/projects/${pid}/levels/${lid}/images/${imageId}/reestimate`,
+      { method: "POST" },
+    ),
+};
+
 export const inspirationApi = {
   /** Lance l'image d'inspiration locale (source generated) et renvoie l'état de la tâche. */
   start: (
