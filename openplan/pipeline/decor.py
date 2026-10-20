@@ -20,7 +20,13 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from openplan.geom.built_in_bed import BUILT_IN_BED, HEAD_THICKNESS_M, MATTRESS_TOP_M
+from openplan.geom.built_in_bed import (
+    BUILT_IN_BED,
+    HEAD_THICKNESS_M,
+    INSET_M,
+    MATTRESS_TOP_M,
+    SIDE_M,
+)
 from openplan.geom.roof import derived_roofs
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene.catalog import CatalogError, asset
@@ -244,13 +250,14 @@ def _on_furniture(
     if f.category in ("bed_single", "bed_double"):
         out.extend(_bed_linen(x, y, yaw, w, d, h, z0, pal, f.category == "bed_double"))
     elif f.category == BUILT_IN_BED:
-        # Lit encastré (H1) : matelas à 0,55 m, oreillers contre la planche de tête.
+        # Lit encastré (H1) : matelas à 0,55 m, oreillers contre le fond ; le linge reste sur
+        # le matelas, entre les joues de la niche (KAN-25).
         out.extend(
             _bed_linen(
                 x,
                 y,
                 yaw,
-                w,
+                w - 2.0 * (SIDE_M + INSET_M),
                 d,
                 h,
                 z0,
@@ -259,6 +266,7 @@ def _on_furniture(
                 z_top=z0 + MATTRESS_TOP_M,
                 pillow_at=(HEAD_THICKNESS_M + 0.2) / d,
                 duvet=True,
+                tucked=True,
             )
         )
     if f.category == "bookshelf" and pal.books and _model(f).endswith("bookcaseOpen.glb"):
@@ -365,9 +373,11 @@ def _bed_linen(  # noqa: PLR0913 - boîte du lit et réglages du linge
     z_top: float | None = None,
     pillow_at: float = 0.42,
     duvet: bool = False,
+    tucked: bool = False,
 ) -> list[Decor]:
     """Coussins devant l'oreiller du modèle et plaid replié au pied de la couette. La tête du
-    lit est à l'arrière (face avant = pied)."""
+    lit est à l'arrière (face avant = pied). `tucked` (lit encastré, KAN-25) : couette et plaid
+    bordés entre les joues de la niche, sans retomber sur les côtés ni se poser de biais."""
     fx, fy = -math.sin(yaw), math.cos(yaw)
     ux, uy = math.cos(yaw), math.sin(yaw)
     bx, by = x - fx * d / 2, y - fy * d / 2  # milieu de la tête de lit
@@ -398,7 +408,7 @@ def _bed_linen(  # noqa: PLR0913 - boîte du lit et réglages du linge
                 y=by + fy * (0.58 * d),
                 z=z_top,
                 yaw=yaw,
-                width=w + 2 * DRAPE_DROP_M,
+                width=w + (0.0 if tucked else 2 * DRAPE_DROP_M),
                 depth=0.78 * d,
                 height=0.04,
                 color=pal.textile,
@@ -412,8 +422,8 @@ def _bed_linen(  # noqa: PLR0913 - boîte du lit et réglages du linge
             x=bx + fx * 0.7 * d,
             y=by + fy * 0.7 * d,
             z=z_top + (0.04 if duvet else 0.0),
-            yaw=yaw + math.radians(THROW_BIAS_DEG),
-            width=w + 2 * DRAPE_DROP_M,
+            yaw=yaw + (0.0 if tucked else math.radians(THROW_BIAS_DEG)),
+            width=w + (0.0 if tucked else 2 * DRAPE_DROP_M),
             depth=0.5,
             height=0.02,
             color=pal.accent,
