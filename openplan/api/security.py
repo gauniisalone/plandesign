@@ -31,11 +31,13 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
+from openplan.api import change_events
 from openplan.api.access import (
     LOGIN_REQUIRED,
     SESSION_COOKIE,
@@ -422,8 +424,20 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             if raw:  # cookie expiré ou révoqué : il s'efface
                 refused.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
             return finish(refused, request, "-", started)
+        change = _change_watch(request, path) if resolved is not None else None
+        before = await run_in_threadpool(change_events.stamps, change[1]) if change else None
         response = await call_next(request)
         if resolved is not None and request.method in MUTATING and response.status_code < 400:
+            if change is not None and before is not None:
+                # KAN-52 : la modification entre au journal du projet, pour la cloche.
+                await run_in_threadpool(
+                    change_events.record,
+                    change[1],
+                    change[0],
+                    str(resolved.user.id),
+                    path,
+                    before,
+                )
             await _announce(request, path)
         if (
             resolved is not None
@@ -442,14 +456,26 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         return finish(response, request, actor, started)
 
 
+def _change_watch(request: Request, path: str) -> tuple[UUID, Path] | None:
+    """KAN-52 : une écriture sur un projet existant, à surveiller (projet, dossier)."""
+    if request.method not in MUTATING:
+        return None
+    match = LIVE_PROJECT.match(path)
+    if match is None or not change_events.watched(path):
+        return None
+    project_id = UUID(match.group(1))
+    store = request.app.state.store
+    if not store.exists(project_id):
+        return None
+    return project_id, store.project_dir(project_id)
+
+
 async def _announce(request: Request, path: str) -> None:
     """B2a : une écriture réussie sur un projet est annoncée aux autres membres connectés ;
     la connexion de l'onglet qui l'a faite (`X-Live-Conn`) n'est pas prévenue."""
     match = LIVE_PROJECT.match(path)
     if match is None:
         return
-    from uuid import UUID
-
     from openplan.api.accounts.live import hub_of
 
     # KAN-51 : un commentaire n'oblige pas les autres à relire le projet, seulement les fils.

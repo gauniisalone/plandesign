@@ -38,7 +38,9 @@ from openplan.api.accounts.service import (
 )
 from openplan.api.accounts.sharing import INVITE_REFUSED, InvitationRefusedError
 from openplan.brand import APP_NAME
+from openplan.pipeline.events import ProjectEvents
 from openplan.schemas.common import StrictModel
+from openplan.schemas.events import ProjectEvent
 
 log = logging.getLogger("openplan.accounts")
 router = APIRouter(tags=["auth"])
@@ -282,10 +284,19 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
 def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> Accepted:
     """B1e : le lien d'invitation ouvert par un utilisateur connecté (jeton lu dans l'ancre
     du lien par le front, jamais dans une URL) ; il devient membre avec le rôle du lien."""
+    accounts = service(request)
+    before = set(accounts.roles_of(user.id))
     try:
-        project_id, role = service(request).accept_invitation(body.token, user.id)
+        project_id, role = accounts.accept_invitation(body.token, user.id)
     except InvitationRefusedError as exc:
         raise HTTPException(status_code=410, detail=INVITE_REFUSED) from exc
+    if project_id not in before:
+        # KAN-52 : « X a rejoint le projet », pour les autres membres.
+        store = request.app.state.store
+        if store.exists(project_id):
+            ProjectEvents(store.project_dir(project_id)).append(
+                ProjectEvent(type="member.joined", project_id=project_id, actor=str(user.id))
+            )
     return Accepted(project_id=project_id, role=role)
 
 

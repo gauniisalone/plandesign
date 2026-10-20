@@ -7,10 +7,12 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-from openplan.schemas.comments import CommentEvent, CommentFile
+from openplan.pipeline.events import EVENTS_FILE, ProjectEvents
+from openplan.schemas.comments import CommentFile
+from openplan.schemas.events import ProjectEvent
 
 COMMENTS_FILE = "comments.json"
-EVENTS_FILE = "events.jsonl"
+__all__ = ["COMMENTS_FILE", "EVENTS_FILE", "CommentStore"]
 
 
 class CommentStore:
@@ -33,8 +35,6 @@ class CommentStore:
         tmp.write_text(comments.model_dump_json(indent=2) + "\n", encoding="utf-8")
         tmp.replace(self.project_dir / COMMENTS_FILE)
 
-    def publish(self, event: CommentEvent) -> None:
-        """Ajoute une ligne au journal des événements du projet."""
-        self.project_dir.mkdir(parents=True, exist_ok=True)
-        with (self.project_dir / EVENTS_FILE).open("a", encoding="utf-8") as out:
-            out.write(event.model_dump_json() + "\n")
+    def publish(self, event: ProjectEvent) -> None:
+        """Ajoute une ligne au journal du projet (`pipeline.events`)."""
+        ProjectEvents(self.project_dir).append(event)

@@ -54,15 +54,3 @@ class CommentThread(StrictModel):
 class CommentFile(StrictModel):
     version: Literal[1] = 1
     threads: list[CommentThread] = Field(default_factory=list, max_length=MAX_THREADS)
-
-
-class CommentEvent(StrictModel):
-    """Une ligne de `events.jsonl` (KAN-51 § 8), lue par la future cloche (KAN-52) : qui, quoi,
-    où, quand ; jamais le texte, jamais une adresse."""
-
-    type: Literal["comment.created", "comment.replied", "comment.resolved", "comment.reopened"]
-    project_id: UUID
-    actor: str
-    thread_id: UUID
-    item_id: UUID | None = None
-    at: datetime = Field(default_factory=now_utc)

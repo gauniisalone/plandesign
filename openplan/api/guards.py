@@ -213,6 +213,11 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("GET", "/api/projects"): "user",
     ("POST", "/api/projects"): "user",
     ("GET", "/api/auth/usage"): "user",  # KAN-12 : ma place disque
+    # KAN-52 : la cloche ne lit que les projets dont la personne est membre.
+    ("GET", "/api/notifications"): "user",
+    ("GET", "/api/notifications/count"): "user",
+    ("POST", "/api/notifications/read"): "user",
+    ("POST", "/api/notifications/read-all"): "user",
     # Lecture de l'installation et du catalogue
     ("GET", "/api/ai"): "user",
     ("GET", "/api/models"): "user",

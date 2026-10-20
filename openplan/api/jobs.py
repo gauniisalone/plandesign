@@ -26,6 +26,7 @@ une description sérialisable (projet, vue, options) qu'un poste sait exécuter.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Hashable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -42,6 +43,7 @@ from openplan.schemas.common import StrictModel
 
 JobState = Literal["queued", "running", "done", "failed", "cancelled"]
 
+log = logging.getLogger(__name__)
 MAX_QUEUED_PER_OWNER = 8
 """Tâches en attente au plus par utilisateur : au-delà, refus (429). Protège l'API exposée
 d'une file sans fin ; le front n'en met jamais plus de quelques-unes."""
@@ -142,6 +144,9 @@ class JobRegistry:
         self._jobs: dict[UUID, _Job] = {}
         self._lock = Lock()
         self._seq = count()
+        self.on_done: Callable[[str, str, UUID | None, BaseModel], None] | None = None
+        """KAN-52 : appelé (sorte, lanceur, projet, résultat) quand une tâche réussit ; une
+        erreur du rappel est journalisée, jamais remontée à la tâche."""
 
     def running_for(self, owner: str) -> _Job | None:
         """La tâche qui calcule pour cet utilisateur (pas celles qui attendent)."""
@@ -171,9 +176,15 @@ class JobRegistry:
                 job.started = self._clock()
             work = job.work
         try:
-            return work()
+            result = work()
         finally:
             job.finished = self._clock()
+        if self.on_done is not None:
+            try:
+                self.on_done(job.kind, job.owner, job.project_id, result)
+            except Exception:
+                log.exception("rappel de fin de tâche en échec (%s)", job.kind)
+        return result
 
     def submit(
         self,

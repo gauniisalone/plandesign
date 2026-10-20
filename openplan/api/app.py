@@ -54,6 +54,7 @@ from openplan.api.routes import (
     layouts,
     measurements,
     models,
+    notifications,
     plans,
     projects,
     scene,
@@ -61,6 +62,7 @@ from openplan.api.routes import (
 )
 from openplan.api.routes import settings as settings_routes
 from openplan.api.routes.gallery import purge_all
+from openplan.api.routes.notifications import render_done_hook
 from openplan.api.security import TokenMissingError, install_security
 from openplan.api.settings import Settings, project_root
 from openplan.brand import APP_NAME
@@ -151,6 +153,7 @@ def create_app(
     app.state.opening_detector = opening_detector
     app.state.image_finisher = image_finisher
     app.state.jobs = JobRegistry(exposed=not settings.local_only)
+    _wire_bell(app, settings)
     if not settings.accounts_enabled:
         # Avec les comptes, seule l'origine du site (OPENPLAN_SITE_ORIGIN) passe, et seulement
         # sur la connexion (security.py) : pas d'origines de développement.
@@ -308,6 +311,7 @@ def create_app(
         gallery.router,
         board.router,
         comments.router,
+        notifications.router,
         contextual.router,
     ):
         app.include_router(router, prefix="/api", dependencies=guarded)
@@ -316,6 +320,21 @@ def create_app(
     if settings.web_dir is not None:
         _mount_web(app, settings.web_dir)
     return app
+
+
+def _wire_bell(app: FastAPI, settings: Settings) -> None:
+    """KAN-52 : l'état « lu » de la cloche derrière la même interface (`api.bell_state` :
+    tables avec les comptes, fichier en local), et « Votre rendu est prêt » publié au journal
+    du projet à la fin d'un rendu."""
+    if app.state.accounts is None:
+        from openplan.api.bell_state import FileReadState
+
+        app.state.bell_reads = FileReadState(settings.data_dir)
+    else:
+        from openplan.api.accounts.bell_state import SqlReadState
+
+        app.state.bell_reads = SqlReadState(app.state.accounts.session)
+    app.state.jobs.on_done = render_done_hook(app.state.store)
 
 
 def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:

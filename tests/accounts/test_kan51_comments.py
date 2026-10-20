@@ -138,7 +138,8 @@ def test_events_for_the_bell(tmp_path: Path, migrated_url: str) -> None:
     m["editor"].post(f"/api/projects/{pid}/comments/{tid}/reopen")
     store = owner.app.state.store  # type: ignore[attr-defined]
     lines = (store.project_dir(UUID(pid)) / EVENTS_FILE).read_text(encoding="utf-8").splitlines()
-    events = [json.loads(line) for line in lines]
+    # KAN-52 : le journal porte aussi les arrivées des membres ; ici, les commentaires.
+    events = [e for e in map(json.loads, lines) if e["type"].startswith("comment.")]
     assert [e["type"] for e in events] == [
         "comment.created",
         "comment.replied",
@@ -146,7 +147,9 @@ def test_events_for_the_bell(tmp_path: Path, migrated_url: str) -> None:
         "comment.reopened",
     ]
     assert all(e["thread_id"] == tid and e["item_id"] == item for e in events)
-    assert set(events[0]) == {"type", "project_id", "actor", "thread_id", "item_id", "at"}
+    # KAN-52 : un id par ligne ; rien de vide écrit (l'élément n'est pas sur le tableau : pas
+    # de libellé).
+    assert set(events[0]) == {"id", "type", "project_id", "actor", "thread_id", "item_id", "at"}
     assert "Ce rendu" not in "\n".join(lines) and "@" not in "\n".join(lines)
 
 

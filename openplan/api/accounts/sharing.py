@@ -23,11 +23,18 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from openplan.api.accounts.db import aware
-from openplan.api.accounts.models import INVITE_ROLES, ROLES, Invitation, Member, User
+from openplan.api.accounts.models import (
+    INVITE_ROLES,
+    ROLES,
+    Invitation,
+    Member,
+    NotificationReadItem,
+    User,
+)
 
 INVITE_TOKEN_BYTES = 32
 INVITE_DAYS = (1, 7, 30)
@@ -237,4 +244,12 @@ class SharingMixin:
             if member.role == "owner" and self._owner_count(db, project_id) < 2:
                 raise LastOwnerError(LAST_OWNER)
             db.delete(member)
+            # KAN-52 : ses notifications de ce projet disparaissent (la cloche ne lit que les
+            # projets dont il est membre) ; ses lectures aussi.
+            db.execute(
+                delete(NotificationReadItem).where(
+                    NotificationReadItem.user_id == user_id,
+                    NotificationReadItem.project_id == project_id,
+                )
+            )
         return True

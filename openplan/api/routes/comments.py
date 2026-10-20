@@ -25,7 +25,6 @@ from openplan.scene.history import USER_ACTOR, USER_PREFIX
 from openplan.schemas.comments import (
     LOCAL_AUTHOR,
     MAX_TEXT,
-    CommentEvent,
     CommentFile,
     CommentMessage,
     CommentPoint,
@@ -33,6 +32,7 @@ from openplan.schemas.comments import (
     CommentThread,
 )
 from openplan.schemas.common import StrictModel, now_utc
+from openplan.schemas.events import MAX_LABEL, EventType, ProjectEvent
 
 router = APIRouter(tags=["commentaires"])
 
@@ -73,7 +73,7 @@ class ThreadOut(StrictModel):
     can_delete: bool
 
 
-def _author(actor: str) -> str:
+def author_of(actor: str) -> str:
     """L'auteur gardé : `local` sans comptes, sinon l'id du compte (ou le nom d'un jeton)."""
     if actor == USER_ACTOR:
         return LOCAL_AUTHOR
@@ -99,7 +99,7 @@ def _color(author: str) -> str:
     return PALETTE[hashlib.sha256(uid.bytes).digest()[0] % len(PALETTE)]
 
 
-class _Names:
+class AuthorNames:
     """Nom et couleur de chaque auteur, comme les voit la personne qui lit ; un membre parti ou
     un compte supprimé : « Ancien membre », jamais d'erreur, jamais d'adresse."""
 
@@ -129,7 +129,7 @@ class _Names:
         return (name, _color(author)) if name else (FORMER_MEMBER, NEUTRAL)
 
 
-def _out(thread: CommentThread, names: _Names, me: str, owner: bool) -> ThreadOut:
+def _out(thread: CommentThread, names: AuthorNames, me: str, owner: bool) -> ThreadOut:
     messages = []
     for m in thread.messages:
         name, color = names(m.author)
@@ -177,17 +177,29 @@ def _refresh_positions(comments: CommentFile, project_dir: Path) -> None:
 
 
 def _event(
-    store: CommentStore, kind: str, project_id: UUID, me: str, thread: CommentThread
+    store: CommentStore, kind: EventType, project_id: UUID, me: str, thread: CommentThread
 ) -> None:
     store.publish(
-        CommentEvent(
-            type=kind,  # type: ignore[arg-type]
+        ProjectEvent(
+            type=kind,
             project_id=project_id,
             actor=me,
             thread_id=thread.id,
             item_id=thread.target.item_id,
+            label=_item_label(store.project_dir, thread.target.item_id),
         )
     )
+
+
+def _item_label(project_dir: Path, item_id: UUID | None) -> str | None:
+    """KAN-52 : l'objet commenté pour la cloche (« Photo 2 »), tel qu'il s'appelle à cet
+    instant ; une épingle libre n'en a pas (« l'espace de travail »)."""
+    if item_id is None:
+        return None
+    board = b.load_board(project_dir)
+    item = next((i for i in board.items if i.id == item_id), None) if board else None
+    text = " ".join((item.text or "").split()) if item is not None else ""
+    return text[:MAX_LABEL] or None
 
 
 @router.get("/projects/{project_id}/comments")
@@ -196,12 +208,12 @@ def list_comments(
 ) -> list[ThreadOut]:
     """Tous les fils du projet, ouverts et résolus (le front les range). Une lecture pure :
     rien n'est écrit (le cookie de lecture y vaut donc)."""
-    me = _author(actor)
+    me = author_of(actor)
     project_dir = store.project_dir(project.id)
     with store.lock(project.id):
         comments = CommentStore(project_dir).load()
         _refresh_positions(comments, project_dir)
-    names = _Names(request, project.id, me)
+    names = AuthorNames(request, project.id, me)
     owner = role_of(request, project.id) == "owner"
     return [_out(t, names, me, owner) for t in comments.threads]
 
@@ -211,7 +223,7 @@ def create_thread(
     body: NewThread, project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
 ) -> ThreadOut:
     """Une épingle et son premier message."""
-    me = _author(actor)
+    me = author_of(actor)
     thread = CommentThread(
         target=body.target, messages=[CommentMessage(author=me, text=_text(body.text))]
     )
@@ -223,7 +235,7 @@ def create_thread(
         comments_store.save(CommentFile.model_validate(comments.model_dump()))
         _event(comments_store, "comment.created", project.id, me, thread)
     owner = role_of(request, project.id) == "owner"
-    return _out(thread, _Names(request, project.id, me), me, owner)
+    return _out(thread, AuthorNames(request, project.id, me), me, owner)
 
 
 @router.post("/projects/{project_id}/comments/{thread_id}/replies", status_code=201)
@@ -235,7 +247,7 @@ def reply(
     actor: ActorDep,
     request: Request,
 ) -> ThreadOut:
-    me = _author(actor)
+    me = author_of(actor)
     comments_store = CommentStore(store.project_dir(project.id))
     with store.lock(project.id):
         comments = comments_store.load()
@@ -245,7 +257,7 @@ def reply(
         comments_store.save(CommentFile.model_validate(comments.model_dump()))
         _event(comments_store, "comment.replied", project.id, me, thread)
     owner = role_of(request, project.id) == "owner"
-    return _out(thread, _Names(request, project.id, me), me, owner)
+    return _out(thread, AuthorNames(request, project.id, me), me, owner)
 
 
 @router.patch("/projects/{project_id}/comments/{thread_id}/messages/{message_id}")
@@ -259,7 +271,7 @@ def edit_message(
     request: Request,
 ) -> ThreadOut:
     """Seul l'auteur modifie son message."""
-    me = _author(actor)
+    me = author_of(actor)
     comments_store = CommentStore(store.project_dir(project.id))
     with store.lock(project.id):
         comments = comments_store.load()
@@ -274,7 +286,7 @@ def edit_message(
         _refresh_positions(comments, store.project_dir(project.id))
         comments_store.save(comments)
     owner = role_of(request, project.id) == "owner"
-    return _out(thread, _Names(request, project.id, me), me, owner)
+    return _out(thread, AuthorNames(request, project.id, me), me, owner)
 
 
 @router.delete("/projects/{project_id}/comments/{thread_id}/messages/{message_id}", status_code=204)
@@ -282,7 +294,7 @@ def delete_message(
     thread_id: UUID, message_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep
 ) -> Response:
     """Seul l'auteur supprime son message ; le fil vidé disparaît."""
-    me = _author(actor)
+    me = author_of(actor)
     comments_store = CommentStore(store.project_dir(project.id))
     with store.lock(project.id):
         comments = comments_store.load()
@@ -307,7 +319,7 @@ def _set_resolved(
     actor: str,
     request: Request,
 ) -> ThreadOut:
-    me = _author(actor)
+    me = author_of(actor)
     comments_store = CommentStore(store.project_dir(project.id))
     with store.lock(project.id):
         comments = comments_store.load()
@@ -317,10 +329,10 @@ def _set_resolved(
             thread.resolved_at = now_utc() if resolved else None
             _refresh_positions(comments, store.project_dir(project.id))
             comments_store.save(comments)
-            kind = "comment.resolved" if resolved else "comment.reopened"
+            kind: EventType = "comment.resolved" if resolved else "comment.reopened"
             _event(comments_store, kind, project.id, me, thread)
     owner = role_of(request, project.id) == "owner"
-    return _out(thread, _Names(request, project.id, me), me, owner)
+    return _out(thread, AuthorNames(request, project.id, me), me, owner)
 
 
 @router.post("/projects/{project_id}/comments/{thread_id}/resolve")
@@ -343,7 +355,7 @@ def delete_thread(
     thread_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
 ) -> Response:
     """Le propriétaire supprime tout fil ; l'auteur, le sien tant qu'il n'a pas de réponse."""
-    me = _author(actor)
+    me = author_of(actor)
     owner = role_of(request, project.id) == "owner"
     comments_store = CommentStore(store.project_dir(project.id))
     with store.lock(project.id):

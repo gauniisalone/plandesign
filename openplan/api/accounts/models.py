@@ -154,3 +154,28 @@ class Invitation(Base):
     )
     used_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+
+
+class NotificationRead(Base):
+    """KAN-52 : « Tout marquer comme lu » d'une personne (un repère, tous projets confondus)."""
+
+    __tablename__ = "notification_reads"
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_until: Mapped[datetime] = mapped_column(_utc())
+
+
+class NotificationReadItem(Base):
+    """KAN-52 : une ligne de la cloche lue une par une (l'id de son geste le plus récent)."""
+
+    __tablename__ = "notification_read_items"
+    __table_args__ = (Index("ix_notification_read_items_user_project", "user_id", "project_id"),)
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    event_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"))
+    event_at: Mapped[datetime] = mapped_column(_utc())
