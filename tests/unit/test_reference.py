@@ -72,11 +72,12 @@ def test_mh3_reference_halves_the_width_error_and_brings_the_ridge_within_20(
     | référence : coins du pignon au sol, 5 m  |  7,50 m (+50 %)         | 4,09 m (+16 %)   |
     | référence : segments de 4 m ou 3 m       |  7,31 m (+46 %)         | 3,99 m (+13 %)   |
 
-    L'erreur de largeur restante vient surtout de la largeur prise au sol : les jambettes ne
-    sont pas extraites (KAN-27), la « largeur » est celle où les pentes rencontrent le sol,
-    5,00 + 2 × 1,00 / tan 45,5° = 6,97 m ; par rapport à elle, l'écart n'est que de +5 à +8 %.
-    Le faîtage (+13/16 %) reste à traiter (KAN-46). Ici : erreur de largeur au moins divisée
-    par deux, faîtage dans ±20 %."""
+    L'erreur de largeur restante venait surtout de la largeur prise au sol : les jambettes
+    n'étaient pas extraites (KAN-27), la « largeur » était celle où les pentes rencontrent le
+    sol, 5,00 + 2 × 1,00 / tan 45,5° = 6,97 m (écart de +5 à +8 % par rapport à elle). Depuis
+    KAN-46, les jambettes sont déduites du bord du sol : largeur entre jambettes 6,75 m (+35 %)
+    à la hauteur saisie, 4,86 m (−3 %) avec la référence au sol. Le faîtage (+13/16 %) relève
+    de KAN-72. Ici : erreur de largeur au moins divisée par deux, faîtage dans ±20 %."""
     depth, f, principal = _fixture()
     raw, _planes, _cls, _px, _warn = analyse_attic(depth, f, principal)
     today = rescale(raw, CAMERA_HEIGHT)
@@ -88,7 +89,7 @@ def test_mh3_reference_halves_the_width_error_and_brings_the_ridge_within_20(
     )
     width, ridge = today.width.value * relative, today.ridge_height.value * relative
     before_error = abs(today.width.value - WIDTH) / WIDTH
-    assert before_error > 1.0, "base : largeur fausse de plus de 100 %"
+    assert before_error > 0.2, "base : largeur fausse de plus de 20 % à la hauteur saisie"
     assert abs(width - WIDTH) / WIDTH <= before_error / 2, what
     assert abs(ridge - RIDGE) / RIDGE <= 0.20, what
 

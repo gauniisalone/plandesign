@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from openplan.pipeline.attic import AtticEstimate, analyse_attic, rescale
+from openplan.pipeline.reference import segment_distance
 from openplan.schemas import RoofPlane
 from openplan.schemas.elements import Camera, RoofWindow
 from openplan.validation.invariants import validate_invariants
@@ -74,26 +75,70 @@ def _estimate() -> tuple[AtticEstimate, AtticEstimate, list[str]]:
 
 
 def test_control_depth_documents_todays_estimate() -> None:
-    """État au 19 oct. 2026 (KAN-27, clos avec écart) : les jambettes (≈ 1 % de l'image chacune)
-    ne sont pas extraites comme plans, donc l'égout tombe au sol ; la profondeur apprise voit la
-    caméra trop basse (≈ 0,85 m pour 1,45) et le faîtage, une fois recalé, est faux. Si ce test
-    change, l'estimation a changé : revoir KAN-27 et son xfail ci-dessous."""
+    """KAN-27 puis KAN-46 : les jambettes (≈ 1 % de l'image chacune) ne sortent pas de la
+    recherche de plans, elles sont déduites du bord du sol vu (deux murs latéraux, égouts non
+    nuls) ; la profondeur apprise voit toujours la caméra trop basse (≈ 0,85 m pour 1,45) et le
+    faîtage, recalé sur la hauteur saisie, est faux (KAN-72). Si ce test change, l'estimation a
+    changé : revoir KAN-46 et KAN-72."""
     raw, scaled, kinds = _estimate()
-    assert "side_wall" not in kinds
-    assert [e.value for e in scaled.eave_heights] == [0.0, 0.0]
+    assert kinds.count("side_wall") == 2
+    assert len(scaled.eave_heights) == 2 and all(e.value > 0.5 for e in scaled.eave_heights)
     assert raw.camera_height is not None
     assert raw.camera_height.value == pytest.approx(0.85, abs=0.05)
     assert scaled.ridge_height is not None and scaled.ridge_height.value > RIDGE + 1.0
 
 
+def _with_reference(depth: np.ndarray | None = None) -> tuple[AtticEstimate, float]:
+    """Estimation brute et échelle d'une référence exacte : les deux coins du pignon du fond
+    au sol (5,00 m), comme une mesure posée par l'utilisateur (KAN-66)."""
+    data = np.load(DEPTH)
+    if depth is None:
+        depth = data["depth"].astype(np.float32)
+    focal = float(data["focal_px"])
+    pp = (depth.shape[1] / 2.0, depth.shape[0] / 2.0)
+
+    def pixel(y: float, z: float) -> tuple[float, float]:
+        return (
+            pp[0] + focal * (WIDTH / 2.0 - y) / GABLE_DISTANCE,
+            pp[1] + focal * (CAMERA_HEIGHT - z) / GABLE_DISTANCE,
+        )
+
+    raw, *_ = analyse_attic(depth, focal, pp)
+    scale = WIDTH / segment_distance(depth, focal, pp, pixel(0.0, 0.02), pixel(WIDTH, 0.02))
+    return raw, scale
+
+
+def _check_with_reference(raw: AtticEstimate, scale: float) -> None:
+    assert raw.width is not None
+    assert raw.width.value * scale == pytest.approx(WIDTH, rel=0.10)
+    assert len(raw.eave_heights) == 2
+    assert all(0.85 <= e.value * scale <= 1.30 for e in raw.eave_heights)
+
+
+def test_control_with_reference_width_between_knee_walls() -> None:
+    """KAN-46 (critère révisé par le PO le 20 oct. 2026) : avec une référence exacte, largeur
+    entre jambettes à ±10 % (4,86 m pour 5,00), deux égouts trouvés, chacun entre 0,85 et 1,30 m
+    (1,05 et 1,24 m pour 1,00 ; avant KAN-46 : 0 et 0, largeur 7,50 m prise au sol)."""
+    _check_with_reference(*_with_reference())
+
+
+def test_knee_walls_resist_aberrant_depth_points() -> None:
+    """Le bord du sol est la médiane des points les plus latéraux : 30 pixels de profondeur
+    aberrante (× 0,3 à × 3) ne déplacent pas les jambettes."""
+    depth = np.load(DEPTH)["depth"].astype(np.float32)
+    rng = np.random.default_rng(0)
+    ys, xs = rng.integers(0, depth.shape[0], 30), rng.integers(0, depth.shape[1], 30)
+    depth[ys, xs] *= rng.uniform(0.3, 3.0, 30).astype(np.float32)
+    _check_with_reference(*_with_reference(depth))
+
+
 @pytest.mark.xfail(
     strict=True,
-    reason="KAN-27, écart sur le Must have 1 : jambettes non extraites et profondeur apprise "
-    "déformée (caméra × 0,59, pentes à 49°) ; voir KAN-46 et le chantier KAN-33",
+    reason="KAN-72 : la profondeur apprise étire les hauteurs (caméra × 0,72 avec la référence, "
+    "faîtage +16 %, un égout à +24 %) ; le jour où ce test passe, il le signale",
 )
-def test_control_depth_eave_within_the_must_have() -> None:
-    """Must have 1 de KAN-27 : sur le contrôle, l'égout estimé entre 0,85 et 1,15 m (vérité
-    1,00). Attendu en échec ; strict : le jour où il passe, le test le signale."""
-    _raw, scaled, _kinds = _estimate()
-    assert scaled.eave_heights
-    assert all(0.85 <= e.value <= 1.15 for e in scaled.eave_heights)
+def test_control_eave_and_ridge_within_10_percent_with_reference() -> None:
+    raw, scale = _with_reference()
+    assert raw.ridge_height is not None
+    assert raw.ridge_height.value * scale == pytest.approx(RIDGE, rel=0.10)
+    assert all(e.value * scale == pytest.approx(EAVE, rel=0.10) for e in raw.eave_heights)

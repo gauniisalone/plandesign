@@ -7,6 +7,16 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 21 octobre 2026 (KAN-46 : jambettes déduites du bord du sol)
+
+- Combles : les jambettes, trop petites pour être trouvées comme plans, sont déduites du bord
+  du sol vu quand le sol va jusqu'au pied d'une pente qui s'arrête nettement au-dessus de lui.
+  L'égout n'est plus « au sol » et la largeur est prise entre jambettes, plus là où les pentes
+  rencontreraient le sol. Sur la scène de contrôle, avec une mesure de référence : largeur
+  4,86 m pour 5,00 (avant : 7,50 m), égouts 1,05 et 1,24 m pour 1,00 (avant : 0). Bord du sol
+  robuste aux points aberrants. Appareil levé (sol hors champ) : inchangé, égout inconnu. Le
+  faîtage et l'égout restent étirés par la profondeur apprise (KAN-72).
+
 ### 21 octobre 2026 (KAN-66, lot 1 serveur : mesure de référence sur une photo)
 
 - Une longueur connue sur la photo (deux points, « une porte de 2,04 m ») recale le plan

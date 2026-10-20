@@ -203,6 +203,10 @@ class ClassifiedPlanes:
         """KAN-45 : sol sans points, posé à la hauteur de prise de vue (sol hors champ)."""
         self.kinds: dict[int, PlaneKind] = {}
         self.world: dict[int, Plane] = {}
+        self.foot_x: dict[int, float] = {}
+        """KAN-46 : abscisse (le long du faîtage) du pied d'une pente dont la jambette est
+        déduite du bord du sol ; l'égout y est lu, là où la jambette est vue, pas à l'aplomb
+        de la caméra (une pente légèrement gauchie y donnerait un autre égout)."""
 
 
 def estimate_scale_sigma(value: float, *rms: float) -> float:
@@ -395,6 +399,60 @@ def residual_side_walls(
     return out
 
 
+EDGE_K_MIN = 9
+EDGE_K_SHARE = 0.03
+"""Bord robuste du sol : médiane des k points les plus latéraux d'un côté (k = 3 % des points
+du sol de ce côté, au moins 9) ; quelques points aberrants ne le déplacent pas."""
+KNEE_MIN_HEIGHT = 0.25
+"""Le bas de la pente doit être au-dessus du sol d'au moins cette part de la hauteur de la
+caméra (unités du modèle) : sinon la pente descend jusqu'au sol, sans jambette."""
+KNEE_MAX_GAP = 0.40
+"""Écart latéral maximal, en part de la hauteur de la caméra, entre le bord du sol vu et le
+pied de la pente : au-delà, le sol n'est pas vu jusqu'au pied de la pente."""
+KNEE_LOW_SHARE = 0.05
+"""Pied de la pente : la part la plus basse de ses points."""
+
+
+def floor_edge_side_walls(
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes, slopes: list[int]
+) -> list[FittedPlane]:
+    """KAN-46 : les jambettes, trop petites pour la recherche de plans (leurs points partent
+    dans le pignon), sont déduites du bord du sol vu. Quand le sol est vu jusqu'au pied d'une
+    pente qui s'arrête nettement au-dessus de lui, il y a entre les deux un mur vertical : la
+    jambette, au bord du sol. Rien si le sol est supposé (KAN-61, « égout inconnu »), ni si le
+    sol s'arrête loin du pied de la pente (hors champ, meuble) : la pente descend alors au sol."""
+    if cls.floor_assumed:
+        return []
+    h = cls.floor.plane.distance
+    world = points @ cls.axes.T
+    floor_pts = world[cls.floor.inliers]
+    floor_pts = floor_pts[np.isfinite(floor_pts).all(axis=1)]
+    out: list[FittedPlane] = []
+    for i in slopes:
+        slope_pts = world[planes[i].inliers]
+        slope_pts = slope_pts[np.isfinite(slope_pts).all(axis=1)]
+        if len(slope_pts) < EDGE_K_MIN:
+            continue
+        side = 1.0 if float(np.median(slope_pts[:, 1])) > 0 else -1.0
+        lateral = side * floor_pts[:, 1]
+        lateral = lateral[lateral > 0]
+        k = max(EDGE_K_MIN, int(EDGE_K_SHARE * len(lateral)))
+        if len(lateral) < 2 * k:
+            continue
+        edge = float(np.median(np.sort(lateral)[-k:]))
+        low = slope_pts[slope_pts[:, 2] <= np.quantile(slope_pts[:, 2], KNEE_LOW_SHARE)]
+        foot_z = float(np.median(low[:, 2])) + h
+        foot_y = float(np.median(side * low[:, 1]))
+        if foot_z < KNEE_MIN_HEIGHT * h or abs(foot_y - edge) > KNEE_MAX_GAP * h:
+            continue
+        near = np.sort(lateral)[-k:]
+        cls.foot_x[i] = float(np.median(low[:, 0]))
+        normal: Float = cls.axes.T @ np.array([0.0, -side, 0.0])
+        rms = float(np.std(near))
+        out.append(FittedPlane(Plane(normal, edge), np.empty(0, dtype=np.intp), rms))
+    return out
+
+
 def attic_axes(up: Float, planes: list[FittedPlane], floor_idx: int) -> Float:
     """Repère : Z = haut ; X = direction du faîtage, soit l'horizontale perpendiculaire à la
     normale de la pente la mieux soutenue (exact pour toute pente de toit) ; sans pente, la
@@ -498,6 +556,8 @@ def _eave(
         y_wall = -wall.distance / float(wall.normal[1])
         if y_wall * y_floor > 0 and abs(y_wall) < abs(y_floor):
             z = plane.height_at(0.0, y_wall)
+            if z is not None and slope_idx in cls.foot_x:
+                z = plane.height_at(cls.foot_x[slope_idx], y_wall)
             if z is not None and z + h > eave_h:
                 eave_y, eave_h, rms = y_wall, z + h, math.hypot(rms, planes[s].rms_m)
     return eave_y, eave_h, rms
@@ -705,6 +765,20 @@ def _add_residual_side_walls(
     return planes
 
 
+def _add_floor_edge_side_walls(
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes
+) -> list[FittedPlane]:
+    """KAN-46 : sol vu et aucune jambette extraite, elles sont déduites du bord du sol."""
+    if "side_wall" in cls.kinds.values():
+        return planes
+    for wall in floor_edge_side_walls(points, planes, cls, _opposite_slopes(planes, cls)):
+        planes = [*planes, wall]
+        i = len(planes) - 1
+        cls.kinds[i] = "side_wall"
+        cls.world[i] = rotate_plane(wall.plane, cls.axes)
+    return planes
+
+
 def _with_assumed_floor(
     estimate: AtticEstimate,
     points: Float,
@@ -743,7 +817,7 @@ def _with_assumed_floor(
     return out
 
 
-def analyse_attic(
+def analyse_attic(  # noqa: PLR0912
     depth: NDArray[np.float32] | Float,
     focal_px: float,
     principal_point: tuple[float, float],
@@ -797,6 +871,8 @@ def analyse_attic(
     cls.floor_assumed = assumed_floor is not None
     if assumed_floor is not None:
         planes = _add_residual_side_walls(points, planes, cls)
+    else:
+        planes = _add_floor_edge_side_walls(points, planes, cls)
     if frame_up is not None:
         disagreement = angle_between(frame_up, cls.floor.plane.normal)
         if disagreement > FRAME_DISAGREEMENT_WARN:
