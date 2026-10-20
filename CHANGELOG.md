@@ -19,8 +19,10 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   « Échelle calée sur votre mesure de 2,04 m (porte) », « Échelle : hauteur de prise de vue
   saisie 1,45 m » ou « … supposée 1,50 m (par défaut) ».
 - Sur la scène de contrôle des combles, une référence exacte divise l'erreur de largeur au
-  moins par deux (+108 % → +50 %) et ramène le faîtage dans ±20 % (+61 % → +16 %) ; la
-  profondeur apprise reste déformée (KAN-46).
+  moins par deux (+108 % → +50 %) et ramène le faîtage dans ±20 % (+61 % → +16 %). L'écart de
+  largeur restant vient surtout de la largeur prise au sol (jambettes non extraites, KAN-27) :
+  la vraie valeur à cet endroit est 6,97 m, par rapport à laquelle l'écart est de +5 à +8 %.
+  Le faîtage (+13/16 %) reste à traiter (KAN-46).
 - Profondeur gardée par photo dans `images/` (réduite, ~0,6 Mo), comprise dans l'archive du
   projet et supprimée avec la photo ; une photo d'avant se réestime sur un geste
   (`POST …/levels/{id}/images/{id}/reestimate`, tâche de fond). Routes : `PUT

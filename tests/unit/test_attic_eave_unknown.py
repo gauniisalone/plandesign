@@ -36,7 +36,7 @@ def test_unknown_eave_takes_the_bound_from_the_photo() -> None:
     notices = attic_notices(est, geometry)
     assert any(n.startswith("Sol hors champ") for n in notices)
     assert any(
-        "Hauteur d'égout non visible sur la photo : supposée au plus 1.01 m" in n
+        "Hauteur d'égout non visible sur la photo : supposée au plus 1,01 m" in n
         and "inspecteur" in n
         for n in notices
     )

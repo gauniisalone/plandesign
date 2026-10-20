@@ -122,10 +122,15 @@ SCALE_DISAGREEMENT = 2.0
 
 
 def height_words(camera_height_m: float, *, entered: bool) -> str:
-    """KAN-62 : « hauteur de prise de vue saisie 1.45 m » ou « … supposée 1.50 m (par défaut) »."""
+    """KAN-62 : « hauteur de prise de vue saisie 1,45 m » ou « … supposée 1,50 m (par défaut) »."""
     if entered:
-        return f"hauteur de prise de vue saisie {camera_height_m:.2f} m"
-    return f"hauteur de prise de vue supposée {camera_height_m:.2f} m (par défaut)"
+        return f"hauteur de prise de vue saisie {_fr(camera_height_m)} m"
+    return f"hauteur de prise de vue supposée {_fr(camera_height_m)} m (par défaut)"
+
+
+def _fr(value: float) -> str:
+    """Virgule décimale du texte affiché (« 1,50 »)."""
+    return f"{value:.2f}".replace(".", ",")
 
 
 def rescale(
@@ -174,9 +179,9 @@ def rescale(
             ],
             "roof_windows": [w.scaled(factor) for w in estimate.roof_windows],
             "scale_factor": estimate.scale_factor * factor,
-            "scale_note": f"Échelle recalée sur la {words} : facteur {factor:.2f} appliqué aux "
+            "scale_note": f"Échelle recalée sur la {words} : facteur {_fr(factor)} appliqué aux "
             f"longueurs du modèle de profondeur (qui donnait "
-            f"{estimate.camera_height.value:.2f} m).",
+            f"{_fr(estimate.camera_height.value)} m).",
         }
     )
 
@@ -720,7 +725,7 @@ def analyse_attic(
         floor_idx = len(planes) - 1
         warnings.append(
             f"Sol hors champ (photo levée) : verticale prise entre les deux pentes (toit "
-            f"supposé symétrique), sol à {assumed_floor:.2f} m sous l'appareil "
+            f"supposé symétrique), sol à {_fr(assumed_floor)} m sous l'appareil "
             f"({'hauteur saisie' if entered else 'hauteur supposée'})."
         )
     cls = classify(planes, floor_idx)

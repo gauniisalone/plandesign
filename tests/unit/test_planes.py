@@ -151,7 +151,7 @@ def test_rescale_on_user_camera_height() -> None:
     assert doubled.ridge_height.sigma == pytest.approx(0.10 * doubled.ridge_height.value, rel=0.2)
     assert doubled.width is not None and doubled.width.source == est.width.source
     assert doubled.planes[0].distance_m == pytest.approx(2 * est.planes[0].distance_m)
-    assert doubled.scale_note is not None and "facteur 2.00" in doubled.scale_note
+    assert doubled.scale_note is not None and "facteur 2,00" in doubled.scale_note
     assert rescale(AtticEstimate(), 1.5) == AtticEstimate(), "sans sol, rien à recaler"
 
 

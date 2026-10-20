@@ -974,7 +974,7 @@ def test_attic_route_with_synthetic_depth(tmp_path: Path) -> None:
         assert rescaled["estimate"]["ridge_height"]["value"] == pytest.approx(7.14, rel=0.08)
         assert rescaled["estimate"]["scale_factor"] == pytest.approx(2.23, rel=0.08)
         assert any("divergent d'un facteur" in w for w in rescaled["result"]["warnings"])
-        assert any("saisie 2.90 m" in a["text"] for a in rescaled["result"]["assumptions"])
+        assert any("saisie 2,90 m" in a["text"] for a in rescaled["result"]["assumptions"])
         r = c.post(f"/api/projects/{pid}/images/{image['id']}/attic", json={"camera_height_m": 9.0})
         assert r.status_code == 422
         assert est["camera_height"]["source"] == "estimated"

@@ -223,6 +223,11 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
         return None
 
 
+def _fr(value: float) -> str:
+    """Virgule décimale du texte affiché (« 1,50 »)."""
+    return f"{value:.2f}".replace(".", ",")
+
+
 def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]:
     """KAN-45/KAN-61 : ce que l'écran doit dire des combles devinés sur une photo levée (les
     avertissements de l'estimation ne remontent pas jusqu'au bandeau « Plan estimé »)."""
@@ -232,11 +237,13 @@ def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]
     if estimate.camera_height is not None:
         out.append(
             f"Sol hors champ (photo prise en levant l'appareil) : verticale prise entre les deux "
-            f"pentes, sol supposé {estimate.camera_height.value:.2f} m sous l'appareil."
+            f"pentes, sol supposé {_fr(estimate.camera_height.value)} m sous l'appareil."
         )
     if not estimate.eave_heights:
         eave = geometry.eave_height.value
-        guess = f"supposée au plus {eave:.2f} m" if eave > 0.0 else "pentes prolongées jusqu'au sol"
+        guess = (
+            f"supposée au plus {_fr(eave)} m" if eave > 0.0 else "pentes prolongées jusqu'au sol"
+        )
         out.append(
             f"Hauteur d'égout non visible sur la photo : {guess}, à corriger dans l'inspecteur."
         )

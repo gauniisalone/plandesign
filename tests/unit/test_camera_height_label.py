@@ -48,11 +48,11 @@ def test_rescale_labels_entered_or_default_with_the_same_values() -> None:
     assert _values(entered) == _values(default)
     assert entered.camera_height is not None and default.camera_height is not None
     assert entered.camera_height.source is Source.USER_DEFINED
-    assert entered.camera_height.note == "hauteur de prise de vue saisie 1.50 m"
+    assert entered.camera_height.note == "hauteur de prise de vue saisie 1,50 m"
     assert default.camera_height.source is Source.INFERRED
-    assert default.camera_height.note == "hauteur de prise de vue supposée 1.50 m (par défaut)"
+    assert default.camera_height.note == "hauteur de prise de vue supposée 1,50 m (par défaut)"
     assert default.scale_note is not None and "saisie" not in default.scale_note
-    assert "supposée 1.50 m (par défaut)" in default.scale_note
+    assert "supposée 1,50 m (par défaut)" in default.scale_note
 
 
 def _raised_attic(entered: bool) -> tuple[AtticEstimate, list[str]]:
