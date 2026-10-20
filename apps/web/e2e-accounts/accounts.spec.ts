@@ -932,6 +932,99 @@ test("KAN-12 : ma place affichée, un envoi trop gros refusé avant l'envoi et p
   await shot(page, "16-envoi-refuse");
 });
 
+test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, le lecteur lit", async ({
+  browser,
+}) => {
+  // Une adresse par personne (comme person()) : la limite des connexions reste intacte.
+  const owner = await person(browser, "198.51.100.91");
+  await gotoApp(owner, "/");
+  await signInHere(owner, "iris@example.org", "Iris");
+  const origin = { Origin: new URL(owner.url()).origin };
+  const made = await owner.request.post("/api/projects", {
+    data: { name: "Salon à commenter" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invite = async (role: string) =>
+    (
+      (await (
+        await owner.request.post(`/api/projects/${id}/invitations`, {
+          data: { role },
+          headers: origin,
+        })
+      ).json()) as { token: string }
+    ).token;
+  const [asCommenter, asViewer] = [
+    await invite("commenter"),
+    await invite("viewer"),
+  ];
+  await gotoApp(owner, `/#/projects/${id}`);
+  const commenter = await person(browser, "198.51.100.92");
+  await gotoApp(commenter, `/#/invitation/${asCommenter}`);
+  await signInHere(commenter, "jules@example.org", "Jules");
+  const viewer = await person(browser, "198.51.100.93");
+  await gotoApp(viewer, `/#/invitation/${asViewer}`);
+  await signInHere(viewer, "kim@example.org", "Kim");
+  for (const p of [owner, commenter, viewer])
+    await expect(p.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+  const tools = (p: Page) =>
+    p.getByRole("toolbar", { name: "Outils de l'espace de travail" });
+
+  // Le commentateur : l'outil Commentaire, aucun outil d'édition.
+  await expect(
+    tools(commenter).getByRole("button", { name: "Commentaire" }),
+  ).toBeVisible();
+  await expect(
+    tools(commenter).getByRole("button", { name: "Note" }),
+  ).toHaveCount(0);
+  // Le lecteur : ni l'outil, ni la réponse.
+  await expect(
+    viewer.getByRole("button", { name: "Commentaire", exact: true }),
+  ).toHaveCount(0);
+
+  // Jules pose une épingle ; Iris la voit en moins de 2 s.
+  const stage = commenter.locator(".board-stage");
+  const box = (await stage.boundingBox())!;
+  await tools(commenter).getByRole("button", { name: "Commentaire" }).click();
+  await stage.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  const draft = commenter.getByRole("dialog", { name: "Nouveau commentaire" });
+  await draft.getByLabel("Votre commentaire").fill("Et si on ouvrait ce mur ?");
+  await draft.getByRole("button", { name: "Publier" }).click();
+  const seen = owner.getByRole("button", { name: "Commentaire de Jules" });
+  await expect(seen).toBeVisible({ timeout: 2_000 });
+  await shot(owner, "17-commentaire-recu");
+
+  // Iris répond ; Jules voit les deux messages, signés.
+  await seen.click();
+  const panel = owner.getByRole("dialog", { name: "Commentaires" });
+  await panel.getByLabel("Répondre").fill("Bonne idée, à chiffrer");
+  await panel.getByRole("button", { name: "Répondre" }).click();
+  const his = commenter.getByRole("button", { name: "Commentaire de Jules" });
+  await expect(his).toHaveText("2", { timeout: 5_000 });
+  await his.click();
+  const hisPanel = commenter.getByRole("dialog", { name: "Commentaires" });
+  await expect(hisPanel.locator(".comment-author")).toHaveText([
+    "Jules",
+    "Iris",
+  ]);
+
+  // Le lecteur lit le fil, sans pouvoir répondre.
+  const kimPin = viewer.getByRole("button", { name: "Commentaire de Jules" });
+  await expect(kimPin).toBeVisible({ timeout: 5_000 });
+  await kimPin.click();
+  const kimPanel = viewer.getByRole("dialog", { name: "Commentaires" });
+  await expect(kimPanel.getByText("Bonne idée, à chiffrer")).toBeVisible();
+  await expect(kimPanel.getByLabel("Répondre")).toHaveCount(0);
+  await expect(kimPanel.getByRole("button", { name: "Résoudre" })).toHaveCount(
+    0,
+  );
+
+  // Jules résout : l'épingle disparaît chez Iris.
+  await hisPanel.getByRole("button", { name: "Résoudre" }).click();
+  await expect(seen).toHaveCount(0, { timeout: 5_000 });
+  await shot(commenter, "18-fil-resolu");
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

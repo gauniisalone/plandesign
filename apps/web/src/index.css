@@ -6113,6 +6113,126 @@ button.link.home-empty-link {
   margin: 0;
 }
 
+/* KAN-51 : commentaires de l'espace de travail. Épingles et brouillon dans le monde (taille
+   constante, --inv = 1/zoom) ; barre et panneau au-dessus du canevas. */
+.board-stage.tool-comment {
+  cursor: crosshair;
+}
+.comment-pin {
+  position: absolute;
+  z-index: 41;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 2px solid #fff;
+  border-radius: 13px 13px 13px 2px;
+  background: var(--pin);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  transform: translate(0, -100%) scale(var(--inv, 1));
+  transform-origin: 0 100%;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+.comment-pin.open {
+  outline: 2px solid var(--primary);
+}
+.comment-pin.detached {
+  border-style: dashed;
+  opacity: 0.8;
+}
+.comment-draft {
+  position: absolute;
+  z-index: 42;
+  width: 260px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  transform: scale(var(--inv, 1));
+  transform-origin: 0 0;
+}
+.comment-draft textarea,
+.comments-panel textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+.comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.board-comments-bar {
+  position: absolute;
+  right: 12px;
+  bottom: 56px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.comments-panel {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  bottom: 100px;
+  z-index: 30;
+  width: 320px;
+  overflow: auto;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.comments-panel header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.comment-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.comment-tabs [aria-selected="true"] {
+  font-weight: 700;
+}
+.comment-list,
+.comment-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.comment-list button {
+  all: unset;
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.comment-messages li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.comment-author {
+  font-weight: 700;
+}
+.comment-text {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .board-zoom {
   position: absolute;
   right: 12px;

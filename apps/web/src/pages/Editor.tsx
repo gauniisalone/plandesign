@@ -44,6 +44,7 @@ import {
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
 import { useLive } from "../state/live";
+import { useComments } from "../board/useComments";
 import {
   authApi,
   leaseApi,
@@ -383,14 +384,23 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     projectId,
     `${boardSync}|${contextualTick}|${liveTick}`,
   );
+  // KAN-51 : commentaires ; relus à chaque avis « comments » d'un autre membre.
+  const [commentsTick, setCommentsTick] = useState(0);
+  const comments = useComments(
+    projectId,
+    role === "owner" || role === "editor" || role === "commenter",
+    commentsTick,
+  );
   const live = useLive(projectId, account !== null, {
     onChanged: (scope) => {
       if (scope === "board") setLiveTick((n) => n + 1);
+      else if (scope === "comments") setCommentsTick((n) => n + 1);
       else actions.reload();
     },
     onResync: () => {
       actions.reload();
       setLiveTick((n) => n + 1);
+      setCommentsTick((n) => n + 1);
     },
     // Session perdue (KAN-49) : la page de connexion tout de suite, sans attendre la 401
     // d'un rechargement du projet.
@@ -1357,6 +1367,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               focusRenders={rendersFocus}
               presence={account ? live.presence : undefined}
+              comments={comments}
               peers={live.peers}
               onRerender={rerenderViews}
               onOpenRendersPane={(levelId) => {

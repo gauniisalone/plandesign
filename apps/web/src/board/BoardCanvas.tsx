@@ -36,6 +36,8 @@ import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
 import { PresenceLayer } from "./PresenceLayer";
+import { CommentPins, CommentsPanel } from "./comments";
+import type { CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
 import {
   hostOf,
@@ -52,7 +54,7 @@ import {
  *  annuler / rétablir propres au tableau. Ce que montre un élément ne change jamais avec sa
  *  taille : le cadre du plan n'a pas d'échelle. */
 
-type Tool = "select" | "hand" | "note" | "frame";
+type Tool = "select" | "hand" | "note" | "frame" | "comment";
 type Drag =
   | { kind: "pan"; x: number; y: number; view: BoardView }
   | { kind: "move"; x: number; y: number; start: BoardItem[] }
@@ -143,6 +145,8 @@ interface Props {
   /** B2b : présence des autres (curseurs, sélections, « Suivre ») ; absente sans comptes. */
   presence?: PresenceOut;
   peers?: Peer[];
+  /** KAN-51 : commentaires (épingles, fils, panneau), en local comme avec les comptes. */
+  comments?: CommentsController;
 }
 
 /** T2, T7d1 : ce qu'un cadre fixe attend, tant qu'il est vide : une ligne courte (retour
@@ -771,6 +775,13 @@ export function BoardCanvas(props: Props) {
       return;
     }
     const p = toWorld(e.clientX, e.clientY);
+    // KAN-51 : une épingle de commentaire, à ce point de l'espace de travail.
+    if (tool === "comment") {
+      e.preventDefault();
+      props.comments?.startDraft({ at: { x: p.x, y: p.y } });
+      setTool("select");
+      return;
+    }
     if (tool === "note") {
       e.preventDefault();
       addNote(p.x - 120, p.y - 75);
@@ -791,6 +802,18 @@ export function BoardCanvas(props: Props) {
     e.stopPropagation();
     if (finishEditing()) {
       e.preventDefault();
+      return;
+    }
+    // KAN-51 : une épingle sur un élément le suit (position relative à son coin).
+    if (tool === "comment") {
+      e.preventDefault();
+      const p = toWorld(e.clientX, e.clientY);
+      props.comments?.startDraft({
+        at: { x: p.x - item.x, y: p.y - item.y },
+        item_id: item.id,
+        last: { x: item.x, y: item.y },
+      });
+      setTool("select");
       return;
     }
     // Note et Cadre se posent aussi par-dessus un élément (une note sur le plan).
@@ -992,6 +1015,7 @@ export function BoardCanvas(props: Props) {
       else if (e.key === "h") setTool("hand");
       else if (e.key === "n") setTool("note");
       else if (e.key === "f") setTool("frame");
+      else if (e.key === "c" && props.comments?.canComment) setTool("comment");
       else if (e.key === "l") setLinkForm({ url: "", title: "" });
       else if (e.key === "+" || e.key === "=") zoomAt(1.2);
       else if (e.key === "-") zoomAt(1 / 1.2);
@@ -1469,6 +1493,38 @@ export function BoardCanvas(props: Props) {
 
   return (
     <section className="board" aria-label="Espace de travail">
+      {/* KAN-51 : le commentateur (espace de travail en lecture) commente quand même. */}
+      {readOnly && props.comments?.canComment && (
+        <div
+          className="board-rail"
+          role="toolbar"
+          aria-label="Outils de l'espace de travail"
+        >
+          {(
+            [
+              ["select", "↖", "Sélection (V)"],
+              ["hand", "✋", "Main : déplacer la vue (H, ou espace)"],
+              [
+                "comment",
+                "💬",
+                "Commentaire (C) : cliquer où le poser, ou sur un élément",
+              ],
+            ] as const
+          ).map(([id, icon, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`icon${tool === id ? " active" : ""}`}
+              aria-label={label.split(" ")[0]}
+              aria-pressed={tool === id}
+              title={label}
+              onClick={() => setTool(id)}
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         className="board-rail"
         hidden={readOnly}
@@ -1485,6 +1541,15 @@ export function BoardCanvas(props: Props) {
               "▭",
               "Cadre (F) : tracer un cadre, ce qui est dedans lui appartient",
             ],
+            ...(props.comments?.canComment
+              ? ([
+                  [
+                    "comment",
+                    "💬",
+                    "Commentaire (C) : cliquer où le poser, ou sur un élément",
+                  ],
+                ] as const)
+              : []),
           ] as const
         ).map(([id, icon, label]) => (
           <button
@@ -1691,6 +1756,7 @@ export function BoardCanvas(props: Props) {
               items={items}
             />
           )}
+          {props.comments && <CommentPins c={props.comments} items={items} />}
           {newPlanAt && (
             <button
               type="button"
@@ -1837,6 +1903,39 @@ export function BoardCanvas(props: Props) {
           )}
         </div>
 
+        {props.comments && (
+          <>
+            <div
+              className="board-comments-bar"
+              role="group"
+              aria-label="Commentaires de l'espace de travail"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                aria-pressed={props.comments.panelOpen}
+                onClick={() =>
+                  props.comments?.setPanelOpen(!props.comments.panelOpen)
+                }
+              >
+                Commentaires (
+                {props.comments.threads.filter((t) => !t.resolved).length})
+              </button>
+              <button
+                type="button"
+                className="link"
+                onClick={() =>
+                  props.comments?.setHidden(!props.comments.hidden)
+                }
+              >
+                {props.comments.hidden
+                  ? "Afficher les commentaires"
+                  : "Masquer les commentaires"}
+              </button>
+            </div>
+            <CommentsPanel c={props.comments} items={items} />
+          </>
+        )}
         <div
           className="board-zoom"
           role="group"

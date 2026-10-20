@@ -1971,6 +1971,64 @@ export interface MediaRef {
   thumb?: string | null;
 }
 
+/** KAN-51 : un point de l'espace de travail ; sur un élément, `at` est relatif à son coin et
+ *  `last` sa dernière position connue (le fil y reste, « détaché », s'il est supprimé). */
+export interface CommentTarget {
+  at: { x: number; y: number };
+  item_id?: string | null;
+  last?: { x: number; y: number } | null;
+}
+
+export interface CommentMessage {
+  id: string;
+  author_name: string;
+  author_color: string;
+  mine: boolean;
+  text: string;
+  created_at: string;
+  edited_at: string | null;
+}
+
+export interface CommentThread {
+  id: string;
+  target: CommentTarget;
+  resolved: boolean;
+  resolved_at: string | null;
+  messages: CommentMessage[];
+  can_delete: boolean;
+}
+
+/** KAN-51 : commentaires de l'espace de travail (mêmes routes en local et avec les comptes). */
+export const commentsApi = {
+  list: (pid: string) => request<CommentThread[]>(`/projects/${pid}/comments`),
+  create: (pid: string, target: CommentTarget, text: string) =>
+    request<CommentThread>(`/projects/${pid}/comments`, json({ target, text })),
+  reply: (pid: string, tid: string, text: string) =>
+    request<CommentThread>(
+      `/projects/${pid}/comments/${tid}/replies`,
+      json({ text }),
+    ),
+  edit: (pid: string, tid: string, mid: string, text: string) =>
+    request<CommentThread>(`/projects/${pid}/comments/${tid}/messages/${mid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }),
+  removeMessage: (pid: string, tid: string, mid: string) =>
+    request<void>(`/projects/${pid}/comments/${tid}/messages/${mid}`, {
+      method: "DELETE",
+    }),
+  resolve: (pid: string, tid: string) =>
+    request<CommentThread>(`/projects/${pid}/comments/${tid}/resolve`, {
+      method: "POST",
+    }),
+  reopen: (pid: string, tid: string) =>
+    request<CommentThread>(`/projects/${pid}/comments/${tid}/reopen`, {
+      method: "POST",
+    }),
+  removeThread: (pid: string, tid: string) =>
+    request<void>(`/projects/${pid}/comments/${tid}`, { method: "DELETE" }),
+};
+
 /** B2d : bail d'édition d'un plan (comptes seulement). « Prendre la main » ne réussit que sur
  *  un plan libre ou dont le bail a expiré ; « Demander la main » prévient le seul tenant. */
 export const leaseApi = {
