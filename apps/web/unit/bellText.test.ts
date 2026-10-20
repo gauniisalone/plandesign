@@ -41,7 +41,9 @@ test("badge : rien quand tout est lu, 9+ au-delà de 9", () => {
 });
 
 /** Intl met des espaces insécables (« 3 h ») : comparées comme des espaces. */
-const plain = (s: string) => s.replace(/[  ]/g, " ");
+const NARROW = [0xa0, 0x202f].map((c) => String.fromCharCode(c));
+const plain = (s: string) =>
+  NARROW.reduce((out, c) => out.split(c).join(" "), s);
 
 test("la ligne du ticket : action, objet, projet, heure relative", () => {
   assert.equal(

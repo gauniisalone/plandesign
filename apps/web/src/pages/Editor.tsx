@@ -602,6 +602,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     if (target.threadId) {
       comments.setHidden(false);
       comments.open(target.threadId);
+      comments.setPanelOpen(true);
     }
     if (target.threadId || target.itemId)
       setBoardFocus({

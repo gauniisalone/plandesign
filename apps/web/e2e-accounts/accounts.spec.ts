@@ -1071,7 +1071,9 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
 }) => {
   const gilles = await person(browser, "198.51.100.95");
   await gotoApp(gilles, "/");
-  await signInHere(gilles, "gilles@example.org", "Gilles");
+  // Des comptes propres à ce test : fanny@ et gilles@ ont déjà des projets (B2c, B2d), dont
+  // la cloche compterait les notifications.
+  await signInHere(gilles, "gilles.kan52@example.org", "Gilles");
   const origin = { Origin: new URL(gilles.url()).origin };
   const made = await gilles.request.post("/api/projects", {
     data: { name: "Grenier" },
@@ -1085,7 +1087,7 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
   const { token } = (await invited.json()) as { token: string };
   const fanny = await person(browser, "198.51.100.96");
   await gotoApp(fanny, `/#/invitation/${token}`);
-  await signInHere(fanny, "fanny@example.org", "Fanny");
+  await signInHere(fanny, "fanny.kan52@example.org", "Fanny");
   await expect(fanny.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
 
   // Gilles, sur l'accueil : « Fanny a rejoint le projet » ; il marque tout comme lu.
@@ -1113,7 +1115,9 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
   await draft.getByRole("button", { name: "Publier" }).click();
   await expect(badge).toHaveText("1", { timeout: 2_000 });
   await bell.click();
-  const line = panel.getByRole("button", { name: /^Fanny a commenté .* · Grenier · / });
+  const line = panel.getByRole("button", {
+    name: /^Fanny a commenté .* · Grenier · /,
+  });
   await expect(line).toBeVisible();
   await expect(line.locator(".bell-dot")).toHaveCount(1); // le point des non-lus
   await expect(panel.getByText("Plus de lumière ici")).toHaveCount(0); // jamais le texte
