@@ -2026,7 +2026,7 @@ button.cta:hover:not(:disabled) {
 
   /* KAN-64 : dans l'espace de travail, le panneau reste À CÔTÉ (jamais par-dessus) à toutes
      les largeurs, plus étroit mais lisible ; le cadrage de départ en tient compte. */
-  .side.board {
+  .side.side-on-board {
     position: relative;
     top: auto;
     right: auto;

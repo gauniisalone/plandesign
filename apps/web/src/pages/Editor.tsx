@@ -1957,7 +1957,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           conversation) gardent leur état d'un repli à l'autre. */}
         {step !== "import" && (
           <div
-            className={`side${step === "board" ? " board" : ""}${sideOpen ? "" : " closed"}`}
+            className={`side${step === "board" ? " side-on-board" : ""}${sideOpen ? "" : " closed"}`}
             style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
           >
             <SideHandle
