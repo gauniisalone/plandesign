@@ -63,13 +63,15 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   await expect(page.locator(".inspector h2").first()).toBeVisible();
   await page.getByRole("button", { name: "Masquer le panneau" }).click();
 
-  // Arrivée (T7d1) : l'espace de travail cadré sur les rendus, le panneau reste fermé ;
-  // « Vos rendus » est dans le volet Rendus, ouvert par « Réglages et galerie ».
+  // Arrivée (T7d1) : l'espace de travail cadré sur les rendus ; KAN-64 : le panneau de droite
+  // est ouvert sur ses zones (Assistant, Commentaires), pas sur le volet Rendus ;
+  // « Vos rendus » est dans le volet Rendus, ouvert par « Réglages et galerie » du cadre.
   await expect(
     page.locator(".board-item.kind-render:not(.role-inspiration)").first(),
   ).toBeVisible({ timeout: 240_000 });
   await expectSpace(page, "board");
-  await expect(page.locator(".side.closed")).toHaveCount(1);
+  await expect(page.locator(".side.closed")).toHaveCount(0);
+  await expect(page.locator(".side .board-side")).toBeVisible();
   await openRendersPane(page);
   const arrival = page.getByLabel("Vos rendus");
   await expect(arrival).toBeVisible();

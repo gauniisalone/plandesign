@@ -1,11 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-  createEmptyProject,
-  goSpace,
-  waitNoHeavyJob,
-} from "./helpers";
+import { createEmptyProject, goSpace, waitNoHeavyJob } from "./helpers";
 
 // T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
 // encore pour le précédent (même s'il a échoué).
@@ -121,6 +117,12 @@ test("déclencheur : au dépôt (0 geste) ou « Générer maintenant » (1 geste
   await expect(
     plan.getByRole("button", { name: "Générer le plan" }),
   ).toBeVisible();
+  // KAN-64 : la photo déposée reste choisie, et ses actions ont pris la place de
+  // l'Assistant ; on revient à l'Assistant (un clic) pour « Générer maintenant ».
+  const back = page
+    .locator(".side")
+    .getByRole("button", { name: "← Assistant", exact: true });
+  if (await back.isVisible()) await back.click();
   await trigger.getByRole("button", { name: "Générer maintenant" }).click();
   await expect(plan.locator("img.board-plan")).toBeVisible({
     timeout: 180_000,

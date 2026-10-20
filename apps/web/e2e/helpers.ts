@@ -37,9 +37,15 @@ export async function waitNoHeavyJob(page: Page): Promise<void> {
 export async function showPanel(page: Page): Promise<void> {
   const open = page.getByRole("button", { name: "Afficher le panneau" });
   const close = page.getByRole("button", { name: "Masquer le panneau" });
-  // L'atelier finit de charger : l'un des deux boutons est là.
+  // L'atelier finit de charger : l'un des deux boutons est là. KAN-64 : dans l'espace de
+  // travail, le panneau s'ouvre de lui-même juste après le chargement ; on lui laisse ce
+  // temps avant de cliquer (sinon le bouton change sous le clic).
   await expect(open.or(close)).toBeVisible({ timeout: 30_000 });
-  if (await open.isVisible()) await open.click();
+  const opened = await close
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!opened) await open.click();
   await expect(close).toBeVisible();
 }
 

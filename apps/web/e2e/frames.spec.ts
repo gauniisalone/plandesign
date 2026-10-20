@@ -120,7 +120,10 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
     .toBe(1);
   // Le volet du rendu contextualisé voit la référence cochée.
   await photo.click();
-  await board.getByRole("button", { name: "Rendu contextualisé…" }).click();
+  await page
+    .locator(".side")
+    .getByRole("button", { name: "Rendu contextualisé…" })
+    .click();
   const panel = page.getByRole("region", { name: "Rendu contextualisé" });
   await expect(
     panel.getByRole("list", { name: "Références cochées" }),
