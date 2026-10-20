@@ -400,12 +400,19 @@ def test_an_opening_never_overlaps_another_one_of_its_wall() -> None:
     assert [p.status for p in turn.parts] == ["done"], turn.parts
 
 
-def test_what_the_user_placed_is_not_removed_but_can_be_resized() -> None:
+def test_what_the_user_placed_is_removed_on_explicit_request_and_can_be_resized() -> None:
+    """Décision PO : une demande explicite et sans ambiguïté supprime aussi une ouverture
+    posée par l'utilisateur, puisque le geste s'annule ; le pas reste attribué à l'assistant."""
     project = _plan(user_placard_door=True)
+    door = next(o for o in _openings(project) if o.source is Source.USER_DEFINED and o.width == 0.7)
     after, turn = _say(project, "supprime la porte du placard")
-    assert after is project
-    assert "posée ou mesurée par vous" in turn.parts[0].reason
-    assert "Suppr" in turn.parts[0].reason
+    assert [p.status for p in turn.parts] == ["done"], turn.parts
+    assert turn.parts[0].summary.endswith("supprimée. Annuler pour la remettre.")
+    assert door.id not in only_level(after).elements
+    assert after.history[-1].actor == ASSISTANT_ACTOR
+    assert after.history[-1].label.startswith("Assistant : supprimer la porte")
+    back = history.undo(after)
+    assert only_level(back).elements[door.id] == door
     after, turn = _say(project, "rétrécis la porte du placard à 65 cm")
     assert [p.status for p in turn.parts] == ["done"], turn.parts
     door = next(
@@ -432,6 +439,10 @@ def test_a_locked_opening_is_refused() -> None:
     )
     after, turn = _say(project, "élargis la fenêtre du salon à 1,20 m")
     assert after is project and "verrouillée" in turn.parts[0].reason
+    # Verrouillée : la suppression reste refusée, même demandée explicitement.
+    after, turn = _say(project, "supprime la fenêtre du salon")
+    assert after is project and turn.parts[0].status == "refused"
+    assert "verrouillée" in turn.parts[0].reason
 
 
 # -------------------------------------------------------------- MH6 : Gemini texte seul

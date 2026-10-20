@@ -25,8 +25,10 @@ from shapely.geometry import Point
 
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene import history
+from openplan.scene.history import USER_ACTOR
 from openplan.scene.ops import OpError, RemoveElement, UpdateElement, apply_ops
 from openplan.schemas.assistant import ASSISTANT_ACTOR, AssistantAction, AssistantIntent
+from openplan.schemas.common import USER_AUTHORITATIVE
 from openplan.schemas.elements import OPENING_LABELS, Opening, OpeningKind, Room
 from openplan.schemas.scene import Level, Project
 from openplan.validation.invariants import validate_invariants
@@ -402,20 +404,28 @@ def _apply(
     label: str,
     summary: str,
     o: Opening,
+    *,
+    asked: bool = False,
 ) -> tuple[Project, AssistantAction]:
-    """Le geste par la commande d'édition du plan, un pas d'historique `assistant` ; refusé
-    par la politique des sources (posée par vous, verrouillée) ou par les invariants."""
-    try:
-        after = apply_ops(project, level_id, [op], actor=ASSISTANT_ACTOR, label=label)
-    except history.PatchRejectedError:
+    """Le geste par la commande d'édition du plan, un pas d'historique attribué à
+    `assistant` ; refusé si l'ouverture est verrouillée, par la politique des sources ou par
+    les invariants. `asked` : demande explicite et sans ambiguïté de l'utilisateur (décision PO
+    de KAN-32 pour la suppression) ; la politique qui protège ce qu'il a posé lui-même ne
+    s'oppose pas à sa propre demande, annulable."""
+    if o.locked:
         it = "la" if _e(o) else "le"
-        if o.locked:
-            reason = f"{_the(o)} est verrouillé{_e(o)} : déverrouillez-{it} dans sa fiche"
-        else:
-            reason = (
-                f"{_the(o)} a été posé{_e(o)} ou mesuré{_e(o)} par vous : l'assistant ne {it} "
-                f"supprime pas. Sélectionnez-{it} et appuyez sur Suppr."
-            )
+        return project, AssistantAction(
+            kind=intent.kind,
+            status="refused",
+            summary=summary,
+            reason=f"{_the(o)} est verrouillé{_e(o)} : déverrouillez-{it} dans sa fiche",
+            element_ids=[o.id],
+        )
+    actor = USER_ACTOR if asked and o.source in USER_AUTHORITATIVE else ASSISTANT_ACTOR
+    try:
+        after = apply_ops(project, level_id, [op], actor=actor, label=label)
+    except history.PatchRejectedError as exc:
+        reason = "changement refusé : " + " ; ".join(exc.problems)[:160]
         return project, AssistantAction(
             kind=intent.kind, status="refused", summary=summary, reason=reason, element_ids=[o.id]
         )
@@ -431,6 +441,11 @@ def _apply(
             reason="le plan deviendrait incohérent ; modifiez l'ouverture à la main",
             element_ids=[o.id],
         )
+    if actor != ASSISTANT_ACTOR:
+        # Le pas reste celui de l'assistant dans l'historique (il se distingue des gestes à
+        # la main) ; seule la vérification des sources a laissé passer la demande.
+        last = after.history[-1].model_copy(update={"actor": ASSISTANT_ACTOR})
+        after = after.model_copy(update={"history": [*after.history[:-1], last]})
     return after, AssistantAction(
         kind=intent.kind, status="done", summary=summary, element_ids=[o.id]
     )
@@ -507,8 +522,9 @@ def remove_opening(
         intent,
         RemoveElement(element_id=o.id),
         f"Assistant : supprimer {_low(title)}",
-        f"{title} supprimé{_e(o)}",
+        f"{title} supprimé{_e(o)}. Annuler pour {'la' if _e(o) else 'le'} remettre.",
         o,
+        asked=True,
     )
 
 

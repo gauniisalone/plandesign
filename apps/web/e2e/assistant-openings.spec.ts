@@ -4,7 +4,7 @@ import { showPanel } from "./helpers";
 
 /** KAN-32 : l'assistant supprime une porte déjà posée (lecteur à règles, sans modèle), le
  *  tour le dit, et « Annuler » la remet. Le plan est préparé par l'API (quatre murs, la pièce,
- *  une porte estimée : l'assistant ne supprime pas ce que l'utilisateur a posé lui-même). */
+ *  une porte). */
 
 type Json = Record<string, unknown>;
 
@@ -70,9 +70,9 @@ async function planWithADoor(page: Page): Promise<string> {
       offset: 1.5,
       width: 0.83,
       height: 2.04,
+      // Posée comme à la palette (source user_defined) : une demande explicite la supprime
+      // aussi (décision PO de KAN-32), Annuler la remet.
       swing: { hinge: "left", direction: "inward", angle: 1.5708 },
-      source: "estimated",
-      confidence: 0.6,
     },
   });
   expect(door.ok()).toBe(true);
@@ -94,7 +94,9 @@ test("assistant : « supprime la porte », puis Annuler la remet", async ({
   await input.press("Enter");
   const last = page.locator(".assistant .bubble.assistant").last();
   await expect(last.locator(".actions .status-done")).toHaveCount(1);
-  await expect(last).toContainText("La porte sud supprimée");
+  await expect(last).toContainText(
+    "La porte sud supprimée. Annuler pour la remettre.",
+  );
   await expect.poll(async () => (await openingsOf(page, id)).length).toBe(0);
 
   await last.getByRole("button", { name: "Annuler", exact: true }).click();
