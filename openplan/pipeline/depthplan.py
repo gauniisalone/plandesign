@@ -39,6 +39,7 @@ from openplan.pipeline.attic import (
     STRIDE,
     attic_axes,
     find_floor,
+    lower_floor,
 )
 from openplan.pipeline.floorplan import (
     ACTOR,
@@ -111,6 +112,7 @@ def observe_room(
     floor_idx = find_floor(planes)
     if floor_idx is None:
         return None, planes
+    planes, floor_idx = lower_floor(points, pixels, planes, floor_idx, h)  # KAN-70
     up = planes[floor_idx].plane.normal
     axes = attic_axes(up, planes, floor_idx)
     obs = RoomObservation(camera_height_m=planes[floor_idx].plane.distance, axes=axes)

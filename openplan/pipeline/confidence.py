@@ -41,6 +41,10 @@ largeur du pignon, distance au pignon ; règle = deux photos d'une règle de 1,0
 - égout non vu : contrôle, égout à 0 au lieu de 1,00 m, la largeur est alors prise au sol
   (6,96 m au lieu de 5,00 m pour la vraie géométrie, +39 %) → 40 %.
 
+KAN-70 (sol pris sur un plateau corrigé) : la règle passe à 17 % avec la hauteur supposée (+14 %
+et −20 %) ; le contrôle ne change pas. Les poids ci-dessus restent ceux du 20 oct. en attendant
+un banc plus large (le poids « supposée » serait alors à revoir à la baisse).
+
 Le détail chiffré, régénéré à chaque passage du banc, est dans `data/eval/rapport-kan33.md`
 (hors dépôt) ; `tests/unit/test_confidence.py` recalcule la partie contrôle sur la fixture.
 """

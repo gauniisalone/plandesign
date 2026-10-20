@@ -218,7 +218,70 @@ def find_floor(planes: list[FittedPlane]) -> int | None:
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda i: planes[i].count)
+    best = max(candidates, key=lambda i: planes[i].count)
+    # KAN-70 : un plateau (bureau, lit) est souvent le plan horizontal le plus soutenu. Un plan
+    # parallèle nettement plus bas et assez soutenu est le vrai sol.
+    lower = [
+        i
+        for i in candidates
+        if angle_between(planes[i].plane.normal, planes[best].plane.normal) <= LOWER_FLOOR_MAX_ANGLE
+        and planes[i].plane.distance > planes[best].plane.distance + LOWER_FLOOR_GAP_M
+        and planes[i].count >= LOWER_FLOOR_MIN_SHARE * planes[best].count
+    ]
+    return max(lower, key=lambda i: planes[i].plane.distance) if lower else best
+
+
+LOWER_FLOOR_GAP_M = 0.4
+"""KAN-70 : un plan horizontal est écarté comme sol s'il existe, plus de 0,4 m sous lui (échelle
+du modèle de profondeur), un plan ou une nappe de points parallèle assez soutenu."""
+LOWER_FLOOR_MAX_ANGLE = math.radians(15.0)
+LOWER_FLOOR_MIN_SHARE = 0.25
+"""Plan candidat plus bas : au moins le quart des points du plan le plus soutenu."""
+LOWER_FLOOR_MIN_FRACTION = 0.05
+"""Nappe de points plus basse (sol encombré, non extrait comme plan) : 5 % du nuage au moins."""
+LOWER_FLOOR_BAND_M = 0.2
+LOWER_FLOOR_MIN_ROW = 0.5
+"""Nappe acceptée seulement dans la moitié basse de l'image (ligne médiane des points)."""
+
+
+def lower_floor(
+    points: Float,
+    pixels: NDArray[np.intp],
+    planes: list[FittedPlane],
+    floor_idx: int,
+    image_height: int,
+) -> tuple[list[FittedPlane], int]:
+    """KAN-70 : le sol est le plan horizontal plausible le plus bas. Le sol encombré (pieds de
+    meubles, objets) n'est pas toujours extrait comme plan : on cherche, parallèlement au sol
+    choisi, la nappe de points la plus basse située à plus de LOWER_FLOOR_GAP_M sous lui, assez
+    soutenue et dans le bas de l'image. Trouvée, elle devient le sol (normale du plan d'origine,
+    distance médiane de la nappe) ; l'ancien « sol » reste dans la liste (plateau, « other »)."""
+    floor = planes[floor_idx].plane
+    below = -(points @ floor.normal)
+    start = floor.distance + LOWER_FLOOR_GAP_M
+    deeper = below > start
+    if deeper.sum() < LOWER_FLOOR_MIN_FRACTION * len(points):
+        return planes, floor_idx
+    minimum = LOWER_FLOOR_MIN_FRACTION * len(points)
+    step = LOWER_FLOOR_BAND_M / 4
+    passing: list[tuple[float, NDArray[np.intp]]] = []
+    for low in np.arange(start, float(below.max()), step):
+        band = np.flatnonzero((below >= low) & (below < low + LOWER_FLOOR_BAND_M))
+        if (
+            len(band) >= minimum
+            and np.median(pixels[band, 1]) >= LOWER_FLOOR_MIN_ROW * image_height
+        ):
+            passing.append((float(low), band))
+    if not passing:
+        return planes, floor_idx
+    # La nappe la plus basse ; parmi les fenêtres qui la recouvrent, la plus dense (centrée).
+    deepest = passing[-1][0]
+    chosen = max((b for low, b in passing if low >= deepest - LOWER_FLOOR_BAND_M), key=len)
+    values = below[chosen]
+    distance = float(np.median(values))
+    rms = float(np.sqrt(np.mean((values - distance) ** 2)))
+    new = FittedPlane(Plane(floor.normal, distance), chosen.astype(np.intp), rms)
+    return [*planes, new], len(planes)
 
 
 SLOPE_PAIR_CANDIDATES = 6
@@ -710,6 +773,8 @@ def analyse_attic(
             points, pixel_index, (w, h), seed=seed, min_fraction=FALLBACK_MIN_FRACTION
         )
         floor_idx = find_floor(planes)
+    if floor_idx is not None:
+        planes, floor_idx = lower_floor(points, pixel_index, planes, floor_idx, h)
     if floor_idx is None:
         up = up_from_slopes(planes)
         if up is None:
