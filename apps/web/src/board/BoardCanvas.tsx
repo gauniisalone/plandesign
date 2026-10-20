@@ -331,12 +331,27 @@ export function BoardCanvas(props: Props) {
     [renders],
   );
 
+  // KAN-56 : médias et rendus contextualisés relus quand les références des éléments
+  // changent (un ajout ou un retrait, chez moi ou chez un autre membre), pas à chaque
+  // révision du tableau : zoomer, déplacer ou annoter ne les relit plus. Un média ou une
+  // variante ne change pas sous la même référence (vignette faite à l'envoi, variante
+  // listée seulement une fois son image écrite) ; si un statut y apparaît un jour, il
+  // entre dans cette clé.
+  const refsKey = useMemo(
+    () =>
+      board.items
+        .filter((i) => i.ref)
+        .map((i) => `${i.kind}:${i.ref}`)
+        .sort()
+        .join("|"),
+    [board.items],
+  );
   useEffect(() => {
     void boardApi.media(project.id).then(setMedia, () => setMedia([]));
     void contextualApi
       .list(project.id)
       .then(setContextual, () => setContextual([]));
-  }, [project.id, board.revision]);
+  }, [project.id, refsKey]);
 
   // Première ouverture : la vue cadre tout ce qui est posé.
   const fitted = useRef(false);
