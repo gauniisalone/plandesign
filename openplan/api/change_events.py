@@ -29,7 +29,7 @@ from openplan.scene.history import USER_ACTOR, USER_PREFIX
 from openplan.scene.store import PROJECT_FILE
 from openplan.schemas.board import Board
 from openplan.schemas.comments import LOCAL_AUTHOR
-from openplan.schemas.events import MAX_LABEL, EventType, ProjectEvent
+from openplan.schemas.events import MAX_LABEL, ProjectEvent
 
 _LEVEL = re.compile(r"/levels/([0-9a-f-]{36})(/|$)")
 _SKIPPED = re.compile(
@@ -83,19 +83,18 @@ def record(project_dir: Path, project_id: UUID, actor: str, path: str, before: S
     """Après une écriture réussie hors des routes de l'espace de travail : au plus une ligne.
     Une photo ajoutée touche aussi le tableau : c'est une modification du plan. Vrai si une
     ligne est entrée au journal."""
-    after = stamps(project_dir)
-    board, plan = after.board != before.board, after.plan != before.plan
-    if not (board or plan):
+    # Seul le plan compte ici : l'espace de travail est publié par ses routes, avec le détail ;
+    # `board.json` réécrit ailleurs n'est qu'une synchronisation automatique, pas un geste.
+    if stamps(project_dir).plan == before.plan:
         return False
-    kind: EventType = "plan.changed" if plan else "board.changed"
     level = _LEVEL.search(path)
     ProjectEvents(project_dir).append(
         ProjectEvent(
-            type=kind,
+            type="plan.changed",
             project_id=project_id,
             actor=actor,
-            level_id=UUID(level.group(1)) if level and plan else None,
-            label=_plan_label(project_dir, path) if plan else None,
+            level_id=UUID(level.group(1)) if level else None,
+            label=_plan_label(project_dir, path),
         )
     )
     return True

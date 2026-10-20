@@ -72,6 +72,31 @@ def test_board_detail_and_a_view_is_not_a_change(tmp_path: Path) -> None:
     assert line["count"] == 4 and line["added"] == 3 and line["label"] is None
 
 
+def test_an_automatic_board_sync_is_not_a_gesture(tmp_path: Path) -> None:
+    """`board.json` réécrit hors des routes de l'espace de travail (synchronisation
+    automatique) : rien au journal. Seul `project.json` y compte, comme modification du plan."""
+    from uuid import UUID
+
+    from openplan.api import change_events
+    from openplan.pipeline.events import EVENTS_FILE
+
+    project_dir = tmp_path / "p"
+    project_dir.mkdir()
+    (project_dir / "board.json").write_text("{}", encoding="utf-8")
+    (project_dir / "project.json").write_text('{"history": [], "history_cursor": 0}')
+    pid, path = UUID(int=1), "/api/projects/x/levels/y/starter"
+    before = change_events.stamps(project_dir)
+    (project_dir / "board.json").write_text('{"items": []}', encoding="utf-8")
+    assert change_events.record(project_dir, pid, "fanny", path, before) is False
+    assert not (project_dir / EVENTS_FILE).exists()
+    before = change_events.stamps(project_dir)
+    (project_dir / "project.json").write_text(
+        '{"history": [{"label": "Plan de départ"}], "history_cursor": 1}', encoding="utf-8"
+    )
+    assert change_events.record(project_dir, pid, "fanny", path, before) is True
+    assert '"label":"Plan de départ"' in (project_dir / EVENTS_FILE).read_text(encoding="utf-8")
+
+
 def test_plan_label_undo_and_filters(tmp_path: Path) -> None:
     local, pid = _local(tmp_path)
     level = next(iter(local.get(f"/api/projects/{pid}").json()["levels"]))
