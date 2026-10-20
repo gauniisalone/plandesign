@@ -2024,6 +2024,21 @@ button.cta:hover:not(:disabled) {
     backdrop-filter: blur(2px);
   }
 
+  /* KAN-64 : dans l'espace de travail, le panneau reste À CÔTÉ (jamais par-dessus) à toutes
+     les largeurs, plus étroit mais lisible ; le cadrage de départ en tient compte. */
+  .side.board {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    flex: 0 0 clamp(260px, 36vw, 320px);
+    width: clamp(260px, 36vw, 320px);
+    padding: 8px 8px 8px 0;
+    z-index: auto;
+    background: none;
+    backdrop-filter: none;
+  }
+
   .topbar .project-name {
     max-width: 9rem;
   }

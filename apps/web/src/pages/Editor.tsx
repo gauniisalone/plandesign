@@ -597,6 +597,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     top: HTMLElement | null;
     comments: HTMLElement | null;
   }>({ top: null, comments: null });
+  /** KAN-64 : dans l'espace de travail, les zones (Assistant, Commentaires, Activité) tant
+   *  que l'utilisateur n'a pas ouvert lui-même un autre volet ; un volet gardé d'avant (posé
+   *  par l'arrivée, par exemple) ne les remplace pas. */
+  const boardZones = step === "board" && !(panelOpen && pane !== "inspector");
+  const shownPane: SidePane = boardZones ? "inspector" : pane;
   const sideOpen =
     step === "board"
       ? boardSideOpen || (panelOpen && pane !== "inspector")
@@ -1447,7 +1452,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               focusRenders={rendersFocus}
               focusOn={boardFocus}
-              side={sideOpen && pane === "inspector" ? boardSlots : null}
+              side={sideOpen && boardZones ? boardSlots : null}
               presence={account ? live.presence : undefined}
               comments={comments}
               peers={live.peers}
@@ -1952,7 +1957,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           conversation) gardent leur état d'un repli à l'autre. */}
         {step !== "import" && (
           <div
-            className={`side${sideOpen ? "" : " closed"}`}
+            className={`side${step === "board" ? " board" : ""}${sideOpen ? "" : " closed"}`}
             style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
           >
             <SideHandle
@@ -1987,20 +1992,20 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       }}
                     />
                   )}
-                  {pane !== "inspector" && (
+                  {shownPane !== "inspector" && (
                     <div className="side-head">
-                      <h2>{PANE_TITLE[pane]}</h2>
+                      <h2>{PANE_TITLE[shownPane]}</h2>
                       <button
                         className="icon"
                         onClick={showInspector}
-                        aria-label={`Fermer ${PANE_TITLE[pane]}`}
+                        aria-label={`Fermer ${PANE_TITLE[shownPane]}`}
                         title="Revenir à l'inspecteur"
                       >
                         <IconClose />
                       </button>
                     </div>
                   )}
-                  {pane === "inspector" && step === "board" && (
+                  {boardZones && (
                     <BoardSide
                       comments={comments}
                       commentsOpen={commentsZoneOpen}
@@ -2020,11 +2025,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       onSlots={setBoardSlots}
                     />
                   )}
-                  {pane === "inspector" &&
-                    step !== "board" &&
+                  {shownPane === "inspector" &&
+                    !boardZones &&
                     !readOnly &&
                     inspector}
-                  {pane === "catalog" && !readOnly && (
+                  {shownPane === "catalog" && !readOnly && (
                     <aside className="inspector">
                       <LibraryPanel
                         chosen={placing?.assetId ?? null}
@@ -2073,37 +2078,39 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       />
                     </aside>
                   )}
-                  {pane === "assistant" && !readOnly && assistantPanel}
-                  {pane === "renders" && !readOnly && renderPanel}
-                  {pane === "contextual" && contextualPick && !readOnly && (
-                    <ContextualPanel
-                      key={`${contextualPick.kind}:${contextualPick.id}`}
-                      project={state.project}
-                      level={level}
-                      renders={state.renders}
-                      pick={contextualPick}
-                      references={(board.board?.items ?? [])
-                        .filter((i) => i.reference && i.ref)
-                        .map((i) => ({
-                          kind: i.kind as
-                            "photo" | "render" | "contextual" | "file",
-                          ref: i.ref ?? "",
-                          label:
-                            i.text ||
-                            (i.kind === "photo"
-                              ? "Photo"
-                              : i.kind === "render"
-                                ? "Rendu"
-                                : "Image"),
-                        }))}
-                      onGenerated={() => setContextualTick((n) => n + 1)}
-                      onClose={() => {
-                        setContextualPick(null);
-                        setPane("inspector");
-                      }}
-                    />
-                  )}
-                  {pane === "amenager" && !readOnly && (
+                  {shownPane === "assistant" && !readOnly && assistantPanel}
+                  {shownPane === "renders" && !readOnly && renderPanel}
+                  {shownPane === "contextual" &&
+                    contextualPick &&
+                    !readOnly && (
+                      <ContextualPanel
+                        key={`${contextualPick.kind}:${contextualPick.id}`}
+                        project={state.project}
+                        level={level}
+                        renders={state.renders}
+                        pick={contextualPick}
+                        references={(board.board?.items ?? [])
+                          .filter((i) => i.reference && i.ref)
+                          .map((i) => ({
+                            kind: i.kind as
+                              "photo" | "render" | "contextual" | "file",
+                            ref: i.ref ?? "",
+                            label:
+                              i.text ||
+                              (i.kind === "photo"
+                                ? "Photo"
+                                : i.kind === "render"
+                                  ? "Rendu"
+                                  : "Image"),
+                          }))}
+                        onGenerated={() => setContextualTick((n) => n + 1)}
+                        onClose={() => {
+                          setContextualPick(null);
+                          setPane("inspector");
+                        }}
+                      />
+                    )}
+                  {shownPane === "amenager" && !readOnly && (
                     <AmenagerPanel
                       project={state.project}
                       level={level}
@@ -2126,7 +2133,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       onRenderProposal={actions.renderProposal}
                     />
                   )}
-                  {pane === "advanced" && readOnly && (
+                  {shownPane === "advanced" && readOnly && (
                     <details className="adv-group" open>
                       <summary>Réglages : thème et compte</summary>
                       <aside className="inspector">
@@ -2135,7 +2142,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       </aside>
                     </details>
                   )}
-                  {pane === "advanced" && !readOnly && (
+                  {shownPane === "advanced" && !readOnly && (
                     <>
                       <details className="adv-group" open>
                         <summary>Réglages : unités, nord et thème</summary>

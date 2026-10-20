@@ -503,7 +503,13 @@ test("L2 : case Gemini (galerie et note Exigences) → aperçu par Gemini, menti
     name: /Mieux comprendre mon texte avec Gemini/,
   });
   await expect(inCard).toBeChecked();
-  await expect(card).toContainText("jamais les photos");
+  // KAN-64 (décision PO) : « (texte seul) » dans le libellé visible, « jamais les photos »
+  // dans l'infobulle de la case.
+  await expect(card).toContainText("(texte seul)");
+  await expect(card.locator(".board-composer-gemini")).toHaveAttribute(
+    "title",
+    /jamais les photos/,
+  );
   await card
     .getByLabel("Vos envies et contraintes")
     .fill("chambre chalet bois");

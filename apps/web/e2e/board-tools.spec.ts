@@ -4,8 +4,8 @@ import { createEmptyProject, expectSpace, goSpace } from "./helpers";
 
 /** T7c (maquette d'augus) : dans l'espace de travail, l'import est dans la barre d'outils de
  *  gauche (« Photo ou plan de la pièce » ouvre « Ajouter une source », « Fichiers » joint des
- *  fichiers) ; la barre des actions de la sélection n'apparaît qu'avec une sélection, en bas,
- *  au-dessus du compositeur. Aucune requête externe. */
+ *  fichiers) ; les actions de la sélection n'apparaissent qu'avec une sélection (KAN-64 : à la
+ *  place de l'Assistant, dans le panneau de droite). Aucune requête externe. */
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
 
 test("espace de travail : import dans la barre de gauche, barre de la sélection en bas", async ({
@@ -42,9 +42,13 @@ test("espace de travail : import dans la barre de gauche, barre de la sélection
   await page.getByRole("button", { name: /Ajouter une source/ }).click();
   await goSpace(page, "board");
 
-  // Sans sélection, pas de barre ; avec une sélection, en bas, au-dessus du compositeur.
+  // Sans sélection, pas d'actions de sélection, l'Assistant ; avec une sélection (KAN-64),
+  // ses actions prennent la place de l'Assistant dans le panneau de droite, jamais l'une
+  // sur l'autre.
   const bar = page.getByRole("toolbar", { name: "Actions de la sélection" });
+  const composer = page.getByRole("region", { name: "Compositeur" });
   await expect(bar).toHaveCount(0);
+  await expect(composer).toBeVisible();
   const board = page.getByRole("region", { name: "Espace de travail" });
   await board.locator(".board-item.kind-plan .board-plan-head").click({
     position: { x: 20, y: 10 },
@@ -53,12 +57,15 @@ test("espace de travail : import dans la barre de gauche, barre de la sélection
   await expect(
     bar.getByRole("button", { name: "Modifier le plan" }),
   ).toBeVisible();
-  const composer = page.getByRole("region", { name: "Compositeur" });
-  const barBox = (await bar.boundingBox())!;
-  const composerBox = (await composer.boundingBox())!;
-  expect(barBox.y + barBox.height).toBeLessThanOrEqual(composerBox.y + 1);
+  await expect(
+    page
+      .locator(".side")
+      .getByRole("toolbar", { name: "Actions de la sélection" }),
+  ).toBeVisible();
+  await expect(composer).toHaveCount(0);
   await page.keyboard.press("Escape");
   await board.locator(".board-stage").click({ position: { x: 5, y: 5 } });
   await expect(bar).toHaveCount(0);
+  await expect(composer).toBeVisible();
   expect(outside).toEqual([]);
 });

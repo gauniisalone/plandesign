@@ -83,7 +83,7 @@ test("KAN-64 (MH2, MH4, MH6) : zones du panneau, bulle des Commentaires, panneau
   const side = page.locator(".side");
   // MH2 : l'Assistant en haut, les Commentaires dessous, une séparation réglable.
   const composer = side.getByRole("region", { name: "Compositeur" });
-  const list = side.getByRole("region", { name: "Commentaires" });
+  const list = side.getByRole("region", { name: "Commentaires", exact: true });
   await expect(composer).toBeVisible();
   await expect(list).toBeVisible();
   expect((await composer.boundingBox())!.y).toBeLessThan(
