@@ -29,13 +29,22 @@ test("centimètres et millimètres", () => {
   assert.equal(meters("2040 mm"), 2.04);
 });
 
-test("un nombre entier seul est lu en cm", () => {
+test("sans unité, un entier de 1 à 9 est lu en mètres", () => {
+  assert.equal(meters("2"), 2);
+  assert.equal(meters("5"), 5);
+  assert.equal(meters("9"), 9);
+});
+
+test("sans unité, un entier de 10 ou plus est lu en cm", () => {
+  assert.equal(meters("10"), 0.1);
+  assert.equal(meters("85"), 0.85);
   assert.equal(meters("204"), 2.04);
   assert.equal(meters("  90  "), 0.9);
 });
 
-test("un nombre décimal seul est lu en mètres", () => {
+test("sans unité, un nombre à virgule est lu en mètres", () => {
   assert.equal(meters("2,04"), 2.04);
+  assert.equal(meters("0,5"), 0.5);
   assert.equal(meters("0,8"), 0.8);
 });
 
@@ -74,12 +83,13 @@ test("négatif ou nul", () => {
   assert.match(refused("0 m"), /plus grande que zéro/);
 });
 
-test("trop court : moins de 5 cm, avec l'indice des mètres pour un entier seul", () => {
-  const error = refused("2");
-  assert.match(error, /Trop court \(2 cm\) : une mesure fait au moins 5 cm/);
-  assert.match(error, /Pour des mètres, écrivez « 2 m »/);
-  assert.doesNotMatch(refused("3 mm"), /Pour des mètres/);
+test("trop court : moins de 5 cm", () => {
+  assert.match(
+    refused("2 cm"),
+    /Trop court \(2 cm\) : une mesure fait au moins 5 cm/,
+  );
   assert.match(refused("3 mm"), /Trop court \(3 mm\)/);
+  assert.match(refused("0,04"), /Trop court \(4 cm\)/);
 });
 
 test("trop long : plus de 30 m", () => {

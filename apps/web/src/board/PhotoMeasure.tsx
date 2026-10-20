@@ -579,10 +579,10 @@ export function PhotoMeasure({
                     className={`pm-parsed${parsed.ok || !lengthText.trim() ? "" : " bad"}`}
                   >
                     {parsed.ok
-                      ? `= ${formatMeters(parsed.meters)} · un nombre entier seul se lit en cm`
+                      ? `= ${formatMeters(parsed.meters)}`
                       : lengthText.trim()
                         ? parsed.error
-                        : "un nombre entier seul se lit en cm"}
+                        : "Sans unité : 2 = 2 m, 204 = 204 cm, 2,04 = 2,04 m"}
                   </p>
                   <label>
                     Libellé (facultatif)

@@ -1,8 +1,9 @@
 /** KAN-66 : la longueur connue saisie pour une mesure de référence sur une photo. Virgule ou
- *  point décimal ; unité m, cm ou mm (« 2,04 m », « 204 cm », « 2 m 04 ») ; un nombre seul est
- *  lu en cm s'il est entier (« 204 »), en mètres s'il a une partie décimale (« 2,04 ») : une
- *  porte de 2,04 cm n'existe pas. Les limites sont celles du serveur (5 cm à 30 m) ; il refuse
- *  aussi, ceci ne fait que le dire avant l'envoi. */
+ *  point décimal ; unité m, cm ou mm (« 2,04 m », « 204 cm », « 2 m 04 »). Sans unité (règle du
+ *  PO, 20 oct.) : un entier de 1 à 9 est lu en mètres (« 2 » = 2,00 m), un entier de 10 ou plus
+ *  en centimètres (« 204 » = 2,04 m), un nombre à virgule en mètres (« 2,04 »). Les limites
+ *  sont celles du serveur (5 cm à 30 m) ; il refuse aussi, ceci ne fait que le dire avant
+ *  l'envoi. */
 
 export const LENGTH_MIN_M = 0.05;
 export const LENGTH_MAX_M = 30;
@@ -52,9 +53,6 @@ export function parseLength(raw: string): LengthParse {
   const mixed = new RegExp("^(\\d+) ?m ?(\\d{1,2})$").exec(text);
   const unit = new RegExp(`^${NUMBER} ?([a-zè]+)$`).exec(text);
   const bare = new RegExp(`^${NUMBER}$`).exec(text);
-  /** Le nombre seul, entier : lu en cm (sert aussi à l'indice « écrivez 2 m »). */
-  const bareInteger =
-    bare && !/[.,]/.test(bare[1] ?? "") ? (bare[1] ?? "") : null;
   if (mixed) {
     meters =
       Number(mixed[1] ?? "") + Number((mixed[2] ?? "").padEnd(2, "0")) / 100;
@@ -69,7 +67,9 @@ export function parseLength(raw: string): LengthParse {
     meters = toNumber(unit[1] ?? "") * factor;
   } else if (bare) {
     const value = toNumber(bare[1] ?? "");
-    meters = bareInteger !== null ? value / 100 : value;
+    const integer = !/[.,]/.test(bare[1] ?? "");
+    // Un entier de 10 ou plus est en cm ; de 1 à 9, en mètres ; à virgule, en mètres.
+    meters = integer && value >= 10 ? value / 100 : value;
   } else {
     return {
       ok: false,
@@ -84,11 +84,7 @@ export function parseLength(raw: string): LengthParse {
   if (meters < LENGTH_MIN_M)
     return {
       ok: false,
-      error: `Trop court (${formatShort(meters)}) : une mesure fait au moins 5 cm.${
-        bareInteger !== null
-          ? ` Pour des mètres, écrivez « ${bareInteger} m ».`
-          : ""
-      }`,
+      error: `Trop court (${formatShort(meters)}) : une mesure fait au moins 5 cm.`,
     };
   if (meters > LENGTH_MAX_M)
     return {
