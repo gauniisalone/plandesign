@@ -121,14 +121,26 @@ SCALE_DISAGREEMENT = 2.0
 """Au-delà de ce facteur entre le modèle et la hauteur saisie, l'un des deux est faux."""
 
 
-def rescale(estimate: AtticEstimate, camera_height_m: float) -> AtticEstimate:
-    """Recale toutes les longueurs pour que la hauteur de caméra vaille la valeur saisie.
+def height_words(camera_height_m: float, *, entered: bool) -> str:
+    """KAN-62 : « hauteur de prise de vue saisie 1.45 m » ou « … supposée 1.50 m (par défaut) »."""
+    if entered:
+        return f"hauteur de prise de vue saisie {camera_height_m:.2f} m"
+    return f"hauteur de prise de vue supposée {camera_height_m:.2f} m (par défaut)"
 
-    Le terme d'échelle du modèle (SCALE_SIGMA) est remplacé par l'incertitude de la saisie ;
-    le résidu géométrique de chaque plan est conservé, mis à l'échelle."""
+
+def rescale(
+    estimate: AtticEstimate, camera_height_m: float, *, entered: bool = True
+) -> AtticEstimate:
+    """Recale toutes les longueurs pour que la hauteur de caméra vaille la valeur donnée.
+
+    Le terme d'échelle du modèle (SCALE_SIGMA) est remplacé par l'incertitude de cette hauteur ;
+    le résidu géométrique de chaque plan est conservé, mis à l'échelle. `entered` (KAN-62) :
+    hauteur saisie (`user_defined`) ou valeur par défaut (`inferred`) ; les valeurs calculées
+    sont les mêmes, seule l'étiquette change."""
     if estimate.camera_height is None or camera_height_m <= 0:
         return estimate
     factor = camera_height_m / estimate.camera_height.value
+    words = height_words(camera_height_m, entered=entered)
 
     def scaled(e: Estimate | None) -> Estimate | None:
         if e is None:
@@ -143,8 +155,8 @@ def rescale(estimate: AtticEstimate, camera_height_m: float) -> AtticEstimate:
             "camera_height": Estimate(
                 value=camera_height_m,
                 sigma=PRIOR_REL_SIGMA * camera_height_m,
-                source=Source.USER_DEFINED,
-                note="hauteur de prise de vue saisie",
+                source=Source.USER_DEFINED if entered else Source.INFERRED,
+                note=words,
             ),
             "ridge_height": scaled(estimate.ridge_height),
             "eave_heights": [e for e in (scaled(x) for x in estimate.eave_heights) if e],
@@ -162,9 +174,9 @@ def rescale(estimate: AtticEstimate, camera_height_m: float) -> AtticEstimate:
             ],
             "roof_windows": [w.scaled(factor) for w in estimate.roof_windows],
             "scale_factor": estimate.scale_factor * factor,
-            "scale_note": f"Échelle recalée sur la hauteur de prise de vue saisie "
-            f"({camera_height_m:.2f} m) : facteur {factor:.2f} appliqué aux longueurs du modèle "
-            f"de profondeur (qui donnait {estimate.camera_height.value:.2f} m).",
+            "scale_note": f"Échelle recalée sur la {words} : facteur {factor:.2f} appliqué aux "
+            f"longueurs du modèle de profondeur (qui donnait "
+            f"{estimate.camera_height.value:.2f} m).",
         }
     )
 
@@ -631,20 +643,21 @@ def _with_assumed_floor(
     planes: list[FittedPlane],
     cls: ClassifiedPlanes,
     *,
+    given: bool,
     entered: bool,
     warnings: list[str],
 ) -> AtticEstimate:
-    """KAN-45/KAN-61 : sol supposé. Hauteur de prise de vue saisie ou supposée ; égout inconnu
-    sans jambette, avec sa borne « au plus » (jamais 0)."""
+    """KAN-45/KAN-61 : sol supposé. Hauteur de prise de vue donnée (`given`) ou, sans rien, la
+    valeur par défaut ; `entered` (KAN-62) : donnée par l'utilisateur, pas un défaut de l'app.
+    Égout inconnu sans jambette, avec sa borne « au plus » (jamais 0)."""
     h = cls.floor.plane.distance
     out = estimate.model_copy(
         update={
             "camera_height": Estimate(
                 value=h,
-                sigma=PRIOR_REL_SIGMA * h if entered else ASSUMED_FLOOR_SIGMA,
+                sigma=PRIOR_REL_SIGMA * h if given else ASSUMED_FLOOR_SIGMA,
                 source=Source.USER_DEFINED if entered else Source.INFERRED,
-                note="sol hors champ : hauteur de prise de vue "
-                + ("saisie" if entered else "supposée"),
+                note="sol hors champ : " + height_words(h, entered=entered),
             ),
             "floor_assumed": True,
             "eave_bound": None
@@ -670,11 +683,14 @@ def analyse_attic(
     frame_up: Float | None = None,
     seed: int = 0,
     camera_height_m: float | None = None,
+    camera_height_entered: bool = True,
 ) -> tuple[AtticEstimate, list[FittedPlane], ClassifiedPlanes | None, NDArray[np.intp], list[str]]:
     """Cœur de l'étape, sans fichier : estimation, plans, classement, pixels, avertissements.
 
-    `camera_height_m` (hauteur de prise de vue saisie) ne sert que si le sol n'est pas vu :
-    le sol est alors posé à cette hauteur sous la caméra (sinon à la hauteur par défaut)."""
+    `camera_height_m` (hauteur de prise de vue) ne sert que si le sol n'est pas vu : le sol est
+    alors posé à cette hauteur sous la caméra (sinon à la hauteur par défaut).
+    `camera_height_entered` (KAN-62) : faux quand cette hauteur est le défaut de l'app."""
+    entered = camera_height_m is not None and camera_height_entered
     points, pixel_index = backproject(depth, focal_px, principal_point, stride=STRIDE)
     h, w = depth.shape
     planes = fit_planes(points, pixel_index, (w, h), seed=seed)
@@ -705,7 +721,7 @@ def analyse_attic(
         warnings.append(
             f"Sol hors champ (photo levée) : verticale prise entre les deux pentes (toit "
             f"supposé symétrique), sol à {assumed_floor:.2f} m sous l'appareil "
-            f"({'hauteur saisie' if camera_height_m is not None else 'hauteur supposée'})."
+            f"({'hauteur saisie' if entered else 'hauteur supposée'})."
         )
     cls = classify(planes, floor_idx)
     cls.floor_assumed = assumed_floor is not None
@@ -721,7 +737,13 @@ def analyse_attic(
     estimate = summarize(planes, cls, len(points))
     if assumed_floor is not None:
         estimate = _with_assumed_floor(
-            estimate, points, planes, cls, entered=camera_height_m is not None, warnings=warnings
+            estimate,
+            points,
+            planes,
+            cls,
+            given=camera_height_m is not None,
+            entered=entered,
+            warnings=warnings,
         )
     if estimate.ridge_height is None:
         warnings.append("Une seule pente vue (ou aucune) : hauteur au faîtage non estimée.")
@@ -756,12 +778,15 @@ def run_attic(
     *,
     estimator: DepthEstimator,
     camera_height_m: float | None = None,
+    camera_height_entered: bool = True,
     run_id: UUID | None = None,
     roof_windows: RoofWindowDetector | None = None,
 ) -> AtticRun:
-    """`camera_height_m` : hauteur de prise de vue saisie ; si donnée, toutes les longueurs
-    sont recalées dessus (l'échelle du modèle de profondeur est peu fiable sur une photo
-    réelle), sinon l'échelle du modèle est gardée telle quelle."""
+    """`camera_height_m` : hauteur de prise de vue ; si donnée, toutes les longueurs sont
+    recalées dessus (l'échelle du modèle de profondeur est peu fiable sur une photo réelle),
+    sinon l'échelle du modèle est gardée telle quelle. `camera_height_entered` (KAN-62) : faux
+    quand c'est la valeur par défaut de l'app, pas une saisie (étiquettes et textes)."""
+    entered = camera_height_entered
     started = time.perf_counter()
     rid = run_id or uuid4()
     ref = project.images.get(image_id)
@@ -779,6 +804,7 @@ def run_attic(
         camera.camera.principal_point,
         frame_up=frame_up,
         camera_height_m=camera_height_m,
+        camera_height_entered=entered,
     )
     if roof_windows is not None and cls is not None and depth.shape == image.pixels.shape[:2]:
         try:
@@ -800,11 +826,12 @@ def run_attic(
             estimate = estimate.model_copy(update={"roof_windows": sightings})
             warnings.extend(notes)
     if camera_height_m is not None and estimate.camera_height is not None:
-        estimate = rescale(estimate, camera_height_m)
+        estimate = rescale(estimate, camera_height_m, entered=entered)
         f = estimate.scale_factor
         if f > SCALE_DISAGREEMENT or f < 1.0 / SCALE_DISAGREEMENT:
             warnings.append(
-                f"Le modèle de profondeur et la hauteur saisie divergent d'un facteur "
+                f"Le modèle de profondeur et la hauteur "
+                f"{'saisie' if entered else 'supposée'} divergent d'un facteur "
                 f"{max(f, 1.0 / f):.1f} : l'un des deux est faux (photo prise accroupi ou en "
                 "plongée, ou échelle du modèle hors de son domaine)."
             )
@@ -843,8 +870,8 @@ def run_attic(
     assumptions = [
         Assumption(
             text=(
-                f"Hauteur de prise de vue saisie {camera_height_m:.2f} m : toutes les "
-                "longueurs en dépendent (±10 % supposé)."
+                f"{height_words(camera_height_m, entered=entered).capitalize()} : toutes "
+                "les longueurs en dépendent (±10 % supposé)."
                 if camera_height_m is not None
                 else f"Échelle issue d'une profondeur apprise : ±{SCALE_SIGMA:.0%} sur toutes "
                 "les longueurs, non mesuré sur photos réelles."

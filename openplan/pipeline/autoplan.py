@@ -605,7 +605,7 @@ def _commit_background(
     return history.commit(project, after, actor=ACTOR, label="Mettre l'image du plan en fond")
 
 
-def _photo_candidates(
+def _photo_candidates(  # noqa: PLR0913
     chain: _Chain,
     project: Project,
     project_dir: Path,
@@ -616,6 +616,8 @@ def _photo_candidates(
     depth: DepthEstimator | None,
     camera_height_m: float,
     roof_windows: RoofWindowDetector | None = None,
+    *,
+    camera_height_entered: bool,
 ) -> tuple[list[_Candidate], AtticEstimate | None]:
     candidates: list[_Candidate] = []
     chain.say("Lecture de la photo…")
@@ -651,6 +653,7 @@ def _photo_candidates(
             runs_dir,
             estimator=memo,
             camera_height_m=camera_height_m,
+            camera_height_entered=camera_height_entered,
             run_id=rid,
             roof_windows=roof_windows,
         ).estimate
@@ -666,6 +669,7 @@ def _photo_candidates(
             runs_dir,
             estimator=memo,
             camera_height_m=camera_height_m,
+            camera_height_entered=camera_height_entered,
             run_id=rid,
         )
         found = run.camera_height_m or 0.0
@@ -741,13 +745,17 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
     openings: RoomElementDetector | None = None,
     notices: list[str] | None = None,
     progress: Progress | None = None,
-    camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
+    camera_height_m: float | None = None,
     kind: ImageKind | None = None,
     run_id: UUID | None = None,
 ) -> AutoPlanRun:
     """Du fichier déposé au plan construit. `notices` : ce que l'appelant sait déjà devoir
     dire (poids absents et leur commande). `kind` : lecture imposée par l'utilisateur (« ce
-    n'est pas une photo », « ce n'est pas un plan ») ; sinon devinée."""
+    n'est pas une photo », « ce n'est pas un plan ») ; sinon devinée. `camera_height_m` :
+    hauteur de prise de vue saisie ; sans elle, DEFAULT_CAMERA_HEIGHT_M, dite « supposée »
+    et jamais « saisie » (KAN-62)."""
+    entered = camera_height_m is not None
+    height = camera_height_m if camera_height_m is not None else DEFAULT_CAMERA_HEIGHT_M
     started = time.perf_counter()
     rid = run_id or uuid4()
     if level_id not in project.levels:
@@ -793,7 +801,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 level_id,
                 image_id,
                 runs_dir,
-                camera_height_m=camera_height_m,
+                camera_height_m=height,
                 run_id=rid,
             )
             if _valid(view.project):
@@ -807,8 +815,9 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
     else:
         assumptions.append(
             Assumption(
-                text=f"Hauteur de l'appareil supposée {camera_height_m:.2f} m : toutes les "
-                "distances en dépendent. « Recalibrer » sur une longueur connue corrige tout.",
+                text=f"Hauteur de l'appareil {'saisie' if entered else 'supposée'} "
+                f"{height:.2f} m : toutes les distances en dépendent. « Recalibrer » sur une "
+                "longueur connue corrige tout.",
                 impact="high",
             )
         )
@@ -822,8 +831,9 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             runs_dir,
             rid,
             depth,
-            camera_height_m,
+            height,
             roof_detector,
+            camera_height_entered=entered,
         )
         scores = {c.method: round(c.score, 3) for c in candidates}
         geometry = attic_geometry(estimate, image_id, rid) if estimate else None

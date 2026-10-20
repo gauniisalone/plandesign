@@ -270,6 +270,7 @@ def propose_floorplan_from_depth(
     *,
     image_id: UUID,
     camera_height_m: float | None = None,
+    camera_height_entered: bool = True,
     yaw: float = 0.0,
     pitch: float = 0.0,
     focal_px: float | None = None,
@@ -304,7 +305,9 @@ def propose_floorplan_from_depth(
         scale = camera_height_m / observation.camera_height_m
         assumptions.append(
             Assumption(
-                text=f"Distances recalées sur la hauteur de prise de vue saisie "
+                # KAN-62 : la hauteur par défaut de l'app n'est pas une saisie.
+                text=f"Distances recalées sur la hauteur de prise de vue "
+                f"{'saisie' if camera_height_entered else 'supposée (par défaut)'} "
                 f"({camera_height_m:.2f} m) : facteur {scale:.2f} sur l'échelle du modèle.",
                 impact="high",
             )
@@ -429,6 +432,7 @@ def run_depthplan(
     *,
     estimator: DepthEstimator,
     camera_height_m: float | None = None,
+    camera_height_entered: bool = True,
     run_id: UUID | None = None,
 ) -> DepthPlanRun:
     """Photo → profondeur → plans → polygone proposé sur le niveau vide. La focale et le
@@ -469,6 +473,7 @@ def run_depthplan(
         observation,
         image_id=image_id,
         camera_height_m=camera_height_m,
+        camera_height_entered=camera_height_entered,
         yaw=camera.camera.yaw_hint or 0.0,
         pitch=camera.camera.pitch,
         focal_px=camera.camera.focal_px,
