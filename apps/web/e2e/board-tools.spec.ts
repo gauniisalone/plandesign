@@ -46,7 +46,10 @@ test("espace de travail : import dans la barre de gauche, barre de la sélection
   // ses actions prennent la place de l'Assistant dans le panneau de droite, jamais l'une
   // sur l'autre.
   const bar = page.getByRole("toolbar", { name: "Actions de la sélection" });
-  const composer = page.getByRole("region", { name: "Compositeur" });
+  const composer = page.getByRole("region", {
+    name: "Compositeur",
+    exact: true,
+  });
   await expect(bar).toHaveCount(0);
   await expect(composer).toBeVisible();
   const board = page.getByRole("region", { name: "Espace de travail" });

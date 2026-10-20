@@ -101,9 +101,18 @@ test("KAN-48 : bandeau « Reconnexion… », l'espace de travail n'est pas remon
   await board.evaluate((el) => {
     (el as HTMLElement).dataset.kan48 = "monté";
   });
+  // KAN-64 : le texte d'abord (une sélection fait prendre aux actions la place de
+  // l'Assistant) ; il part au projet quand le champ est quitté, ici par le clic qui suit.
+  const composer = page.getByRole("region", {
+    name: "Compositeur",
+    exact: true,
+  });
+  const field = composer.getByLabel("Vos envies et contraintes");
+  await field.fill("salon clair, bois blond");
   const photos = page.locator(".board-item.kind-frame.role-photos");
   await photos.locator(".board-frame-name").click();
   await expect(photos).toHaveClass(/\bselected\b/);
+  await expect(composer).toHaveCount(0);
   const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
   // Le zoom s'enregistre 1,2 s après le geste (KAN-43 : PUT …/view, plus par le tableau) :
   // on attend cet enregistrement avant de compter.
@@ -115,9 +124,6 @@ test("KAN-48 : bandeau « Reconnexion… », l'espace de travail n'est pas remon
   await zoom.getByRole("button", { name: "Zoomer", exact: true }).click();
   await page.waitForTimeout(300);
   const zoomBefore = (await zoom.textContent()) ?? "";
-  const composer = page.getByRole("region", { name: "Compositeur" });
-  const field = composer.getByLabel("Vos envies et contraintes");
-  await field.fill("salon clair, bois blond");
   await viewSaved;
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(500);
@@ -129,10 +135,15 @@ test("KAN-48 : bandeau « Reconnexion… », l'espace de travail n'est pas remon
     await ws.close({ code: 1012, reason: "redémarrage" });
   const banner = page.getByRole("status").filter({ hasText: "Reconnexion" });
   await expect(banner).toBeVisible();
-  // (3) Le bandeau passe au-dessus du compositeur, jamais dessus (KAN-22).
+  // (3) Le bandeau ne recouvre jamais le panneau de droite, où vivent l'Assistant et les
+  // actions de la sélection (KAN-22, puis KAN-64).
   const bannerBox = (await banner.boundingBox())!;
-  const composerBox = (await composer.boundingBox())!;
-  expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(composerBox.y);
+  const sideBox = (await page.locator(".side .side-card").boundingBox())!;
+  expect(
+    bannerBox.x + bannerBox.width <= sideBox.x + 1 ||
+      bannerBox.y >= sideBox.y + sideBox.height - 1,
+    "le bandeau ne recouvre pas le panneau de droite",
+  ).toBe(true);
   await shot(page, "kan48-bandeau");
   await page.waitForTimeout(1_500);
   // Retour du serveur : le bandeau s'en va.
@@ -149,6 +160,14 @@ test("KAN-48 : bandeau « Reconnexion… », l'espace de travail n'est pas remon
   // (2) L'état local est là.
   await expect(photos).toHaveClass(/\bselected\b/);
   await expect(zoom).toHaveText(zoomBefore);
+  // KAN-64 : après la reconnexion ET la désélection, le compositeur réapparaît avec le texte
+  // en cours intact (le contrat dont dépend la sélection à la place de l'Assistant).
+  await page
+    .locator(".side")
+    .getByRole("button", { name: "← Assistant", exact: true })
+    .click();
+  await expect(photos).not.toHaveClass(/\bselected\b/);
+  await expect(composer).toBeVisible();
   await expect(field).toHaveValue("salon clair, bois blond");
   await shot(page, "kan48-apres");
 });

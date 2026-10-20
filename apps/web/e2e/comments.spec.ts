@@ -47,7 +47,7 @@ test("KAN-51 local : poser, répondre, résoudre, rouvrir, masquer", async ({
   // Le fil : signé « Vous », le texte tel quel (pas de HTML interprété).
   await pin.click();
   // KAN-64 : le fil s'ouvre dans la zone « Commentaires » du panneau de droite.
-  const panel = page.getByRole("region", { name: "Commentaires" });
+  const panel = page.getByRole("region", { name: "Commentaires", exact: true });
   await expect(panel.getByText("<b>Plus</b> de lumière ici")).toBeVisible();
   await expect(panel.locator(".comment-author")).toHaveText("Vous");
   await panel.getByLabel("Répondre").fill("Et une lampe");
@@ -137,6 +137,8 @@ test("KAN-51 local : une épingle sur un élément le suit, puis reste « détac
   await expect(detached).toBeVisible();
   await detached.click();
   await expect(
-    page.getByRole("region", { name: "Commentaires" }).getByText(/Détaché/),
+    page
+      .getByRole("region", { name: "Commentaires", exact: true })
+      .getByText(/Détaché/),
   ).toBeVisible();
 });

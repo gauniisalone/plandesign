@@ -97,7 +97,7 @@ async function newBoard(page: Page): Promise<Locator> {
     timeout: 30_000,
   });
   await expectSpace(page, "board", { timeout: 30_000 });
-  const card = page.getByRole("region", { name: "Compositeur" });
+  const card = page.getByRole("region", { name: "Compositeur", exact: true });
   await expect(card).toBeVisible();
   return card;
 }

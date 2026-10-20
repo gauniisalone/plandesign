@@ -26,7 +26,10 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
   await expect(board.locator(".board-item.kind-requirements")).toHaveCount(0);
-  const composer = page.getByRole("region", { name: "Compositeur" });
+  const composer = page.getByRole("region", {
+    name: "Compositeur",
+    exact: true,
+  });
   await expect(composer).toHaveCount(1);
   // T7d1 : l'aide est en infobulle (moins de texte).
   await expect(composer).toHaveAttribute("title", /Rien n'est obligatoire/);

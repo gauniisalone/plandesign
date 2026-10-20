@@ -39,6 +39,11 @@ function storedOpen(projectId: string): boolean | null {
   }
 }
 
+/** KAN-64 : le texte en cours, par projet. Une sélection fait prendre aux actions la place de
+ *  l'Assistant, donc le compositeur se démonte (sans événement « blur ») : le texte saisi est
+ *  gardé ici et envoyé au projet au démontage, puis repris tel quel quand il revient. */
+const drafts = new Map<string, string>();
+
 function storeOpen(projectId: string, open: boolean) {
   try {
     window.localStorage.setItem(`composer:${projectId}`, open ? "1" : "0");
@@ -89,7 +94,30 @@ export function Composer({
   const [answers, setAnswers] = useState<GuidedAnswers>(
     () => project.pending_answers ?? {},
   );
-  const [text, setText] = useState(project.pending_instruction ?? "");
+  const [text, setText] = useState(
+    () => drafts.get(project.id) ?? project.pending_instruction ?? "",
+  );
+  // Au démontage : le texte part au projet s'il a changé (le « blur » ne vient pas).
+  const unsaved = useRef({
+    text,
+    saved: project.pending_instruction ?? "",
+    onSettings,
+  });
+  useEffect(() => {
+    unsaved.current = {
+      text,
+      saved: project.pending_instruction ?? "",
+      onSettings,
+    };
+  });
+  useEffect(
+    () => () => {
+      const { text: last, saved, onSettings: save } = unsaved.current;
+      const value = last.trim().slice(0, MAX_TEXT);
+      if (value !== saved) save({ pending_instruction: value });
+    },
+    [],
+  );
   const [home, setHome] = useState<HomeSettings | null>(null);
   const [reading, setReading] = useState<{ text: string; items: string[] }>({
     text: "",
@@ -265,7 +293,10 @@ export function Composer({
             maxLength={MAX_TEXT}
             placeholder="Décrivez le projet : pièce, surface, style, contraintes…"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              drafts.set(project.id, e.target.value);
+            }}
             onBlur={saveText}
           />
         </div>

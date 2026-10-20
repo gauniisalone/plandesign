@@ -73,7 +73,10 @@ for (const [label, size] of [
     if (size) await page.setViewportSize(size);
     await createEmptyProject(page, `Cadrage à ${label}`);
     await goSpace(page, "board");
-    const composer = page.getByRole("region", { name: "Compositeur" });
+    const composer = page.getByRole("region", {
+      name: "Compositeur",
+      exact: true,
+    });
     await expect(composer).toBeVisible();
     const stage = (await page.locator(".board-stage").boundingBox())!;
     const side = (await page.locator(".side .side-card").boundingBox())!;

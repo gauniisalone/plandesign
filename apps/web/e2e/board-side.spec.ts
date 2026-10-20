@@ -82,7 +82,10 @@ test("KAN-64 (MH2, MH4, MH6) : zones du panneau, bulle des Commentaires, panneau
   await boardWithAComment(page, "Panneau de droite");
   const side = page.locator(".side");
   // MH2 : l'Assistant en haut, les Commentaires dessous, une séparation réglable.
-  const composer = side.getByRole("region", { name: "Compositeur" });
+  const composer = side.getByRole("region", {
+    name: "Compositeur",
+    exact: true,
+  });
   const list = side.getByRole("region", { name: "Commentaires", exact: true });
   await expect(composer).toBeVisible();
   await expect(list).toBeVisible();
@@ -112,9 +115,13 @@ test("KAN-64 (MH2, MH4, MH6) : zones du panneau, bulle des Commentaires, panneau
   await side.getByRole("button", { name: "Déplier l'Assistant" }).click();
   await expect(composer).toBeVisible();
   // L'Activité est repliée d'office, et se déplie.
-  await expect(side.getByRole("region", { name: "Activité" })).toHaveCount(0);
+  await expect(
+    side.getByRole("region", { name: "Activité", exact: true }),
+  ).toHaveCount(0);
   await side.getByRole("button", { name: "Déplier l'activité" }).click();
-  await expect(side.getByRole("region", { name: "Activité" })).toBeVisible();
+  await expect(
+    side.getByRole("region", { name: "Activité", exact: true }),
+  ).toBeVisible();
 
   // MH4 : la bulle compte les fils ouverts et ouvre les Commentaires.
   const bubble = page.locator(".topbar").getByRole("button", {
@@ -147,9 +154,11 @@ test("KAN-64 (propriétés) : une sélection prend la place de l'Assistant, reto
   await expect(
     side.getByRole("toolbar", { name: "Actions de la sélection" }),
   ).toBeVisible();
-  await expect(side.getByRole("region", { name: "Compositeur" })).toHaveCount(
-    0,
-  );
+  await expect(
+    side.getByRole("region", { name: "Compositeur", exact: true }),
+  ).toHaveCount(0);
   await side.getByRole("button", { name: "← Assistant" }).click();
-  await expect(side.getByRole("region", { name: "Compositeur" })).toBeVisible();
+  await expect(
+    side.getByRole("region", { name: "Compositeur", exact: true }),
+  ).toBeVisible();
 });

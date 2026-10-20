@@ -189,7 +189,10 @@ test("arrivée par /nouveau : compositeur ouvert et prérempli, le plan se gén�
   });
   await gotoApp(page, `/#/nouveau?${query.toString()}`);
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}(\/board)?$/);
-  const composer = page.getByRole("region", { name: "Compositeur" });
+  const composer = page.getByRole("region", {
+    name: "Compositeur",
+    exact: true,
+  });
   await expect(composer).toBeVisible({ timeout: 30_000 });
   await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(
     description,
@@ -242,7 +245,7 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
   await expect(
     page
       .getByRole("button", { name: "Ouvrir le compositeur" })
-      .or(page.getByRole("region", { name: "Compositeur" })),
+      .or(page.getByRole("region", { name: "Compositeur", exact: true })),
   ).toBeVisible({ timeout: 30_000 });
   await expect(
     page.getByRole("button", { name: "Générer le plan" }),
@@ -262,16 +265,18 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
   await expect(
     page.getByRole("button", { name: "Ouvrir le compositeur" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Compositeur" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("region", { name: "Compositeur", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Générer le plan" }),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Nouveau plan/ })).toHaveCount(
     0,
   );
-  await expect(page.getByRole("button", { name: "Assistant" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Assistant", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("toolbar", { name: "Outils de l'espace de travail" }),
   ).toBeHidden();
@@ -1033,7 +1038,10 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
 
   // Iris répond sur le premier fil ; Jules voit les deux messages, signés.
   await seen.first().click();
-  const panel = owner.getByRole("region", { name: "Commentaires" });
+  const panel = owner.getByRole("region", {
+    name: "Commentaires",
+    exact: true,
+  });
   await panel.getByLabel("Répondre").fill("Bonne idée, à chiffrer");
   await panel.getByRole("button", { name: "Répondre" }).click();
   const his = commenter
@@ -1041,7 +1049,10 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     .first();
   await expect(his).toHaveText("2", { timeout: 5_000 });
   await his.click();
-  const hisPanel = commenter.getByRole("region", { name: "Commentaires" });
+  const hisPanel = commenter.getByRole("region", {
+    name: "Commentaires",
+    exact: true,
+  });
   await expect(hisPanel.locator(".comment-author")).toHaveText([
     "Jules",
     "Iris",
@@ -1053,7 +1064,10 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     .first();
   await expect(kimPin).toBeVisible({ timeout: 5_000 });
   await kimPin.click();
-  const kimPanel = viewer.getByRole("region", { name: "Commentaires" });
+  const kimPanel = viewer.getByRole("region", {
+    name: "Commentaires",
+    exact: true,
+  });
   await expect(kimPanel.getByText("Bonne idée, à chiffrer")).toBeVisible();
   await expect(kimPanel.getByLabel("Répondre")).toHaveCount(0);
   await expect(kimPanel.getByRole("button", { name: "Résoudre" })).toHaveCount(
@@ -1131,7 +1145,7 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
   ).toBeVisible({ timeout: 30_000 });
   await expect(
     gilles
-      .getByRole("region", { name: "Commentaires" })
+      .getByRole("region", { name: "Commentaires", exact: true })
       .getByText("Plus de lumière ici"),
   ).toBeVisible();
   await expect(gilles.getByTestId("bell-badge")).toHaveCount(0);
@@ -1204,9 +1218,9 @@ test("KAN-58 : le journal d'activité, avec le détail des gestes, lu par un lec
   // Kim, lecteur, ouvre « Activité » : le détail, le nom de l'objet, les arrivées.
   await kim
     .locator(".topbar")
-    .getByRole("button", { name: "Activité" })
+    .getByRole("button", { name: "Activité", exact: true })
     .click();
-  const panel = kim.getByRole("region", { name: "Activité" });
+  const panel = kim.getByRole("region", { name: "Activité", exact: true });
   await expect(
     panel.getByRole("button", { name: /Gilles a supprimé « Inspirations »/ }),
   ).toBeVisible({ timeout: 10_000 });
