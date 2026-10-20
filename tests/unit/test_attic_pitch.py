@@ -80,11 +80,27 @@ def test_raised_photo_without_entered_height_assumes_the_default() -> None:
     assert est.camera_height.sigma > 0.0
 
 
-def test_beyond_the_side_walls_the_eave_is_not_seen() -> None:
-    """Limite documentée : vers +20°, les jambettes sortent du champ ; le faîtage tient, l'égout
-    n'est plus mesuré (pente prolongée jusqu'au sol supposé)."""
-    est, warnings = _estimate(20, CAMERA_HEIGHT)
+@pytest.mark.parametrize(("pitch_deg", "highest"), [(20, 1.10), (25, 1.30), (30, 1.60)])
+def test_beyond_the_side_walls_the_eave_is_unknown(pitch_deg: float, highest: float) -> None:
+    """KAN-61 (Must have 1) : vers +20°, les jambettes sortent du champ. Le faîtage tient ;
+    l'égout est inconnu (jamais 0), avec une borne « au plus » tirée du bas de pente vu : exacte
+    tant que ce bas est dans le champ (1,01 m pour 1,00), une majoration au-delà."""
+    est, warnings = _estimate(pitch_deg, CAMERA_HEIGHT)
     assert any(FALLBACK in w for w in warnings)
     assert est.ridge_height is not None
     assert est.ridge_height.value == pytest.approx(RIDGE, rel=0.10)
-    assert [e.value for e in est.eave_heights] == [0.0, 0.0]
+    assert est.floor_assumed
+    assert est.eave_heights == [], "égout inconnu, pas 0"
+    assert est.width is None, "pas de largeur entre des égouts non vus"
+    assert est.eave_bound is not None and est.eave_bound.source == "inferred"
+    assert EAVE - 0.02 <= est.eave_bound.value <= highest
+    assert any("Hauteur d'égout non visible sur la photo : au plus" in w for w in warnings)
+
+
+@pytest.mark.parametrize("pitch_deg", [-15, 0, 8, 10, 15])
+def test_seen_eaves_carry_no_bound(pitch_deg: float) -> None:
+    """KAN-61 (Must have 4) : jambettes vues (sol vu ou supposé), rien ne change."""
+    est, warnings = _estimate(pitch_deg, CAMERA_HEIGHT)
+    assert est.eave_bound is None
+    assert len(est.eave_heights) == 2
+    assert not any("Hauteur d'égout non visible" in w for w in warnings)

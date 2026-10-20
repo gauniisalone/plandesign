@@ -108,6 +108,11 @@ class AtticEstimate(StrictModel):
     scale_note: str | None = None
     roof_windows: list[RoofWindowSighting] = Field(default_factory=list)
     """Fenêtres de toit vues sur la photo (C2), repère centré sur l'appareil."""
+    floor_assumed: bool = False
+    """KAN-45 : sol hors champ, posé à la hauteur de prise de vue (saisie ou par défaut)."""
+    eave_bound: Estimate | None = None
+    """KAN-61 : égout non vu (sol supposé, aucune jambette) : il est au plus à la hauteur du bas
+    de pente le plus bas encore vu. `eave_heights` reste alors vide (égout inconnu)."""
 
 
 PRIOR_REL_SIGMA = 0.10
@@ -148,6 +153,7 @@ def rescale(estimate: AtticEstimate, camera_height_m: float) -> AtticEstimate:
             "gable_distance": scaled(estimate.gable_distance),
             "length": scaled(estimate.length),
             "ceiling_height": scaled(estimate.ceiling_height),
+            "eave_bound": scaled(estimate.eave_bound),
             "planes": [
                 p.model_copy(
                     update={"distance_m": p.distance_m * factor, "rms_m": p.rms_m * factor}
@@ -176,6 +182,8 @@ class ClassifiedPlanes:
     def __init__(self, floor: FittedPlane, axes: Float) -> None:
         self.floor = floor
         self.axes = axes
+        self.floor_assumed = False
+        """KAN-45 : sol sans points, posé à la hauteur de prise de vue (sol hors champ)."""
         self.kinds: dict[int, PlaneKind] = {}
         self.world: dict[int, Plane] = {}
 
@@ -239,6 +247,34 @@ def up_from_slopes(planes: list[FittedPlane]) -> Float | None:
         if best is None or support > best[0]:
             best = (support, up)
     return None if best is None else best[1]
+
+
+EAVE_BOUND_PERCENTILE = 1.0
+"""Bas de pente vu : 1er centile des hauteurs de ses points (au-delà du bruit de profondeur)."""
+
+
+def _eave_bound(
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes, slopes: list[int]
+) -> Estimate | None:
+    """KAN-61 : égout non vu. Il est au plus à la hauteur du point de pente le plus bas encore
+    dans le champ (exact quand le bas de la pente est vu, une majoration sinon)."""
+    h = cls.floor.plane.distance
+    lows = [
+        float(np.percentile((points[planes[i].inliers] @ cls.axes.T)[:, 2], EAVE_BOUND_PERCENTILE))
+        + h
+        for i in slopes
+        if planes[i].count
+    ]
+    if not lows:
+        return None
+    value = min(lows)
+    rms = max(planes[i].rms_m for i in slopes)
+    return Estimate(
+        value=value,
+        sigma=estimate_scale_sigma(value, rms),
+        source=Source.INFERRED,
+        note="égout non vu sur la photo : au plus à la hauteur du bas de pente le plus bas vu",
+    )
 
 
 SIDE_WALL_MIN_SHARE = 0.003
@@ -437,6 +473,10 @@ def _slopes_summary(
                     width = abs(ya - yb)
                     est.usable_width = Estimate(value=width, sigma=estimate_scale_sigma(width, rms))
     eaves = _mirror_unseen_wall(bounds, ridge_y)
+    if cls.floor_assumed:
+        # KAN-61 : sol supposé, une pente sans jambette ne « touche » qu'un sol qu'on n'a pas vu.
+        # Son égout est inconnu (borne donnée à part), jamais 0.
+        eaves = [e for e in eaves if e[1] > 0.0]
     for _y, z, rms_e, source in eaves:
         est.eave_heights.append(
             Estimate(
@@ -571,6 +611,57 @@ def far_along_ridge(points: Float, axes: Float) -> float | None:
     return float(np.percentile(ahead, FAR_PERCENTILE))
 
 
+def _add_residual_side_walls(
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes
+) -> list[FittedPlane]:
+    """KAN-45 : sol supposé et aucune jambette extraite, elles sont cherchées de chaque côté."""
+    if "side_wall" in cls.kinds.values():
+        return planes
+    for wall in residual_side_walls(points, planes, cls, _opposite_slopes(planes, cls)):
+        planes = [*planes, wall]
+        i = len(planes) - 1
+        cls.kinds[i] = "side_wall"
+        cls.world[i] = rotate_plane(wall.plane, cls.axes)
+    return planes
+
+
+def _with_assumed_floor(
+    estimate: AtticEstimate,
+    points: Float,
+    planes: list[FittedPlane],
+    cls: ClassifiedPlanes,
+    *,
+    entered: bool,
+    warnings: list[str],
+) -> AtticEstimate:
+    """KAN-45/KAN-61 : sol supposé. Hauteur de prise de vue saisie ou supposée ; égout inconnu
+    sans jambette, avec sa borne « au plus » (jamais 0)."""
+    h = cls.floor.plane.distance
+    out = estimate.model_copy(
+        update={
+            "camera_height": Estimate(
+                value=h,
+                sigma=PRIOR_REL_SIGMA * h if entered else ASSUMED_FLOOR_SIGMA,
+                source=Source.USER_DEFINED if entered else Source.INFERRED,
+                note="sol hors champ : hauteur de prise de vue "
+                + ("saisie" if entered else "supposée"),
+            ),
+            "floor_assumed": True,
+            "eave_bound": None
+            if estimate.eave_heights
+            else _eave_bound(points, planes, cls, _opposite_slopes(planes, cls)),
+        }
+    )
+    if out.eave_bound is not None:
+        warnings.append(
+            f"Hauteur d'égout non visible sur la photo : au plus {out.eave_bound.value:.2f} m "
+            "(bas de pente le plus bas vu)."
+        )
+    elif not out.eave_heights:
+        warnings.append("Hauteur d'égout non visible sur la photo.")
+    return out
+
+
 def analyse_attic(
     depth: NDArray[np.float32] | Float,
     focal_px: float,
@@ -617,12 +708,9 @@ def analyse_attic(
             f"({'hauteur saisie' if camera_height_m is not None else 'hauteur supposée'})."
         )
     cls = classify(planes, floor_idx)
-    if assumed_floor is not None and "side_wall" not in cls.kinds.values():
-        for wall in residual_side_walls(points, planes, cls, _opposite_slopes(planes, cls)):
-            planes = [*planes, wall]
-            i = len(planes) - 1
-            cls.kinds[i] = "side_wall"
-            cls.world[i] = rotate_plane(wall.plane, cls.axes)
+    cls.floor_assumed = assumed_floor is not None
+    if assumed_floor is not None:
+        planes = _add_residual_side_walls(points, planes, cls)
     if frame_up is not None:
         disagreement = angle_between(frame_up, cls.floor.plane.normal)
         if disagreement > FRAME_DISAGREEMENT_WARN:
@@ -632,18 +720,8 @@ def analyse_attic(
             )
     estimate = summarize(planes, cls, len(points))
     if assumed_floor is not None:
-        estimate = estimate.model_copy(
-            update={
-                "camera_height": Estimate(
-                    value=assumed_floor,
-                    sigma=PRIOR_REL_SIGMA * assumed_floor
-                    if camera_height_m is not None
-                    else ASSUMED_FLOOR_SIGMA,
-                    source=Source.USER_DEFINED if camera_height_m is not None else Source.INFERRED,
-                    note="sol hors champ : hauteur de prise de vue "
-                    + ("saisie" if camera_height_m is not None else "supposée"),
-                )
-            }
+        estimate = _with_assumed_floor(
+            estimate, points, planes, cls, entered=camera_height_m is not None, warnings=warnings
         )
     if estimate.ridge_height is None:
         warnings.append("Une seule pente vue (ou aucune) : hauteur au faîtage non estimée.")

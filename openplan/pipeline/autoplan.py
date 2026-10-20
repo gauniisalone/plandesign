@@ -192,6 +192,14 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
         width = _inferred(estimate.usable_width.value + 1.0, "égouts non vus")
     else:
         width = _inferred(4.0, "largeur supposée")
+    bound = estimate.eave_bound
+    if eave is None and bound is not None and 0.0 < bound.value < estimate.ridge_height.value:
+        # KAN-61 : égout non vu (sol hors champ) : la borne tirée de la photo plutôt que 0.
+        eave = _inferred(
+            bound.value,
+            f"égout non vu sur la photo : au plus {bound.value:.2f} m (bas de pente le plus "
+            "bas vu)",
+        )
     eave_height = eave or _inferred(0.0, "murs latéraux non vus : pentes jusqu'au sol")
     if eave_height.value >= estimate.ridge_height.value:
         eave_height = _inferred(0.0, "égout incohérent avec le faîtage : pentes jusqu'au sol")
@@ -209,6 +217,26 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
         )
     except ValueError:
         return None
+
+
+def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]:
+    """KAN-45/KAN-61 : ce que l'écran doit dire des combles devinés sur une photo levée (les
+    avertissements de l'estimation ne remontent pas jusqu'au bandeau « Plan estimé »)."""
+    if not estimate.floor_assumed:
+        return []
+    out: list[str] = []
+    if estimate.camera_height is not None:
+        out.append(
+            f"Sol hors champ (photo prise en levant l'appareil) : verticale prise entre les deux "
+            f"pentes, sol supposé {estimate.camera_height.value:.2f} m sous l'appareil."
+        )
+    if not estimate.eave_heights:
+        eave = geometry.eave_height.value
+        guess = f"supposée au plus {eave:.2f} m" if eave > 0.0 else "pentes prolongées jusqu'au sol"
+        out.append(
+            f"Hauteur d'égout non visible sur la photo : {guess}, à corriger dans l'inspecteur."
+        )
+    return out
 
 
 # ------------------------------------------------------------------ image de plan
@@ -805,6 +833,8 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 if _valid(attic_project):
                     candidates.append(_Candidate("attic", attic_project, ATTIC_SCORE, attic_step))
                     scores["attic"] = ATTIC_SCORE
+                    if estimate is not None:
+                        said.extend(attic_notices(estimate, geometry))
                     chain.stage("attic", "Pentes de toit", "done", "deux pentes vues : combles")
                     seen = sum(
                         isinstance(e, RoofWindow)

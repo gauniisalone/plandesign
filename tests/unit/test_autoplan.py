@@ -135,14 +135,15 @@ class AtticDepth:
 
     model_id = "fake_attic_depth@0"
 
-    def __init__(self, focal_px: float) -> None:
+    def __init__(self, focal_px: float, pitch: float = -0.14) -> None:
         self.focal_px = focal_px
+        self.pitch = pitch
 
     def predict(self, image: ImageArray) -> DepthMap:
         camera = SyntheticCamera(
             position=(1.5, 0.3, 1.5),
             yaw=0.0,
-            pitch=-0.14,
+            pitch=self.pitch,
             focal_px=self.focal_px,
             width_px=image.width,
             height_px=image.height,
@@ -169,6 +170,36 @@ def test_two_slopes_seen_build_the_attic(tmp_path: Path) -> None:
     assert len([e for e in elements if isinstance(e, RoofPlane)]) == 2
     assert validate_invariants(run.project).valid
     assert run.backup in ("lines", "depth")
+    assert not any("égout" in n or "Sol hors champ" in n for n in run.notices)
+
+
+@needs_fixture
+def test_raised_photo_says_the_eave_is_not_seen(tmp_path: Path) -> None:
+    """KAN-61 (Must have 2 et 3) : appareil levé de 20°, sol et jambettes hors champ. Les combles
+    sont construits avec l'égout au plus bas de pente vu (vérité 1,00 m), `inferred`, et le
+    bandeau « Plan estimé » dit le sol supposé et l'égout non visible."""
+    project, level = _photo(tmp_path)
+    image_id = next(iter(project.images))
+    ref = project.images[image_id]
+    run = run_autoplan(
+        project,
+        tmp_path,
+        level.id,
+        image_id,
+        tmp_path / "runs",
+        depth=AtticDepth(focal_px=0.66 * ref.width_px, pitch=0.35),
+    )
+    assert run.method == "attic", [s.model_dump() for s in run.stages]
+    roofs = [e for e in only_level(run.project).elements.values() if isinstance(e, RoofPlane)]
+    assert len(roofs) == 2
+    assert all(0.85 <= r.eave_height <= 1.3 for r in roofs), [r.eave_height for r in roofs]
+    assert all(r.source is Source.INFERRED for r in roofs)
+    assert any(n.startswith("Sol hors champ") for n in run.notices), run.notices
+    assert any(
+        n.startswith("Hauteur d'égout non visible sur la photo : supposée au plus")
+        for n in run.notices
+    ), run.notices
+    assert validate_invariants(run.project).valid
 
 
 @needs_fixture
