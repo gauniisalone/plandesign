@@ -50,6 +50,8 @@ class LineOut(StrictModel):
     added: int
     changed: int
     removed: int
+    recolored: int = 0
+    """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé."""
 
 
 class BellPage(StrictModel):
@@ -198,6 +200,7 @@ def _out(
                 added=line.added,
                 changed=line.changed,
                 removed=line.removed,
+                recolored=line.recolored,
             )
         )
     return items

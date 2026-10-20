@@ -5871,31 +5871,189 @@ button.link.home-empty-link {
   padding: 0.15em 0.7em;
 }
 
+/* KAN-65 : post-its de couleur. Fond et texte par couleur et par thème ; texte en contraste
+   AA au moins (vérifié par unit/postits-contrast.test.ts, qui lit ces trois blocs). En
+   sombre, des fonds plus profonds et un texte clair ; le blanc reste clair, texte foncé. */
+/* postits:light */
+:root {
+  --postit-yellow: #fff1a8;
+  --postit-yellow-ink: #24231c;
+  --postit-orange: #ffd5ad;
+  --postit-orange-ink: #2a2118;
+  --postit-pink: #ffcfe2;
+  --postit-pink-ink: #2b1d23;
+  --postit-violet: #e4d7ff;
+  --postit-violet-ink: #221d2e;
+  --postit-blue: #cbe3ff;
+  --postit-blue-ink: #1a222d;
+  --postit-green: #cfeec6;
+  --postit-green-ink: #1b261a;
+  --postit-gray: #e3e3e8;
+  --postit-gray-ink: #222226;
+  --postit-white: #ffffff;
+  --postit-white-ink: #222226;
+}
+/* postits:dark-system */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --postit-yellow: #5c4f12;
+    --postit-yellow-ink: #f6f1da;
+    --postit-orange: #6b3d14;
+    --postit-orange-ink: #f8ebde;
+    --postit-pink: #6b2443;
+    --postit-pink-ink: #fbe7ef;
+    --postit-violet: #4a3478;
+    --postit-violet-ink: #efe8ff;
+    --postit-blue: #1f4470;
+    --postit-blue-ink: #e6f0fc;
+    --postit-green: #2b5226;
+    --postit-green-ink: #e6f5e2;
+    --postit-gray: #45454d;
+    --postit-gray-ink: #f0f0f3;
+    --postit-white: #e6e6ea;
+    --postit-white-ink: #1f1f24;
+  }
+}
+/* postits:dark-chosen */
+:root[data-theme="dark"] {
+  --postit-yellow: #5c4f12;
+  --postit-yellow-ink: #f6f1da;
+  --postit-orange: #6b3d14;
+  --postit-orange-ink: #f8ebde;
+  --postit-pink: #6b2443;
+  --postit-pink-ink: #fbe7ef;
+  --postit-violet: #4a3478;
+  --postit-violet-ink: #efe8ff;
+  --postit-blue: #1f4470;
+  --postit-blue-ink: #e6f0fc;
+  --postit-green: #2b5226;
+  --postit-green-ink: #e6f5e2;
+  --postit-gray: #45454d;
+  --postit-gray-ink: #f0f0f3;
+  --postit-white: #e6e6ea;
+  --postit-white-ink: #1f1f24;
+}
+/* postits:end */
+
+.postit-yellow {
+  --postit-bg: var(--postit-yellow);
+  --postit-ink: var(--postit-yellow-ink);
+}
+.postit-orange {
+  --postit-bg: var(--postit-orange);
+  --postit-ink: var(--postit-orange-ink);
+}
+.postit-pink {
+  --postit-bg: var(--postit-pink);
+  --postit-ink: var(--postit-pink-ink);
+}
+.postit-violet {
+  --postit-bg: var(--postit-violet);
+  --postit-ink: var(--postit-violet-ink);
+}
+.postit-blue {
+  --postit-bg: var(--postit-blue);
+  --postit-ink: var(--postit-blue-ink);
+}
+.postit-green {
+  --postit-bg: var(--postit-green);
+  --postit-ink: var(--postit-green-ink);
+}
+.postit-gray {
+  --postit-bg: var(--postit-gray);
+  --postit-ink: var(--postit-gray-ink);
+}
+.postit-white {
+  --postit-bg: var(--postit-white);
+  --postit-ink: var(--postit-white-ink);
+}
+
 .board-item.kind-note {
-  background: color-mix(in oklab, var(--primary) 22%, var(--panel));
-  border-color: color-mix(in oklab, var(--primary) 45%, var(--line));
-  padding: 10px 12px;
+  background: var(--postit-bg, var(--postit-yellow));
+  color: var(--postit-ink, var(--postit-yellow-ink));
+  border-color: color-mix(in oklab, var(--postit-ink) 14%, var(--postit-bg));
+  border-radius: 3px;
+  box-shadow: 0 3px 8px color-mix(in oklab, black 22%, transparent);
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
+  overflow: hidden;
 }
 
-/* Texte d'une note : au moins 12 px à l'écran à tout zoom (la note défile au besoin). */
-.board-note-text {
+/* Le texte se réduit pour tenir (taille posée par Postit.tsx) ; la copie invisible sert à
+   la mesure, avec les mêmes règles de coupure. */
+.postit-box {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.postit-probe,
+.postit-text,
+.board-item.kind-note textarea {
   white-space: pre-wrap;
-  font-size: max(14px, calc(12px * var(--inv, 1)));
-  color: var(--ink);
+  overflow-wrap: break-word;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--postit-ink);
+}
+/* La copie ne coupe pas les mots : un mot trop long la fait déborder, le texte se réduit
+   (à la plus petite taille seulement, le texte visible coupe le mot). */
+.postit-probe {
+  overflow-wrap: normal;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+.postit-text {
+  width: 100%;
+  max-height: 100%;
+}
+.postit-text.empty {
+  opacity: 0.6;
 }
 
 .board-item.kind-note textarea {
-  flex: 1;
+  align-self: stretch;
   width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   resize: none;
-  font: inherit;
+  font-family: inherit;
   background: transparent;
   border: none;
-  color: var(--ink);
+  outline: none;
+  overflow: auto;
+}
+
+/* La palette, avec les actions de la sélection (panneau de droite ou bas au centre). */
+.postit-palette {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 0;
+}
+.board-context .postit-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border-radius: 6px;
+  background: var(--postit-bg);
+  border: 1px solid color-mix(in oklab, var(--ink) 28%, transparent);
+}
+.board-context .postit-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 .board-variant {

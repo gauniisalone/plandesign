@@ -980,7 +980,7 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     tools(commenter).getByRole("button", { name: "Commentaire", exact: true }),
   ).toBeVisible();
   await expect(
-    tools(commenter).getByRole("button", { name: "Note" }),
+    tools(commenter).getByRole("button", { name: "Post-it", exact: true }),
   ).toHaveCount(0);
   // Le lecteur : ni l'outil, ni la réponse.
   await expect(

@@ -36,12 +36,12 @@ test("tableau : plan posé, note, annuler séparé du plan, cadre du plan, réou
   await expect(plan).toContainText("Modifier le plan");
   const before = await projectJson(page, id);
 
-  // Une note : outil Note, un clic, du texte.
-  await board.getByRole("button", { name: "Note" }).click();
+  // Une note : outil Post-it (KAN-65), un clic, du texte.
+  await board.getByRole("button", { name: "Post-it", exact: true }).click();
   const stage = board.locator(".board-stage");
   const box = (await stage.boundingBox())!;
   await stage.click({ position: { x: 120, y: box.height - 160 } });
-  const text = board.getByRole("textbox", { name: "Texte de la note" });
+  const text = board.getByRole("textbox", { name: "Texte du post-it" });
   await text.fill("Idée : une banquette sous la fenêtre");
   await stage.click({ position: { x: box.width - 60, y: 40 } });
   const note = board.locator(".board-item.kind-note", { hasText: "banquette" });

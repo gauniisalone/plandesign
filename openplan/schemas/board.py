@@ -38,6 +38,8 @@ BoardRole = Literal[
 images d'ambiance, jointes au projet et cochées Référence ; `inspiration` : une image
 d'inspiration générée sans plan (rendu de secours)."""
 MediaKind = Literal["image", "video", "pdf", "file"]
+NoteColor = Literal["yellow", "orange", "pink", "violet", "blue", "green", "gray", "white"]
+"""KAN-65 : les huit couleurs d'un post-it (une note de l'espace de travail)."""
 MAX_ITEMS = 2000
 MAX_SIDE = 20000.0
 MAX_URL = 2000
@@ -73,6 +75,9 @@ class BoardItem(StrictModel):
     """« À conserver » (A3) : une variante retenue, marquée sur sa carte."""
     comment: str = Field(default="", max_length=2000)
     """Commentaire attaché à la carte (A3), montré sous ses métadonnées."""
+    color: NoteColor | None = None
+    """KAN-65 : couleur d'un post-it ; absente (note d'avant KAN-65) = jaune, sans migration.
+    Un champ de l'élément : elle s'écrit élément par élément, comme le reste (B2c)."""
     updated_at: datetime | None = None
     """B2c : posé par le serveur à chaque écriture de cet élément (la dernière gagne) ; ce que
     le client envoie est ignoré. Absent d'un tableau d'avant B2c."""

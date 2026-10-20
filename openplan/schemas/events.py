@@ -47,4 +47,7 @@ class ProjectEvent(StrictModel):
     removed: int | None = Field(default=None, ge=0)
     """KAN-58 : le détail d'une modification de l'espace de travail (éléments posés, modifiés,
     retirés)."""
+    recolored: int | None = Field(default=None, ge=0)
+    """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé (« a changé la couleur
+    de … »)."""
     at: datetime = Field(default_factory=now_utc)

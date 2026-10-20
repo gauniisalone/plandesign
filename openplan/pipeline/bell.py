@@ -65,6 +65,8 @@ class BellLine:
     changed: int = 0
     removed: int = 0
     """KAN-58 : le détail cumulé des modifications regroupées de l'espace de travail."""
+    recolored: int = 0
+    """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé (cumulé)."""
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,7 @@ def _line(event: ProjectEvent, feed: ProjectFeed) -> BellLine:
         added=event.added or 0,
         changed=event.changed or 0,
         removed=event.removed or 0,
+        recolored=event.recolored or 0,
     )
 
 
@@ -130,6 +133,7 @@ def _grouped(feed: ProjectFeed, events: Iterable[ProjectEvent], out: list[BellLi
         group.added += event.added or 0
         group.changed += event.changed or 0
         group.removed += event.removed or 0
+        group.recolored += event.recolored or 0
         if not same:
             group.item_id = group.item_kind = group.label = None
 

@@ -118,6 +118,7 @@ def save_board(project_dir: Path, board: Board, *, expect: int | None = None) ->
 
 
 _STAMPS = {"updated_at", "updated_by"}
+_COLOR = {*_STAMPS, "color"}
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,8 @@ class BoardChanges:
     single: BoardItem | None
     """L'élément touché, s'il n'y en a qu'un (tel qu'il est après le geste, ou avant s'il a été
     retiré)."""
+    recolored: int = 0
+    """KAN-65 : parmi les éléments modifiés, ceux dont seule la couleur a changé."""
 
     @property
     def total(self) -> int:
@@ -146,12 +149,19 @@ def board_changes(before: Board | None, after: Board) -> BoardChanges:
         for k in new.keys() & old.keys()
         if new[k].model_dump(exclude=_STAMPS) != old[k].model_dump(exclude=_STAMPS)
     ]
+    recolored = [
+        i
+        for i in changed
+        if i.color != old[i.id].color
+        and i.model_dump(exclude=_COLOR) == old[i.id].model_dump(exclude=_COLOR)
+    ]
     touched = [*added, *changed, *removed]
     return BoardChanges(
         added=len(added),
         changed=len(changed),
         removed=len(removed),
         single=touched[0] if len(touched) == 1 else None,
+        recolored=len(recolored),
     )
 
 

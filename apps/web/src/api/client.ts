@@ -1920,6 +1920,17 @@ export type BoardRole =
   | "inspiration"
   | "files";
 
+/** KAN-65 : les huit couleurs d'un post-it (comme `NoteColor` côté serveur). */
+export type NoteColor =
+  | "yellow"
+  | "orange"
+  | "pink"
+  | "violet"
+  | "blue"
+  | "green"
+  | "gray"
+  | "white";
+
 export interface BoardItem {
   id: string;
   kind: BoardKind;
@@ -1941,6 +1952,8 @@ export interface BoardItem {
   kept?: boolean;
   /** Commentaire attaché à la carte (A3). */
   comment?: string;
+  /** KAN-65 : couleur d'un post-it ; absente (note d'avant) = jaune. */
+  color?: NoteColor | null;
   /** B2c : heure et acteur de la dernière écriture de cet élément, posés par le serveur. */
   updated_at?: string | null;
   updated_by?: string | null;
@@ -2074,6 +2087,8 @@ export interface BellLine {
   added: number;
   changed: number;
   removed: number;
+  /** KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé. */
+  recolored?: number;
 }
 
 export type ActivityKind =

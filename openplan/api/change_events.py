@@ -158,6 +158,7 @@ def record_board(
             added=changes.added,
             changed=changes.changed,
             removed=changes.removed,
+            recolored=changes.recolored or None,
         )
     )
     return True

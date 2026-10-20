@@ -35,7 +35,7 @@ function quoted(label: string | null): string | null {
 const KIND_NOUN: Record<string, string> = {
   photo: "une photo",
   render: "un rendu",
-  note: "une note",
+  note: "un post-it",
   frame: "un cadre",
   plan: "le plan",
   file: "un fichier",
@@ -53,10 +53,20 @@ function plural(n: number, word: string): string {
  *  « Photo 2 » », « … · 2 ajoutés, 1 supprimé ») ; sans détail, « · 12 changements ». */
 function boardText(line: BellLine): string {
   const who = line.actor_name;
-  const { added = 0, changed = 0, removed = 0 } = line;
+  const { added = 0, changed = 0, removed = 0, recolored = 0 } = line;
   const object =
     quoted(line.label) ?? (line.item_kind ? KIND_NOUN[line.item_kind] : null);
   const more = line.count > 1 ? ` · ${line.count} changements` : "";
+  // KAN-65 : seule la couleur a changé (« a changé la couleur de « Canapé » »).
+  // Seuls les post-its ont une couleur.
+  if (recolored > 0 && recolored === changed && !added && !removed) {
+    const of = line.label
+      ? `de « ${line.label} »`
+      : line.item_kind
+        ? "d'un post-it"
+        : `de ${plural(recolored, "post-it")}`;
+    return `${who} a changé la couleur ${of}${more}`;
+  }
   if (object) {
     const verb =
       removed && !added && !changed

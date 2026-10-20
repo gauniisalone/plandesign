@@ -76,10 +76,10 @@ test("KAN-51 local : une épingle sur un élément le suit, puis reste « détac
   const { id, region, stage } = await board(page, "Épingle sur une note");
   const box = (await stage.boundingBox())!;
   // Une note, puis une épingle posée sur elle.
-  await region.getByRole("button", { name: "Note" }).click();
+  await region.getByRole("button", { name: "Post-it", exact: true }).click();
   await stage.click({ position: { x: 200, y: box.height / 2 } });
   await region
-    .getByRole("textbox", { name: "Texte de la note" })
+    .getByRole("textbox", { name: "Texte du post-it" })
     .fill("Canapé");
   await stage.click({ position: { x: box.width - 60, y: 40 } });
   const note = region.locator(".board-item.kind-note", { hasText: "Canapé" });

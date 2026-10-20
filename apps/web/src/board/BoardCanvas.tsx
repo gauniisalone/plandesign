@@ -37,6 +37,14 @@ import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
 import { PresenceLayer } from "./PresenceLayer";
+import { PostitBody, PostitPalette } from "./Postit";
+import {
+  colorOf,
+  lastColor,
+  POSTIT_SIDE,
+  rememberColor,
+  resizedPostit,
+} from "./postits";
 import { CommentPins, CommentsPanel } from "./comments";
 import { pinPlace, type CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
@@ -589,20 +597,22 @@ export function BoardCanvas(props: Props) {
     commit(items.map((i) => (selected.has(i.id) ? { ...i, z: edge } : i)));
   };
 
-  const addNote = (x: number, y: number, text = "") => {
+  /** KAN-65 : un post-it carré, centré sur (cx, cy), de la dernière couleur utilisée. */
+  const addNote = (cx: number, cy: number, text = "") => {
     const note: BoardItem = {
       id: uid(),
       kind: "note",
-      x,
-      y,
-      w: 240,
-      h: 150,
+      x: cx - POSTIT_SIDE / 2,
+      y: cy - POSTIT_SIDE / 2,
+      w: POSTIT_SIDE,
+      h: POSTIT_SIDE,
       z: Math.max(0, ...items.map((i) => i.z)) + 1,
       locked: false,
       frame: null,
       ref: null,
       text,
       role: null,
+      color: lastColor(),
     };
     commit([...items, note]);
     setSelected(new Set([note.id]));
@@ -855,7 +865,7 @@ export function BoardCanvas(props: Props) {
     }
     if (tool === "note") {
       e.preventDefault();
-      addNote(p.x - 120, p.y - 75);
+      addNote(p.x, p.y);
       setTool("select");
       return;
     }
@@ -894,7 +904,7 @@ export function BoardCanvas(props: Props) {
       if (tool === "note") {
         // Sans cela, le clic qui suit retire le focus du texte de la note tout juste posée.
         e.preventDefault();
-        addNote(p.x - 120, p.y - 75);
+        addNote(p.x, p.y);
         setTool("select");
       } else setDrag({ kind: "frame", x: p.x, y: p.y, to: p });
       return;
@@ -911,6 +921,9 @@ export function BoardCanvas(props: Props) {
       lastDown.current = { id: item.id, t: e.timeStamp };
       if (last && last.id === item.id && e.timeStamp - last.t < DOUBLE_MS) {
         lastDown.current = null;
+        // KAN-65 : le champ qui s'ouvre (post-it, nom de cadre) garde le focus ; sans cela,
+        // la fin du clic le lui retire aussitôt.
+        if (item.kind === "note" || item.kind === "frame") e.preventDefault();
         onDouble(item);
         return;
       }
@@ -961,8 +974,15 @@ export function BoardCanvas(props: Props) {
         ),
       );
     } else if (drag.kind === "resize") {
-      const w = Math.max(MIN_SIDE, drag.item.w + dx);
-      const h = Math.max(MIN_SIDE, drag.item.h + dy);
+      // KAN-65 : un post-it reste carré, sauf avec Maj.
+      const size = {
+        w: Math.max(MIN_SIDE, drag.item.w + dx),
+        h: Math.max(MIN_SIDE, drag.item.h + dy),
+      };
+      const { w, h } =
+        drag.item.kind === "note"
+          ? resizedPostit(size.w, size.h, e.shiftKey)
+          : size;
       setLive(
         board.items.map((i) => (i.id === drag.item.id ? { ...i, w, h } : i)),
       );
@@ -1131,7 +1151,7 @@ export function BoardCanvas(props: Props) {
         }
         const url = linkFrom(text);
         if (url) addLink(url, "", at);
-        else addNote(at.x - 120, at.y - 75, text.slice(0, 4000));
+        else addNote(at.x, at.y, text.slice(0, 4000));
       }
     };
     window.addEventListener("keydown", down);
@@ -1357,25 +1377,20 @@ export function BoardCanvas(props: Props) {
         );
       }
       case "note":
-        return editing === item.id ? (
-          <textarea
-            autoFocus
-            aria-label="Texte de la note"
-            defaultValue={item.text}
-            onPointerDown={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              const text = e.target.value.slice(0, 4000);
+        // KAN-65 : un post-it ; le texte se réduit pour tenir.
+        return (
+          <PostitBody
+            item={item}
+            editing={editing === item.id}
+            onText={(text) => {
               setEditing(null);
               if (text !== item.text)
                 commit(
                   items.map((i) => (i.id === item.id ? { ...i, text } : i)),
                 );
             }}
-          />
-        ) : (
-          <>
-            <span className="board-note-text">{item.text || "Note vide"}</span>
-            {item.role === "prompt" && (
+          >
+            {editing !== item.id && item.role === "prompt" && (
               <button
                 type="button"
                 className="primary board-variant"
@@ -1386,7 +1401,7 @@ export function BoardCanvas(props: Props) {
                 Nouvelle variante → assistant
               </button>
             )}
-          </>
+          </PostitBody>
         );
       case "frame":
         return (
@@ -1552,8 +1567,14 @@ export function BoardCanvas(props: Props) {
   const onDouble = (item: BoardItem) => {
     if (item.kind === "plan") return enterPlan(item);
     if (item.locked) return;
-    if (item.kind === "note" || item.kind === "frame") setEditing(item.id);
-    else if (item.kind === "render" && item.ref && item.role !== "inspiration")
+    // KAN-50, KAN-65 : un lecteur ou un commentateur lit les post-its sans les écrire.
+    if (item.kind === "note" || item.kind === "frame") {
+      if (!readOnly) setEditing(item.id);
+    } else if (
+      item.kind === "render" &&
+      item.ref &&
+      item.role !== "inspiration"
+    )
       props.onOpenRender(item.ref);
     else if (item.kind === "pdf" && item.ref)
       window.open(
@@ -1588,6 +1609,18 @@ export function BoardCanvas(props: Props) {
   const marquee =
     drag && (drag.kind === "marquee" || drag.kind === "frame") ? drag : null;
 
+  // KAN-65 : les post-its sélectionnés (non verrouillés) changent de couleur en un geste ;
+  // la couleur choisie devient celle des prochains.
+  const postits = selection.filter((i) => i.kind === "note" && !i.locked);
+  const recolor = (color: NonNullable<BoardItem["color"]>) => {
+    rememberColor(color);
+    const ids = new Set(
+      postits.filter((i) => colorOf(i) !== color).map((i) => i.id),
+    );
+    if (ids.size)
+      commit(items.map((i) => (ids.has(i.id) ? { ...i, color } : i)));
+  };
+
   // KAN-64 : les actions de la sélection (« propriétés »), dans la zone haute du panneau
   // de droite, ou en bas au centre quand le panneau est fermé.
   const selectionActions =
@@ -1598,6 +1631,9 @@ export function BoardCanvas(props: Props) {
         aria-label="Actions de la sélection"
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {!readOnly && postits.length > 0 && (
+          <PostitPalette notes={postits} onPick={recolor} />
+        )}
         {single?.kind === "plan" && single.ref && (
           <button type="button" onClick={() => enterPlan(single)}>
             Modifier le plan
@@ -1724,7 +1760,7 @@ export function BoardCanvas(props: Props) {
           [
             ["select", "↖", "Sélection (V)"],
             ["hand", "✋", "Main : déplacer la vue (H, ou espace)"],
-            ["note", "✎", "Note (N) : cliquer où la poser"],
+            ["note", "🗒", "Post-it (N) : cliquer où le poser"],
             [
               "frame",
               "▭",
@@ -1903,7 +1939,7 @@ export function BoardCanvas(props: Props) {
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}`}
               style={{
                 left: item.x,
                 top: item.y,

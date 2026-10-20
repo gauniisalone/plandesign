@@ -48,7 +48,32 @@ test("KAN-58 : le détail des modifications de l'espace de travail et du plan", 
   );
   assert.equal(
     actionText(line({ ...board, item_kind: "note", added: 1 })),
-    "Gilles a ajouté une note",
+    "Gilles a ajouté un post-it",
+  );
+  // KAN-65 : seule la couleur a changé.
+  assert.equal(
+    actionText(
+      line({
+        ...board,
+        label: "Canapé",
+        item_kind: "note",
+        changed: 1,
+        recolored: 1,
+      }),
+    ),
+    "Gilles a changé la couleur de « Canapé »",
+  );
+  assert.equal(
+    actionText(line({ ...board, item_kind: "note", changed: 1, recolored: 1 })),
+    "Gilles a changé la couleur d'un post-it",
+  );
+  assert.equal(
+    actionText(line({ ...board, changed: 3, recolored: 3 })),
+    "Gilles a changé la couleur de 3 post-its",
+  );
+  assert.equal(
+    actionText(line({ ...board, label: "Canapé", changed: 1, recolored: 0 })),
+    "Gilles a modifié « Canapé »",
   );
   assert.equal(
     actionText(
