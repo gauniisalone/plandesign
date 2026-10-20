@@ -5,10 +5,13 @@ courantes, montrées)."""
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Response, UploadFile
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 
+from openplan.api import change_events
+from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.pipeline import board as b
@@ -36,7 +39,9 @@ def get_board(project: ProjectDep, store: StoreDep) -> Board:
 
 
 @router.put("/projects/{project_id}/board")
-def put_board(body: Board, project: ProjectDep, store: StoreDep) -> Board:
+def put_board(
+    body: Board, project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
+) -> Board:
     """Enregistre la disposition (positions, tailles, ordre, verrous, cadres, notes, vue). Ne
     touche jamais la géométrie du plan. Ce qui a été retiré parmi ce que le projet fournit
     n'est pas remis ensuite. 409 si l'envoi part d'une révision périmée (le tableau a été
@@ -52,16 +57,33 @@ def put_board(body: Board, project: ProjectDep, store: StoreDep) -> Board:
         for i in body.items
     ]
     with store.lock(project.id):
-        after = b.replaced(b.load_board(project_dir), body.model_copy(update={"items": items}))
+        before = b.load_board(project_dir)
+        after = b.replaced(before, body.model_copy(update={"items": items}))
         try:
-            return b.save_board(project_dir, after, expect=body.revision)
+            saved = b.save_board(project_dir, after, expect=body.revision)
         except b.StaleBoardError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        _journal(request, project_dir, project.id, actor, before, saved)
+    return saved
+
+
+def _journal(
+    request: Request,
+    project_dir: Path,
+    project_id: UUID,
+    actor: str,
+    before: Board | None,
+    after: Board,
+) -> None:
+    """KAN-58 : le geste entre au journal avec son détail (rien pour une vue seule) ; les
+    cloches des autres membres sonnent ensuite (intergiciel des comptes)."""
+    if change_events.record_board(project_dir, project_id, author_of(actor), before, after):
+        request.state.journaled = True
 
 
 @router.patch("/projects/{project_id}/board/items")
 def patch_board_items(
-    body: BoardPatch, project: ProjectDep, store: StoreDep, actor: ActorDep
+    body: BoardPatch, project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
 ) -> Board:
     """B2c : les écritures d'un geste (éléments posés ou modifiés, éléments retirés, vue), en
     une fois sous le verrou du projet. La dernière écriture reçue gagne, élément par élément :
@@ -69,11 +91,14 @@ def patch_board_items(
     refusé en 409. Le serveur horodate chaque élément écrit et note son acteur."""
     project_dir = store.project_dir(project.id)
     with store.lock(project.id):
+        before = b.load_board(project_dir)
         try:
-            after = b.patched(b.load_board(project_dir), body, actor)
+            after = b.patched(before, body, actor)
         except b.TooManyItemsError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return b.save_board(project_dir, after)
+        saved = b.save_board(project_dir, after)
+        _journal(request, project_dir, project.id, actor, before, saved)
+    return saved
 
 
 @router.get("/projects/{project_id}/exports/archive")

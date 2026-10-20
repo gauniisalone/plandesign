@@ -77,6 +77,7 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément
     # Commentaires (KAN-51) : lire, lecteur ; écrire, commentateur et plus. L'auteur seul
     # modifie ou supprime son message ; le propriétaire supprime tout fil (vérifié dans la route).
+    ("GET", P + "/activity"): V,  # KAN-58 : le journal d'activité, lecteur compris
     ("GET", P + "/comments"): V,
     ("POST", P + "/comments"): C,
     ("POST", P + "/comments/{thread_id}/replies"): C,

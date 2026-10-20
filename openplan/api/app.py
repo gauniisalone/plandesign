@@ -29,6 +29,7 @@ from openplan.adapters.remote.critique import CritiqueParseError
 from openplan.adapters.remote.intention import IntentionParseError
 from openplan.adapters.remote.openai_compatible import ModelCallError
 from openplan.adapters.remote.vlm_detector import VlmParseError
+from openplan.api import change_events
 from openplan.api.doctor import DoctorReport, diagnose
 from openplan.api.guards import route_guard
 from openplan.api.jobs import (
@@ -325,7 +326,9 @@ def create_app(
 def _wire_bell(app: FastAPI, settings: Settings) -> None:
     """KAN-52 : l'état « lu » de la cloche derrière la même interface (`api.bell_state` :
     tables avec les comptes, fichier en local), et « Votre rendu est prêt » publié au journal
-    du projet à la fin d'un rendu."""
+    du projet à la fin d'un rendu. KAN-58 : les modifications du plan entrent au journal (en
+    local comme avec les comptes) ; posé avant la sécurité, donc exécuté à l'intérieur d'elle."""
+    change_events.install(app)
     if app.state.accounts is None:
         from openplan.api.bell_state import FileReadState
 

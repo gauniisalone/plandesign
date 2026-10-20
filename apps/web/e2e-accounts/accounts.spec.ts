@@ -1138,6 +1138,98 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
   await shot(gilles, "kan52-2-epingle");
 });
 
+test("KAN-58 : le journal d'activité, avec le détail des gestes, lu par un lecteur", async ({
+  browser,
+}) => {
+  // Des comptes propres à ce test (le serveur est partagé par toute la suite).
+  const gilles = await person(browser, "198.51.100.97");
+  await gotoApp(gilles, "/");
+  await signInHere(gilles, "gilles.kan58@example.org", "Gilles");
+  const origin = { Origin: new URL(gilles.url()).origin };
+  const made = await gilles.request.post("/api/projects", {
+    data: { name: "Atelier" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invite = async (role: string) =>
+    (
+      (await (
+        await gilles.request.post(`/api/projects/${id}/invitations`, {
+          data: { role },
+          headers: origin,
+        })
+      ).json()) as { token: string }
+    ).token;
+  const [asEditor, asViewer] = [await invite("editor"), await invite("viewer")];
+  const fanny = await person(browser, "198.51.100.98");
+  await gotoApp(fanny, `/#/invitation/${asEditor}`);
+  await signInHere(fanny, "fanny.kan58@example.org", "Fanny");
+  const kim = await person(browser, "198.51.100.99");
+  await gotoApp(kim, `/#/invitation/${asViewer}`);
+  await signInHere(kim, "kim.kan58@example.org", "Kim");
+  await expect(kim.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+
+  // Fanny pose une note ; Gilles retire le cadre Inspirations (un seul geste chacun).
+  const board = (await (
+    await gilles.request.get(`/api/projects/${id}/board`)
+  ).json()) as { items: { id: string; role?: string | null }[] };
+  const inspirations = board.items.find((i) => i.role === "inspirations")!;
+  const sofa = {
+    id: crypto.randomUUID(),
+    kind: "note",
+    x: 40,
+    y: 900,
+    w: 240,
+    h: 140,
+    text: "Canapé",
+  };
+  const fannyOrigin = { Origin: new URL(fanny.url()).origin };
+  expect(
+    (
+      await fanny.request.patch(`/api/projects/${id}/board/items`, {
+        data: { set: [sofa] },
+        headers: fannyOrigin,
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await gilles.request.patch(`/api/projects/${id}/board/items`, {
+        data: { delete: [inspirations.id] },
+        headers: origin,
+      })
+    ).status(),
+  ).toBe(200);
+
+  // Kim, lecteur, ouvre « Activité » : le détail, le nom de l'objet, les arrivées.
+  await kim.getByRole("button", { name: "Activité" }).click();
+  const panel = kim.getByRole("dialog", { name: "Activité" });
+  await expect(
+    panel.getByRole("button", { name: /Gilles a supprimé « Inspirations »/ }),
+  ).toBeVisible({ timeout: 10_000 });
+  const added = panel.getByRole("button", {
+    name: /Fanny a ajouté « Canapé »/,
+  });
+  await expect(added).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: /Fanny a rejoint le projet/ }),
+  ).toBeVisible();
+  await shot(kim, "kan58-1-activite");
+  // Filtres : le plan (rien), puis Fanny seule.
+  await panel.getByRole("button", { name: "Plan", exact: true }).click();
+  await expect(panel.getByText("Rien pour l'instant.")).toBeVisible();
+  await panel.getByRole("button", { name: "Tout", exact: true }).click();
+  await panel.getByLabel("Personne").selectOption({ label: "Fanny" });
+  await expect(panel.getByRole("button", { name: /Gilles/ })).toHaveCount(0);
+  await expect(added).toBeVisible();
+  // Le clic mène à l'élément : la note est choisie et au centre.
+  await added.click();
+  await expect(
+    kim.locator(".board-item.kind-note.selected", { hasText: "Canapé" }),
+  ).toBeVisible();
+  await shot(kim, "kan58-2-element");
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

@@ -6309,6 +6309,53 @@ button.link.home-empty-link {
   display: block;
   margin: 6px auto 2px;
 }
+/* KAN-58 : le journal d'activité, à droite sous la barre du haut. */
+.activity-panel {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  bottom: 100px;
+  z-index: 35;
+  width: min(380px, calc(100vw - 32px));
+  overflow: auto;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+}
+.activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 8px;
+}
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.activity-filters [role="group"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.activity-filters [role="group"] button {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.activity-filters [role="group"] button[aria-pressed="true"] {
+  background: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
 
 .comments-panel {
   position: absolute;

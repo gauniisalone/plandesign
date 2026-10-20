@@ -89,6 +89,14 @@ export const IconGear = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-58 : le journal d'activité (une horloge). */
+export const IconActivity = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Svg>
+);
+
 /** KAN-52 : la cloche des notifications. */
 export const IconBell = (p: IconProps) => (
   <Svg {...p}>

@@ -38,6 +38,13 @@ class ProjectEvent(StrictModel):
     level_id: UUID | None = None
     run_id: UUID | None = None
     label: str | None = Field(default=None, max_length=MAX_LABEL)
-    """L'objet tel qu'il s'appelait au moment du geste (« Photo 2 ») ; jamais un texte libre
-    de commentaire."""
+    """L'objet tel qu'il s'appelait au moment du geste (« Photo 2 »), ou le geste sur le plan
+    (« Ajouter un mur ») ; jamais un texte libre de commentaire."""
+    item_kind: str | None = Field(default=None, max_length=40)
+    """KAN-58 : la sorte de l'élément touché quand il n'y en a qu'un (« une note »)."""
+    added: int | None = Field(default=None, ge=0)
+    changed: int | None = Field(default=None, ge=0)
+    removed: int | None = Field(default=None, ge=0)
+    """KAN-58 : le détail d'une modification de l'espace de travail (éléments posés, modifiés,
+    retirés)."""
     at: datetime = Field(default_factory=now_utc)

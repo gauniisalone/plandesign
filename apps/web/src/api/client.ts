@@ -2033,6 +2033,8 @@ export const commentsApi = {
 export type BellType =
   | "comment.created"
   | "comment.replied"
+  | "comment.resolved"
+  | "comment.reopened"
   | "member.joined"
   | "render.done"
   | "board.changed"
@@ -2041,6 +2043,8 @@ export type BellType =
 export interface BellLine {
   id: string;
   type: BellType;
+  /** `local` ou l'id du compte (filtre « par personne » du journal d'activité). */
+  actor_id: string;
   actor_name: string;
   actor_color: string;
   mine: boolean;
@@ -2054,7 +2058,33 @@ export interface BellLine {
   level_id: string | null;
   run_id: string | null;
   label: string | null;
+  /** KAN-58 : l'élément touché s'il n'y en a qu'un, et le détail des modifications. */
+  item_kind: string | null;
+  added: number;
+  changed: number;
+  removed: number;
 }
+
+export type ActivityKind =
+  "comments" | "board" | "plan" | "members" | "renders";
+
+/** KAN-58 : le journal d'activité d'un projet (tout membre le lit). */
+export const activityApi = {
+  list: (
+    pid: string,
+    filters: { who?: string | null; kind?: ActivityKind | null },
+    before?: string | null,
+  ) => {
+    const query = new URLSearchParams();
+    if (filters.who) query.set("who", filters.who);
+    if (filters.kind) query.set("kind", filters.kind);
+    if (before) query.set("before", before);
+    const q = query.toString();
+    return request<{ items: BellLine[]; next: string | null }>(
+      `/projects/${pid}/activity${q ? `?${q}` : ""}`,
+    );
+  },
+};
 
 export interface BellPage {
   items: BellLine[];

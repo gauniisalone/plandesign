@@ -31,6 +31,51 @@ function quoted(label: string | null): string | null {
   return label ? `« ${label} »` : null;
 }
 
+/** KAN-58 : l'élément touché, quand il n'a pas de nom. */
+const KIND_NOUN: Record<string, string> = {
+  photo: "une photo",
+  render: "un rendu",
+  note: "une note",
+  frame: "un cadre",
+  plan: "le plan",
+  file: "un fichier",
+  video: "une vidéo",
+  pdf: "un PDF",
+  link: "un lien",
+  contextual: "un rendu contextualisé",
+};
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n > 1 ? "s" : ""}`;
+}
+
+/** KAN-58 : le détail d'une modification de l'espace de travail (« Gilles a supprimé
+ *  « Photo 2 » », « … · 2 ajoutés, 1 supprimé ») ; sans détail, « · 12 changements ». */
+function boardText(line: BellLine): string {
+  const who = line.actor_name;
+  const { added = 0, changed = 0, removed = 0 } = line;
+  const object =
+    quoted(line.label) ?? (line.item_kind ? KIND_NOUN[line.item_kind] : null);
+  const more = line.count > 1 ? ` · ${line.count} changements` : "";
+  if (object) {
+    const verb =
+      removed && !added && !changed
+        ? "a supprimé"
+        : added && !changed && !removed
+          ? "a ajouté"
+          : "a modifié";
+    return `${who} ${verb} ${object}${more}`;
+  }
+  const parts = [
+    added ? plural(added, "ajouté") : null,
+    changed ? plural(changed, "modifié") : null,
+    removed ? plural(removed, "supprimé") : null,
+  ].filter(Boolean);
+  return parts.length
+    ? `${who} a modifié l'espace de travail · ${parts.join(", ")}`
+    : `${who} a modifié l'espace de travail${more}`;
+}
+
 /** Ce qui s'est passé, sans le projet ni l'heure. */
 export function actionText(line: BellLine): string {
   const who = line.actor_name;
@@ -43,14 +88,25 @@ export function actionText(line: BellLine): string {
       return object
         ? `${who} a répondu sur ${object}`
         : `${who} a répondu dans un fil`;
+    case "comment.resolved":
+      return object
+        ? `${who} a résolu le fil sur ${object}`
+        : `${who} a résolu un fil`;
+    case "comment.reopened":
+      return object
+        ? `${who} a rouvert le fil sur ${object}`
+        : `${who} a rouvert un fil`;
     case "member.joined":
       return `${who} a rejoint le projet`;
     case "render.done":
       return line.mine ? "Votre rendu est prêt" : `Le rendu de ${who} est prêt`;
     case "board.changed":
-      return `${who} a modifié l'espace de travail${more}`;
+      return boardText(line);
     case "plan.changed":
-      return `${who} a modifié le plan${more}`;
+      // Un seul geste : son libellé (« Ajouter un mur », « Annulé : … »).
+      return line.label && line.count === 1
+        ? `${who} a modifié le plan · ${line.label}`
+        : `${who} a modifié le plan${more}`;
   }
 }
 

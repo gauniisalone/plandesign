@@ -16,6 +16,7 @@ function line(over: Partial<BellLine>): BellLine {
   return {
     id: "1",
     type: "comment.created",
+    actor_id: "f",
     actor_name: "Fanny",
     actor_color: "#e5484d",
     mine: false,
@@ -29,9 +30,54 @@ function line(over: Partial<BellLine>): BellLine {
     level_id: null,
     run_id: null,
     label: null,
+    item_kind: null,
+    added: 0,
+    changed: 0,
+    removed: 0,
     ...over,
   };
 }
+
+test("KAN-58 : le détail des modifications de l'espace de travail et du plan", () => {
+  const board = { type: "board.changed" as const, actor_name: "Gilles" };
+  assert.equal(
+    actionText(
+      line({ ...board, label: "Photo 2", item_kind: "photo", removed: 1 }),
+    ),
+    "Gilles a supprimé « Photo 2 »",
+  );
+  assert.equal(
+    actionText(line({ ...board, item_kind: "note", added: 1 })),
+    "Gilles a ajouté une note",
+  );
+  assert.equal(
+    actionText(
+      line({
+        ...board,
+        label: "Canapé",
+        count: 3,
+        added: 1,
+        changed: 1,
+        removed: 1,
+      }),
+    ),
+    "Gilles a modifié « Canapé » · 3 changements",
+  );
+  assert.equal(
+    actionText(line({ ...board, count: 2, added: 2, removed: 1 })),
+    "Gilles a modifié l'espace de travail · 2 ajoutés, 1 supprimé",
+  );
+  assert.equal(
+    actionText(
+      line({ type: "plan.changed", label: "Annulé : Ajouter un mur" }),
+    ),
+    "Fanny a modifié le plan · Annulé : Ajouter un mur",
+  );
+  assert.equal(
+    actionText(line({ type: "comment.resolved", label: "Photo 2" })),
+    "Fanny a résolu le fil sur « Photo 2 »",
+  );
+});
 
 test("badge : rien quand tout est lu, 9+ au-delà de 9", () => {
   assert.equal(badgeText(0), null);

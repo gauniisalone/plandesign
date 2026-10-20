@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
 import type { Tool } from "../editor2d/PlanCanvas";
 import {
+  IconActivity,
   IconAlert,
   IconArrowLeft,
   IconCeilings,
@@ -152,9 +153,14 @@ export function TopBar({
   onFollow,
   planName,
   bell,
+  activityOpen = false,
+  onActivity,
 }: {
   /** KAN-52 : la cloche, à droite, avant « Partager ». */
   bell?: ReactNode;
+  /** KAN-58 : le journal d'activité du projet. */
+  activityOpen?: boolean;
+  onActivity?: () => void;
   /** B2a : les autres membres présents sur le projet (avatars). */
   peers?: Peer[];
   /** B2b : la personne que je suis (null : personne), et le clic sur un avatar. */
@@ -267,6 +273,15 @@ export function TopBar({
             </li>
           )}
         </ul>
+      )}
+      {onActivity && (
+        <IconButton
+          label="Activité"
+          more="qui a fait quoi dans ce projet, et quand"
+          Icon={IconActivity}
+          active={activityOpen}
+          onClick={onActivity}
+        />
       )}
       {bell}
       {onShare && (

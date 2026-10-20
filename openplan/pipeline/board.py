@@ -117,6 +117,44 @@ def save_board(project_dir: Path, board: Board, *, expect: int | None = None) ->
     return board
 
 
+_STAMPS = {"updated_at", "updated_by"}
+
+
+@dataclass(frozen=True)
+class BoardChanges:
+    """KAN-58 : ce qu'un geste a fait sur l'espace de travail (la vue n'en fait pas partie)."""
+
+    added: int
+    changed: int
+    removed: int
+    single: BoardItem | None
+    """L'élément touché, s'il n'y en a qu'un (tel qu'il est après le geste, ou avant s'il a été
+    retiré)."""
+
+    @property
+    def total(self) -> int:
+        return self.added + self.changed + self.removed
+
+
+def board_changes(before: Board | None, after: Board) -> BoardChanges:
+    old = {i.id: i for i in (before.items if before else [])}
+    new = {i.id: i for i in after.items}
+    added = [new[k] for k in new.keys() - old.keys()]
+    removed = [old[k] for k in old.keys() - new.keys()]
+    changed = [
+        new[k]
+        for k in new.keys() & old.keys()
+        if new[k].model_dump(exclude=_STAMPS) != old[k].model_dump(exclude=_STAMPS)
+    ]
+    touched = [*added, *changed, *removed]
+    return BoardChanges(
+        added=len(added),
+        changed=len(changed),
+        removed=len(removed),
+        single=touched[0] if len(touched) == 1 else None,
+    )
+
+
 def _detach_comments(project_dir: Path, before: Board, after: Board) -> None:
     """KAN-51 : un élément retiré laisse sa dernière position aux fils qui y sont épinglés ;
     ils restent là, « détachés ». Le seul moment où cette position s'enregistre hors d'une

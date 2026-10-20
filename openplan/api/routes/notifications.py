@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from openplan.api.access import accounts_of
 from openplan.api.bell_state import ReadState
-from openplan.api.deps import ActorDep, StoreDep
+from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.routes.comments import AuthorNames, author_of
 from openplan.pipeline import bell
 from openplan.pipeline.comments import CommentStore
@@ -31,6 +31,8 @@ router = APIRouter(tags=["cloche"])
 class LineOut(StrictModel):
     id: UUID
     type: EventType
+    actor_id: str
+    """`local` ou l'id du compte (filtre « par personne » du journal d'activité)."""
     actor_name: str
     actor_color: str
     mine: bool
@@ -44,6 +46,10 @@ class LineOut(StrictModel):
     level_id: UUID | None
     run_id: UUID | None
     label: str | None
+    item_kind: str | None
+    added: int
+    changed: int
+    removed: int
 
 
 class BellPage(StrictModel):
@@ -149,6 +155,22 @@ def notifications(
     lines = _lines(request, store, me)
     marks = _state(request).marks(me)
     shown, cursor = bell.page(lines, marks, unread_only=tab == "unread", before=_cursor(before))
+    return BellPage(
+        items=_out(request, shown, me, marks),
+        next=_next(cursor),
+        unread=bell.unread_count(lines, marks),
+    )
+
+
+def _next(cursor: tuple[datetime, str] | None) -> str | None:
+    return f"{cursor[0].isoformat()}|{cursor[1]}" if cursor else None
+
+
+def _out(
+    request: Request, shown: list[bell.BellLine], me: str, marks: bell.ReadMarks | None
+) -> list[LineOut]:
+    """Les lignes telles que les voit la personne : noms et couleurs (« Ancien membre »),
+    « mine », lue ou non (le journal d'activité n'a pas d'état « lu »)."""
     names: dict[UUID, AuthorNames] = {}
     items = []
     for line in shown:
@@ -158,6 +180,7 @@ def notifications(
             LineOut(
                 id=line.id,
                 type=line.type,
+                actor_id=line.actor,
                 actor_name=name,
                 actor_color=color,
                 mine=line.actor == me,
@@ -165,19 +188,49 @@ def notifications(
                 project_name=line.project_name,
                 at=line.at,
                 count=line.count,
-                unread=marks.unread(line),
+                unread=marks.unread(line) if marks is not None else False,
                 thread_id=line.thread_id,
                 item_id=line.item_id,
                 level_id=line.level_id,
                 run_id=line.run_id,
                 label=line.label,
+                item_kind=line.item_kind,
+                added=line.added,
+                changed=line.changed,
+                removed=line.removed,
             )
         )
-    return BellPage(
-        items=items,
-        next=f"{cursor[0].isoformat()}|{cursor[1]}" if cursor else None,
-        unread=bell.unread_count(lines, marks),
+    return items
+
+
+class ActivityPage(StrictModel):
+    items: list[LineOut]
+    next: str | None
+
+
+@router.get("/projects/{project_id}/activity")
+def activity(
+    project: ProjectDep,
+    request: Request,
+    store: StoreDep,
+    actor: ActorDep,
+    who: str | None = Query(default=None, max_length=120),
+    kind: Literal["comments", "board", "plan", "members", "renders"] | None = None,
+    before: str | None = Query(default=None, max_length=120),
+) -> ActivityPage:
+    """KAN-58 : le journal d'activité du projet, 50 lignes puis « Voir plus » ; tout membre le
+    lit (lecteur compris), seul le serveur l'écrit."""
+    me = author_of(actor)
+    project_dir = store.project_dir(project.id)
+    feed = bell.ProjectFeed(
+        project_id=project.id,
+        name=project.name,
+        owner=False,
+        events=ProjectEvents(project_dir).read(),
     )
+    lines = bell.activity_lines(feed, now_utc(), who=who, kind=kind)
+    shown, cursor = bell.page(lines, bell.ReadMarks(), unread_only=False, before=_cursor(before))
+    return ActivityPage(items=_out(request, shown, me, None), next=_next(cursor))
 
 
 @router.get("/notifications/count")

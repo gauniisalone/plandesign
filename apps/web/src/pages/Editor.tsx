@@ -44,6 +44,7 @@ import {
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
 import { Bell } from "../panels/Bell";
+import { ActivityPanel } from "../panels/ActivityPanel";
 import { takeBellTarget, useBellTargetToken } from "../state/bell";
 import { useLive } from "../state/live";
 import { useComments } from "../board/useComments";
@@ -583,6 +584,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // KAN-52 : une ligne de la cloche mène ici, au bon endroit : le plan modifié, le cadre
   // Rendus, l'épingle (fil ouvert) ou l'élément ; sinon l'espace de travail.
   const bellToken = useBellTargetToken();
+  /** KAN-58 : le panneau « Activité » du projet. */
+  const [activityOpen, setActivityOpen] = useState(false);
   const [boardFocus, setBoardFocus] = useState<{
     token: number;
     threadId: string | null;
@@ -1477,6 +1480,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onRetrySave={board.save === "error" ? board.retry : undefined}
             onShare={canShare ? () => setShareOpen(true) : undefined}
             bell={<Bell accounts={account !== null} />}
+            activityOpen={activityOpen}
+            onActivity={() => setActivityOpen((o) => !o)}
             peers={live.peers}
             following={live.presence.following}
             onFollow={(userId) => {
@@ -1574,6 +1579,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             <ShareDialog
               projectId={projectId}
               onClose={() => setShareOpen(false)}
+            />
+          )}
+          {activityOpen && (
+            <ActivityPanel
+              projectId={projectId}
+              tick={`${liveTick}|${commentsTick}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+              onClose={() => setActivityOpen(false)}
             />
           )}
           {newPlanOpen && (

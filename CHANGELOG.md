@@ -7,6 +7,20 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 20 octobre 2026 (KAN-58 : le journal d'activité du projet)
+
+En local comme avec les comptes, à l'identique.
+
+- Un panneau « Activité » dans le projet (barre du haut) : qui a fait quoi, sur quel objet,
+  quand ; tout le journal, vos gestes compris, et aussi ce que la cloche ne notifie pas (un fil
+  résolu ou rouvert). 50 lignes puis « Voir plus » ; tout membre le lit, lecteur compris.
+- Le détail des gestes sur l'espace de travail : posé, modifié, retiré, avec le nom de
+  l'élément quand il n'y en a qu'un (« Gilles a supprimé « Photo 2 » ») ; sur le plan, le
+  libellé du geste (« Ajouter un mur », « Annulé : … »). Zoomer ou déplacer la vue n'est pas
+  une modification (ni au journal, ni dans la cloche).
+- Filtres par personne et par sorte (commentaires, espace de travail, plan, membres, rendus) ;
+  un clic sur une ligne mène au bon endroit, comme la cloche.
+
 ### 20 octobre 2026 (KAN-52 : la cloche des notifications)
 
 En local comme avec les comptes, à l'identique.

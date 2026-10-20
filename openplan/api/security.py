@@ -37,7 +37,6 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from openplan.api import change_events
 from openplan.api.access import (
     LOGIN_REQUIRED,
     SESSION_COOKIE,
@@ -426,12 +425,10 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             if raw:  # cookie expiré ou révoqué : il s'efface
                 refused.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
             return finish(refused, request, "-", started)
-        change = _change_watch(request, path) if resolved is not None else None
-        before = await run_in_threadpool(change_events.stamps, change[1]) if change else None
         response = await call_next(request)
         if resolved is not None and request.method in MUTATING and response.status_code < 400:
             await _announce(request, path)
-            await _ring_bells(request, path, str(resolved.user.id), change, before)
+            await _ring_bells(request, path, str(resolved.user.id))
         if (
             resolved is not None
             and resolved.renewed
@@ -449,30 +446,11 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         return finish(response, request, actor, started)
 
 
-def _change_watch(request: Request, path: str) -> tuple[UUID, Path] | None:
-    """KAN-52 : une écriture sur un projet existant, à surveiller (projet, dossier)."""
-    if request.method not in MUTATING:
-        return None
-    match = LIVE_PROJECT.match(path)
-    if match is None or not change_events.watched(path):
-        return None
-    project_id = UUID(match.group(1))
-    store = request.app.state.store
-    if not store.exists(project_id):
-        return None
-    return project_id, store.project_dir(project_id)
-
-
-async def _ring_bells(
-    request: Request,
-    path: str,
-    me: str,
-    change: tuple[UUID, Path] | None,
-    before: change_events.Stamps | None,
-) -> None:
-    """KAN-52, après une écriture réussie : la modification du tableau ou du plan entre au
-    journal du projet ; puis les cloches concernées sonnent (les membres du projet pour un
-    geste ou un commentaire, mes autres onglets et appareils pour une lecture)."""
+async def _ring_bells(request: Request, path: str, me: str) -> None:
+    """KAN-52, après une écriture réussie : les cloches concernées sonnent (les membres du
+    projet quand un geste est entré au journal ou pour un commentaire, mes autres onglets et
+    appareils pour une lecture). Le journal lui-même est écrit plus près des routes
+    (`change_events`, routes du tableau et des commentaires)."""
     from openplan.api.accounts.live import hub_of, ring_project
 
     if path in BELL_READS:
@@ -481,13 +459,7 @@ async def _ring_bells(
     match = LIVE_PROJECT.match(path)
     if match is None:
         return
-    recorded = False
-    if change is not None and before is not None:
-        project_dir = change[1]
-        recorded = await run_in_threadpool(
-            change_events.record, project_dir, change[0], me, path, before
-        )
-    if recorded or "/comments" in path:  # les commentaires publient eux-mêmes
+    if getattr(request.state, "journaled", False) or "/comments" in path:
         await ring_project(request.app, UUID(match.group(1)), but=me)
 
 

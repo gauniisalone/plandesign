@@ -60,6 +60,11 @@ class BellLine:
     level_id: UUID | None = None
     run_id: UUID | None = None
     label: str | None = None
+    item_kind: str | None = None
+    added: int = 0
+    changed: int = 0
+    removed: int = 0
+    """KAN-58 : le détail cumulé des modifications regroupées de l'espace de travail."""
 
 
 @dataclass(frozen=True)
@@ -97,35 +102,81 @@ def _line(event: ProjectEvent, feed: ProjectFeed) -> BellLine:
         level_id=event.level_id,
         run_id=event.run_id,
         label=event.label,
+        item_kind=event.item_kind,
+        added=event.added or 0,
+        changed=event.changed or 0,
+        removed=event.removed or 0,
     )
 
 
+def _grouped(feed: ProjectFeed, events: Iterable[ProjectEvent], out: list[BellLine]) -> None:
+    """Les lignes d'un projet, modifications regroupées (même auteur, même sorte, 10 min au
+    plus entre deux gestes) ; le détail s'additionne, l'objet ne reste que s'il est unique."""
+    groups: dict[tuple[str, str], BellLine] = {}
+    for event in sorted(events, key=lambda e: e.at):
+        if event.type not in GROUPED:
+            out.append(_line(event, feed))
+            continue
+        key = (event.actor, event.type)
+        group = groups.get(key)
+        if group is None or event.at - group.at > GROUP_GAP:
+            groups[key] = line = _line(event, feed)
+            out.append(line)
+            continue
+        same = group.item_id is not None and group.item_id == event.item_id
+        group.count += 1
+        group.id, group.at = event.id, event.at
+        group.level_id = event.level_id or group.level_id
+        group.added += event.added or 0
+        group.changed += event.changed or 0
+        group.removed += event.removed or 0
+        if not same:
+            group.item_id = group.item_kind = group.label = None
+
+
 def lines_for(me: str, feeds: Iterable[ProjectFeed], now: datetime) -> list[BellLine]:
-    """Toutes les lignes de la personne, de la plus récente à la plus ancienne."""
+    """Toutes les lignes de la cloche de la personne, de la plus récente à la plus ancienne."""
     out: list[BellLine] = []
     oldest = now - RETENTION
     for feed in feeds:
-        groups: dict[tuple[str, str], BellLine] = {}
         # Un membre arrivé en cours de route ne reçoit pas ce qui précède son arrivée.
         joined = max(
             (e.at for e in feed.events if e.type == "member.joined" and e.actor == me),
             default=oldest,
         )
-        for event in sorted(feed.events, key=lambda e: e.at):
-            if event.at < max(oldest, joined) or not _concerns(event, me, feed):
-                continue
-            if event.type in GROUPED:
-                key = (event.actor, event.type)
-                group = groups.get(key)
-                if group is not None and event.at - group.at <= GROUP_GAP:
-                    group.count += 1
-                    group.id, group.at = event.id, event.at
-                    group.level_id = event.level_id or group.level_id
-                    continue
-                groups[key] = line = _line(event, feed)
-                out.append(line)
-                continue
-            out.append(_line(event, feed))
+        since = max(oldest, joined)
+        _grouped(feed, (e for e in feed.events if e.at >= since and _concerns(e, me, feed)), out)
+    out.sort(key=lambda line: (line.at, str(line.id)), reverse=True)
+    return out
+
+
+ACTIVITY_KINDS: dict[str, frozenset[EventType]] = {
+    "comments": frozenset(
+        {"comment.created", "comment.replied", "comment.resolved", "comment.reopened"}
+    ),
+    "board": frozenset({"board.changed"}),
+    "plan": frozenset({"plan.changed"}),
+    "members": frozenset({"member.joined"}),
+    "renders": frozenset({"render.done"}),
+}
+"""KAN-58 : les filtres du journal d'activité."""
+
+
+def activity_lines(
+    feed: ProjectFeed, now: datetime, *, who: str | None = None, kind: str | None = None
+) -> list[BellLine]:
+    """KAN-58 : le journal d'activité d'un projet, tout le journal (mes gestes compris, et ce
+    que la cloche ne notifie pas), regroupé comme la cloche ; filtré par personne et sorte."""
+    types = ACTIVITY_KINDS.get(kind) if kind else None
+    events = [
+        e
+        for e in feed.events
+        if e.at >= now - RETENTION
+        and (who is None or e.actor == who)
+        and (types is None or e.type in types)
+    ]
+    out: list[BellLine] = []
+    _grouped(feed, events, out)
     out.sort(key=lambda line: (line.at, str(line.id)), reverse=True)
     return out
 
