@@ -972,7 +972,7 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
 
   // Le commentateur : l'outil Commentaire, aucun outil d'édition.
   await expect(
-    tools(commenter).getByRole("button", { name: "Commentaire" }),
+    tools(commenter).getByRole("button", { name: "Commentaire", exact: true }),
   ).toBeVisible();
   await expect(
     tools(commenter).getByRole("button", { name: "Note" }),
@@ -982,24 +982,63 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     viewer.getByRole("button", { name: "Commentaire", exact: true }),
   ).toHaveCount(0);
 
-  // Jules pose une épingle ; Iris la voit en moins de 2 s.
-  const stage = commenter.locator(".board-stage");
-  const box = (await stage.boundingBox())!;
-  await tools(commenter).getByRole("button", { name: "Commentaire" }).click();
-  await stage.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  const tool = tools(commenter).getByRole("button", {
+    name: "Commentaire",
+    exact: true,
+  });
   const draft = commenter.getByRole("dialog", { name: "Nouveau commentaire" });
-  await draft.getByLabel("Votre commentaire").fill("Et si on ouvrait ce mur ?");
-  await draft.getByRole("button", { name: "Publier" }).click();
+  const pinAt = async (x: number, y: number, text: string) => {
+    await tool.click();
+    await commenter.mouse.click(x, y);
+    await draft.getByLabel("Votre commentaire").fill(text);
+    await draft.getByRole("button", { name: "Publier" }).click();
+    await expect(draft).toHaveCount(0);
+  };
+  const targets = async () =>
+    (
+      (await (
+        await commenter.request.get(`/api/projects/${id}/comments`)
+      ).json()) as { target: { item_id?: string | null } }[]
+    ).map((t) => t.target.item_id ?? null);
+
+  // Échap quitte l'outil.
+  await tool.click();
+  await expect(tool).toHaveAttribute("aria-pressed", "true");
+  await commenter.keyboard.press("Escape");
+  await expect(tool).toHaveAttribute("aria-pressed", "false");
+
+  // Jules pose une épingle au centre, sur le cadre Plan vide (et ses boutons) : elle est
+  // attachée au cadre ; Iris la voit en moins de 2 s.
+  const box = (await commenter.locator(".board-stage").boundingBox())!;
+  await pinAt(
+    box.x + box.width / 2,
+    box.y + box.height / 2,
+    "Et si on ouvrait ce mur ?",
+  );
   const seen = owner.getByRole("button", { name: "Commentaire de Jules" });
   await expect(seen).toBeVisible({ timeout: 2_000 });
+  const [onPlan] = await targets();
+  expect(onPlan).not.toBeNull();
   await shot(owner, "17-commentaire-recu");
 
-  // Iris répond ; Jules voit les deux messages, signés.
-  await seen.click();
+  // Puis une épingle libre, dans un coin vide (on dézoome pour en laisser un).
+  for (let i = 0; i < 3; i++) await commenter.keyboard.press("-");
+  await pinAt(
+    box.x + box.width - 140,
+    box.y + box.height * 0.3,
+    "Ici, une étagère",
+  );
+  await expect(seen).toHaveCount(2, { timeout: 2_000 });
+  expect(await targets()).toEqual([onPlan, null]);
+
+  // Iris répond sur le premier fil ; Jules voit les deux messages, signés.
+  await seen.first().click();
   const panel = owner.getByRole("dialog", { name: "Commentaires" });
   await panel.getByLabel("Répondre").fill("Bonne idée, à chiffrer");
   await panel.getByRole("button", { name: "Répondre" }).click();
-  const his = commenter.getByRole("button", { name: "Commentaire de Jules" });
+  const his = commenter
+    .getByRole("button", { name: "Commentaire de Jules" })
+    .first();
   await expect(his).toHaveText("2", { timeout: 5_000 });
   await his.click();
   const hisPanel = commenter.getByRole("dialog", { name: "Commentaires" });
@@ -1009,7 +1048,9 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
   ]);
 
   // Le lecteur lit le fil, sans pouvoir répondre.
-  const kimPin = viewer.getByRole("button", { name: "Commentaire de Jules" });
+  const kimPin = viewer
+    .getByRole("button", { name: "Commentaire de Jules" })
+    .first();
   await expect(kimPin).toBeVisible({ timeout: 5_000 });
   await kimPin.click();
   const kimPanel = viewer.getByRole("dialog", { name: "Commentaires" });
@@ -1019,9 +1060,9 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     0,
   );
 
-  // Jules résout : l'épingle disparaît chez Iris.
+  // Jules résout : l'épingle disparaît chez Iris (reste l'épingle libre).
   await hisPanel.getByRole("button", { name: "Résoudre" }).click();
-  await expect(seen).toHaveCount(0, { timeout: 5_000 });
+  await expect(seen).toHaveCount(1, { timeout: 5_000 });
   await shot(commenter, "18-fil-resolu");
 });
 

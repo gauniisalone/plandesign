@@ -162,19 +162,18 @@ def _find(comments: CommentFile, thread_id: UUID) -> CommentThread:
     raise HTTPException(status_code=404, detail="fil de commentaires inconnu")
 
 
-def _refresh_positions(comments: CommentFile, project_dir: Path) -> bool:
-    """Dernière position connue de chaque élément commenté (le fil reste là s'il disparaît)."""
+def _refresh_positions(comments: CommentFile, project_dir: Path) -> None:
+    """Position actuelle de chaque élément commenté, d'après le tableau courant. En mémoire :
+    la liste s'en sert sans rien écrire ; une écriture de fil l'enregistre avec le reste. Un
+    élément retiré a laissé sa dernière position au fil (`board.save_board`)."""
     board = b.load_board(project_dir)
     if board is None:
-        return False
+        return
     where = {i.id: CommentPoint(x=i.x, y=i.y) for i in board.items}
-    changed = False
     for thread in comments.threads:
         item = thread.target.item_id
-        if item is not None and item in where and thread.target.last != where[item]:
+        if item is not None and item in where:
             thread.target.last = where[item]
-            changed = True
-    return changed
 
 
 def _event(
@@ -195,14 +194,13 @@ def _event(
 def list_comments(
     project: ProjectDep, store: StoreDep, actor: ActorDep, request: Request
 ) -> list[ThreadOut]:
-    """Tous les fils du projet, ouverts et résolus (le front les range)."""
+    """Tous les fils du projet, ouverts et résolus (le front les range). Une lecture pure :
+    rien n'est écrit (le cookie de lecture y vaut donc)."""
     me = _author(actor)
     project_dir = store.project_dir(project.id)
-    comments_store = CommentStore(project_dir)
     with store.lock(project.id):
-        comments = comments_store.load()
-        if _refresh_positions(comments, project_dir):
-            comments_store.save(comments)
+        comments = CommentStore(project_dir).load()
+        _refresh_positions(comments, project_dir)
     names = _Names(request, project.id, me)
     owner = role_of(request, project.id) == "owner"
     return [_out(t, names, me, owner) for t in comments.threads]
@@ -243,6 +241,7 @@ def reply(
         comments = comments_store.load()
         thread = _find(comments, thread_id)
         thread.messages.append(CommentMessage(author=me, text=_text(body.text)))
+        _refresh_positions(comments, store.project_dir(project.id))
         comments_store.save(CommentFile.model_validate(comments.model_dump()))
         _event(comments_store, "comment.replied", project.id, me, thread)
     owner = role_of(request, project.id) == "owner"
@@ -272,6 +271,7 @@ def edit_message(
             raise HTTPException(status_code=403, detail="seul l'auteur modifie son message")
         message.text = _text(body.text)
         message.edited_at = now_utc()
+        _refresh_positions(comments, store.project_dir(project.id))
         comments_store.save(comments)
     owner = role_of(request, project.id) == "owner"
     return _out(thread, _Names(request, project.id, me), me, owner)
@@ -315,6 +315,7 @@ def _set_resolved(
         if thread.resolved != resolved:
             thread.resolved = resolved
             thread.resolved_at = now_utc() if resolved else None
+            _refresh_positions(comments, store.project_dir(project.id))
             comments_store.save(comments)
             kind = "comment.resolved" if resolved else "comment.reopened"
             _event(comments_store, kind, project.id, me, thread)

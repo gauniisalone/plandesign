@@ -174,3 +174,37 @@ def test_local_mode_is_the_same(tmp_path: Path) -> None:
     kept = json.loads(archive.read("comments.json"))
     assert kept["threads"][-1]["messages"][0]["author"] == "local"
     assert local.delete(f"/api/projects/{pid}/comments/{tid}").status_code == 204
+
+
+def test_listing_writes_nothing_and_a_removed_item_leaves_its_last_position(
+    tmp_path: Path,
+) -> None:
+    """La liste est une lecture pure (elle suit l'élément sans écrire) ; la dernière position
+    s'enregistre quand l'élément est retiré par le PATCH du tableau."""
+    data = tmp_path / "local"
+    local = TestClient(create_app(settings=Settings(data_dir=data)))
+    pid = local.post("/api/projects", json={"name": "Épingles"}).json()["id"]
+    item = next(i for i in local.get(f"/api/projects/{pid}/board").json()["items"])
+    target = {"at": {"x": 10, "y": 10}, "item_id": item["id"]}
+    assert (
+        local.post(
+            f"/api/projects/{pid}/comments", json={"target": target, "text": "Ici"}
+        ).status_code
+        == 201
+    )
+    moved = {**item, "x": item["x"] + 300}
+    patch = local.patch(f"/api/projects/{pid}/board/items", json={"set": [moved]})
+    assert patch.status_code == 200, patch.text
+    path = data / "projects" / pid / "comments.json"
+    if not path.is_file():
+        path = next(data.rglob("comments.json"))
+    before = (path.stat().st_mtime_ns, path.read_bytes())
+    listed = local.get(f"/api/projects/{pid}/comments").json()
+    assert listed[0]["target"]["last"]["x"] == moved["x"]
+    assert (path.stat().st_mtime_ns, path.read_bytes()) == before
+    # L'élément retiré : le fil garde sa dernière position, enregistrée, et reste attaché à
+    # son id (le front l'affiche « détaché »).
+    gone = local.patch(f"/api/projects/{pid}/board/items", json={"delete": [item["id"]]})
+    assert gone.status_code == 200, gone.text
+    kept = json.loads(path.read_text(encoding="utf-8"))["threads"][0]["target"]
+    assert kept["item_id"] == item["id"] and kept["last"]["x"] == moved["x"]

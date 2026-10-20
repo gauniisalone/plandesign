@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter
 
+from openplan.pipeline.comments import CommentStore
 from openplan.pipeline.mainroom import main_room
 from openplan.pipeline.render import RenderEntry, list_renders
 from openplan.schemas.board import (
@@ -30,6 +31,7 @@ from openplan.schemas.board import (
     MediaKind,
     MediaRef,
 )
+from openplan.schemas.comments import CommentPoint
 from openplan.schemas.common import now_utc
 from openplan.schemas.scene import Project
 
@@ -110,7 +112,29 @@ def save_board(project_dir: Path, board: Board, *, expect: int | None = None) ->
     tmp = project_dir / f"{BOARD_FILE}.{uuid4().hex}.tmp"
     tmp.write_text(board.model_dump_json(indent=2) + "\n", encoding="utf-8")
     tmp.replace(project_dir / BOARD_FILE)
+    if current is not None:
+        _detach_comments(project_dir, current, board)
     return board
+
+
+def _detach_comments(project_dir: Path, before: Board, after: Board) -> None:
+    """KAN-51 : un élément retiré laisse sa dernière position aux fils qui y sont épinglés ;
+    ils restent là, « détachés ». Le seul moment où cette position s'enregistre hors d'une
+    écriture de fil (la liste des commentaires, elle, n'écrit rien)."""
+    kept = {i.id for i in after.items}
+    gone = {i.id: CommentPoint(x=i.x, y=i.y) for i in before.items if i.id not in kept}
+    if not gone:
+        return
+    comments_store = CommentStore(project_dir)
+    comments = comments_store.load()
+    changed = False
+    for thread in comments.threads:
+        item = thread.target.item_id
+        if item in gone and thread.target.last != gone[item]:
+            thread.target.last = gone[item]
+            changed = True
+    if changed:
+        comments_store.save(comments)
 
 
 def replaced(before: Board | None, after: Board) -> Board:

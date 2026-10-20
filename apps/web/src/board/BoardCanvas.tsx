@@ -1033,6 +1033,8 @@ export function BoardCanvas(props: Props) {
         fit();
       } else if (e.key === "Delete" || e.key === "Backspace") remove();
       else if (e.key === "Escape") {
+        // KAN-51 : Échap quitte l'outil Commentaire, les boutons des cadres reviennent.
+        setTool((t) => (t === "comment" ? "select" : t));
         setSelected(new Set());
         setEditing(null);
       } else if (e.key === "]") order(true);

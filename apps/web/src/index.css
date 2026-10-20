@@ -6118,6 +6118,12 @@ button.link.home-empty-link {
 .board-stage.tool-comment {
   cursor: crosshair;
 }
+/* Outil Commentaire actif : boutons et champs des éléments n'interceptent rien, le clic va à
+   l'élément lui-même, qui reçoit l'épingle (Échap ou un autre outil rendent les boutons). */
+.board-stage.tool-comment .board-item *,
+.board-stage.tool-comment .board-new-plan {
+  pointer-events: none;
+}
 .comment-pin {
   position: absolute;
   z-index: 41;

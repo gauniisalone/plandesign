@@ -15,6 +15,14 @@ async function board(page: Page, name: string) {
   return { id, region, stage: region.locator(".board-stage") };
 }
 
+/** Un coin vide de l'espace de travail : on dézoome, ce qui laisse de la place autour des
+ *  cadres (le centre tombe sur le cadre du plan et ses boutons). */
+async function emptySpot(page: Page) {
+  for (let i = 0; i < 3; i++) await page.keyboard.press("-");
+  const box = (await page.locator(".board-stage").boundingBox())!;
+  return { x: box.x + box.width - 140, y: box.y + box.height * 0.3 };
+}
+
 async function publish(page: Page, text: string) {
   const draft = page.getByRole("dialog", { name: "Nouveau commentaire" });
   await draft.getByLabel("Votre commentaire").fill(text);
@@ -24,14 +32,14 @@ async function publish(page: Page, text: string) {
 test("KAN-51 local : poser, répondre, résoudre, rouvrir, masquer", async ({
   page,
 }) => {
-  const { region, stage } = await board(page, "Commentaires");
-  const box = (await stage.boundingBox())!;
+  const { region } = await board(page, "Commentaires");
+  const spot = await emptySpot(page);
   // Outil par la touche c, puis un clic n'importe où.
   await page.keyboard.press("c");
   await expect(
-    region.getByRole("button", { name: "Commentaire" }),
+    region.getByRole("button", { name: "Commentaire", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await stage.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await page.mouse.click(spot.x, spot.y);
   await publish(page, "<b>Plus</b> de lumière ici");
   const pin = region.getByRole("button", { name: "Commentaire de Vous" });
   await expect(pin).toBeVisible();
@@ -98,12 +106,20 @@ test("KAN-51 local : une épingle sur un élément le suit, puis reste « détac
     h: number;
     text: string;
   };
-  const items = (
-    (await (await page.request.get(`/api/projects/${id}/board`)).json()) as {
-      items: Item[];
-    }
-  ).items;
-  const moved = items.find((i) => i.kind === "note" && i.text === "Canapé")!;
+  // La note part au serveur après un court délai (B2c) : on attend qu'elle y soit.
+  let moved: Item | undefined;
+  await expect
+    .poll(async () => {
+      const items = (
+        (await (await page.request.get(`/api/projects/${id}/board`)).json()) as {
+          items: Item[];
+        }
+      ).items;
+      moved = items.find((i) => i.kind === "note" && i.text === "Canapé");
+      return moved !== undefined;
+    })
+    .toBe(true);
+  if (!moved) throw new Error("note absente du serveur");
   await page.request.patch(`/api/projects/${id}/board/items`, {
     data: { set: [{ ...moved, x: moved.x + 300 }] },
   });
