@@ -88,11 +88,12 @@ async function newBoard(page: Page, name: string): Promise<string> {
   return id;
 }
 
+// KAN-43 : la vue (zoom, déplacement) s'enregistre par PUT …/view, plus par le tableau.
 const boardSaved = (page: Page) =>
   page.waitForResponse(
     (r) =>
-      r.request().method() === "PATCH" &&
-      new URL(r.url()).pathname.endsWith("/board/items"),
+      r.request().method() === "PUT" &&
+      new URL(r.url()).pathname.endsWith("/view"),
   );
 
 test("KAN-56 (1) : zoomer puis enregistrer la vue ne relit ni médias ni rendus contextualisés", async ({
@@ -103,6 +104,15 @@ test("KAN-56 (1) : zoomer puis enregistrer la vue ne relit ni médias ni rendus 
   await signIn(page, unique("vue"));
   await newBoard(page, "Vue seule (KAN-56)");
   const mark = reads.mark();
+  // KAN-43 : la preuve même : zoomer n'écrit plus le tableau (aucun PATCH …/board/items).
+  const boardWrites: string[] = [];
+  page.on("request", (r) => {
+    if (
+      r.method() === "PATCH" &&
+      new URL(r.url()).pathname.endsWith("/board/items")
+    )
+      boardWrites.push(r.url());
+  });
   const saved = boardSaved(page);
   const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
   await zoom.getByRole("button", { name: "Zoomer", exact: true }).click();
@@ -111,6 +121,7 @@ test("KAN-56 (1) : zoomer puis enregistrer la vue ne relit ni médias ni rendus 
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(800);
   expect(reads.since(mark)).toEqual([]);
+  expect(boardWrites).toEqual([]);
 });
 
 test("KAN-56 (2a) : une image importée dans Inspirations relit les médias", async ({
@@ -210,12 +221,12 @@ test("KAN-56 (2b) : un rendu contextualisé qui se termine apparaît sans rechar
     await ws.close({ code: 1012, reason: "redémarrage" });
   await page.waitForTimeout(1_500);
   allow = true;
-  await expect(
-    page.locator(".board-item.kind-contextual"),
-  ).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator(".board-item.kind-contextual")).toHaveCount(1, {
+    timeout: 30_000,
+  });
   await expect
-    .poll(() =>
-      reads.since(mark).filter((p) => p.endsWith("/contextual")).length,
+    .poll(
+      () => reads.since(mark).filter((p) => p.endsWith("/contextual")).length,
     )
     .toBeGreaterThan(0);
   await shot(page, "kan56-2b-rendu-termine");

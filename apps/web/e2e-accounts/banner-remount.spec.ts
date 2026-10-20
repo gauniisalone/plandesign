@@ -105,12 +105,12 @@ test("KAN-48 : bandeau « Reconnexion… », l'espace de travail n'est pas remon
   await photos.locator(".board-frame-name").click();
   await expect(photos).toHaveClass(/\bselected\b/);
   const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
-  // Le zoom s'enregistre 1,2 s après le geste, et le tableau enregistré relit médias et
-  // rendus contextualisés : on attend cet enregistrement avant de compter.
+  // Le zoom s'enregistre 1,2 s après le geste (KAN-43 : PUT …/view, plus par le tableau) :
+  // on attend cet enregistrement avant de compter.
   const viewSaved = page.waitForResponse(
     (r) =>
-      r.request().method() === "PATCH" &&
-      new URL(r.url()).pathname.endsWith("/board/items"),
+      r.request().method() === "PUT" &&
+      new URL(r.url()).pathname.endsWith("/view"),
   );
   await zoom.getByRole("button", { name: "Zoomer", exact: true }).click();
   await page.waitForTimeout(300);
