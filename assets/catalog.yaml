@@ -242,7 +242,7 @@ assets:
     preview: previews/bedBuiltin.png
     license: cc0
     author: "PlanDesign (meuble paramétrique, géométrie calculée)"
-    notes: "Coffre à tiroirs de 40 cm, matelas à 0,55 m, planche de tête ; tête vers la jambette. Largeurs 90, 140 ou 160 cm. Il faut 0,90 m libres au-dessus du matelas à l'oreiller."
+    notes: "Niche qui suit la pente (deux joues, un fond, une étagère quand la hauteur le permet), coffre de 40 cm avec tiroirs au pied, matelas à 0,55 m ; tête vers la jambette. Largeurs 90, 140 ou 160 cm. Il faut 0,90 m libres au-dessus du matelas à l'oreiller et 1,80 m pour se tenir debout devant le pied."
   - id: bed_bunk
     category: bed_bunk
     label: "Lits superposés"

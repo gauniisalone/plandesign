@@ -38,7 +38,13 @@ from numpy.typing import NDArray
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
-from openplan.geom.built_in_bed import BUILT_IN_BED, MIN_HEADROOM_M, headroom_at
+from openplan.geom.built_in_bed import (
+    BUILT_IN_BED,
+    MIN_HEADROOM_M,
+    STANDING_M,
+    headroom_at,
+    standing_at,
+)
 from openplan.geom.convex import Solid
 from openplan.geom.opening_symbols import (
     SLIDE_DEPTH_M,
@@ -669,8 +675,26 @@ def _check_bed_headroom(
                     severity="high" if mode == "hard" else "medium",
                     element_ids=[bed.id],
                     message=(
-                        f"{piece.label} : {free:.2f} m libres au-dessus du matelas à l'oreiller, "
-                        f"il en faut {MIN_HEADROOM_M:.2f} m : à éloigner de la jambette."
+                        f"{piece.label} : {_metres(free)} m libres au-dessus du matelas à "
+                        f"l'oreiller, il en faut {_metres(MIN_HEADROOM_M)} m : à éloigner de la "
+                        "jambette."
+                    ),
+                )
+            )
+        # KAN-25 : on entre dans le lit par le pied, debout (règle souple).
+        standing = standing_at(
+            roofs, level.height, t.position.x, t.position.y, t.yaw, bed.bbox.depth * t.scale
+        )
+        if standing + 1e-6 < STANDING_M:
+            out.append(
+                Violation(
+                    type="bed_access",
+                    severity="medium",
+                    element_ids=[bed.id],
+                    message=(
+                        f"{piece.label} : {_metres(standing)} m sous la pente devant le pied du "
+                        f"lit, il en faut {_metres(STANDING_M)} m pour s'y tenir debout : à "
+                        "tourner le pied vers le faîtage."
                     ),
                 )
             )

@@ -10,6 +10,7 @@ from openplan.geom.built_in_bed import (
     BUILT_IN_BED,
     MATTRESS_TOP_M,
     MIN_HEADROOM_M,
+    SIDE_M,
     drawer_count,
     parts,
     pillow_point,
@@ -36,15 +37,17 @@ from openplan.validation.layout import bed_headroom_at, check_layout, clearance_
 from tests.factories import attic_project, only_level
 
 
-def test_parts_head_base_mattress_and_drawers_on_both_sides() -> None:
+def test_parts_base_mattress_and_drawers_in_front() -> None:
     boxes = parts(1.4, 2.05)
     kinds = [b.part for b in boxes]
-    assert kinds[:3] == ["head", "base", "mattress"]
-    assert kinds.count("drawer") == 2 * drawer_count(2.05) == 6
-    mattress = boxes[2]
+    assert kinds[:2] == ["base", "mattress"]
+    # KAN-25 : les tiroirs passent en façade, au pied (les joues ferment les grands côtés).
+    drawers = [b for b in boxes if b.part == "drawer"]
+    assert len(drawers) == drawer_count(1.4) == 3 and drawer_count(0.9) == 2
+    assert all(d.v1 == pytest.approx(1.025) for d in drawers)
+    mattress = boxes[1]
     assert mattress.z1 == pytest.approx(MATTRESS_TOP_M) == pytest.approx(0.55)
-    head = boxes[0]
-    assert head.v0 == pytest.approx(-1.025) and head.z1 == pytest.approx(0.80)
+    assert all(b.u0 >= -0.7 + SIDE_M - 1e-9 and b.u1 <= 0.7 - SIDE_M + 1e-9 for b in boxes)
 
 
 def test_catalog_card_and_symbol() -> None:
@@ -144,7 +147,7 @@ def test_bake_splits_the_bed_into_wood_and_linen_parts() -> None:
         e for e in only_level(after).elements.values() if getattr(e, "category", "") == BUILT_IN_BED
     )
     prisms = [p for p in bake.prisms if p.element_id == bed.id]
-    assert len(prisms) == 3 + 2 * drawer_count(2.05)
+    assert len(prisms) == 2 + drawer_count(0.9)
     assert {p.finish for p in prisms} >= {"linen"}
     assert len({p.name for p in prisms}) == len(prisms), "chaque morceau a son nom"
 

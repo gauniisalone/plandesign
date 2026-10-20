@@ -122,12 +122,15 @@ SYMBOLS: dict[str, FurnitureSymbol] = {
         _line((0.5, 0.05), (0.2, -0.22)),
     ),
     "bed_builtin": _sym(
-        # Lit encastré (H1) : planche de tête au dos, oreiller, pli de couette, tiroirs du coffre.
+        # Lit encastré (H1, KAN-25) : niche (le fond et les deux joues), oreiller, pli de couette,
+        # tiroirs en façade au pied.
         _rect(-0.5, -0.5, 0.5, -0.475),
-        _rect(-0.36, -0.45, 0.36, -0.32),
-        _line((-0.5, -0.2), (0.5, -0.2)),
-        *(_line((-0.5, v), (-0.44, v)) for v in (-0.1, 0.2)),
-        *(_line((0.44, v), (0.5, v)) for v in (-0.1, 0.2)),
+        _rect(-0.5, -0.475, -0.47, 0.5),
+        _rect(0.47, -0.475, 0.5, 0.5),
+        _rect(-0.34, -0.44, 0.34, -0.31),
+        _line((-0.47, -0.2), (0.47, -0.2)),
+        _line((-0.47, 0.44), (0.47, 0.44)),
+        *(_line((u, 0.44), (u, 0.5)) for u in (-0.16, 0.16)),
     ),
     "bed_bunk": _sym(
         _rect(-0.36, -0.46, 0.36, -0.32),

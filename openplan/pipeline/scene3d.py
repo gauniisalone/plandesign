@@ -26,7 +26,7 @@ from shapely.geometry import LineString, Point, Polygon
 from trimesh.creation import extrude_polygon
 from trimesh.visual.color import ColorVisuals
 
-from openplan.geom.built_in_bed import BUILT_IN_BED
+from openplan.geom.built_in_bed import BUILT_IN_BED, NICHE_GAP_M, capping, niche
 from openplan.geom.built_in_bed import parts as bed_parts
 from openplan.geom.convex import SURE_TOUCH_M, Solid
 from openplan.geom.polygon import to_points
@@ -45,6 +45,7 @@ from openplan.geom.velux import (
     reveal_solids,
     roof_panels,
     timber_settings,
+    velux_casings,
     window_holes,
 )
 from openplan.geom.wallgraph import GeometryError, WallGraph
@@ -487,6 +488,52 @@ def reveal_finish(level: Level) -> Finish:
     return "wood_boards" if ambiance(level) in _PLANKED else "plaster"
 
 
+def niche_planes(panels: list[RoofPanel]) -> Float:
+    """KAN-25 : un plan par pente sous lequel reste la niche d'un lit encastré (n·p + c ≤ 0),
+    sous les chevrons quand la charpente est apparente, avec le jeu NICHE_GAP_M."""
+    rows = []
+    for panel in panels:
+        depth = RAFTER[1] if timber_settings(panel.roof)[0] else 0.0
+        n = panel.normal
+        rows.append((*(float(c) for c in n), depth + NICHE_GAP_M - float(n @ panel.origin)))
+    return np.array(rows, dtype=np.float64).reshape(-1, 4)
+
+
+def built_in_niches(level: Level, graph: WallGraph) -> dict[UUID, list[tuple[str, Float]]]:
+    """KAN-25 : la niche de chaque lit encastré visible (joues, fond, étagère), en sommets de
+    solides convexes. Seule source pour le bake (donc le GLB et Blender) et les tests : sous les
+    chevrons, et plafonnée sous les pannes, la faîtière et le caisson en pleine profondeur des
+    velux."""
+    beds = [
+        e
+        for e in level.elements.values()
+        if isinstance(e, Furniture) and e.visible and e.category == BUILT_IN_BED
+    ]
+    if not beds:
+        return {}
+    panels = roof_panels(level, graph)
+    planes = niche_planes(panels)
+    solids = timber_solids(level, graph)
+    solids += [board for _, boards in velux_casings(level, graph) for board in boards]
+    obstacles = capping(planes, solids)
+    ceiling = level.elevation + level.height - NICHE_GAP_M
+    out: dict[UUID, list[tuple[str, Float]]] = {}
+    for bed in beds:
+        t, b = bed.transform, bed.bbox
+        out[bed.id] = niche(
+            b.width * t.scale,
+            b.depth * t.scale,
+            t.position.x,
+            t.position.y,
+            t.yaw,
+            t.position.z,  # même cote que les prismes du coffre (`_bake_built_in_bed`)
+            planes,
+            ceiling,
+            obstacles,
+        )
+    return out
+
+
 def _clip_below_roofs(mesh: trimesh.Trimesh, panels: list[RoofPanel]) -> trimesh.Trimesh | None:
     """Ne garde du solide que ce qui est sous chaque pente ; None s'il ne reste rien."""
     for panel in panels:
@@ -527,6 +574,7 @@ def _bake_level(project: Project, level: Level, graph: WallGraph, style: BakeSty
     for panel in panels:
         polyhedra.extend(_bake_roof_panel(level, panel, style, furniture))
     prisms.extend(furniture)
+    polyhedra.extend(_bake_niches(level, graph, style))
     prisms.extend(_bake_stairs(level, graph, style))
     # Menuiseries (E5b) : teintes de matière dans les deux styles, c'est de l'habillage.
     prisms.extend(joinery_prisms(level, graph, lambda _o, finish: FINISH_COLORS[finish]))
@@ -591,9 +639,9 @@ def _bake_furniture(level: Level, style: BakeStyle) -> list[Prism]:
 
 
 def _bake_built_in_bed(bed: Furniture, style: BakeStyle) -> list[Prism]:
-    """Lit encastré sous pente (H1) : coffre et planche de tête dans le bois de l'ambiance,
-    façades de tiroirs un ton plus sombre, matelas en lin ; chaque morceau est un prisme du
-    même élément (sa boîte reste la référence des règles)."""
+    """Lit encastré sous pente (H1) : coffre dans le bois de l'ambiance, façades de tiroirs un
+    ton plus sombre, matelas en lin ; chaque morceau est un prisme du même élément (sa boîte
+    reste la référence des règles). La niche, qui suit la pente, est à part (`_bake_niches`)."""
     t, b = bed.transform, bed.bbox
     wood = finish_of(bed, "furniture")
     woods = _woods() or {}
@@ -628,6 +676,37 @@ def _bake_built_in_bed(bed: Furniture, style: BakeStyle) -> list[Prism]:
                 yaw=t.yaw,
             )
         )
+    return out
+
+
+NICHE_PART = 100
+"""Numéro du premier morceau de niche d'un lit encastré (ceux du coffre commencent à 0)."""
+
+
+def _bake_niches(level: Level, graph: WallGraph, style: BakeStyle) -> list[Polyhedron]:
+    """Niche de chaque lit encastré (KAN-25) : joues, fond et étagère dans le bois de l'ambiance,
+    comme le coffre ; des polyèdres, car leur dessus suit la pente."""
+    out: list[Polyhedron] = []
+    woods = _woods() or {}
+    for bed_id, solids in built_in_niches(level, graph).items():
+        bed = level.elements[bed_id]
+        wood = woods.get("wood", finish_of(bed, "furniture"))
+        for index, (_name, points) in enumerate(solids, start=NICHE_PART):
+            mesh = trimesh.convex.convex_hull(points)
+            out.append(
+                Polyhedron(
+                    element_id=bed.id,
+                    part=index,
+                    kind="furniture",
+                    source=bed.source,
+                    vertices=[
+                        Point3(x=float(p[0]), y=float(p[1]), z=float(p[2])) for p in mesh.vertices
+                    ],
+                    faces=[(int(f[0]), int(f[1]), int(f[2])) for f in mesh.faces],
+                    color=_color(bed.source, wood, style),
+                    finish=wood,
+                )
+            )
     return out
 
 

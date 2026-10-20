@@ -75,8 +75,9 @@ class Prism(StrictModel):
         return str(self.element_id) if self.part == 0 else f"{self.element_id}#{self.part}"
 
 
-PolyhedronKind = Literal["wall", "roof", "slab", "roof_window", "timber", "reveal"]
-"""`reveal` : ébrasement d'un velux (H2), caisson biais sous la toiture."""
+PolyhedronKind = Literal["wall", "roof", "slab", "roof_window", "timber", "reveal", "furniture"]
+"""`reveal` : ébrasement d'un velux (H2), caisson biais sous la toiture ; `furniture` : niche
+d'un lit encastré (KAN-25), dont le dessus suit la pente."""
 
 
 class Polyhedron(StrictModel):

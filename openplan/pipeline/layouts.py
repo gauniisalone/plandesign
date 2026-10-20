@@ -28,7 +28,7 @@ from pydantic import Field
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
-from openplan.geom.built_in_bed import BUILT_IN_BED, MIN_HEADROOM_M
+from openplan.geom.built_in_bed import BUILT_IN_BED, MIN_HEADROOM_M, STANDING_M, standing_at
 from openplan.geom.roof import derived_roofs, roof_window_footprint
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import DINING_TABLES, TABLE_CHAIRS, Slot, compose
@@ -1204,8 +1204,9 @@ def _bed_fits(
     ctx: Context,
     placed: list[Placed] | None = None,
 ) -> bool:
-    """Lit encastré (H1, H5) : 0,90 m libres au-dessus du matelas, à l'oreiller, et 40 cm au
-    moins jusqu'au lit encastré voisin ; tout autre meuble passe."""
+    """Lit encastré (H1, H5, KAN-25) : 0,90 m libres au-dessus du matelas, à l'oreiller, 1,80 m
+    pour se tenir debout devant le pied, et 40 cm au moins jusqu'au lit encastré voisin ; tout
+    autre meuble passe."""
     if want.asset.category != BUILT_IN_BED:
         return True
     if ctx.roofs and bed_headroom_at(ctx.level, ctx.roofs, x, y, yaw, want.depth) < (
@@ -1214,6 +1215,11 @@ def _bed_fits(
         return False
     if ctx.roofs and not _head_is_lower(x, y, yaw, want, ctx):
         # H5 : un lit encastré a la tête sous le rampant (décision PO), jamais le long de la pente.
+        return False
+    if ctx.roofs and standing_at(ctx.roofs, ctx.level.height, x, y, yaw, want.depth) < (
+        STANDING_M - 1e-6
+    ):
+        # KAN-25 : la niche ferme les grands côtés, on entre par le pied, debout.
         return False
     polygon = _polygon(x, y, yaw, want)
     return not any(

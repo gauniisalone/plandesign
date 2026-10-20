@@ -121,6 +121,7 @@ RULE_LABELS: dict[str, str] = {
     "element_too_tall_under_slope": "trop haut sous la pente",
     "velux_casing": "sous le caisson d'un velux",
     "bed_headroom": "hauteur libre insuffisante au-dessus du lit",
+    "bed_access": "trop bas pour se tenir debout devant le lit",
     "furniture_in_stairwell": "meuble dans la trémie",
     "stairs_arrival_blocked": "arrivée d'escalier encombrée",
     "stairs_headroom": "échappée d'escalier insuffisante",
