@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   commentsApi,
   type BoardItem,
   type CommentTarget,
   type CommentThread,
 } from "../api/client";
+import { LOCAL_REFRESH_MS } from "../state/bell";
 
 /** KAN-51 : commentaires de l'espace de travail. Des épingles posées n'importe où ou sur un
  *  élément (elles le suivent), un fil de réponses signées (nom, couleur, heure), Résoudre et
@@ -32,12 +33,18 @@ export interface CommentsController {
   resolve: (id: string, resolved: boolean) => Promise<void>;
   removeMessage: (id: string, messageId: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
+  /** KAN-68 : en local, change quand les fils lus ont changé (une écriture depuis cet
+   *  onglet, ou un commentaire posé ailleurs) : l'Activité se relit. Avec les comptes, reste
+   *  à 0 (le WebSocket en décide). */
+  revision: number;
 }
 
 export function useComments(
   projectId: string,
   canComment: boolean,
   tick: number,
+  /** KAN-68 : sans comptes (pas de WebSocket), relire comme la cloche. */
+  local = false,
 ): CommentsController {
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +52,10 @@ export function useComments(
   const [openId, setOpenId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [revision, setRevision] = useState(0);
+  /** Ce qui a été lu la dernière fois (null : rien encore, la première lecture ne compte
+   *  pas comme un changement). */
+  const seen = useRef<string | null>(null);
 
   const reload = useCallback(
     () =>
@@ -52,15 +63,39 @@ export function useComments(
         (list) => {
           setThreads(list);
           setError(null);
+          const now = JSON.stringify(list);
+          if (local && seen.current !== null && seen.current !== now)
+            setRevision((n) => n + 1);
+          seen.current = now;
         },
         (e: unknown) => setError(String(e)),
       ),
-    [projectId],
+    [projectId, local],
   );
+  useEffect(() => {
+    seen.current = null;
+  }, [projectId]);
   // Au chargement, et à chaque avis « comments » d'un autre membre (moins de 2 s).
   useEffect(() => {
     void reload();
   }, [reload, tick]);
+  // KAN-68 : en local, comme la cloche (`useBell`) : au retour sur l'onglet, au focus et
+  // toutes les 15 s. Avec les comptes, le WebSocket reste la source (rien ici).
+  useEffect(() => {
+    if (!local) return;
+    const again = () => void reload();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") again();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", again);
+    const timer = window.setInterval(again, LOCAL_REFRESH_MS);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", again);
+      window.clearInterval(timer);
+    };
+  }, [local, reload]);
 
   const act = useCallback(
     async (action: () => Promise<unknown>) => {
@@ -77,6 +112,7 @@ export function useComments(
 
   return {
     threads,
+    revision,
     canComment,
     error,
     draft,

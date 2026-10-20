@@ -7,7 +7,8 @@ import { retryDelay } from "./live";
  *  appareils). En local, pas de WebSocket : une relecture légère toutes les 15 s tient lieu
  *  de direct (le serveur est sur la machine). */
 
-const LOCAL_REFRESH_MS = 15_000;
+/** KAN-68 : le même rythme pour les commentaires en local (`useComments`). */
+export const LOCAL_REFRESH_MS = 15_000;
 
 export function useBell(accounts: boolean): {
   unread: number;

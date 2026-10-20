@@ -388,12 +388,14 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     projectId,
     `${boardSync}|${contextualTick}|${liveTick}`,
   );
-  // KAN-51 : commentaires ; relus à chaque avis « comments » d'un autre membre.
+  // KAN-51 : commentaires ; relus à chaque avis « comments » d'un autre membre. KAN-68 : en
+  // local (sans WebSocket), relus comme la cloche (retour sur l'onglet, focus, 15 s).
   const [commentsTick, setCommentsTick] = useState(0);
   const comments = useComments(
     projectId,
     role === "owner" || role === "editor" || role === "commenter",
     commentsTick,
+    account === null,
   );
   const live = useLive(projectId, account !== null, {
     onChanged: (scope) => {
@@ -1633,7 +1635,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           {activityOpen && step !== "board" && (
             <ActivityPanel
               projectId={projectId}
-              tick={`${liveTick}|${commentsTick}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+              tick={`${liveTick}|${commentsTick}.${comments.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
               onClose={() => setActivityOpen(false)}
             />
           )}
@@ -2024,7 +2026,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                           <ActivityPanel
                             inline
                             projectId={projectId}
-                            tick={`${liveTick}|${commentsTick}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+                            tick={`${liveTick}|${commentsTick}.${comments.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
                             onClose={() => setActivityOpen(false)}
                           />
                         )
