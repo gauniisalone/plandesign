@@ -44,6 +44,7 @@ from openplan.adapters.protocols import (
 )
 from openplan.pipeline.attic import AtticEstimate, Estimate, run_attic
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic
+from openplan.pipeline.confidence import EstimateConfidence, assess, assess_plan_image
 from openplan.pipeline.depthplan import run_depthplan
 from openplan.pipeline.detection import detect_and_propose
 from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, DetectionError
@@ -105,6 +106,10 @@ class AutoPlanRun(StrictModel):
     low_confidence: bool = False
     """Plan construit mais peu sûr : l'éditeur affiche « plan estimé, vérifiez l'échelle »
     avec le bouton Recalibrer."""
+    estimate_confidence: EstimateConfidence | None = None
+    """KAN-31 : niveau affiché (« fiable », « à vérifier », « approximatif ») et sa raison
+    principale, dérivés de facteurs chiffrés sur le banc (pipeline/confidence.py). None quand
+    rien n'a été estimé (méthode « none ») ou quand la photo est posée sur un plan existant."""
     project: Project
     result: StepResult
 
@@ -156,6 +161,17 @@ def _seen_fraction(project: Project, level_id: UUID) -> float:
     if not walls:
         return 0.0
     return sum(w.source is not Source.INFERRED for w in walls) / len(walls)
+
+
+def _focal_from_vps(image: ImageArray) -> bool:
+    """KAN-31 : la focale vient-elle des lignes de fuite (sinon EXIF ou repli 0,8 × grand côté) ?"""
+    from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
+
+    try:
+        frame = VanishingPointCameraEstimator().analyse(image).frame
+    except (ValueError, RuntimeError):
+        return False
+    return frame is not None and frame.focal_from_vps
 
 
 def _roof_detector(detector: object) -> RoofWindowDetector | None:
@@ -801,6 +817,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
     backup: Method | None = None
     scores: dict[str, float] = {}
     confidence = 0.0
+    trust: EstimateConfidence | None = None
     artifacts: list[Artifact] = []
     assumptions: list[Assumption] = []
     after = project
@@ -810,6 +827,9 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             chain, project, project_dir, level_id, image, out_dir, rid
         )
         said.extend(plan_notices)
+        if method == "plan_image":
+            # « n cote(s) lue(s) sur le plan » : échelle tirée des cotes (guess_plan_scale).
+            trust = assess_plan_image(any("cote(s) lue(s)" in n for n in plan_notices))
         assumptions.append(
             Assumption(
                 text="Image reconnue comme un plan dessiné : traits épais vectorisés, échelle "
@@ -909,6 +929,15 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                     )
                 )
             backup = ranked[1].method if len(ranked) > 1 else None
+            trust = assess(
+                "entered" if entered else "assumed",
+                camera_height_m=height if entered else None,
+                focal_from_vps=_focal_from_vps(image),
+                floor_out_of_view=estimate is not None and estimate.floor_assumed,
+                eave_unseen=method == "attic"
+                and estimate is not None
+                and not estimate.eave_heights,
+            )
             if method != "attic":
                 after = _ceiling(after, level_id, estimate)
             after = _openings(
@@ -961,6 +990,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
         stages=chain.stages,
         notices=said,
         low_confidence=method != "none" and confidence < LOW_CONFIDENCE,
+        estimate_confidence=trust if method != "none" else None,
         project=after,
         result=StepResult(
             step=STEP,

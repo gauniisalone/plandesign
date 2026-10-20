@@ -1872,6 +1872,15 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 <span>
                   <strong>Plan estimé</strong> : vérifiez l'échelle avec une
                   longueur que vous connaissez.
+                  {state.lastAuto.run.estimate_confidence && (
+                    <span
+                      className={`notice trust-level ${state.lastAuto.run.estimate_confidence.level}`}
+                      aria-label="Confiance de l'estimation"
+                    >
+                      Confiance : {state.lastAuto.run.estimate_confidence.label}{" "}
+                      ({state.lastAuto.run.estimate_confidence.reason})
+                    </span>
+                  )}
                   {state.lastAuto.run.notices.map((n, i) => (
                     <span key={i} className="muted notice">
                       {n}

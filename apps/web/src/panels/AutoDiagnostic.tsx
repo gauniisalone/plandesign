@@ -36,9 +36,19 @@ export function AutoDiagnostic({ last }: { last: AutoPlanResult | null }) {
               {last.run.backup
                 ? ` · en secours : ${METHOD_LABEL[last.run.backup] ?? last.run.backup}`
                 : ""}{" "}
-              · confiance {(last.run.result.confidence * 100).toFixed(0)} % ·{" "}
-              {last.run.result.duration_s.toFixed(1)} s
+              {last.run.estimate_confidence
+                ? ` · confiance : ${last.run.estimate_confidence.label}`
+                : ""}{" "}
+              · {last.run.result.duration_s.toFixed(1).replace(".", ",")} s
             </p>
+            {last.run.estimate_confidence && (
+              <p className="muted">
+                Facteurs :{" "}
+                {last.run.estimate_confidence.factors
+                  .map((f) => f.label)
+                  .join(" · ")}
+              </p>
+            )}
             <ul className="list">
               {last.run.stages.map((stage, i) => (
                 <li key={i} className={stage.status === "done" ? "" : "muted"}>

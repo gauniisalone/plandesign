@@ -2454,6 +2454,19 @@ button.cta:hover:not(:disabled) {
   font-size: 0.82rem;
 }
 
+/* KAN-31 : niveau de confiance de l'estimation (fiable, à vérifier, approximatif). */
+.auto-banner .trust-level {
+  font-weight: 600;
+}
+
+.auto-banner .trust-level.fiable {
+  color: var(--ok);
+}
+
+.auto-banner .trust-level.approximatif {
+  color: var(--warn);
+}
+
 .auto-banner button {
   flex: none;
 }

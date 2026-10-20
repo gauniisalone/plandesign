@@ -27,6 +27,22 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
 
+def _add_bench_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    bench = sub.add_parser(
+        "bench",
+        help="banc KAN-33 : scène de contrôle + photos réelles (règle connue) → erreurs",
+    )
+    bench.add_argument(
+        "root", type=Path, nargs="?", default=Path("data/eval"), help="défaut : data/eval"
+    )
+    bench.add_argument(
+        "--compute-depth",
+        action="store_true",
+        help="calcule la profondeur manquante (modèle, GPU si présent) et l'enregistre",
+    )
+    bench.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
+
+
 def _add_materials_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     materials = sub.add_parser(
         "materials", help="matières de rendu CC0 : liste, téléchargement (action explicite)"
@@ -122,6 +138,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-openings", action="store_true", help="sans détection des portes et fenêtres"
     )
     evaluate.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
+
+    _add_bench_parser(sub)
 
     models = sub.add_parser("models", help="registre des modèles : liste, téléchargement des poids")
     models_sub = models.add_subparsers(dest="models_command", required=True)
@@ -301,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         "models": _models,
         "materials": _materials,
         "evaluate": _evaluate,
+        "bench": _bench,
         "token": _token,
         "doctor": _doctor,
         "journal": _journal,
@@ -352,6 +371,28 @@ def _journal_metrics(root: Path, dirs: list[Path]) -> int:
                 project, store.project_dir(project.id), store.runs_dir(project.id)
             ).model_dump_json()
         )
+    return 0
+
+
+def _bench(args: argparse.Namespace) -> int:
+    from openplan.pipeline.bench import run_bench, write_report
+
+    root: Path = args.root
+    if not root.is_dir():
+        print(f"racine introuvable : {root}")
+        return 2
+    estimator = None
+    if args.compute_depth:
+        from openplan.adapters.registry import build_depth_estimator
+
+        settings = Settings.from_env()
+        estimator = build_depth_estimator(args.models_dir or settings.models_dir, settings.device)
+    report = run_bench(root, estimator=estimator, progress=print)
+    md, js = write_report(report, root)
+    print(md)
+    print(js)
+    for key, value in report.medians.items():
+        print(f"  médiane |erreur| {key} : {value * 100:.0f} %")
     return 0
 
 

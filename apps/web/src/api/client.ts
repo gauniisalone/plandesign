@@ -869,6 +869,14 @@ export interface AutoStage {
   detail: string;
 }
 
+export interface EstimateConfidence {
+  level: "fiable" | "a_verifier" | "approximatif";
+  label: string;
+  reason: string;
+  expected_error: number;
+  factors: { key: string; label: string; error: number; advice: string }[];
+}
+
 export interface AutoPlanRun {
   run_id: string;
   image_id: string;
@@ -880,6 +888,9 @@ export interface AutoPlanRun {
   /** À dire une fois : ce qui manque et sa commande, échelle devinée. */
   notices: string[];
   low_confidence: boolean;
+  /** KAN-31 : niveau de confiance (« fiable », « à vérifier », « approximatif ») et sa
+   *  raison principale, au lieu d'un pourcentage ; null si rien n'a été estimé. */
+  estimate_confidence?: EstimateConfidence | null;
   project: Project;
   result: StepResult;
 }
