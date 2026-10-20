@@ -991,8 +991,11 @@ test("KAN-49 : session révoquée, /api coupé sauf /api/auth/me : la connexion 
     ws.connectToServer();
     sockets.push(ws);
   });
+  // Une adresse unique par passage : les répétitions (5 passages de suite) ne partagent ni
+  // compte ni session.
+  const email = `noe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}@example.org`;
   await gotoApp(page, "/");
-  await signInHere(page, "noe@example.org", "Noé");
+  await signInHere(page, email, "Noé");
   const origin = { Origin: new URL(page.url()).origin };
   const made = await page.request.post("/api/projects", {
     data: { name: "Projet de Noé" },
@@ -1002,6 +1005,13 @@ test("KAN-49 : session révoquée, /api coupé sauf /api/auth/me : la connexion 
   await gotoApp(page, `/#/projects/${id}`);
   await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => sockets.length).toBeGreaterThan(0);
+  // Page calme avant de couper et de révoquer : en développement, React monte l'espace de
+  // travail deux fois, et la seconde vague de lectures (media, contextual, home/settings),
+  // déjà partie, répondrait 401 après la révocation sans passer par la coupure. On attend
+  // qu'aucune requête ne soit en cours (la connexion de présence ne compte pas), puis un
+  // court délai pour une éventuelle lecture tardive.
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(500);
 
   // Réseau /api coupé, sauf /api/auth/me : avant le correctif, la connexion attendait la 401
   // d'un rechargement du projet, qui ne venait jamais.
@@ -1040,7 +1050,7 @@ test("KAN-49 : session révoquée, /api coupé sauf /api/auth/me : la connexion 
   // Must have 2 : réseau rétabli, reconnexion, retour sur le projet ouvert.
   await page.unroute(cut);
   refuse = false;
-  await signInHere(page, "noe@example.org", "Noé");
+  await signInHere(page, email, "Noé");
   await expect(page.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
   expect(page.url()).toContain(`#/projects/${id}`);
 });
