@@ -20,6 +20,7 @@ from pydantic import Field
 from openplan.adapters.gateway import ModelGateway
 from openplan.adapters.protocols import LanguageModel
 from openplan.adapters.remote.assistant import AssistantAgent, AssistantParseError, parse_reply
+from openplan.pipeline.assistant_openings import move_opening, remove_opening, resize_opening
 from openplan.pipeline.assistant_plan import add_opening, add_stairs, name_room, set_dimension
 from openplan.pipeline.floorplan import DetectionError
 from openplan.pipeline.intention import describe_room
@@ -518,6 +519,12 @@ def act(  # noqa: PLR0912, PLR0915
             current, action = set_dimension(current, level_id, intent, rid)
         elif intent.kind == "add_opening":
             current, action = add_opening(current, level_id, intent, rid)
+        elif intent.kind == "move_opening":
+            current, action = move_opening(current, level_id, intent, rid)
+        elif intent.kind == "remove_opening":
+            current, action = remove_opening(current, level_id, intent, rid)
+        elif intent.kind == "resize_opening":
+            current, action = resize_opening(current, level_id, intent, rid)
         elif intent.kind == "add_stairs":
             current, action = add_stairs(current, level_id, intent, rid)
         elif intent.kind == "name_room":

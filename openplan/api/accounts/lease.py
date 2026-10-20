@@ -48,6 +48,7 @@ LEASED_ROUTES: frozenset[tuple[str, str]] = frozenset(
         "/area-guard/undo",
         "/layouts/apply",
         "/assistant/act",
+        "/assistant/say",
         "/rooms/{room_id}/instruction",
         "/attic",
         "/import-plan",

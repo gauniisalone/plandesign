@@ -324,8 +324,154 @@ def _stairs_request(folded: str) -> AssistantReply | None:
     return AssistantReply(intents=[AssistantIntent(kind="add_stairs", stairs=kind, target=target)])
 
 
+_EDIT_REMOVE = re.compile(
+    r"^(supprime|supprimer|enleve|enlever|retire|retirer|vire|virer|ote|oter|bouche|boucher"
+    r"|condamne|condamner|mure|murer)\b"
+)
+_EDIT_MOVE = re.compile(
+    r"^(deplace|deplacer|decale|decaler|bouge|bouger|pousse|pousser|glisse|glisser)\b"
+)
+_EDIT_GROW = re.compile(r"^(elargis|elargir|agrandis|agrandir|rehausse|rehausser)\b")
+_EDIT_SHRINK = re.compile(r"^(retrecis|retrecir|reduis|reduire|abaisse|abaisser)\b")
+_EDIT_SET = re.compile(
+    r"^(redimensionne|redimensionner|change|changer|modifie|modifier|regle|regler|passe"
+    r"|passer|mets|mettre|met|fixe|fixer)\b"
+)
+_OPENING_OBJECT = re.compile(
+    r"^(?:(?:la |l'|sa )?(?P<dim>largeur|hauteur) (?:de la |de l'|du |de sa |de son )?)?"
+    r"(?P<det>la |le |l'|les |cette |ce |cet |ma |mon |sa |son |une |un )?"
+    r"(?P<noun>portes?[- ]fenetres?|portes?|fenetres?|baies?|ouvertures?|passages?)\b"
+)
+"""L'objet du verbe est une ouverture (« supprime la porte… », « change la largeur de la
+fenêtre… ») ; « éloigne le lit de la porte » n'en est pas une (l'objet est le lit)."""
+_LENGTH = re.compile(
+    r"(?P<a>\d+)\s*m\s*(?P<b>\d{1,2})\b"
+    r"|(?P<v>\d+(?:[.,]\d+)?)\s*(?P<u>cm|centimetres?|mm|millimetres?|m|metres?)?(?![\w])"
+)
+_TARGET_END = re.compile(
+    r"\s+(?:de |d'|a |sur |en |pour )?(?=\d)"
+    r"|\s+vers\b|\s+(?:a|sur la|tout a)\s+(?:gauche|droite)\b"
+    r"|\s+(?:en|de)\s+(?:largeur|hauteur|large|haut)\b|\s+(?:fait|mesure)\b|\s+pour\b"
+    r"|\s*,"
+)
+
+
+def _length_m(text: str) -> float | None:
+    """La première longueur écrite, en mètres : « 50 cm », « 1,20 m », « 1m20 », « 120 »
+    (sans unité, au-delà de 10 : des centimètres)."""
+    m = _LENGTH.search(text)
+    if m is None:
+        return None
+    if m.group("a") is not None:
+        return float(f"{m.group('a')}.{m.group('b')}")
+    value = float(m.group("v").replace(",", "."))
+    unit = m.group("u") or ""
+    if unit.startswith("c"):
+        return value / 100.0
+    if unit.startswith("mm") or unit.startswith("mil"):
+        return value / 1000.0
+    if unit.startswith("m"):
+        return value
+    return value / 100.0 if value > 10 else value
+
+
+def _opening_edit(folded: str) -> AssistantReply | None:  # noqa: PLR0911, PLR0912
+    """KAN-32 : déplacer, supprimer, élargir ou rehausser une porte ou une fenêtre déjà posée.
+    « déplace la fenêtre de la chambre de 50 cm vers la gauche », « supprime la porte du
+    placard », « élargis la fenêtre du salon à 1,20 m », « la porte fait 90 cm de large »."""
+    verb = None
+    for kind, pattern in (
+        ("remove", _EDIT_REMOVE),
+        ("move", _EDIT_MOVE),
+        ("grow", _EDIT_GROW),
+        ("shrink", _EDIT_SHRINK),
+        ("set", _EDIT_SET),
+    ):
+        m = pattern.match(folded)
+        if m:
+            verb, rest = kind, folded[m.end() :].strip()
+            break
+    if verb is None:
+        # « la fenêtre du salon fait 1,20 m de large »
+        m = re.match(
+            r"^(?P<target>(la |le |l')(portes?|fenetres?|baies?|passages?)\b.*?)\s+"
+            r"(fait|mesure)\s+(?P<value>.+)$",
+            folded,
+        )
+        if m is None:
+            return None
+        value = _length_m(m.group("value"))
+        if value is None:
+            return None
+        tall = re.search(r"\b(haut|hauteur)\b", m.group("value")) is not None
+        return AssistantReply(
+            intents=[
+                AssistantIntent(
+                    kind="resize_opening",
+                    target=m.group("target").strip(),
+                    dimension="height" if tall else "width",
+                    value_m=value,
+                )
+            ]
+        )
+    obj = _OPENING_OBJECT.match(rest)
+    if obj is None:
+        return None
+    if verb == "set" and (obj.group("det") or "").strip() in ("une", "un"):
+        return None  # « mets une fenêtre… » : c'est un ajout.
+    body = rest[obj.start("det") if obj.group("det") else obj.start("noun") :]
+    if verb == "remove":
+        # Rien à mesurer : toute la suite désigne l'ouverture (« … de la chambre 2 »).
+        target = body.strip(" .!")
+        return AssistantReply(intents=[AssistantIntent(kind="remove_opening", target=target)])
+    target = _TARGET_END.split(body, maxsplit=1)[0].strip(" .!")
+    after = body[len(target) :]
+    amount = _length_m(after)
+    if amount is not None and not 0.0 < amount < 10.0:
+        amount = None
+    if verb == "move":
+        left = re.search(r"\bgauche\b", after) is not None
+        right = re.search(r"\bdroite\b", after) is not None
+        delta = None
+        if amount is not None and left != right:
+            delta = -amount if left else amount
+        return AssistantReply(
+            intents=[AssistantIntent(kind="move_opening", target=target, delta_m=delta)]
+        )
+    tall = (
+        obj.group("dim") == "hauteur"
+        or re.search(r"\b(haut|hauteur|haute|rehausse|rehausser|abaisse|abaisser)\b", folded)
+        is not None
+    )
+    if verb == "set" and amount is None:
+        return None
+    absolute = verb == "set" or re.search(r"(^|\s)(a|en|sur)\s+\d", after) is not None
+    if amount is None:
+        return AssistantReply(
+            intents=[
+                AssistantIntent(
+                    kind="resize_opening", target=target, dimension="height" if tall else "width"
+                )
+            ]
+        )
+    return AssistantReply(
+        intents=[
+            AssistantIntent(
+                kind="resize_opening",
+                target=target,
+                dimension="height" if tall else "width",
+                value_m=amount if absolute else None,
+                delta_m=None if absolute else (amount if verb == "grow" else -amount),
+            )
+        ]
+    )
+
+
 def _plan_phrases(folded: str, categories: list[str]) -> AssistantReply | None:  # noqa: PLR0911, PLR0912
     """Murs, dimensions, ouvertures, nom de la pièce (B4)."""
+    edit = _opening_edit(folded)
+    if edit is not None:
+        return edit
     if re.search(
         r"\bhauteur (sous plafond|de plafond|du plafond)\b|\bplafond\b.*\b(fait|a|est a)\b", folded
     ):

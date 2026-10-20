@@ -29,6 +29,9 @@ IntentKind = Literal[
     "propose_layouts",
     "set_dimension",
     "add_opening",
+    "move_opening",
+    "remove_opening",
+    "resize_opening",
     "add_stairs",
     "name_room",
     "ask",
@@ -65,6 +68,9 @@ INTENT_LABELS: dict[str, str] = {
     "propose_layouts": "proposer des dispositions",
     "set_dimension": "régler une dimension",
     "add_opening": "ajouter une porte ou une fenêtre",
+    "move_opening": "déplacer une porte ou une fenêtre",
+    "remove_opening": "supprimer une porte ou une fenêtre",
+    "resize_opening": "redimensionner une porte ou une fenêtre",
     "add_stairs": "poser une cage d'escalier",
     "name_room": "nommer la pièce",
     "ask": "poser une question",
@@ -86,8 +92,12 @@ class AssistantIntent(StrictModel):
     text: str = ""
     """Question de clarification (`ask`) ou réponse en texte (`answer`)."""
     value_m: float | None = Field(default=None, gt=0.0, lt=100.0)
-    """Dimension écrite par l'utilisateur (mètres) pour `set_dimension` ou largeur d'une
-    ouverture."""
+    """Dimension écrite par l'utilisateur (mètres) pour `set_dimension`, largeur d'une
+    ouverture posée, ou nouvelle largeur / hauteur d'une ouverture (`resize_opening`)."""
+    delta_m: float | None = Field(default=None, ge=-10.0, le=10.0)
+    """Écart écrit par l'utilisateur (mètres, signé) : `move_opening`, négatif vers la gauche,
+    positif vers la droite (vu de la pièce, face au mur) ; `resize_opening` relatif
+    (« élargis de 20 cm » : +0,20, « rétrécis de 10 cm » : −0,10)."""
     dimension: Dimension | None = None
     opening: OpeningWord | None = None
     leaves: int | None = Field(default=None, ge=1, le=2)

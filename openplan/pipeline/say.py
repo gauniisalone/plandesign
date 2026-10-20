@@ -52,6 +52,20 @@ FURNITURE_ACTIONS = frozenset(
 )
 """Gestes sur des meubles : quand la phrase en contient, les envies de meubles de la consigne
 (« un bureau ») ne sont pas recopiées dans l'ambiance, pour ne pas compter deux fois."""
+OPENING_EDITS = frozenset({"move_opening", "remove_opening", "resize_opening"})
+"""KAN-32 : gestes sur une porte ou une fenêtre déjà posée."""
+FIXED_FORMS = frozenset(
+    {
+        "set_dimension",
+        "add_opening",
+        "move_opening",
+        "remove_opening",
+        "resize_opening",
+        "name_room",
+    }
+)
+"""Formes fixes (cotes, ouvertures, nom) : lues par les phrases simples avant le modèle, qui
+ne lit que ce qu'elles ne savent pas lire ; le geste est le même avec ou sans Gemini."""
 NOT_UNDERSTOOD = (
     "Je n'ai pas compris. Je sais changer l'ambiance (« plus chaleureux », « lumière du soir », "
     "« parquet clair »), ajouter, déplacer ou retirer un meuble (« ajoute un bureau près de la "
@@ -126,7 +140,10 @@ def target_room(level: Level, context_id: UUID | None) -> Room | None:
     return main_room(level)
 
 
-_CLAUSES = re.compile(r"\s*(?:[.;!?]|,\s*(?:et|puis)\b|,|\bpuis\b)\s*")
+_CLAUSES = re.compile(
+    r"\s*(?:[;!?]|(?<!\d)\.|\.(?!\d)|,\s*(?:et|puis)\b|(?<!\d),|,(?!\d)|\bpuis\b)\s*"
+)
+"""Une virgule ou un point entre deux chiffres est décimal (« 1,20 m ») : pas une coupure."""
 
 
 def clauses(text: str) -> list[str]:
@@ -188,11 +205,17 @@ def unread_clauses(text: str, categories: list[str]) -> list[str]:
     ]
 
 
-def _ambiance_fields(translation: Translation, has_furniture_actions: bool) -> dict[str, JsonValue]:
+def _ambiance_fields(
+    translation: Translation, has_furniture_actions: bool, has_opening_edits: bool = False
+) -> dict[str, JsonValue]:
     fields = dict(translation.fields)
-    if has_furniture_actions:
+    if has_furniture_actions or has_opening_edits:
         for key in ("furniture", "avoid"):
             fields.pop(key, None)
+    if has_opening_edits:
+        # « la fenêtre de la chambre », « la porte du placard » : la pièce et le meuble nommés
+        # désignent l'ouverture, ils ne changent ni l'usage ni les envies de la pièce.
+        fields.pop("room_type", None)
     return fields
 
 
@@ -222,9 +245,7 @@ def say(  # noqa: PLR0912, PLR0915 - une phrase, deux lecteurs, un tour
     reply: AssistantReply | None = None
     action_reader: Reader = "phrases"
     typed = understand_clauses(text, categories)
-    if typed is not None and all(
-        i.kind in ("set_dimension", "add_opening", "name_room") for i in typed.intents
-    ):
+    if typed is not None and all(i.kind in FIXED_FORMS for i in typed.intents):
         reply = typed
     if reply is None and readers.model is not None and readers.gateway is not None:
         last_label = None
@@ -268,7 +289,9 @@ def say(  # noqa: PLR0912, PLR0915 - une phrase, deux lecteurs, un tour
         notice = reading.notice
     ambiance_reader: Reader = "model" if reading.understanding == "model" else "phrases"
     fields = _ambiance_fields(
-        reading.translation, any(i.kind in FURNITURE_ACTIONS for i in gestures)
+        reading.translation,
+        any(i.kind in FURNITURE_ACTIONS for i in gestures),
+        any(i.kind in OPENING_EDITS for i in gestures),
     )
 
     current = project

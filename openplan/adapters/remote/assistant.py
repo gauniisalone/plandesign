@@ -22,6 +22,7 @@ from openplan.schemas.assistant import (
     ROOM_TYPES,
     AssistantIntent,
     AssistantReply,
+    Dimension,
     OpeningWord,
 )
 from openplan.schemas.layout import PLACE_LABELS
@@ -50,6 +51,11 @@ pour wall, value_m = la valeur écrite par l'utilisateur en mètres),
 add_opening (opening = door | window | double_door | sliding_door | pocket_door | folding_door
 | french_window | sliding_window, leaves = 2 pour une porte-fenêtre double, target = le mur
 nommé, value_m = largeur si écrite),
+move_opening (target = la porte ou la fenêtre telle que l'utilisateur la désigne, avec sa pièce
+et son orientation si dites, delta_m = l'écart écrit en mètres, négatif vers la gauche, positif
+vers la droite), remove_opening (target),
+resize_opening (target, dimension = width | height, value_m = la nouvelle valeur écrite, ou
+delta_m = l'écart écrit, positif pour agrandir, négatif pour réduire),
 add_stairs (stairs = straight | quarter_turn | half_turn | spiral,
 target = le mur nommé ou "centre"),
 name_room (name = le nom voulu, room_type parmi {room_types}),
@@ -65,7 +71,12 @@ gauche") ; « appelle cette pièce Chambre d'amis » → name_room (name "Chambr
 « ajoute une douche dans le coin » → add_furniture (category shower, near ["corner"]) ;
 « ajoute un escalier droit contre le mur de gauche » → add_stairs (stairs straight, target "mur de
 gauche") ; « mets une trémie avec garde-corps au centre » → add_stairs (stairs straight, target
-"centre").
+"centre") ;
+« déplace la fenêtre de la chambre de 50 cm vers la gauche » → move_opening (target "la fenêtre
+de la chambre", delta_m -0.5) ; « supprime la porte du placard » → remove_opening (target "la
+porte du placard") ; « élargis la fenêtre du salon à 1,20 m » → resize_opening (target "la
+fenêtre du salon", dimension width, value_m 1.2). Une porte ou une fenêtre déjà dans le plan se
+modifie par ces intentions, jamais par add_opening ni remove_furniture.
 Une valeur écrite par l'utilisateur n'est pas une question : tu l'appliques.
 
 Phrase de l'utilisateur :
@@ -77,7 +88,8 @@ Réponds exactement avec cette structure :
     {{"kind": "<intention>", "category": "<catégorie ou null>", "count": <entier>,
      "near": ["<repère>"], "away_from": ["<repère>"], "target": "<cible ou null>",
      "dimensions_m": null, "text": "<question ou réponse, sinon vide>",
-     "dimension": null, "value_m": null, "opening": null, "name": null, "room_type": null}}
+     "dimension": null, "value_m": null, "delta_m": null, "opening": null, "name": null,
+     "room_type": null}}
   ],
   "message": "<une phrase courte pour l'utilisateur>"
 }}
@@ -86,6 +98,7 @@ Pas de position, pas de coordonnées, pas de dimension de pièce."""
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _POSITION_KEYS = frozenset({"position", "x", "y", "z", "yaw", "rotation", "placement", "pos"})
 MAX_INTENTS = 8
+WIDTH: Dimension = "width"
 
 
 class AssistantParseError(ValueError):
@@ -110,6 +123,20 @@ def _value_m(raw: Any, mentioned: set[float], label: str, dropped: list[str]) ->
     if any(abs(value - m) < 0.011 for m in mentioned):
         return value
     dropped.append(f"{label} : {value} m proposé par le modèle mais non écrit par vous, ignoré")
+    return None
+
+
+def _delta_m(raw: Any, mentioned: set[float], label: str, dropped: list[str]) -> float | None:
+    """Un écart signé (KAN-32) n'est gardé que si sa valeur absolue a été écrite."""
+    if not isinstance(raw, int | float) or isinstance(raw, bool) or raw == 0:
+        return None
+    value = float(raw)
+    if abs(value) > 10.0:
+        dropped.append(f"{label} : écart de {value} m hors bornes, ignoré")
+        return None
+    if any(abs(abs(value) - m) < 0.011 for m in mentioned):
+        return value
+    dropped.append(f"{label} : écart de {value} m proposé par le modèle mais non écrit par vous")
     return None
 
 
@@ -174,6 +201,9 @@ def parse_reply(  # noqa: PLR0912, PLR0915
         if kind == "set_dimension" and value_m is None:
             dropped.append(f"{label} : sans valeur écrite par vous, écartée")
             continue
+        delta_m = _delta_m(raw.get("delta_m"), mentioned, label, dropped)
+        if kind == "resize_opening" and dimension != "height":
+            dimension = WIDTH  # une ouverture n'a qu'une largeur et une hauteur
         opening = raw.get("opening")
         if opening not in get_args(OpeningWord):
             opening = None
@@ -199,6 +229,7 @@ def parse_reply(  # noqa: PLR0912, PLR0915
                     target=_text(raw.get("target"), 120) or None,
                     text=_text(raw.get("text")),
                     value_m=value_m,
+                    delta_m=delta_m,
                     dimension=dimension,
                     opening=opening,
                     name=_text(raw.get("name"), 60) or None,
