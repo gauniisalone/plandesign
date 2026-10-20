@@ -42,7 +42,7 @@ Policy = Literal["public", "user", "admin", "legacy"]
 API_PREFIX = "/api"
 P = API_PREFIX + "/projects/{project_id}"
 L = P + "/levels/{level_id}"
-V, E, O = Role.VIEWER, Role.EDITOR, Role.OWNER  # noqa: E741 - lisibilité de la table
+V, C, E, O = Role.VIEWER, Role.COMMENTER, Role.EDITOR, Role.OWNER  # noqa: E741 - lisibilité de la table
 
 PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     # Projet
@@ -75,6 +75,16 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("GET", P + "/board"): V,
     ("PUT", P + "/board"): E,  # compatibilité (onglets d'avant B2c)
     ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément
+    # Commentaires (KAN-51) : lire, lecteur ; écrire, commentateur et plus. L'auteur seul
+    # modifie ou supprime son message ; le propriétaire supprime tout fil (vérifié dans la route).
+    ("GET", P + "/comments"): V,
+    ("POST", P + "/comments"): C,
+    ("POST", P + "/comments/{thread_id}/replies"): C,
+    ("PATCH", P + "/comments/{thread_id}/messages/{message_id}"): C,
+    ("DELETE", P + "/comments/{thread_id}/messages/{message_id}"): C,
+    ("POST", P + "/comments/{thread_id}/resolve"): C,
+    ("POST", P + "/comments/{thread_id}/reopen"): C,
+    ("DELETE", P + "/comments/{thread_id}"): C,
     ("GET", P + "/media"): V,
     ("POST", P + "/media"): E,
     ("GET", P + "/media/{media_id}/thumb"): V,

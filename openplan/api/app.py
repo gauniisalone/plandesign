@@ -45,6 +45,7 @@ from openplan.api.routes import (
     board,
     calibration,
     catalog,
+    comments,
     contextual,
     detection,
     exports,
@@ -306,6 +307,7 @@ def create_app(
         plans.router,
         gallery.router,
         board.router,
+        comments.router,
         contextual.router,
     ):
         app.include_router(router, prefix="/api", dependencies=guarded)

@@ -452,7 +452,8 @@ async def _announce(request: Request, path: str) -> None:
 
     from openplan.api.accounts.live import hub_of
 
-    scope = "board" if "/board" in path else "project"
+    # KAN-51 : un commentaire n'oblige pas les autres à relire le projet, seulement les fils.
+    scope = "board" if "/board" in path else "comments" if "/comments" in path else "project"
     await hub_of(request.app).publish(
         UUID(match.group(1)),
         {"type": "changed", "scope": scope},

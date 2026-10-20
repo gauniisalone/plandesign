@@ -690,7 +690,9 @@ def media_file(project_dir: Path, media_id: UUID) -> tuple[MediaRef, Path]:
     return ref, path
 
 
-ARCHIVE_TOP = ("project.json", BOARD_FILE)
+ARCHIVE_TOP = ("project.json", BOARD_FILE, "comments.json")
+"""KAN-51 : les fils de commentaires suivent le projet ; un auteur local y reste « local »,
+sans donnée personnelle (« Utilisateur local » une fois en ligne)."""
 ARCHIVE_DIRS = ("images", MEDIA_DIR)
 ARCHIVE_RUN_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".json")
 """Des rendus, les images et leurs réglages ; pas les fichiers de travail (scènes,

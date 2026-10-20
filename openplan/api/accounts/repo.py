@@ -119,6 +119,15 @@ class AccountsRepo:
             )
             return {project_id: role for project_id, role in rows}
 
+    def display_of(self, user_id: UUID) -> str | None:
+        """KAN-51 : le nom montré aux autres (celui du compte, sinon le début de l'adresse avant
+        le @, jamais l'adresse entière) ; None si le compte n'existe plus."""
+        user = self.user(user_id)
+        if user is None:
+            return None
+        name = (user.name or "").strip()
+        return name[:80] if name else user.email.split("@", 1)[0][:40]
+
     def payer_of(self, project_id: UUID) -> UUID | None:
         """KAN-12 : le compte dont la place compte pour ce projet, son premier propriétaire."""
         with self.session() as db:
