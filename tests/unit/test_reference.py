@@ -205,13 +205,15 @@ def test_put_replaces_delete_returns_undo_restores(tmp_path: Path) -> None:  # n
 
 def test_confidence_follows_the_measurement(tmp_path: Path) -> None:
     """KAN-31 + KAN-66 : la confiance est recalculée par le serveur et renvoyée dans le
-    projet. Hauteur saisie : « approximatif » ; une mesure : « à vérifier », « échelle calée
-    sur votre mesure » ; la retirer : le niveau d'avant, sa raison d'avant."""
+    projet. Hauteur saisie : « à vérifier » (35 % sur le banc après KAN-46), raison « hauteur
+    saisie » ; une mesure : « à vérifier », « échelle calée sur votre mesure » ; la retirer : le
+    niveau d'avant, sa raison d'avant."""
     store = ProjectStore(tmp_path / "data")
     project, image_id, _ = _project_with_photo(store)
     before = only_level(project).scale_basis
     assert before is not None and before.confidence is not None
-    assert before.confidence.level == "approximatif"
+    assert before.confidence.level == "a_verifier"
+    assert before.confidence.reason.startswith("échelle tirée de la hauteur saisie")
     url = f"/api/projects/{project.id}/images/{image_id}/reference"
     app = create_app(store=store, settings=Settings(data_dir=tmp_path / "data"))
     with TestClient(app) as client:

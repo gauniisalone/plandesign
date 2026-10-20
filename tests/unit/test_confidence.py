@@ -52,8 +52,8 @@ def test_control_truth_is_the_kan27_scene() -> None:
 
 
 def test_weights_are_the_bench_numbers(control: dict[str, float]) -> None:
-    """Must have 2 : les poids sont les erreurs médianes du banc (à 3 points près ; « supposée »
-    est la moyenne du contrôle et de la règle, celle-ci n'étant pas versionnée)."""
+    """Must have 2 : les poids des trois sources d'échelle sont les erreurs médianes du contrôle,
+    seul jeu qui les mesure toutes (à 3 points près)."""
     assert SCALE_ERROR["reference"] == pytest.approx(
         control["contrôle · mesure de référence"], abs=0.03
     )
@@ -61,7 +61,7 @@ def test_weights_are_the_bench_numbers(control: dict[str, float]) -> None:
         control["contrôle · hauteur saisie 1,45 m"], abs=0.03
     )
     assert SCALE_ERROR["assumed"] == pytest.approx(
-        control["contrôle · hauteur supposée 1,50 m"], abs=0.05
+        control["contrôle · hauteur supposée 1,50 m"], abs=0.03
     )
     assert (
         pytest.approx(control["contrôle · sol hors champ (hauteur saisie 1,45 m)"], abs=0.03)

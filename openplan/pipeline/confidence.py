@@ -8,11 +8,12 @@ en somme quadratique (sources supposées indépendantes) et l'erreur attendue do
 trois niveaux affichés :
 
 - « fiable » : erreur attendue sous 10 % (`RELIABLE_MAX`, Must have 4 de KAN-31) ;
-- « à vérifier » : sous 40 % (`CHECK_MAX`) : le mieux que le banc atteigne aujourd'hui
-  (échelle calée sur une mesure, 31 %) ;
-- « approximatif » : au-delà (échelle supposée ou tirée d'une hauteur saisie, 60 à 66 %).
+- « à vérifier » : sous 40 % (`CHECK_MAX`) : échelle calée sur une mesure (17 %) ou tirée
+  d'une hauteur saisie (35 %) ;
+- « approximatif » : à partir de 40 % (échelle supposée : 40 %, cas limite assumé, « ajoutez
+  une mesure de référence »).
 
-Aucune configuration du banc n'est sous 10 % au 20 oct. 2026 : aucune estimation depuis une
+Aucune configuration du banc n'est sous 10 % au 21 oct. 2026 : aucune estimation depuis une
 photo n'est donc dite « fiable » (le test le vérifie). La raison affichée est celle du facteur
 qui pèse le plus, avec le geste qui l'améliore.
 
@@ -25,25 +26,25 @@ Facteurs (Must have 2) :
    les pentes.
 4. **Égout non vu** (KAN-61) : hauteur des murs latéraux sous pente supposée.
 
-Chiffres du banc du 20 oct. 2026 (erreur médiane absolue des cotes ; contrôle = faîtage,
-largeur du pignon, distance au pignon ; règle = deux photos d'une règle de 1,00 m) :
+Chiffres du banc du 21 oct. 2026, après KAN-70 (sol sous un plateau) et KAN-46 (jambettes
+déduites du bord du sol). Erreur médiane absolue des cotes ; contrôle = faîtage, largeur du
+pignon, distance au pignon ; règle = deux photos d'une règle de 1,00 m. Les trois sources
+d'échelle sont comparées sur le contrôle, seul jeu qui les mesure toutes (décision PO) :
 
-- hauteur supposée 1,50 m : contrôle 66 %, règle 60 % (une photo +100 % : un plateau de
-  meuble pris pour le sol, l'autre −20 %) → 63 % ;
-- hauteur saisie, la vraie (1,45 m), contrôle : 61 % : la profondeur apprise place mal le sol
-  (caméra vue à 0,85 m), une hauteur juste ne corrige pas la forme ;
 - mesure de référence, contrôle : chaque cote vraie prise à tour de rôle comme référence,
-  erreur médiane des autres : 31 % (forme déformée par la profondeur apprise) ;
+  erreur médiane des autres : 17 % (avant KAN-46 : 31 %) ;
+- hauteur saisie, la vraie (1,45 m), contrôle : 35 % (avant : 61 %) ;
+- hauteur supposée 1,50 m, contrôle : 40 % (avant : 66 %). Recoupement sur la règle de la
+  chambre : 17 % (+14 % et −20 %), non pris dans le poids (la règle ne mesure ni la hauteur
+  saisie ni la référence : la mêler au seul poids « supposée » inverserait l'ordre) ;
 - focale de repli : règle, 5 points d'écart entre focale des lignes et repli (photo du lit) ;
-  contrôle, focale faussée de −20 % / +25 % : 26 / 17 points ; le repli (29 mm équivalent)
-  s'écarte d'environ 10 % d'un mobile courant (26 mm) → 10 % ;
+  contrôle, focale faussée de −20 % / +25 % : 30 / 64 %, soit 5 / 29 points autour de la
+  hauteur saisie ; le repli (29 mm équivalent) s'écarte d'environ 10 % d'un mobile courant
+  (26 mm) → 10 % ;
 - sol hors champ : contrôle privé des 40 % bas de l'image, hauteur juste saisie : 14 % ;
-- égout non vu : contrôle, égout à 0 au lieu de 1,00 m, la largeur est alors prise au sol
-  (6,96 m au lieu de 5,00 m pour la vraie géométrie, +39 %) → 40 %.
-
-KAN-70 (sol pris sur un plateau corrigé) : la règle passe à 17 % avec la hauteur supposée (+14 %
-et −20 %) ; le contrôle ne change pas. Les poids ci-dessus restent ceux du 20 oct. en attendant
-un banc plus large (le poids « supposée » serait alors à revoir à la baisse).
+- égout non vu : tiré de la géométrie du contrôle : égout ramené au sol au lieu de 1,00 m, la
+  largeur est prise au sol (6,96 m au lieu de 5,00 m, +39 %) → 40 % ; égout lu par KAN-46 sur
+  le contrôle : 1,60 m pour 1,00 (60 %).
 
 Le détail chiffré, régénéré à chaque passage du banc, est dans `data/eval/rapport-kan33.md`
 (hors dépôt) ; `tests/unit/test_confidence.py` recalcule la partie contrôle sur la fixture.
@@ -73,11 +74,11 @@ CHECK_MAX = 0.40
 """Erreur attendue sous laquelle elle est « à vérifier » ; au-delà, « approximatif »."""
 
 SCALE_ERROR: dict[ScaleSource, float] = {
-    "reference": 0.31,
-    "entered": 0.61,
-    "assumed": 0.63,
+    "reference": 0.17,
+    "entered": 0.35,
+    "assumed": 0.40,
 }
-"""Erreur relative médiane des cotes selon la source de l'échelle (banc KAN-33)."""
+"""Erreur relative médiane des cotes selon la source de l'échelle (banc KAN-33, contrôle)."""
 FOCAL_FALLBACK_ERROR = 0.10
 """Erreur ajoutée quand la focale est la valeur de repli et non celle des lignes de fuite."""
 FLOOR_UNSEEN_ERROR = 0.14
