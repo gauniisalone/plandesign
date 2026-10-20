@@ -109,9 +109,12 @@ RENDER_KINDS = frozenset({"render", "render_all", "finish", "catalogue", "contex
 """Les tâches qui livrent un rendu : leur fin publie `render.done` (« Votre rendu est prêt »)."""
 
 
-def render_done_hook(store: ProjectStore) -> Callable[[str, str, UUID | None, BaseModel], None]:
+def render_done_hook(
+    store: ProjectStore, after: Callable[[UUID], None] | None = None
+) -> Callable[[str, str, UUID | None, BaseModel], None]:
     """Rappel de fin de tâche (`JobRegistry.on_done`) : un rendu terminé entre au journal du
-    projet, au nom de celui qui l'a lancé (notifié à tous les membres, lui compris)."""
+    projet, au nom de celui qui l'a lancé (notifié à tous les membres, lui compris) ; `after`
+    fait sonner leurs cloches (comptes)."""
 
     def done(kind: str, owner: str, project_id: UUID | None, result: BaseModel) -> None:
         if kind not in RENDER_KINDS or project_id is None or not store.exists(project_id):
@@ -127,6 +130,8 @@ def render_done_hook(store: ProjectStore) -> Callable[[str, str, UUID | None, Ba
                 level_id=level_id if isinstance(level_id, UUID) else None,
             )
         )
+        if after is not None:
+            after(project_id)
 
     return done
 

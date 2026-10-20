@@ -5,17 +5,21 @@ départ d'un projet."""
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from pydantic import BaseModel
+from starlette.websockets import WebSocketDisconnect
 
+from openplan.api.accounts.live import CLOSE_BAD_ORIGIN, CLOSE_NO_SESSION
 from openplan.api.app import create_app
 from openplan.api.settings import Settings
-from tests.accounts.helpers import sign_in
+from tests.accounts.helpers import ORIGIN, sign_in
 from tests.accounts.test_b2a_live import _client
 from tests.accounts.test_kan51_comments import _team, _thread
 
@@ -114,6 +118,48 @@ def test_only_member_projects_and_leaving_removes_them(tmp_path: Path, migrated_
     assert m["viewer"].get("/api/notifications/count").json() == {"unread": 0}
 
 
+def _me_ws(client: TestClient, origin: str = ORIGIN) -> Any:
+    """`/ws/me` ; le cookie `Secure` passé à la main (le client de test ne l'envoie pas sur ws)."""
+    headers = {"origin": origin}
+    raw = client.cookies.get("pd_session")
+    if raw:
+        headers["cookie"] = f"pd_session={raw}"
+    return client.websocket_connect("/ws/me", headers=headers)
+
+
+def test_my_channel_refuses_without_session_or_from_another_site(
+    tmp_path: Path, migrated_url: str
+) -> None:
+    owner, _, _, _ = _team(tmp_path, migrated_url)
+    for client, origin, code in (
+        (_client(owner.app), ORIGIN, CLOSE_NO_SESSION),  # non connecté → refus
+        (owner, "https://ailleurs.example.org", CLOSE_BAD_ORIGIN),
+    ):
+        with pytest.raises(WebSocketDisconnect) as closed, _me_ws(client, origin) as ws:
+            ws.receive_text()
+        assert closed.value.code == code
+
+
+def test_my_channel_rings_the_recipients_not_the_author(tmp_path: Path, migrated_url: str) -> None:
+    owner, m, pid, _ = _team(tmp_path, migrated_url)
+    items = owner.get(f"/api/projects/{pid}/board").json()["items"]
+    with _me_ws(owner) as mine, _me_ws(m["editor"]) as his:
+        assert mine.receive_json()["type"] == "hello"
+        assert his.receive_json()["type"] == "hello"
+        moved = {**items[0], "x": items[0]["x"] + 5}
+        m["editor"].patch(f"/api/projects/{pid}/board/items", json={"set": [moved]})
+        assert mine.receive_json() == {"type": "bell"}  # le propriétaire : sa cloche a changé
+        # L'auteur n'est pas sonné ; ses autres appareils le sont quand il lit sa cloche.
+        his.send_text('{"type":"ping"}')
+        assert his.receive_json() == {"type": "pong"}
+        m["editor"].post("/api/notifications/read-all")
+        assert his.receive_json() == {"type": "bell"}
+        # Un commentaire : les membres sont sonnés.
+        _thread(m["commenter"], pid)
+        assert mine.receive_json() == {"type": "bell"}
+        assert his.receive_json() == {"type": "bell"}
+
+
 def test_signed_out_is_refused(tmp_path: Path, migrated_url: str) -> None:
     owner, _, _, _ = _team(tmp_path, migrated_url)
     anonymous = _client(owner.app)
@@ -145,6 +191,29 @@ def test_local_mode_render_done_is_mine_too(tmp_path: Path) -> None:
     local.post("/api/notifications/read", json={"event_id": lines[0]["id"]})
     assert local.get("/api/notifications/count").json() == {"unread": 0}
     assert (tmp_path / "local" / "notifications.json").is_file()
+
+
+def _png() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), (120, 90, 60)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_a_photo_drop_makes_one_line_then_groups(tmp_path: Path, migrated_url: str) -> None:
+    """Le dépôt d'une photo touche le plan et le tableau : une seule ligne, au nom de celui qui
+    dépose ; ce que la tâche de fond construit ensuite ne publie rien ; un second dépôt dans
+    les 10 min rejoint la même ligne."""
+    owner, m, pid, _ = _team(tmp_path, migrated_url)
+    owner.post("/api/notifications/read-all")
+    for name in ("a.png", "b.png"):
+        sent = m["editor"].post(
+            f"/api/projects/{pid}/images", files={"file": (name, _png(), "image/png")}
+        )
+        assert sent.status_code == 201, sent.text
+    lines = _bell(owner, "unread")["items"]
+    assert [(x["type"], x["count"], x["actor_name"]) for x in lines] == [
+        ("plan.changed", 2, "editor")
+    ]
 
 
 def test_plan_changes_are_published_with_their_level(tmp_path: Path, migrated_url: str) -> None:

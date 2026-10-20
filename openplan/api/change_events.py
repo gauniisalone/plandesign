@@ -47,13 +47,14 @@ def stamps(project_dir: Path) -> Stamps:
     return Stamps(_stamp(project_dir / BOARD_FILE), _stamp(project_dir / PROJECT_FILE))
 
 
-def record(project_dir: Path, project_id: UUID, actor: str, path: str, before: Stamps) -> None:
+def record(project_dir: Path, project_id: UUID, actor: str, path: str, before: Stamps) -> bool:
     """Après une écriture réussie : au plus une ligne, la sorte dite par le chemin d'abord
-    (une photo ajoutée touche aussi le tableau, c'est une modification du plan)."""
+    (une photo ajoutée touche aussi le tableau, c'est une modification du plan). Vrai si une
+    ligne est entrée au journal."""
     after = stamps(project_dir)
     board, plan = after.board != before.board, after.plan != before.plan
     if not (board or plan):
-        return
+        return False
     kind: EventType
     if board and (not plan or any(p in path for p in _BOARD_PATHS)):
         kind = "board.changed"
@@ -68,3 +69,4 @@ def record(project_dir: Path, project_id: UUID, actor: str, path: str, before: S
             level_id=UUID(level.group(1)) if level and kind == "plan.changed" else None,
         )
     )
+    return True

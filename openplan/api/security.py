@@ -246,6 +246,8 @@ changement d'un de mes projets : des lectures, hors de la limite des tentatives.
 AUTH_RATE_LIMIT = 10
 AUTH_RATE_WINDOW_S = 60.0
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+BELL_READS = frozenset({"/api/notifications/read", "/api/notifications/read-all"})
+"""KAN-52 : une lecture de la cloche, à refléter sur mes autres onglets et appareils."""
 ACCOUNTS_REFERRER_POLICY = "same-origin"
 """Avec `no-referrer`, le navigateur envoie `Origin: null` sur un POST (formulaire ou fetch) :
 le contrôle d'origine refuserait l'application elle-même. `same-origin` n'envoie rien aux
@@ -428,17 +430,8 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         before = await run_in_threadpool(change_events.stamps, change[1]) if change else None
         response = await call_next(request)
         if resolved is not None and request.method in MUTATING and response.status_code < 400:
-            if change is not None and before is not None:
-                # KAN-52 : la modification entre au journal du projet, pour la cloche.
-                await run_in_threadpool(
-                    change_events.record,
-                    change[1],
-                    change[0],
-                    str(resolved.user.id),
-                    path,
-                    before,
-                )
             await _announce(request, path)
+            await _ring_bells(request, path, str(resolved.user.id), change, before)
         if (
             resolved is not None
             and resolved.renewed
@@ -468,6 +461,34 @@ def _change_watch(request: Request, path: str) -> tuple[UUID, Path] | None:
     if not store.exists(project_id):
         return None
     return project_id, store.project_dir(project_id)
+
+
+async def _ring_bells(
+    request: Request,
+    path: str,
+    me: str,
+    change: tuple[UUID, Path] | None,
+    before: change_events.Stamps | None,
+) -> None:
+    """KAN-52, après une écriture réussie : la modification du tableau ou du plan entre au
+    journal du projet ; puis les cloches concernées sonnent (les membres du projet pour un
+    geste ou un commentaire, mes autres onglets et appareils pour une lecture)."""
+    from openplan.api.accounts.live import hub_of, ring_project
+
+    if path in BELL_READS:
+        await hub_of(request.app).ring([me])
+        return
+    match = LIVE_PROJECT.match(path)
+    if match is None:
+        return
+    recorded = False
+    if change is not None and before is not None:
+        project_dir = change[1]
+        recorded = await run_in_threadpool(
+            change_events.record, project_dir, change[0], me, path, before
+        )
+    if recorded or "/comments" in path:  # les commentaires publient eux-mêmes
+        await ring_project(request.app, UUID(match.group(1)), but=me)
 
 
 async def _announce(request: Request, path: str) -> None:

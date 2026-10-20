@@ -1,5 +1,5 @@
 import type { Peer } from "../state/live";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReadOnly } from "../state/account";
 import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
@@ -151,7 +151,10 @@ export function TopBar({
   following = null,
   onFollow,
   planName,
+  bell,
 }: {
+  /** KAN-52 : la cloche, à droite, avant « Partager ». */
+  bell?: ReactNode;
   /** B2a : les autres membres présents sur le projet (avatars). */
   peers?: Peer[];
   /** B2b : la personne que je suis (null : personne), et le clic sur un avatar. */
@@ -265,6 +268,7 @@ export function TopBar({
           )}
         </ul>
       )}
+      {bell}
       {onShare && (
         <button
           type="button"

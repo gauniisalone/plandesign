@@ -43,6 +43,8 @@ import {
   ThemeSwitch,
 } from "../panels/SettingsPanel";
 import { ShareDialog } from "../panels/ShareDialog";
+import { Bell } from "../panels/Bell";
+import { takeBellTarget, useBellTargetToken } from "../state/bell";
 import { useLive } from "../state/live";
 import { useComments } from "../board/useComments";
 import {
@@ -578,6 +580,37 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     setPane("renders");
     setRendersFocus((n) => n + 1);
   }, [pilotArrival, goStep]);
+  // KAN-52 : une ligne de la cloche mène ici, au bon endroit : le plan modifié, le cadre
+  // Rendus, l'épingle (fil ouvert) ou l'élément ; sinon l'espace de travail.
+  const bellToken = useBellTargetToken();
+  const [boardFocus, setBoardFocus] = useState<{
+    token: number;
+    threadId: string | null;
+    itemId: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!projectLoaded) return;
+    const target = takeBellTarget(projectId);
+    if (!target) return;
+    if (target.levelId) actions.openLevel(target.levelId);
+    if (target.plan) {
+      goTab("plan");
+      return;
+    }
+    goTab("board");
+    if (target.runId) setRendersFocus((n) => n + 1);
+    if (target.threadId) {
+      comments.setHidden(false);
+      comments.open(target.threadId);
+    }
+    if (target.threadId || target.itemId)
+      setBoardFocus({
+        token: target.token,
+        threadId: target.threadId,
+        itemId: target.itemId,
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bellToken, projectLoaded, projectId]);
   // Pièce principale : le séjour d'un plan généré (L3), sinon celle qui a une ambiance,
   // sinon la première.
   const rooms = level
@@ -1368,6 +1401,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 actions.importFile(file);
               }}
               focusRenders={rendersFocus}
+              focusOn={boardFocus}
               presence={account ? live.presence : undefined}
               comments={comments}
               peers={live.peers}
@@ -1441,6 +1475,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             }
             onRetrySave={board.save === "error" ? board.retry : undefined}
             onShare={canShare ? () => setShareOpen(true) : undefined}
+            bell={<Bell accounts={account !== null} />}
             peers={live.peers}
             following={live.presence.following}
             onFollow={(userId) => {

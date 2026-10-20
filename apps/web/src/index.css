@@ -6185,6 +6185,131 @@ button.link.home-empty-link {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+/* KAN-52 : la cloche (barre du haut, à droite) et son panneau. */
+.bell {
+  position: relative;
+  display: inline-flex;
+}
+.bell-btn {
+  position: relative;
+}
+.bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.bell-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(560px, 70vh);
+  overflow: auto;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  text-align: left;
+}
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.bell-head [role="tab"] {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+.bell-head [role="tab"][aria-selected="true"] {
+  background: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+.bell-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bell-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.bell-line:hover {
+  background: var(--line);
+}
+.bell-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--avatar, var(--muted));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bell-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.bell-action {
+  overflow-wrap: anywhere;
+}
+.bell-line.unread .bell-action {
+  font-weight: 600;
+}
+.bell-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.bell-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.bell-empty {
+  margin: 16px 8px;
+  color: var(--muted);
+}
+.bell-more {
+  display: block;
+  margin: 6px auto 2px;
+}
+
 .comments-panel {
   position: absolute;
   top: 64px;

@@ -15,6 +15,7 @@ from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
+from anyio import from_thread
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import Field
@@ -297,6 +298,9 @@ def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> 
             ProjectEvents(store.project_dir(project_id)).append(
                 ProjectEvent(type="member.joined", project_id=project_id, actor=str(user.id))
             )
+            from openplan.api.accounts.live import ring_project
+
+            from_thread.run(ring_project, request.app, project_id, str(user.id))
     return Accepted(project_id=project_id, role=role)
 
 

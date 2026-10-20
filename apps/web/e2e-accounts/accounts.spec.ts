@@ -1066,6 +1066,74 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
   await shot(commenter, "18-fil-resolu");
 });
 
+test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à l'épingle, puis 0", async ({
+  browser,
+}) => {
+  const gilles = await person(browser, "198.51.100.95");
+  await gotoApp(gilles, "/");
+  await signInHere(gilles, "gilles@example.org", "Gilles");
+  const origin = { Origin: new URL(gilles.url()).origin };
+  const made = await gilles.request.post("/api/projects", {
+    data: { name: "Grenier" },
+    headers: origin,
+  });
+  const { id } = (await made.json()) as { id: string };
+  const invited = await gilles.request.post(`/api/projects/${id}/invitations`, {
+    data: { role: "commenter" },
+    headers: origin,
+  });
+  const { token } = (await invited.json()) as { token: string };
+  const fanny = await person(browser, "198.51.100.96");
+  await gotoApp(fanny, `/#/invitation/${token}`);
+  await signInHere(fanny, "fanny@example.org", "Fanny");
+  await expect(fanny.locator(".board-stage")).toBeVisible({ timeout: 30_000 });
+
+  // Gilles, sur l'accueil : « Fanny a rejoint le projet » ; il marque tout comme lu.
+  const bell = gilles.getByRole("button", { name: /^Notifications/ });
+  const badge = gilles.getByTestId("bell-badge");
+  await expect(badge).toHaveText("1", { timeout: 5_000 });
+  await bell.click();
+  const panel = gilles.getByRole("dialog", { name: "Notifications" });
+  await expect(
+    panel.getByRole("button", { name: /Fanny a rejoint le projet · Grenier/ }),
+  ).toBeVisible();
+  await panel.getByRole("button", { name: "Tout marquer comme lu" }).click();
+  await expect(badge).toHaveCount(0);
+  await bell.click(); // referme
+
+  // Fanny commente au centre, sur le cadre Plan : la cloche de Gilles passe à 1, en direct.
+  const box = (await fanny.locator(".board-stage").boundingBox())!;
+  await fanny
+    .getByRole("toolbar", { name: "Outils de l'espace de travail" })
+    .getByRole("button", { name: "Commentaire", exact: true })
+    .click();
+  await fanny.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const draft = fanny.getByRole("dialog", { name: "Nouveau commentaire" });
+  await draft.getByLabel("Votre commentaire").fill("Plus de lumière ici");
+  await draft.getByRole("button", { name: "Publier" }).click();
+  await expect(badge).toHaveText("1", { timeout: 2_000 });
+  await bell.click();
+  const line = panel.getByRole("button", { name: /^Fanny a commenté .* · Grenier · / });
+  await expect(line).toBeVisible();
+  await expect(line.locator(".bell-dot")).toHaveCount(1); // le point des non-lus
+  await expect(panel.getByText("Plus de lumière ici")).toHaveCount(0); // jamais le texte
+  await shot(gilles, "kan52-1-cloche");
+
+  // Le clic : la ligne est lue, le projet s'ouvre sur l'épingle, son fil ouvert ; 0.
+  await line.click();
+  await expect(gilles).toHaveURL(new RegExp(`#/projects/${id}`));
+  await expect(
+    gilles.getByRole("button", { name: "Commentaire de Fanny" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    gilles
+      .getByRole("dialog", { name: "Commentaires" })
+      .getByText("Plus de lumière ici"),
+  ).toBeVisible();
+  await expect(gilles.getByTestId("bell-badge")).toHaveCount(0);
+  await shot(gilles, "kan52-2-epingle");
+});
+
 test("B2b : session révoquée, poignée de main refusée : retour à la connexion", async ({
   browser,
 }) => {

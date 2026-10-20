@@ -111,7 +111,9 @@ test("KAN-51 local : une épingle sur un élément le suit, puis reste « détac
   await expect
     .poll(async () => {
       const items = (
-        (await (await page.request.get(`/api/projects/${id}/board`)).json()) as {
+        (await (
+          await page.request.get(`/api/projects/${id}/board`)
+        ).json()) as {
           items: Item[];
         }
       ).items;

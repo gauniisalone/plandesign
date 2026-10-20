@@ -9,6 +9,7 @@ import {
 import { APP_NAME } from "../brand";
 import { formatDate } from "../model";
 import { AccountSection } from "../panels/AccountSection";
+import { Bell } from "../panels/Bell";
 import { DoctorBlock } from "../panels/DoctorBlock";
 import { ThemeSwitch } from "../panels/SettingsPanel";
 import type { Step } from "../panels/Toolbar";
@@ -100,6 +101,7 @@ export function Home({ onOpen }: Props) {
         <span className="boards-brand">{APP_NAME}</span>
         <span className="chip muted">vos espaces de travail</span>
         <span className="boards-sp" />
+        <Bell accounts={account !== null} />
         <button
           type="button"
           className={`icon${settingsOpen ? " active" : ""}`}

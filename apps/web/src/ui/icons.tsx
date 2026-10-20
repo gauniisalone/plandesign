@@ -89,6 +89,14 @@ export const IconGear = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-52 : la cloche des notifications. */
+export const IconBell = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+  </Svg>
+);
+
 export const IconSliders = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
@@ -351,7 +359,10 @@ export const IconMaterials = (p: IconProps) => (
 );
 
 /** Galerie (US2) : favori (étoile, pleine si `filled`), renommer, comparer, agrandir. */
-export const IconStar = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+export const IconStar = ({
+  filled,
+  ...p
+}: IconProps & { filled?: boolean }) => (
   <Svg {...p} fill={filled ? "currentColor" : "none"}>
     <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" />
   </Svg>

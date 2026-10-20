@@ -2029,6 +2029,51 @@ export const commentsApi = {
     request<void>(`/projects/${pid}/comments/${tid}`, { method: "DELETE" }),
 };
 
+/** KAN-52 : une ligne de la cloche (un geste, ou des modifications regroupées). */
+export type BellType =
+  | "comment.created"
+  | "comment.replied"
+  | "member.joined"
+  | "render.done"
+  | "board.changed"
+  | "plan.changed";
+
+export interface BellLine {
+  id: string;
+  type: BellType;
+  actor_name: string;
+  actor_color: string;
+  mine: boolean;
+  project_id: string;
+  project_name: string;
+  at: string;
+  count: number;
+  unread: boolean;
+  thread_id: string | null;
+  item_id: string | null;
+  level_id: string | null;
+  run_id: string | null;
+  label: string | null;
+}
+
+export interface BellPage {
+  items: BellLine[];
+  next: string | null;
+  unread: number;
+}
+
+/** KAN-52 : la cloche (les projets dont je suis membre ; en local, ceux de la machine). */
+export const bellApi = {
+  list: (tab: "unread" | "all", before?: string | null) =>
+    request<BellPage>(
+      `/notifications?tab=${tab}${before ? `&before=${encodeURIComponent(before)}` : ""}`,
+    ),
+  count: () => request<{ unread: number }>("/notifications/count"),
+  read: (eventId: string) =>
+    request<void>("/notifications/read", json({ event_id: eventId })),
+  readAll: () => request<void>("/notifications/read-all", { method: "POST" }),
+};
+
 /** B2d : bail d'édition d'un plan (comptes seulement). « Prendre la main » ne réussit que sur
  *  un plan libre ou dont le bail a expiré ; « Demander la main » prévient le seul tenant. */
 export const leaseApi = {

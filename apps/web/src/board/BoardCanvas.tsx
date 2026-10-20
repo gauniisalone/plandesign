@@ -37,7 +37,7 @@ import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
 import { PresenceLayer } from "./PresenceLayer";
 import { CommentPins, CommentsPanel } from "./comments";
-import type { CommentsController } from "./useComments";
+import { pinPlace, type CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
 import {
   hostOf,
@@ -122,6 +122,13 @@ interface Props {
   onImportPlan?: (file: File) => void;
   /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
   focusRenders?: number;
+  /** KAN-52 : arrivée par la cloche, la vue se centre sur l'épingle d'un fil ou un élément
+   *  (une fois par jeton). */
+  focusOn?: {
+    token: number;
+    threadId: string | null;
+    itemId: string | null;
+  } | null;
   /** T7d1 : « Re-rendre » les vues périmées depuis l'en-tête du cadre Rendus (T7e : sur le
    *  plan de ce cadre). */
   onRerender: (cameraIds: string[], levelId?: string) => void;
@@ -375,6 +382,35 @@ export function BoardCanvas(props: Props) {
       y: rect.height / 2 - followView.cy * followView.zoom,
     });
   }, [followView, presence?.following]);
+  // KAN-52 : arrivée par la cloche : la vue se centre sur l'épingle (ou l'élément, choisi),
+  // sans être enregistrée. Un fil pas encore chargé : on réessaie à son arrivée.
+  const focusOn = props.focusOn;
+  const threads = props.comments?.threads;
+  const focused = useRef(0);
+  useEffect(() => {
+    const el = stage.current;
+    if (!focusOn || focused.current === focusOn.token || !el) return;
+    let point: { x: number; y: number } | null = null;
+    if (focusOn.threadId) {
+      const thread = threads?.find((t) => t.id === focusOn.threadId);
+      if (thread) point = pinPlace(thread.target, items);
+    } else if (focusOn.itemId) {
+      const item = items.find((i) => i.id === focusOn.itemId);
+      if (item) {
+        point = { x: item.x + item.w / 2, y: item.y + item.h / 2 };
+        setSelected(new Set([item.id]));
+      }
+    }
+    if (!point) return;
+    focused.current = focusOn.token;
+    const rect = el.getBoundingClientRect();
+    const { x, y } = point;
+    setViewState((v) => ({
+      zoom: v.zoom,
+      x: rect.width / 2 - x * v.zoom,
+      y: rect.height / 2 - y * v.zoom,
+    }));
+  }, [focusOn, threads, items]);
   // Ma vue, si quelqu'un me suit (centre et zoom, à la taille de l'autre écran chez lui).
   const followed = presence?.followed ?? 0;
   const sendView = presence?.view;

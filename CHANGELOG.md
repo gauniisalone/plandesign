@@ -7,6 +7,25 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 20 octobre 2026 (KAN-52 : la cloche des notifications)
+
+En local comme avec les comptes, à l'identique.
+
+- Une cloche en haut à droite (accueil et atelier) : le nombre de non-lus (« 9+ » au-delà de
+  9), rien quand tout est lu. Le panneau a deux onglets, « Non lues » et « Toutes », 50 lignes
+  puis « Voir plus » ; chaque ligne dit qui, quoi, quel objet, quel projet et quand (« Fanny a
+  commenté « Photo 2 » · Grenier · il y a 5 min »), un point signale les non-lus.
+- Un clic sur une ligne la marque comme lue, elle seule, et ouvre le projet au bon endroit
+  (l'épingle et son fil, l'élément, le plan, les rendus) ; « Tout marquer comme lu » remet le
+  compteur à 0. L'état « lu » est le même sur tous vos appareils.
+- Ce qui est notifié : un commentaire ou une réponse dans un fil où vous avez écrit (ou sur
+  votre projet), un membre qui rejoint le projet, un rendu prêt (le vôtre aussi), une
+  modification de l'espace de travail ou du plan par un autre membre, regroupée par auteur
+  sur 10 min (« 12 changements »). Jamais vos propres gestes, rien d'avant votre arrivée dans
+  le projet, seulement les projets dont vous êtes membre.
+- En direct avec les comptes (un canal par compte) ; en local, relu toutes les 15 s.
+- Un seul journal par projet (`events.jsonl`, partagé avec KAN-13), gardé 90 jours.
+
 ### 20 octobre 2026 (KAN-51 : commentaires de l'espace de travail)
 
 En local comme avec les comptes, à l'identique.

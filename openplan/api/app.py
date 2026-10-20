@@ -330,11 +330,15 @@ def _wire_bell(app: FastAPI, settings: Settings) -> None:
         from openplan.api.bell_state import FileReadState
 
         app.state.bell_reads = FileReadState(settings.data_dir)
-    else:
-        from openplan.api.accounts.bell_state import SqlReadState
+        app.state.jobs.on_done = render_done_hook(app.state.store)
+        return
+    from openplan.api.accounts.bell_state import SqlReadState
+    from openplan.api.accounts.live import ring_project_from_thread
 
-        app.state.bell_reads = SqlReadState(app.state.accounts.session)
-    app.state.jobs.on_done = render_done_hook(app.state.store)
+    app.state.bell_reads = SqlReadState(app.state.accounts.session)
+    app.state.jobs.on_done = render_done_hook(
+        app.state.store, lambda project_id: ring_project_from_thread(app, project_id)
+    )
 
 
 def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:

@@ -31,7 +31,7 @@ import math
 import secrets
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 from uuid import UUID
@@ -60,6 +60,8 @@ MAX_SELECTION = 100
 MAX_ID_CHARS = 64
 MAX_COORD = 1e7
 ZOOM_RANGE = (0.01, 16.0)
+BELL = '{"type":"bell"}'
+"""KAN-52 : « ta cloche a changé », sans dire de quoi (le client relit `/api/notifications`)."""
 
 
 def display_name(user: AuthUser) -> str:
@@ -111,6 +113,12 @@ class LiveHub(Protocol):
     def present(self, project_id: UUID, user_id: str) -> bool: ...
 
     async def evict(self, project_id: UUID, user_id: UUID | None = None) -> None: ...
+
+    def join_me(self, user_id: str, conn: str, socket: WebSocket) -> None: ...
+
+    def leave_me(self, user_id: str, conn: str) -> None: ...
+
+    async def ring(self, user_ids: Iterable[str]) -> None: ...
 
 
 def _coord(value: object) -> float | None:
@@ -172,6 +180,29 @@ class MemoryHub:
 
     def __init__(self) -> None:
         self.rooms: dict[UUID, dict[str, Conn]] = {}
+        self.accounts: dict[str, dict[str, WebSocket]] = {}
+        """KAN-52 : par compte, ses connexions `/ws/me` (tous ses onglets et appareils)."""
+        self.loop: asyncio.AbstractEventLoop | None = None
+        """La boucle du serveur, pour sonner depuis le fil d'une tâche (rendu terminé)."""
+
+    def join_me(self, user_id: str, conn: str, socket: WebSocket) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.accounts.setdefault(user_id, {})[conn] = socket
+
+    def leave_me(self, user_id: str, conn: str) -> None:
+        sockets = self.accounts.get(user_id, {})
+        sockets.pop(conn, None)
+        if not sockets:
+            self.accounts.pop(user_id, None)
+
+    async def ring(self, user_ids: Iterable[str]) -> None:
+        """La cloche de ces comptes a changé : un avis sans contenu, le client relit."""
+        for user_id in set(user_ids):
+            for socket in list(self.accounts.get(user_id, {}).values()):
+                try:
+                    await socket.send_text(BELL)
+                except Exception:  # connexion morte : elle partira à sa fermeture
+                    log.debug("cloche impossible vers une connexion fermée")
 
     def peers(self, project_id: UUID) -> list[Peer]:
         seen: dict[str, Peer] = {}
@@ -382,6 +413,68 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
         pass
     finally:
         await _left(socket.app, hub, project_id, conn, peer.user_id)
+
+
+@router.websocket("/ws/me")
+async def my_live(socket: WebSocket) -> None:
+    """KAN-52 : le canal d'un compte, pour sa cloche (« bell » quand elle change). Mêmes
+    contrôles que `/ws/projects` : origine de l'application, session valable (revérifiée toutes
+    les 30 s), messages petits et peu nombreux ; il ne reçoit que des pings."""
+    accounts = service(socket)
+    if (socket.headers.get("origin") or "").strip().lower() != accounts.settings.public_origin:
+        await socket.close(code=CLOSE_BAD_ORIGIN)
+        return
+    raw = socket.cookies.get(SESSION_COOKIE, "")
+    resolved = await run_in_threadpool(accounts.resolve_session, raw) if raw else None
+    if resolved is None:
+        await socket.close(code=CLOSE_NO_SESSION)
+        return
+    await socket.accept()
+    hub = hub_of(socket.app)
+    conn = secrets.token_urlsafe(12)
+    me = str(resolved.user.id)
+    hub.join_me(me, conn, socket)
+    await socket.send_text(json.dumps({"type": "hello", "conn": conn}))
+    recent: deque[float] = deque()
+    try:
+        while True:
+            try:
+                text = await asyncio.wait_for(socket.receive_text(), timeout=RECHECK_S)
+            except TimeoutError:
+                if await run_in_threadpool(accounts.resolve_session, raw) is None:
+                    await socket.close(code=CLOSE_NO_SESSION)
+                    break
+                continue
+            now = time.monotonic()
+            recent.append(now)
+            while recent and now - recent[0] > 1.0:
+                recent.popleft()
+            if len(text.encode()) > MAX_MESSAGE_BYTES or len(recent) > MAX_MESSAGES_PER_S:
+                await socket.close(code=CLOSE_TOO_CHATTY)
+                break
+            if text == '{"type":"ping"}':
+                await socket.send_text('{"type":"pong"}')
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        hub.leave_me(me, conn)
+
+
+async def ring_project(app: Any, project_id: UUID, but: str | None = None) -> None:
+    """KAN-52 : la cloche des membres du projet a pu changer (sauf celle de l'auteur)."""
+    members = await run_in_threadpool(app.state.accounts.members, project_id)
+    await hub_of(app).ring(str(m.user_id) for m in members if str(m.user_id) != but)
+
+
+def ring_project_from_thread(app: Any, project_id: UUID) -> None:
+    """Depuis le fil d'une tâche (rendu terminé) : sonne sur la boucle du serveur, si un
+    compte est à l'écoute (sinon, la cloche se relira à l'ouverture)."""
+    hub = hub_of(app)
+    loop = getattr(hub, "loop", None)
+    if loop is None or loop.is_closed():
+        return
+    members = app.state.accounts.members(project_id)
+    asyncio.run_coroutine_threadsafe(hub.ring(str(m.user_id) for m in members), loop)
 
 
 async def _left(app: Any, hub: LiveHub, project_id: UUID, conn: str, user_id: str) -> None:
