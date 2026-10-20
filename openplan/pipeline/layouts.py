@@ -19,9 +19,11 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import shapely
 from pydantic import Field
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
@@ -258,6 +260,15 @@ class Context:
     """Baie de chaque zone du brief (V1) : tranches de la pièce le long du faîtage."""
     casings: list[Casing] = field(default_factory=list)
     """KAN-67 : caissons des velux (volume du bake) ; aucun meuble généré n'y entre."""
+    pools: dict[int, tuple[Want, list[Candidate]]] = field(default_factory=dict)
+    """KAN-69 : candidats de chaque meuble avec leur emprise, calculés une fois par génération."""
+
+    @cached_property
+    def inner(self) -> Polygon:
+        """La pièce élargie d'un millimètre (bords tolérés), préparée une seule fois (KAN-69)."""
+        inner = self.room_polygon.buffer(1e-3)
+        shapely.prepare(inner)
+        return inner
 
     def fits_height(self, polygon: Polygon, top: float) -> bool:
         if not self.roofs:
@@ -475,6 +486,11 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
     by_category: dict[str, CatalogAsset] = {}
     for asset in catalog.assets:
         by_category.setdefault(asset.category, asset)
+    forbidden_union = unary_union(forbidden) if forbidden else Polygon()
+    # KAN-69 : géométries testées contre chaque candidat, préparées une fois.
+    walls = [landmarks.walls] if landmarks.walls is not None else []
+    for geometry in (forbidden_union, *walls, *landmarks.windows, *obstacles):
+        shapely.prepare(geometry)
     return Context(
         project=project,
         level=level,
@@ -484,7 +500,7 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
         inner_faces=_inner_faces(graph, room, polygon),
         faces=faces,
         obstacles=obstacles,
-        forbidden=unary_union(forbidden) if forbidden else Polygon(),
+        forbidden=forbidden_union,
         landmarks=landmarks,
         roofs=roofs,
         catalog_by_category=by_category,
@@ -518,6 +534,11 @@ class Placed:
     yaw: float
     polygon: Polygon
     score: float
+
+    @cached_property
+    def front(self) -> Polygon:
+        """Zone d'usage devant le meuble, calculée une fois (KAN-69)."""
+        return _front(self.x, self.y, self.yaw, self.want)
 
 
 # ------------------------------------------------------------------ usage de la pièce (F5)
@@ -678,19 +699,43 @@ def _polygon(x: float, y: float, yaw: float, want: Want) -> Polygon:
     return Polygon(footprint_corners(x, y, yaw, want.width, want.depth))
 
 
-def feasible(polygon: Polygon, want: Want, ctx: Context, placed: list[Placed]) -> bool:
-    if not ctx.room_polygon.buffer(1e-3).contains(polygon):
+Candidate = tuple[float, float, float, Polygon]
+"""Position (x, y, lacet) d'un meuble et son emprise au sol."""
+
+
+def _pool(want: Want, ctx: Context) -> list[Candidate]:
+    """Candidats du meuble et leurs emprises : ils ne dépendent que de ses dimensions et de la
+    pièce, donc se calculent une fois par génération, pas à chaque essai (KAN-69)."""
+    entry = ctx.pools.get(id(want))
+    if entry is None or entry[0] is not want:
+        pool = [(x, y, yaw, _polygon(x, y, yaw, want)) for x, y, yaw in candidates(want, ctx)]
+        entry = (want, pool)
+        ctx.pools[id(want)] = entry
+    return entry[1]
+
+
+def _overlaps(a: Polygon, b: Polygon) -> bool:
+    """Les deux emprises se recouvrent de plus de OVERLAP_EPS_M2. `intersects` (préparé si `b`
+    l'est) écarte d'abord les cas sans contact : leur aire commune est nulle, inutile de la
+    calculer (KAN-69)."""
+    if not shapely.intersects(b, a):
         return False
-    if not ctx.forbidden.is_empty and polygon.intersection(ctx.forbidden).area > OVERLAP_EPS_M2:
+    return bool(a.intersection(b).area > OVERLAP_EPS_M2)
+
+
+def feasible(polygon: Polygon, want: Want, ctx: Context, placed: list[Placed]) -> bool:
+    if not ctx.inner.contains(polygon):
+        return False
+    if not ctx.forbidden.is_empty and _overlaps(polygon, ctx.forbidden):
         return False
     for obstacle in ctx.obstacles:
-        if not want.asset.walkable and polygon.intersection(obstacle).area > OVERLAP_EPS_M2:
+        if not want.asset.walkable and _overlaps(polygon, obstacle):
             return False
     night = want.item.zone == "couchage"
     for other in placed:
         if want.asset.walkable or other.want.asset.walkable:
             continue  # un tapis se pose sous les meubles
-        if polygon.intersection(other.polygon).area > OVERLAP_EPS_M2:
+        if _overlaps(polygon, other.polygon):
             return False
         # Studio : le coin nuit ne touche pas le coin détente (80 cm entre les zones).
         zone = other.want.item.zone
@@ -745,20 +790,17 @@ def score_candidate(
     lm = ctx.landmarks
     score, satisfied, missed = _preferences(want, polygon, lm)
     front = _front(x, y, yaw, want)
-    if lm.walls is not None and front.intersection(lm.walls).area > OVERLAP_EPS_M2:
+    if lm.walls is not None and _overlaps(front, lm.walls):
         score -= 6.0  # face contre un mur : le meuble ne sert à rien
-    if not ctx.room_polygon.buffer(1e-3).contains(front):
+    if not ctx.inner.contains(front):
         score -= 1.0
     for other in placed:
-        if front.intersection(other.polygon).area > OVERLAP_EPS_M2:
+        if _overlaps(front, other.polygon):
             score -= 2.0
-        if (
-            _front(other.x, other.y, other.yaw, other.want).intersection(polygon).area
-            > OVERLAP_EPS_M2
-        ):
+        if _overlaps(other.front, polygon):
             score -= 2.0
     for zone in lm.windows:
-        if want.height > 0.9 and polygon.intersection(zone).area > OVERLAP_EPS_M2:
+        if want.height > 0.9 and _overlaps(polygon, zone):
             score -= 3.0
     if want.asset.category == "desk" and lm.windows and lm.near("window", polygon):
         score += 1.0
@@ -986,7 +1028,7 @@ def _best_position(
     best: Placed | None = None
     best_key = (-math.inf, 0.0)
     previous = taken.get(want.asset.category, [])
-    pool = candidates(want, ctx)
+    pool = _pool(want, ctx)
     passes = [pool]
     if want.bay is not None:
         # Brief par zones (V1) : d'abord dans la baie de la zone (et un peu autour), ce qui
@@ -996,8 +1038,7 @@ def _best_position(
         far = [c for c in pool if not reach.contains(Point(c[0], c[1]))]
         passes = [near, far]
     for batch in passes:
-        for x, y, yaw in batch:
-            polygon = _polygon(x, y, yaw, want)
+        for x, y, yaw, polygon in batch:
             if not feasible(polygon, want, ctx, placed):
                 continue
             # Lit encastré (H1) : 0,90 m libres au-dessus du matelas, à l'oreiller.
