@@ -103,12 +103,24 @@ export function BoardSide({
             {open} ouvert{open > 1 ? "s" : ""}
           </span>
           <span className="board-zone-sp" />
+          {/* Une icône (une ligne d'en-tête, même à 300 px), le texte en infobulle. */}
           <button
             type="button"
-            className="link"
+            className="icon board-zone-pins"
+            aria-pressed={comments.hidden}
+            aria-label={
+              comments.hidden ? "Afficher les épingles" : "Masquer les épingles"
+            }
+            title={
+              comments.hidden ? "Afficher les épingles" : "Masquer les épingles"
+            }
             onClick={() => comments.setHidden(!comments.hidden)}
           >
-            {comments.hidden ? "Afficher les épingles" : "Masquer les épingles"}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z" />
+              <circle cx="12" cy="10" r="2.2" />
+              {comments.hidden && <path d="M4 4l16 16" />}
+            </svg>
           </button>
         </header>
         {commentsOpen && <div className="board-zone-body" ref={setList} />}

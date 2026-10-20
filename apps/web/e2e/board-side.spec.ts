@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { reloadApp } from "./app-ready";
 import { createEmptyProject, goSpace } from "./helpers";
 
 /** KAN-64 : plus rien ne se chevauche dans l'espace de travail. L'Assistant et les
@@ -27,6 +28,8 @@ async function boardWithAComment(page: Page, name: string): Promise<string> {
       text: "Et si on ouvrait ce mur ?",
     },
   });
+  // L'atelier a déjà lu les commentaires à l'ouverture du projet : il les relit au chargement.
+  await reloadApp(page);
   await goSpace(page, "board");
   await expect(page.locator(".board-stage")).toBeVisible();
   return id;

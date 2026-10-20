@@ -6563,6 +6563,26 @@ button.link.home-empty-link {
 .board-zone-sp {
   flex: 1;
 }
+/* Une seule ligne d'en-tête, même dans le panneau étroit. */
+.board-zone-head {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.board-zone-head > * {
+  flex: none;
+}
+.board-zone-head > .board-zone-sp {
+  flex: 1;
+}
+.board-zone-pins svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .board-zone-meta {
   color: var(--muted);
   font-size: 12px;
