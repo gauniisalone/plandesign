@@ -1735,9 +1735,11 @@ export function BoardCanvas(props: Props) {
         </button>
       </div>
     ) : null;
+  // KAN-65 : sur une ligne (le texte d'un post-it peut en avoir plusieurs), coupé par le CSS.
+  const singleText = single ? single.text.split(/\s+/).join(" ").trim() : "";
   const selectionTitle = single
-    ? single.text.trim()
-      ? `« ${single.text.trim().slice(0, 40)} »`
+    ? singleText
+      ? `« ${singleText} »`
       : "Sélection"
     : `${selection.length} éléments`;
 
@@ -2040,7 +2042,9 @@ export function BoardCanvas(props: Props) {
               selectionActions ? (
                 <section className="board-zone-inner" aria-label="Sélection">
                   <header className="board-zone-head">
-                    <strong>{selectionTitle}</strong>
+                    <strong className="board-zone-title" title={selectionTitle}>
+                      {selectionTitle}
+                    </strong>
                     <span className="board-zone-sp" />
                     <button
                       type="button"

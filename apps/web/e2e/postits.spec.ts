@@ -158,6 +158,23 @@ test("KAN-65 local : poser, colorer un ou plusieurs post-its, texte qui tient, c
     hasText: "Un texte bien plus long",
   });
   await expect(second).toHaveClass(/postit-blue/);
+  // Le titre de la sélection (texte long) tient sur une ligne, dans la boîte du panneau ;
+  // le texte complet est dans l'infobulle, « ← Assistant » reste dans le panneau.
+  const zone = page.getByRole("region", { name: "Sélection", exact: true });
+  const title = zone.locator(".board-zone-title");
+  await expect(title).toHaveAttribute("title", /sans déborder »$/);
+  const zoneBox = (await zone.boundingBox())!;
+  const titleBox = (await title.boundingBox())!;
+  expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(
+    zoneBox.x + zoneBox.width + 0.5,
+  );
+  expect(titleBox.height).toBeLessThan(30);
+  const backBox = (await zone
+    .getByRole("button", { name: "← Assistant" })
+    .boundingBox())!;
+  expect(backBox.x + backBox.width).toBeLessThanOrEqual(
+    zoneBox.x + zoneBox.width + 0.5,
+  );
 
   // Must have 3 : le texte se réduit pour tenir.
   const size = (l: Locator) =>

@@ -6745,6 +6745,14 @@ button.link.home-empty-link {
 .board-zone-head > .board-zone-sp {
   flex: 1;
 }
+/* KAN-65 : un titre long (le texte d'un post-it) tient sur sa ligne, coupé par des points
+   de suspension, en entier dans l'infobulle ; « ← Assistant » reste dans le panneau. */
+.board-zone-head > .board-zone-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .board-zone-pins svg {
   width: 18px;
   height: 18px;
