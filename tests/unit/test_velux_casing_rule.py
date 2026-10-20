@@ -8,6 +8,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from openplan.geom.velux import (
+    CHEVETRE_DEPTH_M,
+)
 from openplan.geom.wallgraph import WallGraph
 from openplan.pipeline.critique import CritiqueBody, rule_remarks
 from openplan.pipeline.layouts import (
@@ -20,7 +23,9 @@ from openplan.pipeline.layouts import (
     generate_layouts,
     revise_proposal,
 )
-from openplan.pipeline.scene3d import CHEVETRE_DEPTH_M, bake_level
+from openplan.pipeline.scene3d import (
+    bake_level,
+)
 from openplan.scene.ops import AddFurniture, AddRoofWindow, apply_op
 from openplan.schemas import Furniture, RoofPlane, RoofWindow
 from openplan.schemas.common import Point2

@@ -12,22 +12,24 @@ import pytest
 from scipy.optimize import linprog
 from scipy.spatial import ConvexHull
 
+from openplan.geom.velux import (
+    PURLIN,
+    RAFTER,
+    reveal_solids,
+    roof_panels,
+    timber_settings,
+    window_holes,
+)
 from openplan.geom.wallgraph import WallGraph
 from openplan.pipeline.attic import Estimate
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic
 from openplan.pipeline.scene3d import (
-    PURLIN,
     PURLIN_EVERY_M,
-    RAFTER,
     TIMBER_CLEARANCE_M,
     bake_level,
-    reveal_solids,
     reveal_span,
-    roof_panels,
     timber_rects,
-    timber_settings,
     timber_solids,
-    window_holes,
 )
 from openplan.scene.factory import new_project
 from openplan.scene.ops import AddRoofWindow, apply_op

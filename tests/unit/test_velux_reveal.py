@@ -8,17 +8,19 @@ import numpy as np
 import pytest
 
 from openplan.geom.roof import derived_roofs
-from openplan.geom.wallgraph import WallGraph
-from openplan.pipeline.render import SKYLIGHT_TURN_DEG, daylight_spec, through_skylights
-from openplan.pipeline.scene3d import (
+from openplan.geom.velux import (
     CHEVETRE_DEPTH_M,
     REVEAL_DEPTH_M,
-    bake_level,
     reveal_depth,
-    reveal_finish,
     reveal_solids,
     roof_panels,
     timber_settings,
+)
+from openplan.geom.wallgraph import WallGraph
+from openplan.pipeline.render import SKYLIGHT_TURN_DEG, daylight_spec, through_skylights
+from openplan.pipeline.scene3d import (
+    bake_level,
+    reveal_finish,
 )
 from openplan.scene.ops import AddRoofWindow, SetIntent, apply_op
 from openplan.schemas.elements import RoofPlane, RoofWindow, Room

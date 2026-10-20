@@ -16,7 +16,7 @@ Chaque règle produit des violations compréhensibles, avec les éléments conce
 - `furniture_unreachable` : un meuble que l'on ne peut pas atteindre depuis la porte avec un
   passage de 0,80 m de large (souple) ;
 - `velux_casing` : un meuble qui entre dans le caisson d'un velux (KAN-67, souple) ; le volume
-  est celui que le bake bâtit (`scene3d.velux_casings`), en pleine profondeur.
+  est celui que le bake bâtit (`geom.velux.velux_casings`), en pleine profondeur.
 
 « Dure » = sévérité `high` (l'édition est refusée, la proposition d'aménagement écartée) ;
 « souple » = `medium` (affichée, pénalité de score). Une `Constraint` de la sorte
@@ -51,6 +51,7 @@ from openplan.geom.opening_symbols import (
 )
 from openplan.geom.roof import derived_roofs, height_under_slope
 from openplan.geom.stairs import ARRIVAL_DEPTH_M, HEADROOM_M, arrival_zone, headroom, stair_layout
+from openplan.geom.velux import velux_casings as baked
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene.catalog import CatalogError, load_catalog
 from openplan.schemas.derived import DerivedRoof
@@ -561,8 +562,6 @@ def velux_casings(level: Level, graph: WallGraph) -> list[Casing]:
 
 
 def _velux_casings(level: Level, graph: WallGraph) -> list[Casing]:
-    from openplan.pipeline.scene3d import velux_casings as baked
-
     out: list[Casing] = []
     for window, boards in baked(level, graph):
         solids = [s for s in (Solid.of(b) for b in boards) if s is not None]

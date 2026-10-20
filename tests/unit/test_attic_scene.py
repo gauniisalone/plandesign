@@ -8,6 +8,9 @@ import math
 import pytest
 import trimesh
 
+from openplan.geom.velux import (
+    ROOF_THICKNESS,
+)
 from openplan.pipeline.attic import Estimate
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic, weaker
 from openplan.pipeline.derived import compute_derived
@@ -15,7 +18,6 @@ from openplan.pipeline.export import render_svg
 from openplan.pipeline.floorplan import DetectionError
 from openplan.pipeline.scene3d import (
     ROOF_SKIRT_M,
-    ROOF_THICKNESS,
     bake_level,
     build_scene,
     glb_bytes,

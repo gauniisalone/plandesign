@@ -14,19 +14,21 @@ import trimesh
 
 from openplan.geom.framing import _hit_triangles
 from openplan.geom.roof import derived_roofs
-from openplan.geom.wallgraph import WallGraph
-from openplan.pipeline.layouts import LayoutBody, apply_layout, generate_layouts
-from openplan.pipeline.scene3d import (
+from openplan.geom.velux import (
     CHEVETRE_DEPTH_M,
     FURNITURE_GAP_M,
     REVEAL_DEPTH_M,
     ROOF_THICKNESS,
     ROOF_WINDOW_FRAME_M,
     SILL_FLOOR_GAP_M,
-    bake_level,
     reveal_solids,
     roof_panels,
     window_holes,
+)
+from openplan.geom.wallgraph import WallGraph
+from openplan.pipeline.layouts import LayoutBody, apply_layout, generate_layouts
+from openplan.pipeline.scene3d import (
+    bake_level,
 )
 from openplan.scene.ops import AddFurniture, AddRoofWindow, UpdateElement, apply_op
 from openplan.schemas import Furniture, RoofPlane

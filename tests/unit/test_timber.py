@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from openplan.pipeline.scene3d import RAFTER, bake_level, timber_rects, timber_settings
+from openplan.geom.velux import (
+    RAFTER,
+    timber_settings,
+)
+from openplan.pipeline.scene3d import (
+    bake_level,
+    timber_rects,
+)
 from openplan.scene.ops import AddRoofWindow, UpdateElement, apply_op
 from openplan.schemas.elements import RoofPlane
 from tests.factories import ATTIC, attic_project, only_level
