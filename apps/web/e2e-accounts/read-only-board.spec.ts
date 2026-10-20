@@ -121,6 +121,15 @@ test("KAN-50 (1) : lecteur, aucun « Importer » dans les cadres Photos et Inspi
       frame(page, role).getByRole("button", { name: /Importer/ }),
     ).toHaveCount(0);
   }
+  // État vide neutre : aucune invitation à déposer, ni la ligne « Plan depuis photo ».
+  await expect(frame(page, "photos")).toContainText("Aucune photo de la pièce");
+  await expect(frame(page, "inspirations")).toContainText(
+    "Aucune image d'ambiance",
+  );
+  for (const role of ["photos", "inspirations"] as const)
+    await expect(frame(page, role)).not.toContainText(
+      /Déposez|Plan depuis photo/,
+    );
   await shot(page, "kan50-1-lecteur-cadres");
 });
 
@@ -199,5 +208,11 @@ test("KAN-50 (3) : éditeur, les « Importer » des cadres restent là", async (
     await expect(
       frame(page, role).getByRole("button", { name: /Importer/ }),
     ).toBeVisible();
+  // L'éditeur garde l'invitation à déposer, pas l'état vide du lecteur.
+  await expect(frame(page, "inspirations")).toContainText(
+    "Déposez vos images d'ambiance",
+  );
+  for (const role of ["photos", "inspirations"] as const)
+    await expect(frame(page, role)).not.toContainText("Aucune");
   await shot(page, "kan50-3-editeur-importer");
 });

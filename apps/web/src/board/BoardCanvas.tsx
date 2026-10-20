@@ -158,6 +158,12 @@ const FRAME_HINTS: Record<string, string> = {
   inspirations: "Déposez vos images d'ambiance",
   renders: "Les rendus apparaîtront ici",
 };
+/** KAN-50 : chez un lecteur, un cadre vide le dit sans l'inviter à rien déposer (ni la ligne
+ *  « Plan depuis photo », qui ne le concerne pas). */
+const READ_ONLY_EMPTY: Record<string, string> = {
+  photos: "Aucune photo de la pièce",
+  inspirations: "Aucune image d'ambiance",
+};
 /** T7a (demande d'augus, 18 oct.) : importer droit dans un cadre ; le sélecteur de fichiers
  *  ne propose que ce que le cadre attend. */
 const FRAME_IMPORT: Record<string, { accept: string; tip: string }> = {
@@ -1340,6 +1346,12 @@ export function BoardCanvas(props: Props) {
                   Annuler
                 </button>
               </span>
+            ) : readOnly && READ_ONLY_EMPTY[item.role ?? ""] ? (
+              !items.some((i) => i.frame === item.id) && (
+                <span className="board-frame-hint">
+                  {READ_ONLY_EMPTY[item.role ?? ""]}
+                </span>
+              )
             ) : missingHint(item.role ?? "", caps) ? (
               <span
                 className="board-frame-hint board-frame-missing"
