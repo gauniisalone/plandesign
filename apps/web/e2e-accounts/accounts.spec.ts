@@ -979,8 +979,13 @@ test("B2b : session révoquée, poignée de main refusée : retour à la connexi
 test("KAN-49 : session révoquée, /api coupé sauf /api/auth/me : la connexion en moins de 2 s, puis retour au projet", async ({
   browser,
 }) => {
-  // Sa propre adresse : deux connexions seulement (avant et après), loin de la limite.
-  const page = await person(browser, "198.51.100.49");
+  // Sa propre adresse : deux connexions seulement (avant et après), loin de la limite ; une
+  // adresse par répétition (--repeat-each), la limite des connexions étant par adresse.
+  const repeat = test.info().repeatEachIndex;
+  const page = await person(
+    browser,
+    repeat === 0 ? "198.51.100.49" : `198.51.100.${150 + repeat}`,
+  );
   let refuse = false;
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/ws\/projects\//, (ws) => {
