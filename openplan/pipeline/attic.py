@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from itertools import combinations
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -40,6 +41,7 @@ from openplan.geom.planes import (
     fit_planes,
     rotate_plane,
 )
+from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.pipeline.roof_windows import RoofWindowSighting, locate_roof_windows
 from openplan.schemas.common import Source, StrictModel
@@ -192,6 +194,89 @@ def find_floor(planes: list[FittedPlane]) -> int | None:
     if not candidates:
         return None
     return max(candidates, key=lambda i: planes[i].count)
+
+
+SLOPE_PAIR_CANDIDATES = 6
+"""Plans les mieux soutenus parmi lesquels chercher les deux pentes quand le sol manque."""
+FALLBACK_MIN_FRACTION = 0.01
+"""Sol non trouvé : plans cherchés jusqu'à 1 % des points (2 % sinon), pour garder le peu de
+sol ou de jambettes encore dans le champ d'une photo levée."""
+ASSUMED_FLOOR_SIGMA = 0.20
+"""Incertitude (m) d'une hauteur de prise de vue supposée, sans sol vu ni saisie."""
+
+
+def _tilt(normal: Float, up: Float) -> float:
+    a = angle_between(normal, up)
+    return min(a, math.pi - a)
+
+
+def up_from_slopes(planes: list[FittedPlane]) -> Float | None:
+    """KAN-45 : sol hors champ (photo levée sous un rampant). La verticale est la bissectrice
+    des normales de deux pentes opposées (toit symétrique : leurs normales, orientées vers la
+    caméra, font le même angle avec la verticale de part et d'autre). Parmi les paires
+    possibles, celle dont la verticale est appuyée par le plus de points sur des plans
+    verticaux ou horizontaux (pignon, jambettes, plafond) ; None sans paire plausible."""
+    down = np.array([0.0, 1.0, 0.0])
+    order = sorted(range(len(planes)), key=lambda i: -planes[i].count)[:SLOPE_PAIR_CANDIDATES]
+    best: tuple[int, Float] | None = None
+    for a, b in combinations(order, 2):
+        total = planes[a].plane.normal + planes[b].plane.normal
+        if np.linalg.norm(total) < 1e-6:
+            continue
+        up: Float = -total / np.linalg.norm(total)
+        # Comme le sol : la verticale regarde vers le haut de l'image (tangage < 50°).
+        if angle_between(-up, down) > FLOOR_MAX_TILT:
+            continue
+        if not HORIZONTAL_MAX_TILT < _tilt(planes[a].plane.normal, up) <= SLOPE_MAX_TILT:
+            continue
+        support = planes[a].count + planes[b].count
+        for i in order:
+            if i in (a, b):
+                continue
+            t = _tilt(planes[i].plane.normal, up)
+            if t <= HORIZONTAL_MAX_TILT or t > SLOPE_MAX_TILT:
+                support += planes[i].count
+        if best is None or support > best[0]:
+            best = (support, up)
+    return None if best is None else best[1]
+
+
+SIDE_WALL_MIN_SHARE = 0.003
+"""Part minimale du nuage pour retenir une jambette cherchée dans les points restants."""
+SIDE_WALL_MAX_SPREAD_M = 0.05
+SIDE_WALL_MIN_CLUSTER = 0.6
+"""Part des points restants d'un côté qui doivent tenir à SIDE_WALL_MAX_SPREAD_M de la médiane."""
+
+
+def residual_side_walls(
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes, slopes: list[int]
+) -> list[FittedPlane]:
+    """KAN-45 : photo levée, seul le haut des jambettes reste dans le champ, trop peu pour une
+    recherche de plans à l'aveugle (qui les relie parfois en un faux plan incliné). Le repère
+    étant connu, chaque jambette est cherchée directement : les points qui ne sont ni sur les
+    deux pentes ni sur un pignon, d'un même côté du faîtage et groupés à une même distance
+    latérale. Plan vertical, normale vers la caméra."""
+    used = np.zeros(len(points), dtype=bool)
+    for i in [*slopes, *(i for i, k in cls.kinds.items() if k == "gable")]:
+        used[planes[i].inliers] = True
+    world = points @ cls.axes.T
+    finite = np.isfinite(world).all(axis=1)
+    out: list[FittedPlane] = []
+    for side in (-1.0, 1.0):
+        idx = np.flatnonzero(~used & finite & (np.sign(world[:, 1]) == side))
+        if len(idx) < SIDE_WALL_MIN_SHARE * len(points):
+            continue
+        y = world[idx, 1]
+        y_wall = float(np.median(y))
+        near = idx[np.abs(y - y_wall) < SIDE_WALL_MAX_SPREAD_M]
+        if len(near) < SIDE_WALL_MIN_SHARE * len(points) or len(near) < SIDE_WALL_MIN_CLUSTER * len(
+            idx
+        ):
+            continue
+        normal: Float = cls.axes.T @ np.array([0.0, -side, 0.0])
+        rms = float(np.sqrt(np.mean((world[near, 1] - y_wall) ** 2)))
+        out.append(FittedPlane(Plane(normal, abs(y_wall)), near.astype(np.intp), rms))
+    return out
 
 
 def attic_axes(up: Float, planes: list[FittedPlane], floor_idx: int) -> Float:
@@ -493,17 +578,51 @@ def analyse_attic(
     *,
     frame_up: Float | None = None,
     seed: int = 0,
+    camera_height_m: float | None = None,
 ) -> tuple[AtticEstimate, list[FittedPlane], ClassifiedPlanes | None, NDArray[np.intp], list[str]]:
-    """Cœur de l'étape, sans fichier : estimation, plans, classement, pixels, avertissements."""
+    """Cœur de l'étape, sans fichier : estimation, plans, classement, pixels, avertissements.
+
+    `camera_height_m` (hauteur de prise de vue saisie) ne sert que si le sol n'est pas vu :
+    le sol est alors posé à cette hauteur sous la caméra (sinon à la hauteur par défaut)."""
     points, pixel_index = backproject(depth, focal_px, principal_point, stride=STRIDE)
     h, w = depth.shape
     planes = fit_planes(points, pixel_index, (w, h), seed=seed)
     warnings: list[str] = []
     floor_idx = find_floor(planes)
+    assumed_floor: float | None = None
     if floor_idx is None:
-        warnings.append("Aucun plan de sol trouvé dans la profondeur : combles non estimés.")
-        return AtticEstimate(), planes, None, pixel_index, warnings
+        # KAN-45 : photo levée. Le sol et le bas des jambettes sortent du champ ; ce qu'il en
+        # reste passe sous le seuil d'extraction. Seconde recherche, plus fine, dans ce seul cas
+        # (les photos où le sol est trouvé ne changent pas).
+        planes = fit_planes(
+            points, pixel_index, (w, h), seed=seed, min_fraction=FALLBACK_MIN_FRACTION
+        )
+        floor_idx = find_floor(planes)
+    if floor_idx is None:
+        up = up_from_slopes(planes)
+        if up is None:
+            warnings.append("Aucun plan de sol trouvé dans la profondeur : combles non estimés.")
+            return AtticEstimate(), planes, None, pixel_index, warnings
+        # KAN-45 : photo levée, sol hors champ. Un sol sans points (repère seulement) à la
+        # hauteur de prise de vue saisie, sinon par défaut ; les hauteurs en dépendent.
+        assumed_floor = camera_height_m if camera_height_m is not None else DEFAULT_CAMERA_HEIGHT_M
+        planes = [
+            *planes,
+            FittedPlane(Plane(up, assumed_floor), np.empty(0, dtype=np.intp), 0.0),
+        ]
+        floor_idx = len(planes) - 1
+        warnings.append(
+            f"Sol hors champ (photo levée) : verticale prise entre les deux pentes (toit "
+            f"supposé symétrique), sol à {assumed_floor:.2f} m sous l'appareil "
+            f"({'hauteur saisie' if camera_height_m is not None else 'hauteur supposée'})."
+        )
     cls = classify(planes, floor_idx)
+    if assumed_floor is not None and "side_wall" not in cls.kinds.values():
+        for wall in residual_side_walls(points, planes, cls, _opposite_slopes(planes, cls)):
+            planes = [*planes, wall]
+            i = len(planes) - 1
+            cls.kinds[i] = "side_wall"
+            cls.world[i] = rotate_plane(wall.plane, cls.axes)
     if frame_up is not None:
         disagreement = angle_between(frame_up, cls.floor.plane.normal)
         if disagreement > FRAME_DISAGREEMENT_WARN:
@@ -512,6 +631,20 @@ def analyse_attic(
                 f"{math.degrees(disagreement):.0f}° : sol ou lignes peu fiables."
             )
     estimate = summarize(planes, cls, len(points))
+    if assumed_floor is not None:
+        estimate = estimate.model_copy(
+            update={
+                "camera_height": Estimate(
+                    value=assumed_floor,
+                    sigma=PRIOR_REL_SIGMA * assumed_floor
+                    if camera_height_m is not None
+                    else ASSUMED_FLOOR_SIGMA,
+                    source=Source.USER_DEFINED if camera_height_m is not None else Source.INFERRED,
+                    note="sol hors champ : hauteur de prise de vue "
+                    + ("saisie" if camera_height_m is not None else "supposée"),
+                )
+            }
+        )
     if estimate.ridge_height is None:
         warnings.append("Une seule pente vue (ou aucune) : hauteur au faîtage non estimée.")
     if estimate.gable_distance is None:
@@ -563,7 +696,11 @@ def run_attic(
     depth = depth_map.depth.astype(np.float32)
     frame_up = camera.frame.up if camera.frame is not None else None
     estimate, planes, cls, pixel_index, warnings = analyse_attic(
-        depth, camera.camera.focal_px, camera.camera.principal_point, frame_up=frame_up
+        depth,
+        camera.camera.focal_px,
+        camera.camera.principal_point,
+        frame_up=frame_up,
+        camera_height_m=camera_height_m,
     )
     if roof_windows is not None and cls is not None and depth.shape == image.pixels.shape[:2]:
         try:
