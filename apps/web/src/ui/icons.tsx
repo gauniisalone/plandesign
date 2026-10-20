@@ -89,6 +89,14 @@ export const IconGear = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-64 : les commentaires de l'espace de travail (une bulle à lignes). */
+export const IconComment = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 5h16v11H9l-5 4z" />
+    <path d="M8 9h8M8 12h5" />
+  </Svg>
+);
+
 /** KAN-58 : le journal d'activité (une horloge). */
 export const IconActivity = (p: IconProps) => (
   <Svg {...p}>

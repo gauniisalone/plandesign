@@ -45,6 +45,7 @@ import {
 import { ShareDialog } from "../panels/ShareDialog";
 import { Bell } from "../panels/Bell";
 import { ActivityPanel } from "../panels/ActivityPanel";
+import { BoardSide } from "../panels/BoardSide";
 import { takeBellTarget, useBellTargetToken } from "../state/bell";
 import { useLive } from "../state/live";
 import { useComments } from "../board/useComments";
@@ -584,8 +585,48 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // KAN-52 : une ligne de la cloche mène ici, au bon endroit : le plan modifié, le cadre
   // Rendus, l'épingle (fil ouvert) ou l'élément ; sinon l'espace de travail.
   const bellToken = useBellTargetToken();
-  /** KAN-58 : le panneau « Activité » du projet. */
+  /** KAN-58 : le panneau « Activité » du projet (KAN-64 : une zone repliée du panneau de
+   *  droite dans l'espace de travail, un panneau flottant ailleurs). */
   const [activityOpen, setActivityOpen] = useState(false);
+  /** KAN-64 : dans l'espace de travail, le panneau de droite (Assistant, Commentaires,
+   *  Activité) est ouvert d'office ; ses zones et l'endroit où l'espace de travail y range
+   *  l'Assistant et les commentaires. */
+  const [boardSideOpen, setBoardSideOpen] = useState(true);
+  const [commentsZoneOpen, setCommentsZoneOpen] = useState(true);
+  const [boardSlots, setBoardSlots] = useState<{
+    top: HTMLElement | null;
+    comments: HTMLElement | null;
+  }>({ top: null, comments: null });
+  const sideOpen =
+    step === "board"
+      ? boardSideOpen || (panelOpen && pane !== "inspector")
+      : panelOpen;
+  const toggleSide = () => {
+    if (step !== "board") {
+      setPanelOpen((o) => !o);
+      return;
+    }
+    if (sideOpen) {
+      setBoardSideOpen(false);
+      setPanelOpen(false);
+      setPane("inspector");
+    } else setBoardSideOpen(true);
+  };
+  /** La bulle de la barre du haut : les Commentaires, dans le panneau de l'espace de
+   *  travail. */
+  const openComments = () => {
+    if (step !== "board") goTab("board");
+    setPane("inspector");
+    setBoardSideOpen(true);
+    setCommentsZoneOpen(true);
+  };
+  const toggleActivity = () => {
+    if (step === "board") {
+      setPane("inspector");
+      setBoardSideOpen(true);
+    }
+    setActivityOpen((o) => !o);
+  };
   const [boardFocus, setBoardFocus] = useState<{
     token: number;
     threadId: string | null;
@@ -1406,6 +1447,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               focusRenders={rendersFocus}
               focusOn={boardFocus}
+              side={sideOpen && pane === "inspector" ? boardSlots : null}
               presence={account ? live.presence : undefined}
               comments={comments}
               peers={live.peers}
@@ -1451,7 +1493,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             project={state.project}
             tab={tab}
             sourceOpen={step === "import"}
-            panelOpen={panelOpen}
+            panelOpen={sideOpen}
             advancedOpen={panelOpen && pane === "advanced"}
             busy={state.busy}
             onHome={onHome}
@@ -1468,7 +1510,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onSource={() => goStep(step === "import" ? "edit" : "import")}
             assistantOpen={panelOpen && pane === "assistant"}
             onAssistant={() => togglePane("assistant")}
-            onTogglePanel={() => setPanelOpen((o) => !o)}
+            onTogglePanel={toggleSide}
             onToggleAdvanced={() => togglePane("advanced")}
             save={
               board.save === "error" || state.saveFailed
@@ -1481,7 +1523,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onShare={canShare ? () => setShareOpen(true) : undefined}
             bell={<Bell accounts={account !== null} />}
             activityOpen={activityOpen}
-            onActivity={() => setActivityOpen((o) => !o)}
+            onActivity={toggleActivity}
+            commentsCount={comments.threads.filter((t) => !t.resolved).length}
+            onComments={openComments}
             peers={live.peers}
             following={live.presence.following}
             onFollow={(userId) => {
@@ -1581,7 +1625,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onClose={() => setShareOpen(false)}
             />
           )}
-          {activityOpen && (
+          {activityOpen && step !== "board" && (
             <ActivityPanel
               projectId={projectId}
               tick={`${liveTick}|${commentsTick}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
@@ -1908,7 +1952,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           conversation) gardent leur état d'un repli à l'autre. */}
         {step !== "import" && (
           <div
-            className={`side${panelOpen ? "" : " closed"}`}
+            className={`side${sideOpen ? "" : " closed"}`}
             style={{ "--side-w": `${panelWidth}px` } as React.CSSProperties}
           >
             <SideHandle
@@ -1956,7 +2000,30 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       </button>
                     </div>
                   )}
-                  {pane === "inspector" && !readOnly && inspector}
+                  {pane === "inspector" && step === "board" && (
+                    <BoardSide
+                      comments={comments}
+                      commentsOpen={commentsZoneOpen}
+                      onCommentsOpen={setCommentsZoneOpen}
+                      activity={
+                        activityOpen && (
+                          <ActivityPanel
+                            inline
+                            projectId={projectId}
+                            tick={`${liveTick}|${commentsTick}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+                            onClose={() => setActivityOpen(false)}
+                          />
+                        )
+                      }
+                      activityOpen={activityOpen}
+                      onActivityOpen={setActivityOpen}
+                      onSlots={setBoardSlots}
+                    />
+                  )}
+                  {pane === "inspector" &&
+                    step !== "board" &&
+                    !readOnly &&
+                    inspector}
                   {pane === "catalog" && !readOnly && (
                     <aside className="inspector">
                       <LibraryPanel

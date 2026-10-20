@@ -54,7 +54,11 @@ export function Composer({
   onSettings,
   onVariant,
   onGenerateNow,
+  docked = false,
 }: {
+  /** KAN-64 : rangé dans la zone « Assistant » du panneau de droite : toujours ouvert et
+   *  déplié, sans bouton de fermeture (la zone se replie). */
+  docked?: boolean;
   project: Project;
   hasRenders: boolean;
   /** Construction du plan en cours : l'étape remplace les boutons. */
@@ -77,7 +81,8 @@ export function Composer({
     () =>
       !project.pending_instruction?.trim() &&
       !Object.values(project.pending_answers ?? {}).some(
-        (v) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length),
+        (v) =>
+          v !== null && v !== undefined && !(Array.isArray(v) && !v.length),
       ),
   );
   const [tab, setTab] = useState<Tab>("prompt");
@@ -168,7 +173,7 @@ export function Composer({
   };
   const stop = (e: React.PointerEvent) => e.stopPropagation();
 
-  if (!open)
+  if (!open && !docked)
     return (
       <button
         type="button"
@@ -185,7 +190,7 @@ export function Composer({
 
   return (
     <section
-      className={`board-composer${compact ? " compact" : ""}`}
+      className={`board-composer${docked ? " docked" : compact ? " compact" : ""}`}
       aria-label="Compositeur"
       title={HELP}
       onPointerDown={stop}
@@ -233,15 +238,17 @@ export function Composer({
             Nouvelle variante → assistant
           </button>
         )}
-        <button
-          type="button"
-          className="icon board-composer-close"
-          aria-label="Fermer le compositeur"
-          title="Fermer (vos exigences sont gardées)"
-          onClick={() => toggle(false)}
-        >
-          ×
-        </button>
+        {!docked && (
+          <button
+            type="button"
+            className="icon board-composer-close"
+            aria-label="Fermer le compositeur"
+            title="Fermer (vos exigences sont gardées)"
+            onClick={() => toggle(false)}
+          >
+            ×
+          </button>
+        )}
       </header>
 
       {understood.length > 0 && (
@@ -254,7 +261,7 @@ export function Composer({
         <div role="tabpanel" aria-label="Prompt libre">
           <textarea
             aria-label="Vos envies et contraintes"
-            rows={compact ? 1 : 3}
+            rows={compact && !docked ? 1 : 3}
             maxLength={MAX_TEXT}
             placeholder="Décrivez le projet : pièce, surface, style, contraintes…"
             value={text}
@@ -269,14 +276,17 @@ export function Composer({
       )}
 
       {home?.remote_model && (
-        <label className="board-composer-gemini">
+        <label
+          className="board-composer-gemini"
+          title="Le texte seul part chez Google, jamais les photos"
+        >
           <input
             type="checkbox"
             checked={gemini}
             onChange={(e) => toggleGemini(e.target.checked)}
           />
-          Mieux comprendre mon texte avec Gemini — le texte seul part chez
-          Google, jamais les photos
+          {/* KAN-64 : un consentement, visible, sur une seule ligne. */}
+          Mieux comprendre mon texte avec Gemini (texte seul)
         </label>
       )}
 

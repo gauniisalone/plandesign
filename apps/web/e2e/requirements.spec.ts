@@ -67,11 +67,14 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
     })
     .toEqual(["grenier chaleureux, bois et lin", 24, 1, "chalet"]);
 
-  // Fermé : plus rien des exigences sur le tableau ; la pastille le rouvre, tout est là.
-  await composer.getByRole("button", { name: "Fermer le compositeur" }).click();
+  // KAN-64 : la zone « Assistant » du panneau se replie ; rouverte, tout est là.
+  const fold = page.locator(".side .board-zone-toggle", {
+    hasText: "Assistant",
+  });
+  await fold.click();
   await expect(composer).toHaveCount(0);
   await expect(board).not.toContainText("grenier chaleureux");
-  await page.getByRole("button", { name: "Ouvrir le compositeur" }).click();
+  await fold.click();
   await expect(composer.getByLabel("Vos envies et contraintes")).toHaveValue(
     "grenier chaleureux, bois et lin",
   );

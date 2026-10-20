@@ -6486,6 +6486,141 @@ button.link.home-empty-link {
   pointer-events: auto;
 }
 
+/* KAN-64 : le panneau de droite de l'espace de travail, en zones empilées : en haut
+   l'Assistant (ou la sélection), puis les Commentaires, puis l'Activité (repliée). */
+.board-side {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.board-zone {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.board-zone.top {
+  flex: 0 0 auto;
+  max-height: 60%;
+  overflow: auto;
+}
+.board-zone.top:empty {
+  display: none;
+}
+.board-zone.top:empty + .board-split {
+  display: none;
+}
+.board-zone.comments {
+  flex: 1 1 auto;
+  border-top: 1px solid var(--line);
+}
+.board-zone.comments.collapsed,
+.board-zone.activity.collapsed {
+  flex: 0 0 auto;
+}
+.board-zone.activity {
+  flex: 0 1 auto;
+  max-height: 45%;
+  border-top: 1px solid var(--line);
+}
+.board-zone-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 10px;
+}
+.board-zone-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.board-zone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+.board-zone-inner > .board-zone-head {
+  padding: 6px 0;
+}
+.board-zone-sp {
+  flex: 1;
+}
+.board-zone-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.board-zone-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 2px 0;
+}
+.board-split {
+  flex: 0 0 8px;
+  cursor: row-resize;
+  display: grid;
+  place-items: center;
+  background: var(--muted-bg);
+  border-top: 1px solid var(--line);
+  touch-action: none;
+}
+.board-split::before {
+  content: "";
+  width: 34px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.5;
+}
+.board-composer.docked {
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.board-zone-inner .board-context {
+  justify-content: flex-start;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+.comments-panel.inline,
+.activity-panel.inline {
+  position: static;
+  width: auto;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+/* La bulle des Commentaires, dans la barre du haut, avec le nombre de fils ouverts. */
+.comments-btn {
+  position: relative;
+}
+.comments-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
 .board-composer {
   width: 100%;
   box-sizing: border-box;

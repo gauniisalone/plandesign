@@ -111,37 +111,43 @@ function CommentDraft({
 export function CommentsPanel({
   c,
   items,
+  inline = false,
 }: {
   c: CommentsController;
   items: BoardItem[];
+  /** KAN-64 : rangé dans la zone « Commentaires » du panneau de droite (toujours là, sans
+   *  en-tête : la zone a le sien). */
+  inline?: boolean;
 }) {
   const [tab, setTab] = useState<"open" | "resolved">("open");
   const [reply, setReply] = useState("");
-  if (!c.panelOpen) return null;
+  if (!c.panelOpen && !inline) return null;
   const current = c.threads.find((t) => t.id === c.openId) ?? null;
   const shown = c.threads.filter((t) =>
     tab === "open" ? !t.resolved : t.resolved,
   );
   return (
     <aside
-      className="comments-panel"
-      role="dialog"
+      className={`comments-panel${inline ? " inline" : ""}`}
+      role={inline ? "region" : "dialog"}
       aria-label="Commentaires"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <header>
-        <strong>Commentaires</strong>
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            c.setPanelOpen(false);
-            c.open(null);
-          }}
-        >
-          Fermer
-        </button>
-      </header>
+      {!inline && (
+        <header>
+          <strong>Commentaires</strong>
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              c.setPanelOpen(false);
+              c.open(null);
+            }}
+          >
+            Fermer
+          </button>
+        </header>
+      )}
       {c.error && (
         <p className="warn" role="alert">
           {c.error}

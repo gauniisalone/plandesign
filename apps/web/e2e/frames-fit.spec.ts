@@ -60,38 +60,49 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
     await inside(empty.getByRole("button", { name }), plan, name);
 });
 
-/** KAN-22 : compositeur replié tant qu'on n'y a pas touché ; le cadrage de départ reste
- *  lisible à 150 % (≥ 30 % ; 19 % avant, compositeur déplié). La largeur de la disposition
- *  de départ (2 292 px de tableau) plafonne ce format à ~32 %. */
-test("compositeur replié à 150 % : cadrage de départ ≥ 30 %, déplié au focus", async ({
-  page,
-}) => {
-  await createEmptyProject(page, "Compositeur replié à 150 %");
-  await goSpace(page, "board");
-  const composer = page.getByRole("region", { name: "Compositeur" });
-  await expect(composer).toBeVisible();
-  await expect(composer).toHaveClass(/\bcompact\b/);
-  // Replié : au plus deux lignes courtes à cette largeur.
-  expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(110);
-  const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
-  await expect(zoom).toContainText("%");
-  const percent = Number(/(\d+)\s*%/.exec((await zoom.textContent()) ?? "")![1]);
-  expect(percent).toBeGreaterThanOrEqual(30);
-  if (process.env.E2E_CAPTURE_DIR)
-    await page.screenshot({
-      path: `${process.env.E2E_CAPTURE_DIR}/kan22-replie-150.png`,
-    });
-
-  // Le champ se remplit comme avant ; au focus, le compositeur se déplie.
-  const field = composer.getByLabel("Vos envies et contraintes");
-  await field.fill("chambre lumineuse");
-  await expect(composer).not.toHaveClass(/\bcompact\b/);
-  await expect(field).toHaveValue("chambre lumineuse");
-  await expect(
-    composer.getByRole("tab", { name: "Questions guidées" }),
-  ).toBeVisible();
-  if (process.env.E2E_CAPTURE_DIR)
-    await page.screenshot({
-      path: `${process.env.E2E_CAPTURE_DIR}/kan22-deplie-150.png`,
-    });
-});
+/** KAN-64 (MH5), qui remplace KAN-22 : le compositeur est dans le panneau de droite ; le
+ *  cadrage de départ tient compte du panneau ouvert : tous les cadres sont visibles en entier
+ *  dans la partie libre de l'espace de travail, à gauche du panneau, à 150 % comme à 100 %. */
+for (const [label, size] of [
+  ["150 %", null],
+  ["100 %", { width: 1280, height: 800 }],
+] as const) {
+  test(`cadrage de départ à ${label} : tout est visible à gauche du panneau ouvert`, async ({
+    page,
+  }) => {
+    if (size) await page.setViewportSize(size);
+    await createEmptyProject(page, `Cadrage à ${label}`);
+    await goSpace(page, "board");
+    const composer = page.getByRole("region", { name: "Compositeur" });
+    await expect(composer).toBeVisible();
+    const stage = (await page.locator(".board-stage").boundingBox())!;
+    const side = (await page.locator(".side .side-card").boundingBox())!;
+    expect(
+      stage.x + stage.width,
+      "le tableau s'arrête avant le panneau",
+    ).toBeLessThanOrEqual(side.x + 1);
+    const frames = page.locator(
+      ".board-item.kind-frame, .board-item.kind-plan",
+    );
+    expect(await frames.count()).toBeGreaterThanOrEqual(4);
+    for (const frame of await frames.all()) {
+      const b = (await frame.boundingBox())!;
+      expect(b.x, "cadre : gauche").toBeGreaterThanOrEqual(stage.x - 1);
+      expect(b.y, "cadre : haut").toBeGreaterThanOrEqual(stage.y - 1);
+      expect(b.x + b.width, "cadre : droite").toBeLessThanOrEqual(
+        stage.x + stage.width + 1,
+      );
+      expect(b.y + b.height, "cadre : bas").toBeLessThanOrEqual(
+        stage.y + stage.height + 1,
+      );
+    }
+    // Le champ se remplit comme avant, dans le panneau.
+    const field = composer.getByLabel("Vos envies et contraintes");
+    await field.fill("chambre lumineuse");
+    await expect(field).toHaveValue("chambre lumineuse");
+    if (process.env.E2E_CAPTURE_DIR)
+      await page.screenshot({
+        path: `${process.env.E2E_CAPTURE_DIR}/kan64-cadrage-${size ? "100" : "150"}.png`,
+      });
+  });
+}

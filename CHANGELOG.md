@@ -7,6 +7,21 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 20 octobre 2026 (KAN-64 : plus rien ne se chevauche dans l'espace de travail)
+
+- Le panneau de droite de l'espace de travail, comme chez Figma et Miro : en haut l'Assistant
+  (vos exigences, Générer), dessous les Commentaires (ouverts, résolus, les fils,
+  « Masquer les épingles »), en bas l'Activité, repliée. La séparation entre l'Assistant et
+  les Commentaires se règle ; chaque zone se replie. Ouvert d'office : l'arrivée par le site
+  trouve l'Assistant ouvert et prérempli, comme avant.
+- Une sélection : ses actions prennent la place de l'Assistant, « ← Assistant » y revient.
+- La barre « Commentaires (n) » du bas disparaît : la bulle de la barre du haut ouvre les
+  Commentaires et compte les fils ouverts. En bas, il ne reste que le zoom.
+- Panneau fermé, l'espace de travail prend toute la largeur ; il se rouvre d'un clic. Le
+  cadrage de départ tient compte du panneau ouvert.
+- La case Gemini reste visible, sur une ligne : « Mieux comprendre mon texte avec Gemini
+  (texte seul) ».
+
 ### 20 octobre 2026 (KAN-43 : une vue par personne)
 
 En local comme avec les comptes, à l'identique.

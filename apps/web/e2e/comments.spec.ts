@@ -46,7 +46,8 @@ test("KAN-51 local : poser, répondre, résoudre, rouvrir, masquer", async ({
   await expect(pin).toHaveText("1");
   // Le fil : signé « Vous », le texte tel quel (pas de HTML interprété).
   await pin.click();
-  const panel = page.getByRole("dialog", { name: "Commentaires" });
+  // KAN-64 : le fil s'ouvre dans la zone « Commentaires » du panneau de droite.
+  const panel = page.getByRole("region", { name: "Commentaires" });
   await expect(panel.getByText("<b>Plus</b> de lumière ici")).toBeVisible();
   await expect(panel.locator(".comment-author")).toHaveText("Vous");
   await panel.getByLabel("Répondre").fill("Et une lampe");
@@ -62,14 +63,10 @@ test("KAN-51 local : poser, répondre, résoudre, rouvrir, masquer", async ({
   await panel.getByRole("button", { name: /Plus/ }).click();
   await panel.getByRole("button", { name: "Rouvrir" }).click();
   await expect(pin).toBeVisible();
-  // Masquer d'un clic, puis réafficher.
-  await region
-    .getByRole("button", { name: "Masquer les commentaires" })
-    .click();
+  // Masquer les épingles d'un clic (en-tête de la zone), puis les réafficher.
+  await page.getByRole("button", { name: "Masquer les épingles" }).click();
   await expect(pin).toHaveCount(0);
-  await region
-    .getByRole("button", { name: "Afficher les commentaires" })
-    .click();
+  await page.getByRole("button", { name: "Afficher les épingles" }).click();
   await expect(pin).toBeVisible();
 });
 
@@ -140,6 +137,6 @@ test("KAN-51 local : une épingle sur un élément le suit, puis reste « détac
   await expect(detached).toBeVisible();
   await detached.click();
   await expect(
-    page.getByRole("dialog", { name: "Commentaires" }).getByText(/Détaché/),
+    page.getByRole("region", { name: "Commentaires" }).getByText(/Détaché/),
   ).toBeVisible();
 });

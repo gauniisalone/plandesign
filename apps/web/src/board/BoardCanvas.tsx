@@ -9,6 +9,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   api,
   boardApi,
@@ -122,6 +123,9 @@ interface Props {
   onImportPlan?: (file: File) => void;
   /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
   focusRenders?: number;
+  /** KAN-64 : les zones du panneau de droite où l'espace de travail range l'Assistant (ou
+   *  les actions de la sélection) et les commentaires ; null quand le panneau est fermé. */
+  side?: { top: HTMLElement | null; comments: HTMLElement | null } | null;
   /** KAN-52 : arrivée par la cloche, la vue se centre sur l'épingle d'un fil ou un élément
    *  (une fois par jeton). */
   focusOn?: {
@@ -283,6 +287,8 @@ export function BoardCanvas(props: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const lastDown = useRef<{ id: string; t: number } | null>(null);
   const [tool, setTool] = useState<Tool>("select");
+  /** KAN-64 : la zone « Assistant » du panneau, repliable. */
+  const [assistantOpen, setAssistantOpen] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
   const [live, setLive] = useState<BoardItem[] | null>(null);
@@ -1582,6 +1588,98 @@ export function BoardCanvas(props: Props) {
   const marquee =
     drag && (drag.kind === "marquee" || drag.kind === "frame") ? drag : null;
 
+  // KAN-64 : les actions de la sélection (« propriétés »), dans la zone haute du panneau
+  // de droite, ou en bas au centre quand le panneau est fermé.
+  const selectionActions =
+    box && !drag ? (
+      <div
+        className="board-context"
+        role="toolbar"
+        aria-label="Actions de la sélection"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {single?.kind === "plan" && single.ref && (
+          <button type="button" onClick={() => enterPlan(single)}>
+            Modifier le plan
+          </button>
+        )}
+        {caps.images &&
+          single &&
+          single.ref &&
+          (single.kind === "photo" ||
+            single.kind === "plan" ||
+            (single.kind === "render" && single.role !== "inspiration")) && (
+            <button
+              type="button"
+              onClick={() =>
+                props.onContextual({
+                  kind: single.kind as "photo" | "render" | "plan",
+                  id: single.ref ?? "",
+                  label:
+                    single.text ||
+                    (single.kind === "photo"
+                      ? "Photo"
+                      : single.kind === "plan"
+                        ? "Plan"
+                        : "Vue"),
+                })
+              }
+              title="Une image guidée par cette source et enrichie par le plan (le plan et la 3D ne bougent pas)"
+            >
+              Rendu contextualisé…
+            </button>
+          )}
+        {single?.kind === "render" &&
+          single.ref &&
+          single.role !== "inspiration" && (
+            <button
+              type="button"
+              onClick={() => props.onOpenRender(single.ref ?? "")}
+              title="Ce rendu en grand, dans la visionneuse"
+            >
+              Voir en grand
+            </button>
+          )}
+        {referenceable.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleReference}
+            aria-pressed={referenceable.every((i) => !!i.reference)}
+            title="Référence : l'allure de cette image (matières, ambiance) guide les rendus contextualisés, pas sa géométrie"
+          >
+            {referenceable.every((i) => i.reference)
+              ? "Retirer la référence"
+              : "Référence"}
+          </button>
+        )}
+        <button type="button" onClick={duplicate} title="Dupliquer (Ctrl+D)">
+          Dupliquer
+        </button>
+        <button type="button" onClick={toggleLock} title="Verrouiller (Ctrl+L)">
+          {selection.every((i) => i.locked) ? "Déverrouiller" : "Verrouiller"}
+        </button>
+        <button type="button" onClick={() => order(true)} title="Devant (])">
+          Devant
+        </button>
+        <button type="button" onClick={() => order(false)} title="Derrière ([)">
+          Derrière
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={remove}
+          title="Supprimer (Suppr)"
+        >
+          Supprimer
+        </button>
+      </div>
+    ) : null;
+  const selectionTitle = single
+    ? single.text.trim()
+      ? `« ${single.text.trim().slice(0, 40)} »`
+      : "Sélection"
+    : `${selection.length} éléments`;
+
   return (
     <section className="board" aria-label="Espace de travail">
       {/* KAN-51 : le commentateur (espace de travail en lecture) commente quand même. */}
@@ -1873,160 +1971,72 @@ export function BoardCanvas(props: Props) {
           )}
         </div>
 
-        {/* T7c : en bas au centre, la barre des actions de la sélection (seulement avec une
-            sélection), puis le compositeur ; l'une au-dessus de l'autre, jamais l'une sur
-            l'autre. */}
-        <div className="board-bottom">
-          {box && !drag && (
-            <div
-              className="board-context"
-              role="toolbar"
-              aria-label="Actions de la sélection"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {single?.kind === "plan" && single.ref && (
-                <button type="button" onClick={() => enterPlan(single)}>
-                  Modifier le plan
-                </button>
-              )}
-              {caps.images &&
-                single &&
-                single.ref &&
-                (single.kind === "photo" ||
-                  single.kind === "plan" ||
-                  (single.kind === "render" &&
-                    single.role !== "inspiration")) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      props.onContextual({
-                        kind: single.kind as "photo" | "render" | "plan",
-                        id: single.ref ?? "",
-                        label:
-                          single.text ||
-                          (single.kind === "photo"
-                            ? "Photo"
-                            : single.kind === "plan"
-                              ? "Plan"
-                              : "Vue"),
-                      })
-                    }
-                    title="Une image guidée par cette source et enrichie par le plan (le plan et la 3D ne bougent pas)"
-                  >
-                    Rendu contextualisé…
-                  </button>
-                )}
-              {single?.kind === "render" &&
-                single.ref &&
-                single.role !== "inspiration" && (
-                  <button
-                    type="button"
-                    onClick={() => props.onOpenRender(single.ref ?? "")}
-                    title="Ce rendu en grand, dans la visionneuse"
-                  >
-                    Voir en grand
-                  </button>
-                )}
-              {referenceable.length > 0 && (
-                <button
-                  type="button"
-                  onClick={toggleReference}
-                  aria-pressed={referenceable.every((i) => !!i.reference)}
-                  title="Référence : l'allure de cette image (matières, ambiance) guide les rendus contextualisés, pas sa géométrie"
-                >
-                  {referenceable.every((i) => i.reference)
-                    ? "Retirer la référence"
-                    : "Référence"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={duplicate}
-                title="Dupliquer (Ctrl+D)"
-              >
-                Dupliquer
-              </button>
-              <button
-                type="button"
-                onClick={toggleLock}
-                title="Verrouiller (Ctrl+L)"
-              >
-                {selection.every((i) => i.locked)
-                  ? "Déverrouiller"
-                  : "Verrouiller"}
-              </button>
-              <button
-                type="button"
-                onClick={() => order(true)}
-                title="Devant (])"
-              >
-                Devant
-              </button>
-              <button
-                type="button"
-                onClick={() => order(false)}
-                title="Derrière ([)"
-              >
-                Derrière
-              </button>
-              <button
-                type="button"
-                className="danger"
-                onClick={remove}
-                title="Supprimer (Suppr)"
-              >
-                Supprimer
-              </button>
-            </div>
+        {/* KAN-64 : panneau ouvert, la zone haute montre les actions de la sélection, sinon
+            l'Assistant (le compositeur) ; panneau fermé, seules les actions de la sélection
+            restent, en bas au centre. Plus rien d'autre en bas que le zoom. */}
+        {props.side?.top
+          ? createPortal(
+              selectionActions ? (
+                <section className="board-zone-inner" aria-label="Sélection">
+                  <header className="board-zone-head">
+                    <strong>{selectionTitle}</strong>
+                    <span className="board-zone-sp" />
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setSelected(new Set())}
+                      title="Désélectionner et revenir à l'Assistant"
+                    >
+                      ← Assistant
+                    </button>
+                  </header>
+                  {selectionActions}
+                </section>
+              ) : !readOnly ? (
+                <section className="board-zone-inner" aria-label="Assistant">
+                  <header className="board-zone-head">
+                    <button
+                      type="button"
+                      className="board-zone-toggle"
+                      aria-expanded={assistantOpen}
+                      aria-label={
+                        assistantOpen
+                          ? "Replier l'Assistant"
+                          : "Déplier l'Assistant"
+                      }
+                      onClick={() => setAssistantOpen((o) => !o)}
+                    >
+                      <span aria-hidden="true">
+                        {assistantOpen ? "▾" : "▸"}
+                      </span>{" "}
+                      Assistant
+                    </button>
+                  </header>
+                  {assistantOpen && (
+                    <Composer
+                      key={project.id}
+                      docked
+                      project={project}
+                      hasRenders={props.hasRenders}
+                      planProgress={props.planProgress}
+                      onSettings={props.onSettings}
+                      onVariant={props.onVariant}
+                      onGenerateNow={props.onGenerateNow}
+                    />
+                  )}
+                </section>
+              ) : null,
+              props.side.top,
+            )
+          : selectionActions && (
+              <div className="board-bottom">{selectionActions}</div>
+            )}
+        {props.comments &&
+          props.side?.comments &&
+          createPortal(
+            <CommentsPanel c={props.comments} items={items} inline />,
+            props.side.comments,
           )}
-
-          {/* T7b : le compositeur flottant (exigences + déclencheur du zéro geste). */}
-          {!readOnly && (
-            <Composer
-              key={project.id}
-              project={project}
-              hasRenders={props.hasRenders}
-              planProgress={props.planProgress}
-              onSettings={props.onSettings}
-              onVariant={props.onVariant}
-              onGenerateNow={props.onGenerateNow}
-            />
-          )}
-        </div>
-
-        {props.comments && (
-          <>
-            <div
-              className="board-comments-bar"
-              role="group"
-              aria-label="Commentaires de l'espace de travail"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                aria-pressed={props.comments.panelOpen}
-                onClick={() =>
-                  props.comments?.setPanelOpen(!props.comments.panelOpen)
-                }
-              >
-                Commentaires (
-                {props.comments.threads.filter((t) => !t.resolved).length})
-              </button>
-              <button
-                type="button"
-                className="link"
-                onClick={() =>
-                  props.comments?.setHidden(!props.comments.hidden)
-                }
-              >
-                {props.comments.hidden
-                  ? "Afficher les commentaires"
-                  : "Masquer les commentaires"}
-              </button>
-            </div>
-            <CommentsPanel c={props.comments} items={items} />
-          </>
-        )}
         <div
           className="board-zoom"
           role="group"

@@ -6,6 +6,7 @@ import type { Project } from "../api/types.gen";
 import type { Tool } from "../editor2d/PlanCanvas";
 import {
   IconActivity,
+  IconComment,
   IconAlert,
   IconArrowLeft,
   IconCeilings,
@@ -155,7 +156,12 @@ export function TopBar({
   bell,
   activityOpen = false,
   onActivity,
+  commentsCount,
+  onComments,
 }: {
+  /** KAN-64 : la bulle des Commentaires et le nombre de fils ouverts. */
+  commentsCount?: number;
+  onComments?: () => void;
   /** KAN-52 : la cloche, à droite, avant « Partager ». */
   bell?: ReactNode;
   /** KAN-58 : le journal d'activité du projet. */
@@ -284,6 +290,22 @@ export function TopBar({
         />
       )}
       {bell}
+      {onComments && (
+        <button
+          type="button"
+          className="icon comments-btn"
+          aria-label={`Commentaires, ${commentsCount ?? 0} ouvert${(commentsCount ?? 0) > 1 ? "s" : ""}`}
+          title="Commentaires de l'espace de travail"
+          onClick={onComments}
+        >
+          <IconComment />
+          {(commentsCount ?? 0) > 0 && (
+            <span className="comments-count" data-testid="comments-count">
+              {(commentsCount ?? 0) > 99 ? "99+" : commentsCount}
+            </span>
+          )}
+        </button>
+      )}
       {onShare && (
         <button
           type="button"

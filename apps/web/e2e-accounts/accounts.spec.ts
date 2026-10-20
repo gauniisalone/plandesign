@@ -1033,7 +1033,7 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
 
   // Iris répond sur le premier fil ; Jules voit les deux messages, signés.
   await seen.first().click();
-  const panel = owner.getByRole("dialog", { name: "Commentaires" });
+  const panel = owner.getByRole("region", { name: "Commentaires" });
   await panel.getByLabel("Répondre").fill("Bonne idée, à chiffrer");
   await panel.getByRole("button", { name: "Répondre" }).click();
   const his = commenter
@@ -1041,7 +1041,7 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     .first();
   await expect(his).toHaveText("2", { timeout: 5_000 });
   await his.click();
-  const hisPanel = commenter.getByRole("dialog", { name: "Commentaires" });
+  const hisPanel = commenter.getByRole("region", { name: "Commentaires" });
   await expect(hisPanel.locator(".comment-author")).toHaveText([
     "Jules",
     "Iris",
@@ -1053,7 +1053,7 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
     .first();
   await expect(kimPin).toBeVisible({ timeout: 5_000 });
   await kimPin.click();
-  const kimPanel = viewer.getByRole("dialog", { name: "Commentaires" });
+  const kimPanel = viewer.getByRole("region", { name: "Commentaires" });
   await expect(kimPanel.getByText("Bonne idée, à chiffrer")).toBeVisible();
   await expect(kimPanel.getByLabel("Répondre")).toHaveCount(0);
   await expect(kimPanel.getByRole("button", { name: "Résoudre" })).toHaveCount(
@@ -1131,7 +1131,7 @@ test("KAN-52 : Fanny commente, la cloche de Gilles passe à 1, le clic mène à 
   ).toBeVisible({ timeout: 30_000 });
   await expect(
     gilles
-      .getByRole("dialog", { name: "Commentaires" })
+      .getByRole("region", { name: "Commentaires" })
       .getByText("Plus de lumière ici"),
   ).toBeVisible();
   await expect(gilles.getByTestId("bell-badge")).toHaveCount(0);
@@ -1202,8 +1202,11 @@ test("KAN-58 : le journal d'activité, avec le détail des gestes, lu par un lec
   ).toBe(200);
 
   // Kim, lecteur, ouvre « Activité » : le détail, le nom de l'objet, les arrivées.
-  await kim.getByRole("button", { name: "Activité" }).click();
-  const panel = kim.getByRole("dialog", { name: "Activité" });
+  await kim
+    .locator(".topbar")
+    .getByRole("button", { name: "Activité" })
+    .click();
+  const panel = kim.getByRole("region", { name: "Activité" });
   await expect(
     panel.getByRole("button", { name: /Gilles a supprimé « Inspirations »/ }),
   ).toBeVisible({ timeout: 10_000 });

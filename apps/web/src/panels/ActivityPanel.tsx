@@ -20,10 +20,13 @@ export function ActivityPanel({
   projectId,
   tick,
   onClose,
+  inline = false,
 }: {
   projectId: string;
   tick: string;
   onClose: () => void;
+  /** KAN-64 : rangé dans la zone « Activité » du panneau de droite (sans en-tête). */
+  inline?: boolean;
 }) {
   const [kind, setKind] = useState<ActivityKind | null>(null);
   const [who, setWho] = useState<string | null>(null);
@@ -64,13 +67,19 @@ export function ActivityPanel({
   };
 
   return (
-    <div className="activity-panel" role="dialog" aria-label="Activité">
-      <header className="activity-head">
-        <strong>Activité</strong>
-        <button type="button" className="link" onClick={onClose}>
-          Fermer
-        </button>
-      </header>
+    <div
+      className={`activity-panel${inline ? " inline" : ""}`}
+      role={inline ? "region" : "dialog"}
+      aria-label="Activité"
+    >
+      {!inline && (
+        <header className="activity-head">
+          <strong>Activité</strong>
+          <button type="button" className="link" onClick={onClose}>
+            Fermer
+          </button>
+        </header>
+      )}
       <div className="activity-filters">
         <div role="group" aria-label="Sorte">
           {KINDS.map((k) => (
