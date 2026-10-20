@@ -185,19 +185,29 @@ export function useProject(projectId: string) {
   /** Dernier fichier de plan lu, pour le relire à une autre échelle papier. */
   const lastPlanFile = useRef<File | null>(null);
 
+  /** KAN-54 : travaux en vol ; « occupé » ne retombe qu'à la fin du dernier, pas du premier
+   *  qui finit. */
+  const inflight = useRef(0);
+  /** KAN-54 : la dernière opération du plan envoyée ; la suivante part après sa réponse. */
+  const opQueue = useRef<Promise<unknown>>(Promise.resolve());
   const run = useCallback(
     async <T>(work: () => Promise<T>): Promise<T | undefined> => {
+      inflight.current += 1;
       setState((s) => ({ ...s, busy: true, error: null }));
       try {
         const result = await work();
-        setState((s) => ({ ...s, busy: false, saveFailed: false }));
+        inflight.current -= 1;
+        const busy = inflight.current > 0;
+        setState((s) => ({ ...s, busy, saveFailed: false }));
         return result;
       } catch (e) {
+        inflight.current -= 1;
+        const busy = inflight.current > 0;
         const message = e instanceof ApiError ? e.message : String(e);
         const report = e instanceof ApiError ? (e.report ?? null) : null;
         setState((s) => ({
           ...s,
-          busy: false,
+          busy,
           error: message,
           saveFailed: !(e instanceof ApiError) || e.status >= 500,
           report: report ?? s.report,
@@ -322,16 +332,40 @@ export function useProject(projectId: string) {
         }));
         return;
       }
-      void run(async () => {
-        const result = await api.applyOp(project.id, levelId, op);
-        setState((s) => ({
-          ...s,
-          project: result.project,
-          derived: result.derived,
-          report: result.report,
-          selection: pruneSelection(s.selection, result.project, s.levelId),
-        }));
-      });
+      // KAN-54 : les opérations partent dans l'ordre des gestes, chacune après la réponse
+      // de la précédente (un mur tracé vite ne double pas celui d'avant). La pose garde la
+      // règle « jamais en arrière » d'`applyProject` : une réponse plus ancienne que l'état
+      // affiché (une tâche ou un autre geste est passé entre-temps) ne l'écrase pas.
+      // « Occupé » dès le geste, même en attente derrière le précédent.
+      inflight.current += 1;
+      setState((s) => (s.busy ? s : { ...s, busy: true }));
+      const send = opQueue.current.then(() =>
+        run(async () => {
+          const result = await api.applyOp(project.id, levelId, op);
+          setState((s) =>
+            s.project &&
+            s.project.id === result.project.id &&
+            stamp(result.project.updated_at) < stamp(s.project.updated_at)
+              ? s
+              : {
+                  ...s,
+                  project: result.project,
+                  derived: result.derived,
+                  report: result.report,
+                  selection: pruneSelection(
+                    s.selection,
+                    result.project,
+                    s.levelId,
+                  ),
+                },
+          );
+        }).finally(() => {
+          inflight.current -= 1;
+          if (inflight.current === 0)
+            setState((s) => (s.busy ? { ...s, busy: false } : s));
+        }),
+      );
+      opQueue.current = send;
     },
     [state, run],
   );
