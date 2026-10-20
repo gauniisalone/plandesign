@@ -81,6 +81,14 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.15.0", "0.16.0")
+def _reference_segments(data: dict[str, Any]) -> dict[str, Any]:
+    """0.16.0 (KAN-66) : `ImageRef.reference_segments` (mesure de référence sur une photo) et
+    `Level.scale_basis` (origine de l'échelle) ; un projet 0.15.0 n'a ni l'un ni l'autre, ses
+    photos sont à réestimer avant de pouvoir y mesurer."""
+    return data
+
+
 @register("0.14.0", "0.15.0")
 def _variant_of(data: dict[str, Any]) -> dict[str, Any]:
     """0.15.0 (plusieurs plans, T7e) : `Level.variant_of`, l'étage dont un plan est une

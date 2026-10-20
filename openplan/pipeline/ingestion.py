@@ -147,6 +147,9 @@ def remove_image(project: Project, project_dir: Path, image_id: UUID) -> Project
     path = project_dir / ref.path
     if path.is_file():
         path.unlink()
+    # KAN-66 : la profondeur gardée pour la mesure de référence part avec la photo.
+    for suffix in (".depth.npy", ".depth.json"):
+        (project_dir / IMAGES_DIR / f"{image_id}{suffix}").unlink(missing_ok=True)
     levels = dict(project.levels)
     for lid, level in project.levels.items():
         if level.background_image == image_id:

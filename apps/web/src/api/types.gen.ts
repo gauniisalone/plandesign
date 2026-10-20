@@ -475,8 +475,34 @@ export interface ImageRef {
   quality: {
     [k: string]: number;
   };
+  /**
+   * @maxItems 1
+   */
+  reference_segments: [] | [ReferenceSegment];
   sha256: string;
   width_px: number;
+}
+/**
+ * KAN-66 : mesure de référence posée sur une photo, deux points et une longueur connue
+ * (« une porte de 2,04 m ») ; elle fixe l'échelle du plan estimé depuis cette photo.
+ */
+
+export interface ReferenceSegment {
+  author: string;
+  created_at: string;
+  id: string;
+  label: string | null;
+  length_m: number;
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  p1: [unknown, unknown];
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  p2: [unknown, unknown];
 }
 
 export interface Level {
@@ -508,6 +534,7 @@ export interface Level {
   kind: ("ground" | "upper" | "attic" | "basement") | null;
   name: string;
   north_deg: number;
+  scale_basis: ScaleBasis | null;
   variant_of: string | null;
   vertices: {
     [k: string]: Vertex;
@@ -964,6 +991,27 @@ export interface Camera {
   uncertainty: Uncertainty;
   visible: boolean;
   yaw: number;
+}
+/**
+ * KAN-66 : sur quoi repose l'échelle d'un plan estimé depuis une photo, dit tel quel à
+ * l'utilisateur (« Échelle calée sur votre mesure de 2,04 m (porte) »).
+ */
+
+export interface ScaleBasis {
+  before: RoomSize | null;
+  camera_height_m: number | null;
+  factor: number | null;
+  image_id: string;
+  previous: ScaleBasis | null;
+  segment_id: string | null;
+  source: "reference" | "camera_height" | "default";
+  text: string;
+}
+
+export interface RoomSize {
+  height_m: number;
+  length_m: number;
+  width_m: number;
 }
 /**
  * Sommet 2D partagé entre murs, dans le repère du niveau.

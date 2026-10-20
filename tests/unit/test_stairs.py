@@ -187,7 +187,7 @@ def test_old_reserved_stairs_migrate_without_loss() -> None:
     }
     loaded = load_project(data)
     stairs = next(e for e in only_level(loaded).elements.values() if isinstance(e, Stairs))
-    assert loaded.schema_version == "0.15.0"
+    assert loaded.schema_version == "0.16.0"
     assert (stairs.position.x, stairs.position.y) == pytest.approx((2.5, 1.5))
     assert stairs.width == pytest.approx(1.0) and abs(math.sin(stairs.yaw)) < 1e-9
 

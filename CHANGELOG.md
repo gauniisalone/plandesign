@@ -7,6 +7,26 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 21 octobre 2026 (KAN-66, lot 1 serveur : mesure de référence sur une photo)
+
+- Une longueur connue sur la photo (deux points, « une porte de 2,04 m ») recale le plan
+  estimé depuis cette photo, hauteurs comprises : calcul géométrique sur la profondeur gardée
+  à l'estimation, sans nouveau passage du modèle ; annulable, retouches gardées ; les murs
+  restent estimés. Une mesure par photo : une nouvelle remplace l'ancienne ; la retirer rend
+  l'échelle de la hauteur de prise de vue. Refus motivés : points hors de la photo ou sur deux
+  surfaces, longueur hors de 5 cm à 30 m, échelle changée de plus de ×3.
+- Chaque plan estimé depuis une photo dit sur quoi repose son échelle (`Level.scale_basis`) :
+  « Échelle calée sur votre mesure de 2,04 m (porte) », « Échelle : hauteur de prise de vue
+  saisie 1,45 m » ou « … supposée 1,50 m (par défaut) ».
+- Sur la scène de contrôle des combles, une référence exacte divise l'erreur de largeur au
+  moins par deux (+108 % → +50 %) et ramène le faîtage dans ±20 % (+61 % → +16 %) ; la
+  profondeur apprise reste déformée (KAN-46).
+- Profondeur gardée par photo dans `images/` (réduite, ~0,6 Mo), comprise dans l'archive du
+  projet et supprimée avec la photo ; une photo d'avant se réestime sur un geste
+  (`POST …/levels/{id}/images/{id}/reestimate`, tâche de fond). Routes : `PUT
+  /projects/{id}/images/{id}/reference`, `DELETE …/reference/{segment}` (éditeur). Schéma
+  0.16.0 (`ImageRef.reference_segments`, `Level.scale_basis`), migration sans perte.
+
 ### 20 octobre 2026 (KAN-64 : plus rien ne se chevauche dans l'espace de travail)
 
 - Le panneau de droite de l'espace de travail, comme chez Figma et Miro : en haut l'Assistant

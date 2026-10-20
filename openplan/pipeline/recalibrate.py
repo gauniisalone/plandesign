@@ -20,7 +20,7 @@ from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene import history
 from openplan.schemas.common import Point2, Source, StrictModel, Uncertainty
 from openplan.schemas.elements import Room, Wall
-from openplan.schemas.scene import Calibration, Measurement, MeasurementKind, Project
+from openplan.schemas.scene import Calibration, Level, Measurement, MeasurementKind, Project
 
 MIN_CURRENT_M = 0.05
 """En dessous, la longueur cliquée est un clic double : le facteur serait absurde."""
@@ -50,6 +50,17 @@ class RecalibrateSummary(StrictModel):
     """« la distance cliquée », « le mur … », « la hauteur sous plafond »."""
     text: str = ""
     """Dimensions de la pièce avant → après (R3), quand c'est ce qui a été donné."""
+
+
+def _follow_basis(level: Level, factor: float) -> Level:
+    """KAN-66 : l'échelle de la photo (mètres par unité du modèle) suit un recalibrage, pour
+    qu'une mesure de référence posée ensuite parte du plan tel qu'il est."""
+    basis = level.scale_basis
+    if basis is None or basis.factor is None:
+        return level
+    return level.model_copy(
+        update={"scale_basis": basis.model_copy(update={"factor": basis.factor * factor})}
+    )
 
 
 def _nearest_vertex(project: Project, level_id: UUID, p: Point2) -> UUID | None:
@@ -106,7 +117,7 @@ def recalibrate_level(  # noqa: PLR0912
         )
         raise CalibrationError(msg)
 
-    scaled = apply_scale(level, factor)
+    scaled = _follow_basis(apply_scale(level, factor), factor)
     update: dict[str, object] = {}
     if body.ceiling:
         update = {"height": round(body.real_m, 3), "height_source": Source.MEASURED}
@@ -283,6 +294,7 @@ def recalibrate_dimensions(
     theta, length, width = room_axes(project, level_id)
     sx, sy, sz, what, current, real = _factors(body, length, width, level.height)
     scaled, notes = apply_axis_scale(level, theta, sx, sy, sz)
+    scaled = _follow_basis(scaled, math.sqrt(sx * sy))
     elements = dict(scaled.elements)
     given = {"length": body.length_m is not None, "width": body.width_m is not None}
     for eid, e in scaled.elements.items():

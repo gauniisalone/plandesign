@@ -103,6 +103,10 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", P + "/images/{image_id}/inspire"): E,
     ("POST", P + "/images/{image_id}/depth"): E,
     ("POST", P + "/images/{image_id}/attic"): E,
+    # Mesure de référence sur une photo (KAN-66)
+    ("PUT", P + "/images/{image_id}/reference"): E,
+    ("DELETE", P + "/images/{image_id}/reference/{segment_id}"): E,
+    ("POST", L + "/images/{image_id}/reestimate"): E,
     # Mesures
     ("POST", P + "/measurements"): E,
     ("DELETE", P + "/measurements/{measurement_id}"): E,

@@ -50,6 +50,7 @@ from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, Detectio
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.pipeline.openings import run_openings
 from openplan.pipeline.plan_import import PlanApplyBody, apply_segments, preview_image
+from openplan.pipeline.reference import camera_basis, save_depth, with_basis
 from openplan.scene import history
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Opening, RoofWindow, Wall
@@ -127,12 +128,15 @@ class _MemoDepth:
     def __init__(self, inner: DepthEstimator) -> None:
         self.inner = inner
         self.model_id = inner.model_id
-        self._cache: dict[UUID, DepthMap] = {}
+        self._cache: dict[UUID, tuple[ImageArray, DepthMap]] = {}
 
     def predict(self, image: ImageArray) -> DepthMap:
         if image.image_id not in self._cache:
-            self._cache[image.image_id] = self.inner.predict(image)
-        return self._cache[image.image_id]
+            self._cache[image.image_id] = (image, self.inner.predict(image))
+        return self._cache[image.image_id][1]
+
+    def seen(self, image_id: UUID) -> tuple[ImageArray, DepthMap] | None:
+        return self._cache.get(image_id)
 
 
 @dataclass
@@ -605,7 +609,7 @@ def _commit_background(
     return history.commit(project, after, actor=ACTOR, label="Mettre l'image du plan en fond")
 
 
-def _photo_candidates(  # noqa: PLR0913
+def _photo_candidates(  # noqa: PLR0913, PLR0912
     chain: _Chain,
     project: Project,
     project_dir: Path,
@@ -618,8 +622,11 @@ def _photo_candidates(  # noqa: PLR0913
     roof_windows: RoofWindowDetector | None = None,
     *,
     camera_height_entered: bool,
-) -> tuple[list[_Candidate], AtticEstimate | None]:
+) -> tuple[list[_Candidate], AtticEstimate | None, dict[str, float]]:
+    """Les plans candidats, l'estimation des combles, et (KAN-66) les mètres par unité du
+    modèle de profondeur de chaque méthode qui l'a utilisée ; la profondeur est gardée."""
     candidates: list[_Candidate] = []
+    factors: dict[str, float] = {}
     chain.say("Lecture de la photo…")
     try:
         lines = detect_and_propose(
@@ -641,7 +648,7 @@ def _photo_candidates(  # noqa: PLR0913
         chain.stage("lines", "Lignes de fuite", "failed", str(exc)[:160])
     if depth is None:
         chain.stage("depth", "Profondeur", "skipped", "poids absents")
-        return candidates, None
+        return candidates, None, factors
     memo = _MemoDepth(depth)
     estimate: AtticEstimate | None = None
     chain.say("Estimation des distances…")
@@ -657,6 +664,8 @@ def _photo_candidates(  # noqa: PLR0913
             run_id=rid,
             roof_windows=roof_windows,
         ).estimate
+        if estimate.camera_height is not None and not estimate.floor_assumed:
+            factors["attic"] = estimate.scale_factor
     except (DetectionError, ValueError) as exc:
         chain.stage("attic", "Pentes de toit", "failed", str(exc)[:160])
     chain.say("Recherche des murs…")
@@ -675,6 +684,8 @@ def _photo_candidates(  # noqa: PLR0913
         found = run.camera_height_m or 0.0
         factor = camera_height_m / found if found > 0 else 0.0
         trusted = SCALE_TRUST[0] <= factor <= SCALE_TRUST[1]
+        if factor > 0:
+            factors["depth"] = factor
         score = 0.6 * _seen_fraction(run.project, level_id) * (1.0 if trusted else 0.7)
         if run.walls_seen > 0 and _walls(run.project, level_id) and _valid(run.project):
             candidates.append(_Candidate("depth", run.project, score, run.result))
@@ -683,7 +694,14 @@ def _photo_candidates(  # noqa: PLR0913
             chain.stage("depth", "Profondeur", "failed", "aucun mur vu dans la profondeur")
     except (DetectionError, ValueError) as exc:
         chain.stage("depth", "Profondeur", "failed", str(exc)[:160])
-    return candidates, estimate
+    seen = memo.seen(image_id)
+    if seen is not None and factors:
+        try:
+            if not save_depth(project_dir, *seen):
+                factors.clear()
+        except OSError:
+            factors.clear()  # sans profondeur gardée, pas de mesure de référence possible
+    return candidates, estimate, factors
 
 
 def _ceiling(project: Project, level_id: UUID, estimate: AtticEstimate | None) -> Project:
@@ -822,7 +840,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             )
         )
         roof_detector = _roof_detector(openings)
-        candidates, estimate = _photo_candidates(
+        candidates, estimate, factors = _photo_candidates(
             chain,
             project,
             project_dir,
@@ -888,6 +906,12 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 after = _ceiling(after, level_id, estimate)
             after = _openings(
                 chain, after, project_dir, level_id, image_id, runs_dir, rid, openings
+            )
+            # KAN-66 : l'origine de l'échelle, dite à l'utilisateur ; sans profondeur gardée
+            # (facteur None), la photo est à réestimer avant de pouvoir y mesurer.
+            factor = factors.get(method) or factors.get("depth") or factors.get("attic")
+            after = with_basis(
+                after, level_id, camera_basis(image_id, factor, height, entered=entered)
             )
         else:
             said.append(

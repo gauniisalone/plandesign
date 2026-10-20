@@ -21,6 +21,25 @@ from openplan.schemas.common import (
 from openplan.schemas.elements import Element, Vertex
 from openplan.schemas.home import GuidedAnswers
 
+REFERENCE_LENGTH_M = (0.05, 30.0)
+"""KAN-66 : longueur admise pour une mesure de référence, en mètres."""
+
+
+class ReferenceSegment(StrictModel):
+    """KAN-66 : mesure de référence posée sur une photo, deux points et une longueur connue
+    (« une porte de 2,04 m ») ; elle fixe l'échelle du plan estimé depuis cette photo."""
+
+    id: UUID = Field(default_factory=uuid4)
+    p1: tuple[float, float]
+    p2: tuple[float, float]
+    """Pixels de l'image d'origine (orientation appliquée), origine en haut à gauche."""
+    length_m: float = Field(ge=REFERENCE_LENGTH_M[0], le=REFERENCE_LENGTH_M[1])
+    label: str | None = Field(default=None, max_length=60)
+    """Ce qui a été mesuré (« porte »), facultatif."""
+    author: str
+    """Auteur du geste, comme dans l'historique."""
+    created_at: datetime = Field(default_factory=now_utc)
+
 
 class ImageRef(StrictModel):
     id: UUID = Field(default_factory=uuid4)
@@ -35,6 +54,8 @@ class ImageRef(StrictModel):
     quality: dict[str, float] = Field(default_factory=dict)
     """Sortie du contrôle qualité : blur, exposure, ..."""
     imported_at: datetime = Field(default_factory=now_utc)
+    reference_segments: list[ReferenceSegment] = Field(default_factory=list, max_length=1)
+    """KAN-66 : au plus une mesure par photo en V1 (une nouvelle remplace l'ancienne)."""
 
 
 class MeasurementKind(StrEnum):
@@ -154,6 +175,36 @@ LEVEL_DEFAULT_NAMES: dict[str, str] = {
 """Nom donné au niveau quand sa sorte est connue et que l'utilisateur ne l'a pas renommé."""
 
 
+class RoomSize(StrictModel):
+    length_m: float
+    width_m: float
+    height_m: float
+
+
+ScaleSource = Literal["reference", "camera_height", "default"]
+
+
+class ScaleBasis(StrictModel):
+    """KAN-66 : sur quoi repose l'échelle d'un plan estimé depuis une photo, dit tel quel à
+    l'utilisateur (« Échelle calée sur votre mesure de 2,04 m (porte) »)."""
+
+    source: ScaleSource
+    """Mesure de référence, hauteur de prise de vue saisie, ou hauteur supposée par défaut."""
+    text: str
+    image_id: UUID
+    segment_id: UUID | None = None
+    """La mesure de référence utilisée (source « reference »)."""
+    factor: float | None = Field(default=None, gt=0.0)
+    """Mètres par unité du modèle de profondeur ; None sans profondeur gardée (la photo est
+    à réestimer avant de pouvoir y mesurer)."""
+    before: RoomSize | None = None
+    """Dimensions de la pièce avant la mesure (source « reference »), si une pièce existe."""
+    previous: ScaleBasis | None = None
+    """Échelle d'avant la mesure (hauteur de prise de vue) : retirer la mesure y revient."""
+    camera_height_m: float | None = Field(default=None, gt=0.0)
+    """Hauteur de prise de vue de l'estimation (saisie ou par défaut)."""
+
+
 class Level(StrictModel):
     id: UUID = Field(default_factory=uuid4)
     name: str = "Rez-de-chaussée"
@@ -175,6 +226,8 @@ class Level(StrictModel):
     variant_of: UUID | None = None
     """T7e : None = un étage du projet (empilé en 3D à son altitude) ; sinon l'étage dont ce
     plan est une variante (autre version du même lieu, jamais empilée, vue seule)."""
+    scale_basis: ScaleBasis | None = None
+    """KAN-66 : origine de l'échelle quand le plan a été estimé depuis une photo."""
 
     @model_validator(mode="after")
     def _keys_match_ids(self) -> Level:
