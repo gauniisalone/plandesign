@@ -113,6 +113,40 @@ class AtticEstimate(StrictModel):
     eave_bound: Estimate | None = None
     """KAN-61 : égout non vu (sol supposé, aucune jambette) : il est au plus à la hauteur du bas
     de pente le plus bas encore vu. `eave_heights` reste alors vide (égout inconnu)."""
+    eave_rejected: str | None = None
+    """KAN-73 : égout trouvé puis écarté comme invraisemblable (raison affichée) ; `eave_heights`
+    et `width` sont alors vides, l'égout est inconnu comme dans KAN-61."""
+
+
+EAVE_MIN_BELOW_RIDGE_M = 0.5
+"""KAN-73 : un égout à moins de 0,5 m sous le faîtage n'est pas un égout (en mètres, après
+recalage sur la hauteur de prise de vue)."""
+EAVE_MIN_WIDTH_M = 1.5
+"""KAN-73 : une largeur entre égouts sous 1,5 m n'est pas celle de combles habitables."""
+
+
+def plausible_eaves(estimate: AtticEstimate) -> AtticEstimate:
+    """KAN-73 : écarte des égouts invraisemblables (plan voisin pris pour une jambette, puis
+    recopié de l'autre côté par symétrie). Tous les égouts et la largeur entre égouts sont
+    retirés ensemble : un égout recopié du mauvais ne vaut pas mieux. À appliquer à l'échelle
+    finale (les seuils sont en mètres)."""
+    if not estimate.eave_heights:
+        return estimate
+    reason: str | None = None
+    ridge = estimate.ridge_height
+    if ridge is not None:
+        gap = min(ridge.value - e.value for e in estimate.eave_heights)
+        if gap < EAVE_MIN_BELOW_RIDGE_M:
+            reason = (
+                f"égout trouvé à {_fr(ridge.value - gap)} m, seulement {_fr(gap)} m sous le "
+                f"faîtage : non retenu"
+            )
+    width = estimate.width
+    if reason is None and width is not None and width.value < EAVE_MIN_WIDTH_M:
+        reason = f"largeur entre égouts de {_fr(width.value)} m : non retenue"
+    if reason is None:
+        return estimate
+    return estimate.model_copy(update={"eave_heights": [], "width": None, "eave_rejected": reason})
 
 
 PRIOR_REL_SIGMA = 0.10
@@ -155,7 +189,7 @@ def rescale(
         sigma = math.sqrt((PRIOR_REL_SIGMA * value) ** 2 + rms2 * factor**2)
         return e.model_copy(update={"value": value, "sigma": sigma})
 
-    return estimate.model_copy(
+    scaled_estimate = estimate.model_copy(
         update={
             "camera_height": Estimate(
                 value=camera_height_m,
@@ -184,6 +218,7 @@ def rescale(
             f"{_fr(estimate.camera_height.value)} m).",
         }
     )
+    return plausible_eaves(scaled_estimate)  # KAN-73 : seuils en mètres, après recalage
 
 
 class AtticRun(StrictModel):
@@ -973,6 +1008,8 @@ def run_attic(
             warnings.extend(notes)
     if camera_height_m is not None and estimate.camera_height is not None:
         estimate = rescale(estimate, camera_height_m, entered=entered)
+        if estimate.eave_rejected:
+            warnings.append(f"Hauteur d'égout inconnue : {estimate.eave_rejected}.")
         f = estimate.scale_factor
         if f > SCALE_DISAGREEMENT or f < 1.0 / SCALE_DISAGREEMENT:
             warnings.append(

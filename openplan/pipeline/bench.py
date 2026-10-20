@@ -341,6 +341,8 @@ def bench_photo(
         "hauteur sous plafond": _value(scaled.ceiling_height),
     }
     bench.notes.extend(warnings[:4])
+    if scaled.eave_rejected:
+        bench.notes.append(f"égout inconnu (KAN-73) : {scaled.eave_rejected}")
     eave_unseen = scaled.ridge_height is not None and not scaled.eave_heights
     bench.confidence = assess(
         "assumed",
@@ -379,8 +381,11 @@ def bench_photo(
 
 
 def _photos(room_dir: Path) -> list[Path]:
+    """Photos du jeu ; un fichier en « _ » (image de diagnostic…) n'en est pas une."""
     return sorted(
-        p for p in room_dir.iterdir() if p.is_file() and p.suffix.lower() in PHOTO_SUFFIXES
+        p
+        for p in room_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in PHOTO_SUFFIXES and not p.name.startswith("_")
     )
 
 

@@ -220,7 +220,12 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
             f"égout non vu sur la photo : au plus {bound.value:.2f} m (bas de pente le plus "
             "bas vu)",
         )
-    eave_height = eave or _inferred(0.0, "murs latéraux non vus : pentes jusqu'au sol")
+    unseen = (
+        f"{estimate.eave_rejected} ; pentes jusqu'au sol"  # KAN-73
+        if estimate.eave_rejected
+        else "murs latéraux non vus : pentes jusqu'au sol"
+    )
+    eave_height = eave or _inferred(0.0, unseen)
     if eave_height.value >= estimate.ridge_height.value:
         eave_height = _inferred(0.0, "égout incohérent avec le faîtage : pentes jusqu'au sol")
     try:
@@ -247,6 +252,12 @@ def _fr(value: float) -> str:
 def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]:
     """KAN-45/KAN-61 : ce que l'écran doit dire des combles devinés sur une photo levée (les
     avertissements de l'estimation ne remontent pas jusqu'au bandeau « Plan estimé »)."""
+    if estimate.eave_rejected and not estimate.floor_assumed:
+        # KAN-73 : égout trouvé puis écarté (plan voisin pris pour une jambette).
+        return [
+            f"Hauteur d'égout inconnue ({estimate.eave_rejected}) : pentes prolongées jusqu'au "
+            "sol, à corriger dans l'inspecteur."
+        ]
     if not estimate.floor_assumed:
         return []
     out: list[str] = []
