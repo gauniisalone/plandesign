@@ -53,9 +53,16 @@ LEASED_ROUTES: frozenset[tuple[str, str]] = frozenset(
         "/import-plan",
         "/starter",
         "/programme",
+        "/images/{image_id}/reestimate",
     )
 )
 """Écritures d'une personne sur un plan : elles prennent ou prolongent son bail."""
+IMG = "/api/projects/{project_id}/images/{image_id}"
+IMAGE_LEASED: frozenset[tuple[str, str]] = frozenset(
+    {("PUT", IMG + "/reference"), ("DELETE", IMG + "/reference/{segment_id}")}
+)
+"""KAN-66 : une mesure de référence change l'échelle de tout le plan estimé depuis la photo ;
+son URL ne nomme pas le plan, retrouvé par `scale_basis.image_id`."""
 PROJECT_WIDE: frozenset[tuple[str, str]] = frozenset(
     {("POST", "/api/projects/{project_id}/undo"), ("POST", "/api/projects/{project_id}/redo")}
 )
@@ -185,6 +192,20 @@ def taken_by_other(lease: Lease) -> HTTPException:
     return HTTPException(status_code=409, detail=f"{lease.name} modifie ce plan")
 
 
+def _image_level(request: Request, project_id: UUID) -> str | None:
+    """Le plan estimé depuis la photo de l'URL (KAN-66), ou None."""
+    from openplan.pipeline.reference import ReferenceRefusedError, basis_level
+
+    store = request.app.state.store
+    if not store.exists(project_id):
+        return None
+    try:
+        image_id = UUID(str(request.path_params["image_id"]))
+        return str(basis_level(store.load(project_id), image_id))
+    except (ValueError, ReferenceRefusedError):
+        return None
+
+
 def guard_plan_write(request: Request, key: tuple[str, str], user: AuthUser) -> None:
     """Appelée par la garde des routes (comptes actifs) : bail pris ou prolongé, ou 409."""
     if key in PROJECT_WIDE:
@@ -193,12 +214,18 @@ def guard_plan_write(request: Request, key: tuple[str, str], user: AuthUser) -> 
         if other is not None:
             raise taken_by_other(other)
         return
-    if key not in LEASED_ROUTES:
-        return
-    if key[1].endswith("/calibrate") and request.query_params.get("dry_run") in ("1", "true"):
-        return  # un aperçu n'écrit rien
     project_id = UUID(str(request.path_params["project_id"]))
-    level_id = str(request.path_params["level_id"])
+    if key in IMAGE_LEASED:
+        found = _image_level(request, project_id)
+        if found is None:
+            return  # photo inconnue ou sans plan estimé : la route le dit
+        level_id = found
+    elif key not in LEASED_ROUTES:
+        return
+    elif key[1].endswith("/calibrate") and request.query_params.get("dry_run") in ("1", "true"):
+        return  # un aperçu n'écrit rien
+    else:
+        level_id = str(request.path_params["level_id"])
     user_id, name, color = _peer(user)
     leases = leases_of(request.app)
     blocking, announce = leases.claim(project_id, level_id, user_id, name, color)

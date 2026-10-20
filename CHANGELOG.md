@@ -24,7 +24,8 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 - Profondeur gardée par photo dans `images/` (réduite, ~0,6 Mo), comprise dans l'archive du
   projet et supprimée avec la photo ; une photo d'avant se réestime sur un geste
   (`POST …/levels/{id}/images/{id}/reestimate`, tâche de fond). Routes : `PUT
-  /projects/{id}/images/{id}/reference`, `DELETE …/reference/{segment}` (éditeur). Schéma
+  /projects/{id}/images/{id}/reference`, `DELETE …/reference/{segment}` (éditeur ; comme les
+  autres écritures du plan, refusées en 409 quand une autre personne tient ce plan). Schéma
   0.16.0 (`ImageRef.reference_segments`, `Level.scale_basis`), migration sans perte.
 
 ### 20 octobre 2026 (KAN-64 : plus rien ne se chevauche dans l'espace de travail)
