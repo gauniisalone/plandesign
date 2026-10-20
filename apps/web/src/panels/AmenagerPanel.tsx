@@ -144,6 +144,7 @@ const PLACE_LABEL: Record<string, string> = {
   ridge: "le faîtage",
   outlet: "une prise",
   corner: "un coin de la pièce",
+  skylight: "un velux",
 };
 
 function describeItem(item: BriefItem): string {

@@ -19,12 +19,22 @@ from openplan.schemas.common import StrictModel
 from openplan.schemas.intent import Zone
 
 Place = Literal[
-    "wall", "window", "door", "door_swing", "radiator", "low_wall", "ridge", "outlet", "corner"
+    "wall",
+    "window",
+    "door",
+    "door_swing",
+    "radiator",
+    "low_wall",
+    "ridge",
+    "outlet",
+    "corner",
+    "skylight",
 ]
 """Repères de placement compris par le générateur : contre un mur, près d'une fenêtre, loin
 du débattement d'une porte, hors du dégagement d'un radiateur, dans la zone basse d'un
 comble (`low_wall`, sous 1,80 m), sous le faîtage (`ridge`), près d'une prise, dans un coin
-de la pièce (`corner` : douche, bureau d'angle)."""
+de la pièce (`corner` : douche, bureau d'angle), loin du caisson d'un velux (`skylight`,
+KAN-67)."""
 PLACE_LABELS: dict[str, str] = {
     "wall": "un mur",
     "window": "une fenêtre",
@@ -35,6 +45,7 @@ PLACE_LABELS: dict[str, str] = {
     "ridge": "le faîtage",
     "outlet": "une prise",
     "corner": "un coin de la pièce",
+    "skylight": "un velux",
 }
 Priority = Literal["required", "nice_to_have"]
 MAX_BRIEF_CONFIDENCE = 0.6
@@ -95,6 +106,7 @@ PLACE_OF: dict[str, str] = {
     "ridge": "du faîtage",
     "outlet": "d'une prise",
     "corner": "d'un coin de la pièce",
+    "skylight": "d'un velux",
 }
 """Compléments de « près … » / « loin … » (« Déplacer le bureau loin d'une fenêtre »)."""
 Importance = Literal["high", "medium", "low"]
@@ -107,6 +119,7 @@ RULE_LABELS: dict[str, str] = {
     "clearance_blocked": "dégagement insuffisant",
     "furniture_unreachable": "meuble inaccessible",
     "element_too_tall_under_slope": "trop haut sous la pente",
+    "velux_casing": "sous le caisson d'un velux",
     "bed_headroom": "hauteur libre insuffisante au-dessus du lit",
     "furniture_in_stairwell": "meuble dans la trémie",
     "stairs_arrival_blocked": "arrivée d'escalier encombrée",

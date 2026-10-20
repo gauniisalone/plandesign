@@ -129,6 +129,8 @@ def _action_for_violation(
         target = "window"
     elif rule == "door_swing_blocked":
         target = "door_swing"
+    elif rule == "velux_casing":
+        target = "skylight"  # KAN-67 : « Déplacer la commode loin d'un velux »
     elif rule == "element_too_tall_under_slope":
         return CritiqueAction(
             kind="move_near",

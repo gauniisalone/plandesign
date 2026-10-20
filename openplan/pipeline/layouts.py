@@ -65,7 +65,9 @@ from openplan.schemas.layout import (
 from openplan.schemas.results import Assumption, StepResult, Violation
 from openplan.schemas.scene import Level, Project
 from openplan.validation.layout import (
+    CASING_TOLERANCE_M,
     OVERLAP_EPS_M2,
+    Casing,
     _inside_sign,
     _strip,
     bed_headroom_at,
@@ -77,6 +79,7 @@ from openplan.validation.layout import (
     radiator_zone,
     slide_zone,
     stair_zones,
+    velux_casings,
     window_zone,
 )
 
@@ -197,6 +200,8 @@ class Landmarks:
     walls: Polygon | None = None
     corners: list[Polygon] = field(default_factory=list)
     """Angles de la face intérieure de la pièce (« dans le coin »)."""
+    skylights: list[Polygon] = field(default_factory=list)
+    """KAN-67 : ombre au sol du caisson de chaque velux (« loin d'un velux »)."""
 
     def near(self, place: Place, polygon: Polygon) -> bool:
         return self.distance(place, polygon) <= (CORNER_M if place == "corner" else NEAR_M)
@@ -223,6 +228,8 @@ class Landmarks:
             targets = [self.ridge]
         elif place == "corner":
             targets = self.corners
+        elif place == "skylight":
+            targets = self.skylights
         if not targets:
             return math.inf
         return min(float(polygon.distance(t)) for t in targets)
@@ -249,12 +256,17 @@ class Context:
     inner_faces: list[WallFace] = field(default_factory=list)
     """Faces des cloisons intérieures à la pièce (V1) : les groupes s'y adossent aussi."""
     """Baie de chaque zone du brief (V1) : tranches de la pièce le long du faîtage."""
+    casings: list[Casing] = field(default_factory=list)
+    """KAN-67 : caissons des velux (volume du bake) ; aucun meuble généré n'y entre."""
 
     def fits_height(self, polygon: Polygon, top: float) -> bool:
         if not self.roofs:
             return top <= self.level.height + 1e-6
         corners = list(polygon.exterior.coords)[:-1]
-        return all(clearance_at((x, y), self.roofs, self.level) >= top for x, y in corners)
+        if not all(clearance_at((x, y), self.roofs, self.level) >= top for x, y in corners):
+            return False
+        # KAN-67 : ni sous le caisson d'un velux (il garde sa pleine profondeur au rendu).
+        return all(c.depth_in(polygon, 0.0, top) <= CASING_TOLERANCE_M for c in self.casings)
 
 
 def _room_of(level: Level, graph: WallGraph, room_id: UUID | None) -> tuple[Room | None, Polygon]:
@@ -454,6 +466,8 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
         _roof_landmarks(roofs, polygon, landmarks)
         # Les velux comptent comme lumière (V1) : lecture et bureau s'en approchent aussi.
         landmarks.windows.extend(_skylight_footprints(level, by_roof))
+    casings = velux_casings(level, graph) if roofs else []
+    landmarks.skylights = [c.shadow for c in casings]
     obstacles = [p.polygon for p in pieces_of(level) if p.polygon.intersects(polygon)]
     # Escaliers (S1) : ni meuble sur la trémie, ni sur le palier d'arrivée.
     forbidden.extend(z for _, opening, arrival in stair_zones(level) for z in (opening, arrival))
@@ -474,6 +488,7 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
         landmarks=landmarks,
         roofs=roofs,
         catalog_by_category=by_category,
+        casings=casings,
     )
 
 

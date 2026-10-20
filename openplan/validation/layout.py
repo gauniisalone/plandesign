@@ -14,7 +14,9 @@ Chaque règle produit des violations compréhensibles, avec les éléments conce
 - `clearance_blocked` : un meuble dans le dégagement d'un radiateur ou d'un élément fixe
   (`keep_clear`), ou dans le dégagement que demande un autre meuble du catalogue (souple) ;
 - `furniture_unreachable` : un meuble que l'on ne peut pas atteindre depuis la porte avec un
-  passage de 0,80 m de large (souple).
+  passage de 0,80 m de large (souple) ;
+- `velux_casing` : un meuble qui entre dans le caisson d'un velux (KAN-67, souple) ; le volume
+  est celui que le bake bâtit (`scene3d.velux_casings`), en pleine profondeur.
 
 « Dure » = sévérité `high` (l'édition est refusée, la proposition d'aménagement écartée) ;
 « souple » = `medium` (affichée, pénalité de score). Une `Constraint` de la sorte
@@ -31,10 +33,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
+import numpy as np
+from numpy.typing import NDArray
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 from openplan.geom.built_in_bed import BUILT_IN_BED, MIN_HEADROOM_M, headroom_at
+from openplan.geom.convex import Solid
 from openplan.geom.opening_symbols import (
     SLIDE_DEPTH_M,
     STACK_KINDS,
@@ -496,12 +501,107 @@ def check_layout(project: Project) -> list[Violation]:
         if not pieces:
             continue
         out.extend(_check_slopes(project, level, graph, pieces))
+        out.extend(_check_velux_casings(level, graph, pieces))
         out.extend(_check_bed_headroom(project, level, graph, pieces))
         out.extend(_check_overlaps(project, level, graph, pieces))
         rooms = _room_polygons(level, graph)
         out.extend(_check_openings(project, level, graph, pieces, rooms))
         out.extend(_check_clearances(project, level, graph, pieces, rooms))
         out.extend(_check_passages(project, level, graph, pieces, rooms))
+    return out
+
+
+CASING_TOLERANCE_M = 0.005
+"""Un meuble entre dans le caisson d'un velux quand une boule de plus de 5 mm tient dans les
+deux à la fois (même mesure que les tests de KAN-28 et KAN-63)."""
+
+
+@dataclass(frozen=True)
+class Casing:
+    """Caisson d'un velux pour les règles (KAN-67) : ses planches préparées et son ombre."""
+
+    window_id: UUID
+    name: str
+    boards: list[NDArray[np.float64]]
+    solids: list[Solid]
+    shadow: Polygon
+    bottom: float
+
+    def depth_in(self, polygon: Polygon, z0: float, top: float) -> float:
+        """De combien (rayon, m) le prisme de l'emprise `polygon`, de `z0` à `top`, entre dans
+        une planche du caisson ; ≤ 0 s'il n'y touche pas."""
+        if top <= self.bottom or not polygon.intersects(self.shadow):
+            return -1.0
+        return max(s.depth_in(polygon, z0, top) for s in self.solids)
+
+
+_CASING_CACHE: list[tuple[tuple[object, ...], list[Casing]]] = []
+"""Dernier calcul des caissons : la clé garde les objets (pentes, velux, murs, sommets) dont
+ils dépendent ; une variante d'aménagement ne change que les meubles, et les retrouve tels quels
+(le générateur évalue des milliers de positions sur la même toiture)."""
+
+
+def velux_casings(level: Level, graph: WallGraph) -> list[Casing]:
+    """Les caissons des velux du niveau, tirés de la géométrie du bake (une seule source)."""
+    key: tuple[object, ...] = (
+        level.height,
+        level.elevation,
+        level.vertices,
+        *(e for e in level.elements.values() if e.type in ("roof_plane", "roof_window", "wall")),
+    )
+    for cached_key, cached in _CASING_CACHE:
+        if len(cached_key) == len(key) and all(
+            a is b or (isinstance(a, float) and a == b)
+            for a, b in zip(cached_key, key, strict=True)
+        ):
+            return cached
+    casings = _velux_casings(level, graph)
+    _CASING_CACHE[:] = [(key, casings)]
+    return casings
+
+
+def _velux_casings(level: Level, graph: WallGraph) -> list[Casing]:
+    from openplan.pipeline.scene3d import velux_casings as baked
+
+    out: list[Casing] = []
+    for window, boards in baked(level, graph):
+        solids = [s for s in (Solid.of(b) for b in boards) if s is not None]
+        if not solids:
+            continue
+        shadow = unary_union([s.shadow for s in solids]).convex_hull
+        if isinstance(shadow, Polygon):
+            bottom = min(s.bottom for s in solids)
+            out.append(Casing(window.id, window.name or "velux", boards, solids, shadow, bottom))
+    return out
+
+
+def _metres(value: float) -> str:
+    """Cote affichée à l'écran : deux décimales, virgule française (« 0,72 »)."""
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _check_velux_casings(level: Level, graph: WallGraph, pieces: list[Piece]) -> list[Violation]:
+    """KAN-67 : un meuble qui entre dans le caisson d'un velux (souple) ; le bake raccourcit
+    alors le caisson au-dessus de lui (KAN-63), la règle le dit."""
+    casings = velux_casings(level, graph)
+    out: list[Violation] = []
+    for piece in pieces:
+        z0 = piece.element.transform.position.z
+        for casing in casings:
+            if casing.depth_in(piece.polygon, z0, piece.top) <= CASING_TOLERANCE_M:
+                continue
+            out.append(
+                Violation(
+                    type="velux_casing",
+                    severity="medium",
+                    element_ids=[piece.element.id, casing.window_id],
+                    message=(
+                        f"{piece.label} passe sous le caisson du « {casing.name} » (bas du "
+                        f"caisson à {_metres(casing.bottom)} m, meuble à {_metres(piece.top)} "
+                        "m) : à décaler, sinon le caisson s'arrête au-dessus du meuble."
+                    ),
+                )
+            )
     return out
 
 

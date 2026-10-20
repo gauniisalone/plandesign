@@ -1143,7 +1143,8 @@ export type BriefPlace =
   | "low_wall"
   | "ridge"
   | "outlet"
-  | "corner";
+  | "corner"
+  | "skylight";
 
 export interface BriefItem {
   category: string;

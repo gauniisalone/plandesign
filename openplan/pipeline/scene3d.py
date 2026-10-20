@@ -22,12 +22,13 @@ from uuid import UUID
 import numpy as np
 import trimesh
 from numpy.typing import NDArray
-from shapely.geometry import LineString, MultiPoint, Point, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from trimesh.creation import extrude_polygon
 from trimesh.visual.color import ColorVisuals
 
 from openplan.geom.built_in_bed import BUILT_IN_BED
 from openplan.geom.built_in_bed import parts as bed_parts
+from openplan.geom.convex import SURE_TOUCH_M, Solid
 from openplan.geom.polygon import to_points
 from openplan.geom.roof import horizontal_run, inward_normal
 from openplan.geom.stairs import railing_lines, stair_layout
@@ -498,12 +499,18 @@ def timber_solids(level: Level, graph: WallGraph) -> list[Float]:
 
 
 def _furniture_top_under(solids: list[Float], furniture: list[Prism]) -> float | None:
-    """Haut du meuble le plus haut dont l'emprise passe sous celle du caisson (KAN-63)."""
-    shadow = MultiPoint([(float(x), float(y)) for x, y, _z in np.vstack(solids)]).convex_hull
+    """Haut du meuble le plus haut qui entre dans le caisson en pleine profondeur (KAN-63) ;
+    même test de contact que la règle d'aménagement `velux_casing` (KAN-67) : un meuble sous
+    l'ombre du caisson mais plus bas que lui ne le raccourcit pas."""
+    boards = [s for s in (Solid.of(points) for points in solids) if s is not None]
     tops = [
         p.z1
         for p in furniture
-        if p.kind == "furniture" and Polygon([(c.x, c.y) for c in p.exterior]).intersects(shadow)
+        if p.kind == "furniture"
+        and any(
+            b.depth_in(Polygon([(c.x, c.y) for c in p.exterior]), p.z0, p.z1) > SURE_TOUCH_M
+            for b in boards
+        )
     ]
     return max(tops) if tops else None
 
@@ -597,6 +604,17 @@ _PLANKED = ("naturel", "chalet")
 def reveal_finish(level: Level) -> Finish:
     """Ébrasement en planches pour les ambiances bois, en enduit clair sinon (H2)."""
     return "wood_boards" if ambiance(level) in _PLANKED else "plaster"
+
+
+def velux_casings(level: Level, graph: WallGraph) -> list[tuple[RoofWindow, list[Float]]]:
+    """KAN-67 : le caisson de chaque velux visible, en pleine profondeur (aucun meuble pris en
+    compte), planche par planche, tel que le bake le bâtit (`reveal_solids` sur `window_holes`) :
+    seule source du volume pour les règles d'aménagement et le générateur."""
+    return [
+        (window, reveal_solids(panel, rect))
+        for panel in roof_panels(level, graph)
+        for window, rect in window_holes(level, panel)
+    ]
 
 
 FURNITURE_GAP_M = 0.02
