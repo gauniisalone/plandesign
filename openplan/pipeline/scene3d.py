@@ -354,21 +354,54 @@ def _gaps(start: float, end: float, cuts: list[tuple[float, float]]) -> list[tup
     return [(a, b) for a, b in out if b - a > 0.05]
 
 
+TIMBER_CLEARANCE_M = 0.02
+"""Jeu laissé entre une pièce de charpente coupée et le jour d'un velux."""
+
+
+def lintel_reach(hole_top: float, slope: float, pitch: float) -> float:
+    """Portée horizontale du linteau d'un velux (H2), du haut du trou vers le faîtage : jusqu'à
+    REVEAL_DEPTH_M sous la toiture, mais jamais au-delà de la demi-faîtière (KAN-28 : près du
+    faîtage, sur une pente douce, il traversait la faîtière et l'autre versant)."""
+    to_ridge = (slope - hole_top) * math.cos(pitch) - RIDGE_BEAM[0]
+    return max(0.0, min(REVEAL_DEPTH_M / max(math.sin(pitch), 0.05), to_ridge))
+
+
+def reveal_span(
+    hole: Rect, depth: float, pitch: float, slope: float = math.inf
+) -> tuple[float, float]:
+    """KAN-28 : étendue (v0, v1), le long de la pente, du jour d'un velux jusqu'à `depth` sous
+    la toiture. Le caisson (H2, `reveal_solids`) s'évase vers la pièce : le linteau part à
+    l'horizontale du haut du trou (`lintel_reach`), l'appui à la verticale du bas, jusqu'à
+    REVEAL_DEPTH_M ; le jour déborde donc du trou de depth·cot(pente) en haut (borné par le
+    faîtage) et de depth·tan(pente) en bas."""
+    d = min(max(depth, 0.0), REVEAL_DEPTH_M)
+    sin_p, cos_p = math.sin(pitch), math.cos(pitch)
+    reach = min(d / max(sin_p, 0.05), lintel_reach(hole[3], slope, pitch))
+    return hole[2] - d * sin_p / max(cos_p, 0.05), hole[3] + reach * cos_p
+
+
 def timber_rects(
-    length: float, slope: float, spacing: float, holes: list[Rect]
+    length: float, slope: float, spacing: float, holes: list[Rect], pitch: float = 0.0
 ) -> list[tuple[Rect, float, float]]:
     """Charpente apparente d'une pente (C1), dans son repère (u le long de l'égout, v le long
     de la pente) : chevrons espacés de `spacing` et pannes tous les ~2,2 m de pente, chaque
     pièce avec sa profondeur sous la toiture (t0, t1 < 0) ; la faîtière est à part
-    (`_ridge_half_beam`). Chevrons et pannes s'interrompent aux trous des velux."""
+    (`_ridge_half_beam`). Chevrons et pannes s'interrompent au jour des velux : pas seulement
+    au trou dans la pente, mais sur toute l'étendue du caisson évasé à la profondeur de la
+    pièce (KAN-28 ; `pitch` = 0 garde l'ancienne coupe au seul trou)."""
     out: list[tuple[Rect, float, float]] = []
+    gap = TIMBER_CLEARANCE_M
     rw, rd = RAFTER
     count = max(1, int((length - 0.2) / spacing) + 1)
     first = (length - (count - 1) * spacing) / 2.0
     for k in range(count):
         u = first + k * spacing
         u0, u1 = u - rw / 2, u + rw / 2
-        cuts = [(h[2] - 0.02, h[3] + 0.02) for h in holes if h[0] < u1 and h[1] > u0]
+        cuts = []
+        for h in holes:
+            if h[0] < u1 + gap and h[1] > u0 - gap:
+                a, b = reveal_span(h, rd, pitch, slope) if pitch else (h[2], h[3])
+                cuts.append((a - gap, b + gap))
         for v0, v1 in _gaps(0.0, slope, cuts):
             out.append(((u0, u1, v0, v1), -rd, 0.0))
     pw, pd = PURLIN
@@ -376,7 +409,13 @@ def timber_rects(
     for j in range(purlins):
         v = slope * (j + 1) / (purlins + 1)
         v0, v1 = v - pw / 2, v + pw / 2
-        cuts = [(h[0] - 0.02, h[1] + 0.02) for h in holes if h[2] < v1 and h[3] > v0]
+        cuts = []
+        for h in holes:
+            # La panne pend sous les chevrons (de rd à rd + pd) : le jour la touche si, à sa
+            # profondeur la plus basse encore dans le caisson, il recouvre sa bande.
+            a, b = reveal_span(h, rd + pd, pitch, slope) if pitch else (h[2], h[3])
+            if a - gap < v1 and b + gap > v0:
+                cuts.append((h[0] - gap, h[1] + gap))
         for u0, u1 in _gaps(0.0, length, cuts):
             out.append(((u0, u1, v0, v1), -rd - pd, -rd))
     return out
@@ -405,30 +444,43 @@ def _ridge_half_beam(panel: RoofPanel) -> Float:
     return np.array(points)
 
 
+def window_holes(level: Level, panel: RoofPanel) -> list[tuple[RoofWindow, Rect]]:
+    """Les velux visibles d'une pente et leur trou (u0, u1, v0, v1) dans son repère, bornés à la
+    pente ; un velux plus petit que son cadre n'en fait pas."""
+    base = panel.vertices[:4]
+    length = float(np.linalg.norm(base[1] - base[0]))
+    slope = float(np.linalg.norm(base[3] - base[0]))
+    holes: list[tuple[RoofWindow, Rect]] = []
+    for w in level.elements.values():
+        if isinstance(w, RoofWindow) and w.visible and w.roof == panel.roof.id:
+            u0, u1 = max(0.0, w.offset), min(length, w.offset + w.width)
+            v0, v1 = max(0.0, w.distance), min(slope, w.distance + w.length)
+            if u1 - u0 > 2 * ROOF_WINDOW_FRAME_M and v1 - v0 > 2 * ROOF_WINDOW_FRAME_M:
+                holes.append((w, (u0, u1, v0, v1)))
+    return holes
+
+
+def panel_timber(panel: RoofPanel, holes: list[Rect]) -> list[Float]:
+    """Charpente apparente d'une pente (chevrons, pannes, puis la demi-faîtière en dernier),
+    chaque pièce en sommets de son solide convexe ; vide si la charpente est masquée. Seule
+    source pour le rendu (`_bake_roof_panel`) et pour la mesure du cadrage (`timber_solids`)."""
+    enabled, spacing = timber_settings(panel.roof)
+    if not enabled:
+        return []
+    base = panel.vertices[:4]
+    length = float(np.linalg.norm(base[1] - base[0]))
+    slope = float(np.linalg.norm(base[3] - base[0]))
+    rects = timber_rects(length, slope, spacing, holes, panel.roof.pitch)
+    return [*(_panel_box(panel, r, t0, t1) for r, t0, t1 in rects), _ridge_half_beam(panel)]
+
+
 def timber_solids(level: Level, graph: WallGraph) -> list[Float]:
     """Charpente apparente du niveau telle que le rendu la bâtit (chevrons, pannes, faîtière),
     chaque pièce en sommets de son solide convexe : la mesure du cadrage des vues la compte
     (une caméra logée dans une panne, ou collée à elle, est refusée)."""
     out: list[Float] = []
     for panel in roof_panels(level, graph):
-        enabled, spacing = timber_settings(panel.roof)
-        if not enabled:
-            continue
-        base = panel.vertices[:4]
-        length = float(np.linalg.norm(base[1] - base[0]))
-        slope = float(np.linalg.norm(base[3] - base[0]))
-        holes = []
-        for w in level.elements.values():
-            if isinstance(w, RoofWindow) and w.visible and w.roof == panel.roof.id:
-                u0, u1 = max(0.0, w.offset), min(length, w.offset + w.width)
-                v0, v1 = max(0.0, w.distance), min(slope, w.distance + w.length)
-                if u1 - u0 > 2 * ROOF_WINDOW_FRAME_M and v1 - v0 > 2 * ROOF_WINDOW_FRAME_M:
-                    holes.append((u0, u1, v0, v1))
-        out += [
-            _panel_box(panel, rect, t0, t1)
-            for rect, t0, t1 in timber_rects(length, slope, spacing, holes)
-        ]
-        out.append(_ridge_half_beam(panel))
+        out += panel_timber(panel, [h for _, h in window_holes(level, panel)])
     return out
 
 
@@ -438,17 +490,7 @@ def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[P
     base = panel.vertices[:4]
     length = float(np.linalg.norm(base[1] - base[0]))
     slope = float(np.linalg.norm(base[3] - base[0]))
-    windows = [
-        e
-        for e in level.elements.values()
-        if isinstance(e, RoofWindow) and e.visible and e.roof == panel.roof.id
-    ]
-    holes: list[tuple[RoofWindow, Rect]] = []
-    for w in windows:
-        u0, u1 = max(0.0, w.offset), min(length, w.offset + w.width)
-        v0, v1 = max(0.0, w.distance), min(slope, w.distance + w.length)
-        if u1 - u0 > 2 * ROOF_WINDOW_FRAME_M and v1 - v0 > 2 * ROOF_WINDOW_FRAME_M:
-            holes.append((w, (u0, u1, v0, v1)))
+    holes = window_holes(level, panel)
     skirt_slope = ROOF_SKIRT_M / max(math.cos(panel.roof.pitch), 0.2)
     skirt = trimesh.convex.convex_hull(
         _panel_box(panel, (0.0, length, -skirt_slope, 0.0), 0.0, ROOF_THICKNESS)
@@ -458,20 +500,13 @@ def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[P
         _polyhedron(skirt, panel.roof, 1000, "roof", style),
         _polyhedron(sill, panel.roof, 1001, "slab", style),
     ]
-    enabled, spacing = timber_settings(panel.roof)
     tf = _timber_finish()
-    if enabled:
-        for k, (rect, t0, t1) in enumerate(
-            timber_rects(length, slope, spacing, [h for _, h in holes])
-        ):
-            piece = trimesh.convex.convex_hull(_panel_box(panel, rect, t0, t1))
-            beam = _polyhedron(piece, panel.roof, 2000 + k, "timber", style)
-            # Bois de charpente quelle que soit la finition choisie pour la pente.
-            closing.append(
-                beam.model_copy(update={"finish": tf, "color": _color(beam.source, tf, style)})
-            )
-        ridge = trimesh.convex.convex_hull(_ridge_half_beam(panel))
-        beam = _polyhedron(ridge, panel.roof, 1999, "timber", style)
+    pieces = panel_timber(panel, [h for _, h in holes])
+    for k, points in enumerate(pieces):
+        # La demi-faîtière (dernière) garde son numéro de toujours.
+        number = 1999 if k == len(pieces) - 1 else 2000 + k
+        beam = _polyhedron(trimesh.convex.convex_hull(points), panel.roof, number, "timber", style)
+        # Bois de charpente quelle que soit la finition choisie pour la pente.
         closing.append(
             beam.model_copy(update={"finish": tf, "color": _color(beam.source, tf, style)})
         )
@@ -540,7 +575,8 @@ def reveal_solids(panel: RoofPanel, rect: Rect) -> list[Float]:
     to_ridge = np.array([v_dir[0], v_dir[1], 0.0])
     to_ridge /= max(float(np.linalg.norm(to_ridge)), 1e-12)
     vertical = np.array([0.0, 0.0, -1.0])
-    reach_h = REVEAL_DEPTH_M / max(-float(np.dot(to_ridge, n)), 0.05)
+    # Le linteau s'arrête avant la faîtière (KAN-28) ; ailleurs, à REVEAL_DEPTH_M.
+    reach_h = lintel_reach(v1, float(np.linalg.norm(up)), panel.roof.pitch)
     reach_v = REVEAL_DEPTH_M / max(-float(np.dot(vertical, n)), 0.05)
     top = [at(u0, v1), at(u1, v1)]
     top_in = [p + to_ridge * reach_h for p in top]
