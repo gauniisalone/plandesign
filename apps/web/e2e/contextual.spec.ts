@@ -42,10 +42,8 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
 
   // Le plan comme source : pas un guide d'image, une vue 3D est proposée (aucune rendue ici).
   await board.locator(".board-item.kind-plan .board-plan-head").click();
-  await page
-    .locator(".side")
-    .getByRole("button", { name: "Rendu contextualisé…" })
-    .click();
+  // KAN-64 : dans le panneau (zones visibles) ou en bas au centre (un volet ouvert).
+  await page.getByRole("button", { name: "Rendu contextualisé…" }).click();
   const panel = page.getByRole("region", { name: "Rendu contextualisé" });
   await expect(panel).toContainText("Le plan 2D n'est pas un guide d'image");
   await expect(panel).toContainText("Aucune vue rendue");
@@ -67,10 +65,8 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   // La photo comme source (A4 : sans vue 3D rendue, la photo telle quelle est la seule
   // source, et l'écran dit où rendre une vue) : intention, budget, prompt enrichi,
   // traduction française, jetons.
-  await page
-    .locator(".side")
-    .getByRole("button", { name: "Rendu contextualisé…" })
-    .click();
+  // KAN-64 : dans le panneau (zones visibles) ou en bas au centre (un volet ouvert).
+  await page.getByRole("button", { name: "Rendu contextualisé…" }).click();
   await expect(panel).toContainText("Cette photo telle quelle");
   await expect(panel).toContainText("Aucune vue 3D rendue");
   await expect(
