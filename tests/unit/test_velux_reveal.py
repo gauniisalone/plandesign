@@ -11,11 +11,14 @@ from openplan.geom.roof import derived_roofs
 from openplan.geom.wallgraph import WallGraph
 from openplan.pipeline.render import SKYLIGHT_TURN_DEG, daylight_spec, through_skylights
 from openplan.pipeline.scene3d import (
+    CHEVETRE_DEPTH_M,
     REVEAL_DEPTH_M,
     bake_level,
+    reveal_depth,
     reveal_finish,
     reveal_solids,
     roof_panels,
+    timber_settings,
 )
 from openplan.scene.ops import AddRoofWindow, SetIntent, apply_op
 from openplan.schemas.elements import RoofPlane, RoofWindow, Room
@@ -40,21 +43,24 @@ def test_reveal_has_a_level_head_a_plumb_sill_and_two_cheeks() -> None:
     # appui : vertical, les points intérieurs à l'aplomb des points du bord du trou
     assert sill[0][0] == pytest.approx(sill[3][0]) and sill[0][1] == pytest.approx(sill[3][1])
     assert sill[3][2] < sill[0][2]
-    # profondeur : le bord intérieur à REVEAL_DEPTH_M sous la toiture
+    # profondeur : le bord intérieur à la profondeur du caisson sous la toiture (REVEAL_DEPTH_M
+    # sans charpente, jusqu'au bas des pannes sous une charpente apparente, KAN-63)
+    full = reveal_depth(panel.roof)
+    assert full == (CHEVETRE_DEPTH_M if timber_settings(panel.roof)[0] else REVEAL_DEPTH_M)
     depth = float((panel.vertices[0] - sill[3]) @ panel.normal)
-    assert depth == pytest.approx(REVEAL_DEPTH_M, abs=1e-6)
+    assert depth == pytest.approx(full, abs=1e-6)
     assert cheek0.shape == cheek1.shape == (8, 3)
     # Le linteau part vers le faîtage, sous la pente : son bord intérieur est sous la toiture
-    # et à moins de 0,6 m du trou (pas un caisson démesuré).
+    # (pas un caisson démesuré : 1,6 m au plus pour 22 cm, 2,0 m pour le chevêtre de KAN-63).
     inner = lintel[3]
-    assert float((panel.vertices[0] - inner) @ panel.normal) == pytest.approx(REVEAL_DEPTH_M)
+    assert float((panel.vertices[0] - inner) @ panel.normal) == pytest.approx(full)
     span = max(
         float(np.linalg.norm(solid[i] - solid[j]))
         for solid in (lintel, sill, cheek0, cheek1)
         for i in range(8)
         for j in range(8)
     )
-    assert span < 1.6, span
+    assert span < (2.0 if full > REVEAL_DEPTH_M else 1.6), span
 
 
 def test_bake_adds_the_reveal_in_planks_or_plaster_by_style() -> None:

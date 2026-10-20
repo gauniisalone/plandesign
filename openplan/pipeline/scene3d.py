@@ -22,7 +22,7 @@ from uuid import UUID
 import numpy as np
 import trimesh
 from numpy.typing import NDArray
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, MultiPoint, Point, Polygon
 from trimesh.creation import extrude_polygon
 from trimesh.visual.color import ColorVisuals
 
@@ -358,30 +358,43 @@ TIMBER_CLEARANCE_M = 0.02
 """Jeu laissé entre une pièce de charpente coupée et le jour d'un velux."""
 
 
-def lintel_reach(hole_top: float, slope: float, pitch: float) -> float:
+def lintel_reach(hole_top: float, slope: float, pitch: float, reveal: float | None = None) -> float:
     """Portée horizontale du linteau d'un velux (H2), du haut du trou vers le faîtage : jusqu'à
-    REVEAL_DEPTH_M sous la toiture, mais jamais au-delà de la demi-faîtière (KAN-28 : près du
-    faîtage, sur une pente douce, il traversait la faîtière et l'autre versant)."""
+    la profondeur du caisson (`reveal`, REVEAL_DEPTH_M par défaut) sous la toiture, mais jamais
+    au-delà de la demi-faîtière (KAN-28 : près du faîtage, sur une pente douce, il traversait
+    la faîtière et l'autre versant)."""
+    depth = REVEAL_DEPTH_M if reveal is None else reveal
     to_ridge = (slope - hole_top) * math.cos(pitch) - RIDGE_BEAM[0]
-    return max(0.0, min(REVEAL_DEPTH_M / max(math.sin(pitch), 0.05), to_ridge))
+    return max(0.0, min(depth / max(math.sin(pitch), 0.05), to_ridge))
 
 
 def reveal_span(
-    hole: Rect, depth: float, pitch: float, slope: float = math.inf
+    hole: Rect,
+    depth: float,
+    pitch: float,
+    slope: float = math.inf,
+    reveal: float | None = None,
 ) -> tuple[float, float]:
     """KAN-28 : étendue (v0, v1), le long de la pente, du jour d'un velux jusqu'à `depth` sous
     la toiture. Le caisson (H2, `reveal_solids`) s'évase vers la pièce : le linteau part à
-    l'horizontale du haut du trou (`lintel_reach`), l'appui à la verticale du bas, jusqu'à
-    REVEAL_DEPTH_M ; le jour déborde donc du trou de depth·cot(pente) en haut (borné par le
-    faîtage) et de depth·tan(pente) en bas."""
-    d = min(max(depth, 0.0), REVEAL_DEPTH_M)
+    l'horizontale du haut du trou (`lintel_reach`), l'appui à la verticale du bas, jusqu'à sa
+    profondeur (`reveal`, REVEAL_DEPTH_M par défaut, `reveal_depth` d'une pente) ; le jour
+    déborde donc du trou de depth·cot(pente) en haut (borné par le faîtage) et de
+    depth·tan(pente) en bas."""
+    full = REVEAL_DEPTH_M if reveal is None else reveal
+    d = min(max(depth, 0.0), full)
     sin_p, cos_p = math.sin(pitch), math.cos(pitch)
-    reach = min(d / max(sin_p, 0.05), lintel_reach(hole[3], slope, pitch))
+    reach = min(d / max(sin_p, 0.05), lintel_reach(hole[3], slope, pitch, full))
     return hole[2] - d * sin_p / max(cos_p, 0.05), hole[3] + reach * cos_p
 
 
 def timber_rects(
-    length: float, slope: float, spacing: float, holes: list[Rect], pitch: float = 0.0
+    length: float,
+    slope: float,
+    spacing: float,
+    holes: list[Rect],
+    pitch: float = 0.0,
+    reveal: float | None = None,
 ) -> list[tuple[Rect, float, float]]:
     """Charpente apparente d'une pente (C1), dans son repère (u le long de l'égout, v le long
     de la pente) : chevrons espacés de `spacing` et pannes tous les ~2,2 m de pente, chaque
@@ -400,7 +413,7 @@ def timber_rects(
         cuts = []
         for h in holes:
             if h[0] < u1 + gap and h[1] > u0 - gap:
-                a, b = reveal_span(h, rd, pitch, slope) if pitch else (h[2], h[3])
+                a, b = reveal_span(h, rd, pitch, slope, reveal) if pitch else (h[2], h[3])
                 cuts.append((a - gap, b + gap))
         for v0, v1 in _gaps(0.0, slope, cuts):
             out.append(((u0, u1, v0, v1), -rd, 0.0))
@@ -413,7 +426,7 @@ def timber_rects(
         for h in holes:
             # La panne pend sous les chevrons (de rd à rd + pd) : le jour la touche si, à sa
             # profondeur la plus basse encore dans le caisson, il recouvre sa bande.
-            a, b = reveal_span(h, rd + pd, pitch, slope) if pitch else (h[2], h[3])
+            a, b = reveal_span(h, rd + pd, pitch, slope, reveal) if pitch else (h[2], h[3])
             if a - gap < v1 and b + gap > v0:
                 cuts.append((h[0] - gap, h[1] + gap))
         for u0, u1 in _gaps(0.0, length, cuts):
@@ -470,7 +483,7 @@ def panel_timber(panel: RoofPanel, holes: list[Rect]) -> list[Float]:
     base = panel.vertices[:4]
     length = float(np.linalg.norm(base[1] - base[0]))
     slope = float(np.linalg.norm(base[3] - base[0]))
-    rects = timber_rects(length, slope, spacing, holes, panel.roof.pitch)
+    rects = timber_rects(length, slope, spacing, holes, panel.roof.pitch, reveal_depth(panel.roof))
     return [*(_panel_box(panel, r, t0, t1) for r, t0, t1 in rects), _ridge_half_beam(panel)]
 
 
@@ -484,9 +497,23 @@ def timber_solids(level: Level, graph: WallGraph) -> list[Float]:
     return out
 
 
-def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[Polyhedron]:
+def _furniture_top_under(solids: list[Float], furniture: list[Prism]) -> float | None:
+    """Haut du meuble le plus haut dont l'emprise passe sous celle du caisson (KAN-63)."""
+    shadow = MultiPoint([(float(x), float(y)) for x, y, _z in np.vstack(solids)]).convex_hull
+    tops = [
+        p.z1
+        for p in furniture
+        if p.kind == "furniture" and Polygon([(c.x, c.y) for c in p.exterior]).intersects(shadow)
+    ]
+    return max(tops) if tops else None
+
+
+def _bake_roof_panel(
+    level: Level, panel: RoofPanel, style: BakeStyle, furniture: list[Prism] | None = None
+) -> list[Polyhedron]:
     """Une pente pleine, ou percée de ses velux : morceaux de toiture autour des trous, cadre en
-    bois et vitrage (finition `glass`) dans chaque trou ; la lumière du ciel entre par là."""
+    bois et vitrage (finition `glass`) dans chaque trou ; la lumière du ciel entre par là. Le
+    caisson de chaque velux s'arrête au-dessus des meubles posés dessous (KAN-63)."""
     base = panel.vertices[:4]
     length = float(np.linalg.norm(base[1] - base[0]))
     slope = float(np.linalg.norm(base[3] - base[0]))
@@ -533,7 +560,11 @@ def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[P
         )
         out.append(_polyhedron(trimesh.convex.convex_hull(pane), w, 0, "roof_window", style))
         finish = reveal_finish(level)
-        for k, solid in enumerate(reveal_solids(panel, (u0, u1, v0, v1)), start=10):
+        boards = reveal_solids(panel, (u0, u1, v0, v1))
+        top = _furniture_top_under(boards, furniture) if furniture else None
+        if top is not None:
+            boards = reveal_solids(panel, (u0, u1, v0, v1), furniture_top=top)
+        for k, solid in enumerate(boards, start=10):
             piece = _polyhedron(trimesh.convex.convex_hull(solid), w, k, "reveal", style)
             out.append(
                 piece.model_copy(
@@ -545,6 +576,20 @@ def _bake_roof_panel(level: Level, panel: RoofPanel, style: BakeStyle) -> list[P
 
 REVEAL_DEPTH_M = RAFTER[1] + 0.06
 """Profondeur de l'ébrasement sous la toiture (H2) : la hauteur des chevrons et la doublure."""
+CHEVETRE_DEPTH_M = RAFTER[1] + PURLIN[1] + 0.02
+"""KAN-63 : sous une charpente apparente, le caisson descend jusqu'au bas des pannes (0,40 m),
+comme un chevêtre ; sinon le bout d'une panne coupée au droit de la joue, plus bas que le
+caisson, masquait un coin de la vitre en vue rasante."""
+SILL_FLOOR_GAP_M = 0.10
+"""L'appui vertical d'un caisson profond s'arrête à 10 cm au moins au-dessus du plancher."""
+
+
+def reveal_depth(roof: RoofPlane) -> float:
+    """Profondeur du caisson des velux d'une pente : jusqu'au bas des pannes si la charpente est
+    apparente (KAN-63), l'ébrasement de H2 (REVEAL_DEPTH_M) sinon."""
+    return CHEVETRE_DEPTH_M if timber_settings(roof)[0] else REVEAL_DEPTH_M
+
+
 REVEAL_BOARD_M = 0.025
 _PLANKED = ("naturel", "chalet")
 
@@ -554,10 +599,17 @@ def reveal_finish(level: Level) -> Finish:
     return "wood_boards" if ambiance(level) in _PLANKED else "plaster"
 
 
-def reveal_solids(panel: RoofPanel, rect: Rect) -> list[Float]:
+FURNITURE_GAP_M = 0.02
+"""KAN-63 : jeu laissé entre le bas du caisson et le meuble le plus haut posé dessous."""
+
+
+def reveal_solids(panel: RoofPanel, rect: Rect, furniture_top: float | None = None) -> list[Float]:
     """Caisson d'un velux sous la toiture (H2, références 12 et 14) : linteau horizontal en haut,
     appui vertical en bas, joues perpendiculaires à la pente ; le jour s'évase vers la pièce.
-    Chaque planche est un solide convexe de `REVEAL_BOARD_M` d'épaisseur."""
+    Chaque planche est un solide convexe de `REVEAL_BOARD_M` d'épaisseur ; profondeur
+    `reveal_depth(panel.roof)` (KAN-63). `furniture_top` : haut du meuble le plus haut sous
+    l'emprise du caisson ; l'appui s'arrête FURNITURE_GAP_M au-dessus, sans remonter plus haut
+    que l'ébrasement de H2 ni descendre à moins de SILL_FLOOR_GAP_M du plancher."""
     base = panel.vertices[:4]
     along = base[1] - base[0]
     up = base[3] - base[0]
@@ -570,17 +622,28 @@ def reveal_solids(panel: RoofPanel, rect: Rect) -> list[Float]:
         return cast(Float, base[0] + u_dir * u + v_dir * v)
 
     # Vers l'intérieur depuis le haut : à l'horizontale, vers le faîtage (sous la pente qui
-    # monte) ; depuis le bas : à la verticale. Chacun s'arrête au plan situé à REVEAL_DEPTH_M
-    # sous la toiture.
+    # monte) ; depuis le bas : à la verticale. Chacun s'arrête au plan situé à la profondeur du
+    # caisson sous la toiture (`reveal_depth` : jusqu'au bas des pannes sous une charpente
+    # apparente, KAN-63).
+    depth = reveal_depth(panel.roof)
     to_ridge = np.array([v_dir[0], v_dir[1], 0.0])
     to_ridge /= max(float(np.linalg.norm(to_ridge)), 1e-12)
     vertical = np.array([0.0, 0.0, -1.0])
-    # Le linteau s'arrête avant la faîtière (KAN-28) ; ailleurs, à REVEAL_DEPTH_M.
-    reach_h = lintel_reach(v1, float(np.linalg.norm(up)), panel.roof.pitch)
-    reach_v = REVEAL_DEPTH_M / max(-float(np.dot(vertical, n)), 0.05)
+    # Le linteau s'arrête avant la faîtière (KAN-28).
+    reach_h = lintel_reach(v1, float(np.linalg.norm(up)), panel.roof.pitch, depth)
+    cos_v = max(-float(np.dot(vertical, n)), 0.05)
+    reach_v = depth / cos_v
     top = [at(u0, v1), at(u1, v1)]
     top_in = [p + to_ridge * reach_h for p in top]
     low = [at(u0, v0), at(u1, v0)]
+    low_z = float(low[0][2])
+    # L'appui s'arrête au-dessus du meuble le plus haut posé dessous (KAN-63), sans remonter
+    # plus haut que l'ébrasement de H2, et jamais à moins de SILL_FLOOR_GAP_M du plancher.
+    if furniture_top is not None:
+        reach_v = min(reach_v, low_z - furniture_top - FURNITURE_GAP_M)
+        reach_v = max(reach_v, REVEAL_DEPTH_M / cos_v)
+    floor_z = float(base[0][2]) - panel.roof.eave_height
+    reach_v = max(0.0, min(reach_v, low_z - floor_z - SILL_FLOOR_GAP_M))
     low_in = [p + vertical * reach_v for p in low]
     t = REVEAL_BOARD_M
     up_z = np.array([0.0, 0.0, 1.0])
@@ -632,9 +695,10 @@ def _bake_level(project: Project, level: Level, graph: WallGraph, style: BakeSty
                 polyhedra.append(_polyhedron(mesh, element, slab.part, "slab", style))
             continue
         prisms.append(slab)
+    furniture = _bake_furniture(level, style)
     for panel in panels:
-        polyhedra.extend(_bake_roof_panel(level, panel, style))
-    prisms.extend(_bake_furniture(level, style))
+        polyhedra.extend(_bake_roof_panel(level, panel, style, furniture))
+    prisms.extend(furniture)
     prisms.extend(_bake_stairs(level, graph, style))
     # Menuiseries (E5b) : teintes de matière dans les deux styles, c'est de l'habillage.
     prisms.extend(joinery_prisms(level, graph, lambda _o, finish: FINISH_COLORS[finish]))
