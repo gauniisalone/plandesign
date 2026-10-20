@@ -958,7 +958,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     e.preventDefault();
     setDropOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    // KAN-50 : un lecteur n'importe rien (le navigateur n'ouvre pas non plus le fichier).
+    if (!file || readOnly) return;
     actions.importFile(file);
   };
 
@@ -1179,7 +1180,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes("Files")) {
                 e.preventDefault();
-                setDropOver(true);
+                // KAN-50 : pas de zone de dépôt allumée pour un lecteur.
+                setDropOver(!readOnly);
               }
             }}
             onDragLeave={() => setDropOver(false)}

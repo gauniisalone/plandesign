@@ -71,6 +71,8 @@ const ENTER_MARGIN = 24;
 const ENTER_MS = 280;
 /** Deux appuis sur le même élément en moins de ce délai : un double-clic (T7d2). */
 const DOUBLE_MS = 450;
+/** KAN-50 : un lecteur dépose ou colle quelque chose : rien n'est ajouté, et il le sait. */
+const READ_ONLY_NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
 /** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
 const NEW_PLAN_GAP = 32;
 const NEW_PLAN_BOX = { w: 180, h: 48 };
@@ -639,6 +641,12 @@ export function BoardCanvas(props: Props) {
     at: { x: number; y: number },
     into?: BoardItem,
   ) => {
+    // KAN-50 : passage commun du dépôt, du collage et des sélecteurs de fichiers ; un lecteur
+    // n'envoie rien (le serveur refuserait de toute façon).
+    if (readOnly) {
+      setMessage(READ_ONLY_NOTICE);
+      return;
+    }
     const added: BoardItem[] = [];
     let changed: Project | null = null;
     let firstPhoto: string | null = null;
@@ -989,6 +997,18 @@ export function BoardCanvas(props: Props) {
       if (e.key === " " && !typing(e.target)) space.current = true;
       if (typing(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
+      // KAN-50 : en lecture seule, aucun raccourci ne crée, ne duplique, ne supprime, ne
+      // verrouille ni ne réordonne d'élément ; regarder (sélection, main, zoom) reste permis.
+      const key = e.key.toLowerCase();
+      const edits =
+        (mod && (key === "d" || key === "l")) ||
+        (!mod &&
+          ["delete", "backspace", "[", "]", "n", "f", "l"].includes(key));
+      if (readOnly && edits) {
+        e.preventDefault();
+        setMessage(READ_ONLY_NOTICE);
+        return;
+      }
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) props.onRedo();
@@ -1039,6 +1059,11 @@ export function BoardCanvas(props: Props) {
       const text = e.clipboardData?.getData("text/plain")?.trim();
       if (text) {
         e.preventDefault();
+        // KAN-50 : ni note ni lien collés dans l'espace d'un lecteur.
+        if (readOnly) {
+          setMessage(READ_ONLY_NOTICE);
+          return;
+        }
         const url = linkFrom(text);
         if (url) addLink(url, "", at);
         else addNote(at.x - 120, at.y - 75, text.slice(0, 4000));
@@ -1336,6 +1361,7 @@ export function BoardCanvas(props: Props) {
             {/* T7a (demande d'augus) : importer droit dans le cadre Photos ou Inspirations ;
                 même effet qu'un dépôt dans ce cadre. */}
             {FRAME_IMPORT[item.role ?? ""] &&
+              !readOnly &&
               !items.some((i) => i.frame === item.id) && (
                 <button
                   type="button"
