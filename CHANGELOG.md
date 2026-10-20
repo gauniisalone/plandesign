@@ -42,6 +42,20 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   autres écritures du plan, refusées en 409 quand une autre personne tient ce plan). Schéma
   0.16.0 (`ImageRef.reference_segments`, `Level.scale_basis`), migration sans perte.
 
+### 20 octobre 2026 (KAN-32 : l'Assistant modifie les portes et les fenêtres)
+
+- « déplace la fenêtre de la chambre de 50 cm vers la gauche », « supprime la porte du
+  placard », « élargis la fenêtre du salon à 1,20 m » : l'Assistant déplace une porte ou une
+  fenêtre le long de son mur, la supprime ou change sa largeur ou sa hauteur. Gauche et
+  droite se lisent depuis la pièce, face au mur. Même geste avec ou sans Gemini.
+- Deux ouvertures possibles : il demande laquelle (« la fenêtre nord ou la fenêtre ouest ? »),
+  sans rien faire au hasard. Hors du mur, sur un angle, sur une autre ouverture, au ras du
+  plafond ou verrouillée : refus, avec la raison.
+- Chaque geste s'annule et paraît au journal d'activité. Une demande explicite supprime aussi
+  une ouverture que vous avez posée (« Annuler pour la remettre »).
+- Avec les comptes : le lecteur ne peut pas modifier le plan par l'Assistant, et l'Assistant
+  respecte la main sur le plan (une seule personne le modifie à la fois).
+
 ### 20 octobre 2026 (KAN-64 : plus rien ne se chevauche dans l'espace de travail)
 
 - Le panneau de droite de l'espace de travail, comme chez Figma et Miro : en haut l'Assistant
