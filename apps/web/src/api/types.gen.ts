@@ -1000,6 +1000,8 @@ export interface Camera {
 export interface ScaleBasis {
   before: RoomSize | null;
   camera_height_m: number | null;
+  confidence: ScaleConfidence | null;
+  confidence_inputs: ConfidenceInputs;
   factor: number | null;
   image_id: string;
   previous: ScaleBasis | null;
@@ -1012,6 +1014,27 @@ export interface RoomSize {
   height_m: number;
   length_m: number;
   width_m: number;
+}
+/**
+ * KAN-31 + KAN-66 : niveau de confiance de l'estimation et sa raison, tenus à jour avec
+ * l'échelle (une mesure de référence le change) ; une seule source de vérité pour le front.
+ */
+
+export interface ScaleConfidence {
+  expected_error: number;
+  label: string;
+  level: "fiable" | "a_verifier" | "approximatif";
+  reason: string;
+}
+/**
+ * Ce que l'estimation savait d'elle-même, gardé pour recalculer la confiance quand
+ * l'échelle change sans réestimer la photo.
+ */
+
+export interface ConfidenceInputs {
+  eave_unseen: boolean;
+  floor_out_of_view: boolean;
+  focal_from_vps: boolean;
 }
 /**
  * Sommet 2D partagé entre murs, dans le repère du niveau.

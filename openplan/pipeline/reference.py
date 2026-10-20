@@ -29,6 +29,7 @@ from numpy.typing import NDArray
 from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
 from openplan.adapters.protocols import CameraParameters, DepthEstimator, DepthMap, ImageArray
 from openplan.geom.scale import CalibrationError, apply_axis_scale
+from openplan.pipeline.confidence import ScaleSource, assess
 from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.pipeline.ingestion import IMAGES_DIR, ImageNotFoundError, load_image
 from openplan.pipeline.recalibrate import room_axes
@@ -37,6 +38,7 @@ from openplan.schemas.common import Point2, StrictModel
 from openplan.schemas.scene import (
     REFERENCE_LENGTH_M,
     Calibration,
+    ConfidenceInputs,
     Level,
     Measurement,
     MeasurementKind,
@@ -44,6 +46,7 @@ from openplan.schemas.scene import (
     ReferenceSegment,
     RoomSize,
     ScaleBasis,
+    ScaleConfidence,
 )
 
 FACTOR_RANGE = (0.3, 3.0)
@@ -261,18 +264,47 @@ def scale_3d(level: Level, factor: float) -> Level:
     return apply_axis_scale(level, 0.0, factor, factor, factor)[0]
 
 
+def scale_confidence(
+    source: ScaleSource, inputs: ConfidenceInputs, camera_height_m: float | None = None
+) -> ScaleConfidence:
+    """KAN-31 : confiance de l'estimation pour cette source d'échelle, les autres facteurs
+    (focale, sol, égout) étant ceux de l'estimation de la photo."""
+    found = assess(
+        source,
+        camera_height_m=camera_height_m if source == "entered" else None,
+        focal_from_vps=inputs.focal_from_vps,
+        floor_out_of_view=inputs.floor_out_of_view,
+        eave_unseen=inputs.eave_unseen,
+    )
+    return ScaleConfidence(
+        level=found.level,
+        label=found.label,
+        reason=found.reason,
+        expected_error=found.expected_error,
+    )
+
+
 def camera_basis(
-    image_id: UUID, factor: float | None, camera_height_m: float, *, entered: bool
+    image_id: UUID,
+    factor: float | None,
+    camera_height_m: float,
+    *,
+    entered: bool,
+    inputs: ConfidenceInputs | None = None,
 ) -> ScaleBasis:
-    """L'échelle d'un plan estimé : hauteur de prise de vue saisie, ou supposée par défaut."""
+    """L'échelle d'un plan estimé : hauteur de prise de vue saisie, ou supposée par défaut,
+    avec la confiance qui va avec."""
     words = "saisie" if entered else "supposée"
     tail = "" if entered else " (par défaut)"
+    inputs = inputs or ConfidenceInputs()
     return ScaleBasis(
         source="camera_height" if entered else "default",
         text=f"Échelle : hauteur de prise de vue {words} {_fr(camera_height_m)} m{tail}",
         image_id=image_id,
         factor=factor,
         camera_height_m=camera_height_m,
+        confidence=scale_confidence("entered" if entered else "assumed", inputs, camera_height_m),
+        confidence_inputs=inputs,
     )
 
 
@@ -407,6 +439,8 @@ def apply_reference(
                 before=_room_size(project, level_id),
                 previous=camera,
                 camera_height_m=basis.camera_height_m,
+                confidence=scale_confidence("reference", basis.confidence_inputs),
+                confidence_inputs=basis.confidence_inputs,
             )
         }
     )
@@ -498,7 +532,8 @@ def reestimate(
         msg = f"image inconnue : {image_id}"
         raise ImageNotFoundError(msg)
     image = load_image(project_dir, ref)
-    camera = VanishingPointCameraEstimator().analyse(image).camera
+    analysis = VanishingPointCameraEstimator().analyse(image)
+    camera = analysis.camera
     depth_map = estimator.predict(image)
     if not save_depth(project_dir, image, depth_map, camera):
         msg = "profondeur relative : aucune longueur ne peut y être mesurée"
@@ -517,4 +552,10 @@ def reestimate(
     if old is not None and old.source == "reference":
         # Déjà calée : la profondeur est rafraîchie, l'échelle de la mesure est gardée.
         return project
-    return with_basis(project, level_id, camera_basis(image_id, factor, height, entered=entered))
+    inputs = (
+        old.confidence_inputs
+        if old is not None and old.image_id == image_id
+        else ConfidenceInputs(focal_from_vps=bool(analysis.frame and analysis.frame.focal_from_vps))
+    )
+    basis = camera_basis(image_id, factor, height, entered=entered, inputs=inputs)
+    return with_basis(project, level_id, basis)

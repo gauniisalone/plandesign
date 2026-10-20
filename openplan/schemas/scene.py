@@ -184,6 +184,26 @@ class RoomSize(StrictModel):
 ScaleSource = Literal["reference", "camera_height", "default"]
 
 
+class ScaleConfidence(StrictModel):
+    """KAN-31 + KAN-66 : niveau de confiance de l'estimation et sa raison, tenus à jour avec
+    l'échelle (une mesure de référence le change) ; une seule source de vérité pour le front."""
+
+    level: Literal["fiable", "a_verifier", "approximatif"]
+    label: str
+    """« fiable », « à vérifier » ou « approximatif »."""
+    reason: str
+    expected_error: float
+
+
+class ConfidenceInputs(StrictModel):
+    """Ce que l'estimation savait d'elle-même, gardé pour recalculer la confiance quand
+    l'échelle change sans réestimer la photo."""
+
+    focal_from_vps: bool = True
+    floor_out_of_view: bool = False
+    eave_unseen: bool = False
+
+
 class ScaleBasis(StrictModel):
     """KAN-66 : sur quoi repose l'échelle d'un plan estimé depuis une photo, dit tel quel à
     l'utilisateur (« Échelle calée sur votre mesure de 2,04 m (porte) »)."""
@@ -203,6 +223,9 @@ class ScaleBasis(StrictModel):
     """Échelle d'avant la mesure (hauteur de prise de vue) : retirer la mesure y revient."""
     camera_height_m: float | None = Field(default=None, gt=0.0)
     """Hauteur de prise de vue de l'estimation (saisie ou par défaut)."""
+    confidence: ScaleConfidence | None = None
+    """Confiance de l'estimation avec cette échelle (KAN-31), recalculée à chaque mesure."""
+    confidence_inputs: ConfidenceInputs = Field(default_factory=ConfidenceInputs)
 
 
 class Level(StrictModel):

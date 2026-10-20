@@ -56,7 +56,7 @@ from openplan.scene import history
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Opening, RoofWindow, Wall
 from openplan.schemas.results import Artifact, Assumption, StepResult
-from openplan.schemas.scene import Project
+from openplan.schemas.scene import ConfidenceInputs, Project
 from openplan.validation.invariants import validate_invariants
 
 STEP = "autoplan"
@@ -929,14 +929,19 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                     )
                 )
             backup = ranked[1].method if len(ranked) > 1 else None
-            trust = assess(
-                "entered" if entered else "assumed",
-                camera_height_m=height if entered else None,
+            inputs = ConfidenceInputs(
                 focal_from_vps=_focal_from_vps(image),
                 floor_out_of_view=estimate is not None and estimate.floor_assumed,
                 eave_unseen=method == "attic"
                 and estimate is not None
                 and not estimate.eave_heights,
+            )
+            trust = assess(
+                "entered" if entered else "assumed",
+                camera_height_m=height if entered else None,
+                focal_from_vps=inputs.focal_from_vps,
+                floor_out_of_view=inputs.floor_out_of_view,
+                eave_unseen=inputs.eave_unseen,
             )
             if method != "attic":
                 after = _ceiling(after, level_id, estimate)
@@ -946,9 +951,8 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             # KAN-66 : l'origine de l'échelle, dite à l'utilisateur ; sans profondeur gardée
             # (facteur None), la photo est à réestimer avant de pouvoir y mesurer.
             factor = factors.get(method) or factors.get("depth") or factors.get("attic")
-            after = with_basis(
-                after, level_id, camera_basis(image_id, factor, height, entered=entered)
-            )
+            basis = camera_basis(image_id, factor, height, entered=entered, inputs=inputs)
+            after = with_basis(after, level_id, basis)
         else:
             said.append(
                 "Aucun mur n'a pu être deviné sur cette photo (trop peu de lignes ou de "

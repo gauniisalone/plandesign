@@ -202,6 +202,31 @@ def test_put_replaces_delete_returns_undo_restores(tmp_path: Path) -> None:  # n
         assert next(iter(reread["levels"].values()))["scale_basis"]["source"] == "reference"
 
 
+def test_confidence_follows_the_measurement(tmp_path: Path) -> None:
+    """KAN-31 + KAN-66 : la confiance est recalculée par le serveur et renvoyée dans le
+    projet. Hauteur saisie : « approximatif » ; une mesure : « à vérifier », « échelle calée
+    sur votre mesure » ; la retirer : le niveau d'avant, sa raison d'avant."""
+    store = ProjectStore(tmp_path / "data")
+    project, image_id, _ = _project_with_photo(store)
+    before = only_level(project).scale_basis
+    assert before is not None and before.confidence is not None
+    assert before.confidence.level == "approximatif"
+    url = f"/api/projects/{project.id}/images/{image_id}/reference"
+    app = create_app(store=store, settings=Settings(data_dir=tmp_path / "data"))
+    with TestClient(app) as client:
+        p1, p2 = _pixel(0.0, 0.02), _pixel(5.0, 0.02)
+        put = client.put(url, json={"p1": list(p1), "p2": list(p2), "length_m": 5.0})
+        assert put.status_code == 200, put.text
+        confidence = next(iter(put.json()["levels"].values()))["scale_basis"]["confidence"]
+        assert confidence["level"] == "a_verifier" and confidence["label"] == "à vérifier"
+        assert "échelle calée sur votre mesure" in confidence["reason"]
+        segment = put.json()["images"][str(image_id)]["reference_segments"][0]["id"]
+        gone = client.delete(f"{url}/{segment}")
+        assert gone.status_code == 200, gone.text
+        back = next(iter(gone.json()["levels"].values()))["scale_basis"]["confidence"]
+        assert back == before.confidence.model_dump(mode="json")
+
+
 def test_a_photo_without_kept_depth_asks_to_reestimate(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "data")
     project, image_id, _ = _project_with_photo(store)

@@ -17,7 +17,9 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
   surfaces, longueur hors de 5 cm à 30 m, échelle changée de plus de ×3.
 - Chaque plan estimé depuis une photo dit sur quoi repose son échelle (`Level.scale_basis`) :
   « Échelle calée sur votre mesure de 2,04 m (porte) », « Échelle : hauteur de prise de vue
-  saisie 1,45 m » ou « … supposée 1,50 m (par défaut) ».
+  saisie 1,45 m » ou « … supposée 1,50 m (par défaut) ». La confiance de l'estimation (KAN-31)
+  y est tenue à jour par le serveur : une mesure la fait passer à « à vérifier » (« échelle
+  calée sur votre mesure »), la retirer rend le niveau d'avant.
 - Sur la scène de contrôle des combles, une référence exacte divise l'erreur de largeur au
   moins par deux (+108 % → +50 %) et ramène le faîtage dans ±20 % (+61 % → +16 %). L'écart de
   largeur restant vient surtout de la largeur prise au sol (jambettes non extraites, KAN-27) :
