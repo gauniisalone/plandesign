@@ -490,8 +490,15 @@ export function PlanCanvas({
   // doigt ou la souris (sinon le geste qui referme la pièce manque le premier sommet et en
   // pose un cinquième). Une demande explicite (fitToken) recadre toujours.
   const drawingRef = useRef(false);
+  /** KAN-53 : points de la chaîne de murs en cours, tels qu'envoyés au serveur. Le clic qui
+   *  referme la pièce s'y accroche même quand le serveur n'a pas encore répondu (le sommet
+   *  n'est pas encore connu de l'écran) : le même point exact est renvoyé, et le serveur le
+   *  fusionne avec le sommet déjà créé. Avant, un point libre à quelques millimètres (grille
+   *  contre angle) laissait le contour ouvert : 4 murs, 0 pièce, sous charge. */
+  const chainPoints = useRef<Point2[]>([]);
   useEffect(() => {
     drawingRef.current = pendingStart !== null;
+    if (pendingStart === null) chainPoints.current = [];
   }, [pendingStart]);
   const fittedToken = useRef<number | null>(null);
   useEffect(() => {
@@ -647,6 +654,16 @@ export function PlanCanvas({
   ): string | Point2 => {
     const s = snapAt(sx, sy, pendingStartPoint, free);
     return s.vertexId ?? s.point;
+  };
+  /** KAN-53 : point de la chaîne en cours sous le curseur (même rayon que les sommets). */
+  const chainPointAt = (sx: number, sy: number): Point2 | null => {
+    let best: { p: Point2; d: number } | null = null;
+    for (const p of chainPoints.current) {
+      const s = toScreen(view, p);
+      const d = Math.hypot(s.x - sx, s.y - sy);
+      if (d <= VERTEX_SNAP_PX && (!best || d < best.d)) best = { p, d };
+    }
+    return best?.p ?? null;
   };
 
   /** Porte retournée (E4) : vérifiée avant d'être appliquée (un meuble dans le nouveau
@@ -939,13 +956,21 @@ export function PlanCanvas({
       return;
     }
     if (tool === "wall") {
-      const p = snapPoint(x, y, e.shiftKey);
+      // Priorité (KAN-53) : sommet connu du serveur, puis point de la chaîne en cours (pas
+      // forcément encore confirmé), puis grille ou angle. Maj : aucune accroche.
+      const snapped = snapPoint(x, y, e.shiftKey);
+      const p =
+        typeof snapped === "string" || e.shiftKey
+          ? snapped
+          : (chainPointAt(x, y) ?? snapped);
       if (pendingStart === null) {
+        chainPoints.current = typeof p === "string" ? [] : [p];
         setPendingStart(p);
         return;
       }
       if (samePoint(level, pendingStart, p)) return;
       onOp({ op: "add_wall", start: pendingStart, end: p });
+      if (typeof p !== "string") chainPoints.current.push(p);
       setPendingStart(p);
       return;
     }
