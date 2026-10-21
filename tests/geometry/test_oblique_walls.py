@@ -256,7 +256,8 @@ def test_exports_draw_the_oblique_wall_with_its_dimension_along_it() -> None:
     assert b"(1,41 m)" in pdf and b"(4,00 m)" in pdf
     doc = ezdxf.read(io.StringIO(render_dxf(project, level.id)))
     texts = {e.dxf.text: e for e in doc.modelspace().query('TEXT[layer=="COTES"]')}
-    assert texts["1,41 m"].dxf.rotation == pytest.approx(-45.0)
+    # KAN-71 : le DXF, format technique, garde le point décimal.
+    assert texts["1.41 m"].dxf.rotation == pytest.approx(-45.0)
     walls = list(doc.modelspace().query('LWPOLYLINE[layer=="MURS"]'))
     assert len(walls) == 5
     oblique = WallGraph.from_level(level).wall_footprint(c3.id)

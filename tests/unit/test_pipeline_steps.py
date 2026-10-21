@@ -162,7 +162,7 @@ def test_render_dxf_layers_and_entities(rect_project: Project) -> None:
     assert doc.layers.get("MURS_ESTIMES").dxf.linetype == "DASHED"
     assert sorted(by_layer["OUVERTURES"]) == ["ARC", "LINE", "LWPOLYLINE", "LWPOLYLINE"]
     texts = [e.dxf.text for e in msp.query("TEXT")]
-    assert "R1" in texts and "10.97 m²" in texts and "4,00 m" in texts and "≈ 3,00 m" in texts
+    assert "R1" in texts and "10.97 m²" in texts and "4.00 m" in texts and "≈ 3.00 m" in texts
     assert by_layer["COTES"].count("TEXT") == 4
     from openplan.scene.factory import new_project
     from tests.factories import attic_project
