@@ -116,15 +116,22 @@ test("KAN-80 : un clic dans les premières secondes n'est jamais perdu dans un r
   await page.goto(base + "/");
   await controlled(page);
   expect(await buildId(page)).toBe("A");
-  // Une mise en ligne (B) : la page rechargée la trouve dans ses premières secondes, mais la
-  // personne clique aussitôt (comme sur « Nouveau projet » juste après s'être connectée).
-  current = builds.B!;
+  // La page se recharge (premières secondes de nouveau) et la personne clique aussitôt, comme
+  // sur « Nouveau projet » juste après s'être connectée ; la mise en ligne (B) est trouvée
+  // ensuite, toujours dans ces premières secondes. Ordre forcé : publication et vérification
+  // après le clic, sans dépendre de la vitesse d'installation.
   await page.reload();
+  await controlled(page);
   let loads = 0;
   page.on("load", () => {
     loads += 1;
   });
   await page.mouse.click(5, 5);
+  current = builds.B!;
+  await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    await registration?.update();
+  });
   const banner = page
     .getByRole("status")
     .filter({ hasText: "Nouvelle version disponible" });
