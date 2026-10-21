@@ -254,6 +254,10 @@ def attic_notices(estimate: AtticEstimate, geometry: AtticGeometry) -> list[str]
             f"Hauteur d'égout inconnue ({estimate.eave_rejected}) : pentes prolongées jusqu'au "
             "sol, à corriger dans l'inspecteur."
         ]
+    if estimate.symmetric_roof and estimate.ridge_height is not None:
+        # KAN-72b : faîtage et égouts tirés d'un toit supposé symétrique.
+        note = estimate.ridge_height.note or "toit supposé symétrique"
+        return [f"{note[:1].upper()}{note[1:]} : à corriger dans l'inspecteur s'il ne l'est pas."]
     if not estimate.floor_assumed:
         return []
     out: list[str] = []

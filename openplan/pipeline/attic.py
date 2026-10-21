@@ -115,6 +115,9 @@ class AtticEstimate(StrictModel):
     """KAN-61 : égout non vu (sol supposé, aucune jambette) : il est au plus à la hauteur du bas
     de pente le plus bas encore vu. `eave_heights` reste alors vide (égout inconnu)."""
     eave_rejected: str | None = None
+    symmetric_roof: bool = False
+    """KAN-72b : faîtage et égouts tirés d'un toit supposé symétrique (pente commune), dit à
+    l'écran ; faux quand les deux pentes lues diffèrent trop ou qu'une jambette manque."""
     """KAN-73 : égout trouvé puis écarté comme invraisemblable (raison affichée) ; `eave_heights`
     et `width` sont alors vides, l'égout est inconnu comme dans KAN-61."""
 
@@ -389,6 +392,107 @@ def _eave_bound(
         sigma=estimate_scale_sigma(value, rms),
         source=Source.INFERRED,
         note="égout non vu sur la photo : au plus à la hauteur du bas de pente le plus bas vu",
+    )
+
+
+UPRIGHT_MIN_DEG = 0.5
+UPRIGHT_MAX_DEG = 15.0
+"""KAN-72a : correction de la verticale appliquée entre ces bornes ; en dessous, rien à
+corriger ; au-delà, le pignon ou les lignes de fuite sont plus douteux que le sol."""
+
+
+def upright_floor(
+    points: Float,
+    planes: list[FittedPlane],
+    floor_idx: int,
+    frame_up: Float | None = None,
+    *,
+    frame_up_reliable: bool = False,
+) -> tuple[list[FittedPlane], str | None]:
+    """KAN-72a : la profondeur apprise penche le sol (≈ 6° sur la scène de contrôle), d'où des
+    hauteurs fausses d'autant plus que le point est loin. Un pignon est vertical : la verticale
+    est la normale du sol privée de sa composante le long de la normale du pignon ; sans pignon,
+    celle des points de fuite quand ils sont sûrs. Le sol garde ses points, sa distance est
+    reprise à la médiane. Renvoie les plans et ce qui a été fait (None : rien)."""
+    n = planes[floor_idx].plane.normal / np.linalg.norm(planes[floor_idx].plane.normal)
+    cls = classify(planes, floor_idx)
+    gables = [i for i, k in cls.kinds.items() if k == "gable"]
+    how: str
+    if gables:
+        g = max(gables, key=lambda i: planes[i].count)
+        gn = planes[g].plane.normal / np.linalg.norm(planes[g].plane.normal)
+        up: Float = n - float(n @ gn) * gn
+        how = "pignon vertical"
+    elif frame_up is not None and frame_up_reliable:
+        up = np.asarray(frame_up, dtype=np.float64)
+        up = up if float(up @ n) >= 0 else -up
+        how = "lignes de fuite"
+    else:
+        return planes, None
+    up = up / np.linalg.norm(up)
+    fix = math.degrees(math.acos(min(1.0, abs(float(up @ n)))))
+    if not UPRIGHT_MIN_DEG <= fix <= UPRIGHT_MAX_DEG:
+        return planes, None
+    floor = planes[floor_idx]
+    pts = points[floor.inliers]
+    distance = float(np.median(-(pts @ up))) if len(pts) else floor.plane.distance
+    out = list(planes)
+    out[floor_idx] = FittedPlane(Plane(up, distance), floor.inliers, floor.rms_m)
+    return out, f"verticale corrigée de {decimal(fix, 1)}° ({how})"
+
+
+SYMMETRY_MAX_DIFF_DEG = 8.0
+"""KAN-72b : au-delà de cet écart entre les deux pentes lues, le toit n'est pas supposé
+symétrique (les deux pentes sont gardées)."""
+
+
+def symmetric_roof(
+    estimate: AtticEstimate, planes: list[FittedPlane], cls: ClassifiedPlanes
+) -> AtticEstimate:
+    """KAN-72b : le faîtage à l'intersection des deux pentes amplifie leur erreur loin du sol ;
+    l'égout et la largeur, mesurés près des jambettes, sont plus sûrs. Avec deux versants
+    opposés et deux jambettes vues, toit supposé symétrique : pente commune (moyenne pondérée
+    par le nombre de points de chaque versant), même égout des deux côtés (leur moyenne),
+    faîtage = égout + largeur / 2 × tan(pente). Dit tel quel à l'écran."""
+    slopes = _opposite_slopes(planes, cls)
+    eaves = estimate.eave_heights
+    if (
+        len(slopes) != 2
+        or estimate.width is None
+        or estimate.ridge_height is None
+        or len(eaves) != 2
+        or any(e.value <= 0.0 or e.source is Source.INFERRED for e in eaves)
+    ):
+        return estimate
+    pitches = [_tilt_deg(cls.world[i]) for i in slopes]
+    if abs(pitches[0] - pitches[1]) > SYMMETRY_MAX_DIFF_DEG:
+        return estimate
+    weights = [max(planes[i].count, 1) for i in slopes]
+    pitch = sum(p * c for p, c in zip(pitches, weights, strict=True)) / sum(weights)
+    eave = sum(e.value for e in eaves) / 2.0
+    half = estimate.width.value / 2.0
+    tan = math.tan(math.radians(pitch))
+    ridge = eave + half * tan
+    note = (
+        f"toit supposé symétrique : pente commune {decimal(pitch, 1)}° (lues "
+        f"{decimal(pitches[0], 1)}° et {decimal(pitches[1], 1)}°)"
+    )
+    sigma_eave = max(e.sigma for e in eaves)
+    usable = estimate.usable_width
+    if ridge > USABLE_HEIGHT_M:
+        value = estimate.width.value - 2.0 * max(USABLE_HEIGHT_M - eave, 0.0) / tan
+        usable = Estimate(value=max(value, 0.0), sigma=estimate.width.sigma, note=note)
+    return estimate.model_copy(
+        update={
+            "ridge_height": estimate.ridge_height.model_copy(update={"value": ridge, "note": note}),
+            "eave_heights": [
+                e.model_copy(update={"value": eave, "sigma": sigma_eave, "note": note})
+                for e in eaves
+            ],
+            "slope_pitch_deg": [pitch, pitch],
+            "usable_width": usable,
+            "symmetric_roof": True,
+        }
     )
 
 
@@ -854,6 +958,7 @@ def analyse_attic(  # noqa: PLR0912
     principal_point: tuple[float, float],
     *,
     frame_up: Float | None = None,
+    frame_up_reliable: bool = False,
     seed: int = 0,
     camera_height_m: float | None = None,
     camera_height_entered: bool = True,
@@ -880,6 +985,11 @@ def analyse_attic(  # noqa: PLR0912
         floor_idx = find_floor(planes)
     if floor_idx is not None:
         planes, floor_idx = lower_floor(points, pixel_index, planes, floor_idx, h)
+        planes, upright = upright_floor(
+            points, planes, floor_idx, frame_up, frame_up_reliable=frame_up_reliable
+        )
+        if upright is not None:
+            warnings.append(f"Profondeur apprise : {upright}.")
     if floor_idx is None:
         up = up_from_slopes(planes)
         if up is None:
@@ -912,6 +1022,8 @@ def analyse_attic(  # noqa: PLR0912
                 f"{math.degrees(disagreement):.0f}° : sol ou lignes peu fiables."
             )
     estimate = summarize(planes, cls, len(points))
+    if assumed_floor is None:
+        estimate = symmetric_roof(estimate, planes, cls)
     if assumed_floor is not None:
         estimate = _with_assumed_floor(
             estimate,
@@ -980,6 +1092,7 @@ def run_attic(
         camera.camera.focal_px,
         camera.camera.principal_point,
         frame_up=frame_up,
+        frame_up_reliable=camera.frame is not None and camera.frame.focal_from_vps,
         camera_height_m=camera_height_m,
         camera_height_entered=entered,
     )

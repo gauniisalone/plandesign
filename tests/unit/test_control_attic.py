@@ -75,17 +75,20 @@ def _estimate() -> tuple[AtticEstimate, AtticEstimate, list[str]]:
 
 
 def test_control_depth_documents_todays_estimate() -> None:
-    """KAN-27 puis KAN-46 : les jambettes (≈ 1 % de l'image chacune) ne sortent pas de la
-    recherche de plans, elles sont déduites du bord du sol vu (deux murs latéraux, égouts non
-    nuls) ; la profondeur apprise voit toujours la caméra trop basse (≈ 0,85 m pour 1,45) et le
-    faîtage, recalé sur la hauteur saisie, est faux (KAN-72). Si ce test change, l'estimation a
-    changé : revoir KAN-46 et KAN-72."""
+    """KAN-27, KAN-46 puis KAN-72 : jambettes déduites du bord du sol (deux murs latéraux) ;
+    verticale corrigée par le pignon (la profondeur apprise penche le sol de ≈ 6°, la caméra
+    sortait à 0,85 m en unités du modèle, ≈ 1,19 m maintenant) ; toit supposé symétrique, pente
+    commune ≈ 48°. Recalé sur la seule hauteur saisie : largeur, faîtage et égouts à ±10 %. Si
+    ce test change, l'estimation a changé : revoir KAN-46 et KAN-72."""
     raw, scaled, kinds = _estimate()
     assert kinds.count("side_wall") == 2
-    assert len(scaled.eave_heights) == 2 and all(e.value > 0.5 for e in scaled.eave_heights)
     assert raw.camera_height is not None
-    assert raw.camera_height.value == pytest.approx(0.85, abs=0.05)
-    assert scaled.ridge_height is not None and scaled.ridge_height.value > RIDGE + 1.0
+    assert raw.camera_height.value == pytest.approx(1.19, abs=0.05)
+    assert raw.symmetric_roof and raw.slope_pitch_deg == pytest.approx([48.3, 48.3], abs=1.0)
+    assert scaled.width is not None and scaled.ridge_height is not None
+    assert scaled.width.value == pytest.approx(WIDTH, rel=0.10)
+    assert scaled.ridge_height.value == pytest.approx(RIDGE, rel=0.10)
+    assert all(e.value == pytest.approx(EAVE, rel=0.10) for e in scaled.eave_heights)
 
 
 def _with_reference(depth: np.ndarray | None = None) -> tuple[AtticEstimate, float]:
@@ -109,36 +112,31 @@ def _with_reference(depth: np.ndarray | None = None) -> tuple[AtticEstimate, flo
 
 
 def _check_with_reference(raw: AtticEstimate, scale: float) -> None:
-    assert raw.width is not None
+    """KAN-46 + KAN-72 : avec une référence exacte, largeur entre jambettes, faîtage et égouts
+    à ±10 %."""
+    assert raw.width is not None and raw.ridge_height is not None
     assert raw.width.value * scale == pytest.approx(WIDTH, rel=0.10)
+    assert raw.ridge_height.value * scale == pytest.approx(RIDGE, rel=0.10)
     assert len(raw.eave_heights) == 2
-    assert all(0.85 <= e.value * scale <= 1.30 for e in raw.eave_heights)
+    assert all(e.value * scale == pytest.approx(EAVE, rel=0.10) for e in raw.eave_heights)
 
 
-def test_control_with_reference_width_between_knee_walls() -> None:
-    """KAN-46 (critère révisé par le PO le 20 oct. 2026) : avec une référence exacte, largeur
-    entre jambettes à ±10 % (4,86 m pour 5,00), deux égouts trouvés, chacun entre 0,85 et 1,30 m
-    (1,05 et 1,24 m pour 1,00 ; avant KAN-46 : 0 et 0, largeur 7,50 m prise au sol)."""
+def test_control_eave_and_ridge_within_10_percent_with_reference() -> None:
+    """KAN-72 (ex-xfail strict) : verticale corrigée par le pignon (72a) et toit supposé
+    symétrique (72b, pente commune pondérée par les points de chaque versant). Avec une
+    référence exacte : largeur 4,81 m (5,00), faîtage 3,75 m (3,54, +6 %), égouts 1,05 m des deux
+    côtés (1,00). Avant KAN-72 : faîtage 4,09 m (+16 %), égouts 1,24 et 1,05 m ; avant KAN-46 :
+    égouts à 0 et largeur 7,50 m prise au sol."""
     _check_with_reference(*_with_reference())
 
 
-def test_knee_walls_resist_aberrant_depth_points() -> None:
-    """Le bord du sol est la médiane des points les plus latéraux : 30 pixels de profondeur
-    aberrante (× 0,3 à × 3) ne déplacent pas les jambettes."""
+def test_knee_walls_and_symmetry_resist_aberrant_depth_points() -> None:
+    """Bord du sol robuste (médiane des points les plus latéraux), pente commune pondérée :
+    30 pixels de profondeur aberrante (× 0,3 à × 3) et un bruit de 1 % ne font sortir ni la
+    largeur, ni le faîtage, ni les égouts de ±10 %."""
     depth = np.load(DEPTH)["depth"].astype(np.float32)
     rng = np.random.default_rng(0)
     ys, xs = rng.integers(0, depth.shape[0], 30), rng.integers(0, depth.shape[1], 30)
     depth[ys, xs] *= rng.uniform(0.3, 3.0, 30).astype(np.float32)
+    depth *= (1.0 + 0.01 * rng.standard_normal(depth.shape)).astype(np.float32)
     _check_with_reference(*_with_reference(depth))
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="KAN-72 : la profondeur apprise étire les hauteurs (caméra × 0,72 avec la référence, "
-    "faîtage +16 %, un égout à +24 %) ; le jour où ce test passe, il le signale",
-)
-def test_control_eave_and_ridge_within_10_percent_with_reference() -> None:
-    raw, scale = _with_reference()
-    assert raw.ridge_height is not None
-    assert raw.ridge_height.value * scale == pytest.approx(RIDGE, rel=0.10)
-    assert all(e.value * scale == pytest.approx(EAVE, rel=0.10) for e in raw.eave_heights)

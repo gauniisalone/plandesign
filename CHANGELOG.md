@@ -7,6 +7,24 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 21 octobre 2026 (KAN-72 : combles, hauteurs justes)
+
+- La profondeur apprise penche le sol de quelques degrés (≈ 6° sur la scène de contrôle) : les
+  hauteurs étaient fausses d'autant plus que le point était loin (faîtage trop haut, caméra trop
+  basse). La verticale est maintenant corrigée : un pignon est vertical (sans pignon vu, les
+  lignes de fuite quand elles sont sûres). Dit dans les avertissements (« verticale corrigée de
+  6,6° »).
+- Toit supposé symétrique quand les deux versants et les deux jambettes sont vus et que leurs
+  pentes lues diffèrent de 8° au plus : pente commune (moyenne pondérée par le nombre de points de
+  chaque versant), même égout des deux côtés, faîtage tiré de l'égout et de la largeur plutôt que
+  de l'intersection des deux pentes (qui amplifiait leur erreur). Dit à l'écran (« toit supposé
+  symétrique : pente commune 48,3° (lues 46,6° et 50,1°) »). Un toit dissymétrique garde ses
+  deux pentes.
+- Scène de contrôle, avec la seule hauteur de prise de vue saisie : largeur 4,79 m (vérité
+  5,00), faîtage 3,74 m (3,54), égouts 1,05 m (1,00), caméra 1,45 m ; avant : 6,75 m, 5,69 m, 1,73
+  et 1,46 m. Avec une mesure de référence : tout à ±10 %. Le vrai grenier ne change pas (aucun
+  pignon vu).
+
 ### 21 octobre 2026 (KAN-75 : retour arrière sans perdre les données)
 
 - `openplan downgrade --to 0.16.0 <racine des données>` redescend le format des projets vers

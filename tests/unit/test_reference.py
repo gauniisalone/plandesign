@@ -61,7 +61,7 @@ SEGMENTS = (
 
 
 @pytest.mark.parametrize(("what", "a", "b"), SEGMENTS, ids=[s[0] for s in SEGMENTS])
-def test_mh3_reference_halves_the_width_error_and_brings_the_ridge_within_20(
+def test_mh3_with_a_reference_width_and_ridge_are_within_10(
     what: str, a: tuple[float, float], b: tuple[float, float]
 ) -> None:
     """MH3 (voie a, décision PO du 20 oct. 2026). Base mesurée sur la profondeur enregistrée :
@@ -76,8 +76,11 @@ def test_mh3_reference_halves_the_width_error_and_brings_the_ridge_within_20(
     n'étaient pas extraites (KAN-27), la « largeur » était celle où les pentes rencontrent le
     sol, 5,00 + 2 × 1,00 / tan 45,5° = 6,97 m (écart de +5 à +8 % par rapport à elle). Depuis
     KAN-46, les jambettes sont déduites du bord du sol : largeur entre jambettes 6,75 m (+35 %)
-    à la hauteur saisie, 4,86 m (−3 %) avec la référence au sol. Le faîtage (+13/16 %) relève
-    de KAN-72. Ici : erreur de largeur au moins divisée par deux, faîtage dans ±20 %."""
+    à la hauteur saisie, 4,86 m (−3 %) avec la référence au sol. Depuis KAN-72 (verticale
+    corrigée, toit supposé symétrique), la hauteur saisie seule donne déjà 4,79 m (−4 %) et
+    3,74 m de faîtage (+5 %) : la référence ne divise plus l'erreur, elle la garde dans ±10 %
+    quel que soit le segment (le critère d'origine, « largeur divisée par deux, faîtage dans
+    ±20 % », est dépassé)."""
     depth, f, principal = _fixture()
     raw, _planes, _cls, _px, _warn = analyse_attic(depth, f, principal)
     today = rescale(raw, CAMERA_HEIGHT)
@@ -88,10 +91,8 @@ def test_mh3_reference_halves_the_width_error_and_brings_the_ridge_within_20(
         segment_distance(depth, f, principal, p1, p2), truth, today.scale_factor
     )
     width, ridge = today.width.value * relative, today.ridge_height.value * relative
-    before_error = abs(today.width.value - WIDTH) / WIDTH
-    assert before_error > 0.2, "base : largeur fausse de plus de 20 % à la hauteur saisie"
-    assert abs(width - WIDTH) / WIDTH <= before_error / 2, what
-    assert abs(ridge - RIDGE) / RIDGE <= 0.20, what
+    assert abs(width - WIDTH) / WIDTH <= 0.10, what
+    assert abs(ridge - RIDGE) / RIDGE <= 0.10, what
 
 
 def test_refusals_say_why() -> None:
@@ -160,7 +161,9 @@ def test_put_replaces_delete_returns_undo_restores(tmp_path: Path) -> None:  # n
         assert segments[0]["author"] == "local"
         assert basis["segment_id"] == segments[0]["id"]
         relative = _xs(after) / width0
-        assert 0.6 < relative < 0.8  # le plan rétrécit d'environ 0,72
+        # KAN-72 : l'échelle de la hauteur saisie est déjà juste (verticale corrigée), la
+        # mesure ne bouge presque plus le plan (avant KAN-72, il rétrécissait de ×0,72).
+        assert 0.9 < relative < 1.1
         assert after["history"][-1]["label"] == "Mesure de référence : 5,00 m (pignon)"
         assert segments[0]["id"] in after["measurements"]
         assert after["calibrations"][-1]["measurement_ids"] == [segments[0]["id"]]
