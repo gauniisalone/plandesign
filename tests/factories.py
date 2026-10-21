@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from openplan.schemas import (
     Floor,
     Level,
@@ -128,6 +130,54 @@ def l_room_project(*, height: float = 2.5, thickness: float = 0.15) -> Project:
     )
     level = detect_rooms(level)
     return Project(name="Pièce en L", levels={level.id: level})
+
+
+CUT_CORNER = [(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (3.0, 3.0), (0.0, 3.0)]
+"""Pièce à pan coupé (KAN-29, axes des murs, m) : 4 × 3 m, l'angle (4, 3) coupé à 45° sur
+1 m de chaque côté ; le mur oblique C3 mesure √2 m."""
+
+
+def cut_corner_project(*, thickness: float = 0.15, window: bool = True) -> Project:
+    """Pièce à pan coupé tracée comme dans l'éditeur (murs ajoutés point par point, puis
+    « Détecter les pièces ») ; une fenêtre de 0,80 m au milieu du mur oblique."""
+    from openplan.scene.factory import new_project
+    from openplan.scene.ops import AddOpening, AddWall, DetectRooms, apply_op
+
+    project = new_project("Pan coupé")
+    lid = only_level(project).id
+    points = [Point2(x=x, y=y) for x, y in CUT_CORNER]
+    for a, b in zip(points, points[1:] + points[:1], strict=True):
+        project = apply_op(project, lid, AddWall(start=a, end=b, thickness=thickness))
+    project = apply_op(project, lid, DetectRooms())
+    level = only_level(project)
+    names: dict[UUID, Wall] = {}
+    for i, a in enumerate(points):
+        b = points[(i + 1) % len(points)]
+        wall = next(
+            w
+            for w in level.elements.values()
+            if isinstance(w, Wall)
+            and level.vertices[w.start_vertex].position == a
+            and level.vertices[w.end_vertex].position == b
+        )
+        names[wall.id] = wall.model_copy(update={"name": f"C{i + 1}"})
+    level = level.model_copy(update={"elements": {**level.elements, **names}})
+    project = project.model_copy(update={"levels": {lid: level}})
+    if window:
+        oblique = by_name(level, "C3", Wall)
+        project = apply_op(
+            project,
+            lid,
+            AddOpening(
+                host_wall=oblique.id,
+                kind=OpeningKind.WINDOW,
+                offset=(2**0.5 - 0.8) / 2,
+                width=0.8,
+                height=1.0,
+                sill_height=1.0,
+            ),
+        )
+    return project
 
 
 ATTIC = {"length": 6.0, "width": 5.0, "ridge_height": 3.2, "eave_height": 1.0}

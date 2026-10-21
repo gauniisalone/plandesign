@@ -12,7 +12,8 @@ export type SnapKind =
   | "parallel"
   | "extension"
   | "angle"
-  | "alignment";
+  | "alignment"
+  | "free";
 
 export const SNAP_LABELS: Record<SnapKind, string> = {
   endpoint: "Extrémité",
@@ -22,7 +23,11 @@ export const SNAP_LABELS: Record<SnapKind, string> = {
   extension: "Prolongement",
   angle: "Angle",
   alignment: "Alignement",
+  free: "Libre",
 };
+
+/** KAN-29 : avec Maj, accroche douce aux crans d'angle, à 2° près seulement. */
+export const SOFT_SNAP_DEG = 2;
 
 export interface Segment {
   id: string;
@@ -156,9 +161,51 @@ function rays(start: Point2, opts: SnapOptions): Ray[] {
   return out;
 }
 
+/** Tracé libre (Maj, KAN-29) : le mur suit le curseur, hors de l'accroche orthogonale. Il se
+ *  raccorde encore à un sommet existant (pour refermer une pièce), s'aimante doucement aux
+ *  crans d'angle (à `SOFT_SNAP_DEG` près) et affiche toujours son angle. */
+function freeSnap(raw: Point2, opts: SnapOptions): Snap {
+  for (const v of opts.vertices) {
+    if (len(sub(raw, v.p)) <= opts.tolerance)
+      return {
+        point: v.p,
+        vertexId: v.id,
+        kind: "endpoint",
+        label: opts.start
+          ? `${SNAP_LABELS.endpoint} · ${direction(opts.start, v.p)}`
+          : SNAP_LABELS.endpoint,
+        guides: [],
+      };
+  }
+  const start = opts.start;
+  if (!start || len(sub(raw, start)) < 1e-6)
+    return { point: round(raw), guides: [] };
+  const d = sub(raw, start);
+  const deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+  const step = opts.stepDeg ?? 15;
+  const near = Math.round(deg / step) * step;
+  if (Math.abs(deg - near) <= SOFT_SNAP_DEG) {
+    const a = (near * Math.PI) / 180;
+    const along = onLine(raw, start, { x: Math.cos(a), y: Math.sin(a) });
+    return {
+      point: along.point,
+      kind: "angle",
+      label: direction(start, along.point),
+      guides: [{ from: start, to: along.point }],
+    };
+  }
+  const point = round(raw);
+  return {
+    point,
+    kind: "free",
+    label: direction(start, point),
+    guides: [],
+  };
+}
+
 /** Le point accroché sous le curseur, avec ses guides et son étiquette. */
 export function smartSnap(raw: Point2, opts: SnapOptions): Snap {
-  if (opts.free) return { point: round(raw), guides: [] };
+  if (opts.free) return freeSnap(raw, opts);
   const tol = opts.tolerance;
   // 1. Extrémité : un sommet existant.
   let best: { v: SnapVertex; d: number } | null = null;

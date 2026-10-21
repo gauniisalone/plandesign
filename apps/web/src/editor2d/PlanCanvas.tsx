@@ -958,12 +958,11 @@ export function PlanCanvas({
     }
     if (tool === "wall") {
       // Priorité (KAN-53) : sommet connu du serveur, puis point de la chaîne en cours (pas
-      // forcément encore confirmé), puis grille ou angle. Maj : aucune accroche.
+      // forcément encore confirmé), puis grille ou angle. Maj (KAN-29) : tracé libre, qui se
+      // raccorde encore aux sommets et à la chaîne pour refermer une pièce à pan coupé.
       const snapped = snapPoint(x, y, e.shiftKey);
       const p =
-        typeof snapped === "string" || e.shiftKey
-          ? snapped
-          : (chainPointAt(x, y) ?? snapped);
+        typeof snapped === "string" ? snapped : (chainPointAt(x, y) ?? snapped);
       if (pendingStart === null) {
         chainPoints.current = typeof p === "string" ? [] : [p];
         setPendingStart(p);
@@ -1729,7 +1728,23 @@ export function PlanCanvas({
       x: (a.x + b.x) / 2 + nx * gap,
       y: (a.y + b.y) / 2 + ny * gap,
     });
-    return [{ id: w.id, label, uncertain, x: m.x, y: m.y + 4 }];
+    // Mur oblique (KAN-29) : la cote tourne avec lui, lisible de gauche à droite ; les murs
+    // droits gardent leur cote horizontale.
+    const sa = S(a);
+    const sb = S(b);
+    let rot = (Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180) / Math.PI;
+    if (rot > 90 || rot <= -90) rot += rot > 0 ? -180 : 180;
+    const oblique = Math.min(Math.abs(nx), Math.abs(ny)) > 0.002;
+    return [
+      {
+        id: w.id,
+        label,
+        uncertain,
+        x: m.x,
+        y: m.y + 4,
+        rotate: oblique ? `rotate(${rot.toFixed(1)} ${m.x} ${m.y})` : undefined,
+      },
+    ];
   });
   // Étiquettes sans chevauchement (audit responsive 1.3) : les cotes sont fixes ; pièce,
   // meubles et fantômes se décalent d'un ou deux crans s'il le faut.
@@ -2537,6 +2552,7 @@ export function PlanCanvas({
           className={`dim${d.uncertain ? " uncertain" : ""}`}
           x={d.x}
           y={d.y}
+          transform={d.rotate}
         >
           {d.label}
         </text>

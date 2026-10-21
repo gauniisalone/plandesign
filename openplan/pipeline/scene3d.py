@@ -23,13 +23,14 @@ import numpy as np
 import trimesh
 from numpy.typing import NDArray
 from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry.polygon import orient
 from trimesh.creation import extrude_polygon
 from trimesh.visual.color import ColorVisuals
 
 from openplan.geom.built_in_bed import BUILT_IN_BED, NICHE_GAP_M, capping, niche
 from openplan.geom.built_in_bed import parts as bed_parts
 from openplan.geom.convex import SURE_TOUCH_M, Solid
-from openplan.geom.polygon import to_points
+from openplan.geom.polygon import largest_polygon, to_points
 from openplan.geom.stairs import railing_lines, stair_layout
 from openplan.geom.velux import (
     PURLIN,
@@ -837,6 +838,7 @@ def _bake_walls(
             openings_by_wall[element.host_wall].append(element)
     prisms: list[Prism] = []
     polyhedra: list[Polyhedron] = []
+    footprints = graph.wall_footprints()
     for wid, wall in graph.walls.items():
         if not wall.visible:
             continue
@@ -851,10 +853,13 @@ def _bake_walls(
         half = wall.thickness / 2.0
         shift = {"center": 0.0, "left": half, "right": -half}[wall.offset]
         finish = finish_of(wall, "wall")
+        footprint = footprints.get(wid)
         for part, seg in enumerate(wall_segments(length, height, openings_by_wall.get(wid, []))):
             p0 = (a.x + ux * seg.s0 + nx * shift, a.y + uy * seg.s0 + ny * shift)
             p1 = (a.x + ux * seg.s1 + nx * shift, a.y + uy * seg.s1 + ny * shift)
             polygon = LineString([p0, p1]).buffer(half, cap_style="flat")
+            if footprint is not None:
+                polygon = _mitered_piece(footprint, polygon, (a.x, a.y), (ux, uy), seg, length)
             prism = Prism(
                 element_id=wid,
                 part=part,
@@ -876,6 +881,36 @@ def _bake_walls(
             if clipped is not None:
                 polyhedra.append(_polyhedron(clipped, wall, part, "wall", style))
     return prisms, polyhedra
+
+
+def _mitered_piece(
+    footprint: Polygon,
+    flat: Polygon,
+    origin: tuple[float, float],
+    u: tuple[float, float],
+    seg: WallSegment,
+    length: float,
+) -> Polygon:
+    """Morceau de mur entre s0 et s1 le long de l'axe, découpé dans l'emprise raccordée
+    (KAN-29) : un morceau qui touche un bout du mur garde l'onglet de l'angle ; les coupes
+    d'une baie restent perpendiculaires à l'axe."""
+    if seg.s0 > 1e-9 and seg.s1 < length - 1e-9:
+        return flat
+    if seg.s0 <= 1e-9 and seg.s1 >= length - 1e-9:
+        return footprint
+    reach = length + 100.0
+    s0 = -reach if seg.s0 <= 1e-9 else seg.s0
+    s1 = reach if seg.s1 >= length - 1e-9 else seg.s1
+    (ox, oy), (ux, uy) = origin, u
+    nx, ny = -uy, ux
+    strip = Polygon(
+        [
+            (ox + ux * s + nx * t, oy + uy * s + ny * t)
+            for s, t in ((s0, -reach), (s1, -reach), (s1, reach), (s0, reach))
+        ]
+    )
+    piece = largest_polygon(footprint.intersection(strip))
+    return flat if piece.is_empty else orient(piece, sign=1.0)
 
 
 def _prism_mesh(prism: Prism) -> trimesh.Trimesh | None:

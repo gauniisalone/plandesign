@@ -12,7 +12,7 @@ from openplan.api.settings import Settings
 from openplan.pipeline.blender_bridge import BlenderError, find_blender, run_blender
 from openplan.pipeline.scene3d import bake_level, build_scene, scene_volume
 from openplan.schemas import Project
-from tests.factories import attic_project, only_level
+from tests.factories import attic_project, cut_corner_project, only_level
 
 BLENDER = find_blender(Settings.from_env().blender_bin)
 
@@ -27,12 +27,15 @@ def test_missing_blender_is_a_clear_error(rect_project: Project, tmp_path: Path)
 @pytest.mark.blender
 @pytest.mark.slow
 @pytest.mark.skipif(BLENDER is None, reason="Blender absent")
-@pytest.mark.parametrize("kind", ["rect", "attic"])
+@pytest.mark.parametrize("kind", ["rect", "attic", "oblique"])
 def test_blender_builds_same_volume_as_trimesh(
     kind: str, rect_project: Project, tmp_path: Path
 ) -> None:
-    """Pièce droite (prismes) et combles (polyèdres : murs découpés, pentes)."""
-    project = rect_project if kind == "rect" else attic_project()
+    """Pièce droite (prismes), combles (polyèdres : murs découpés, pentes) et pièce à pan
+    coupé (KAN-29 : murs en onglet, fenêtre dans le mur oblique)."""
+    project = {"rect": rect_project, "attic": attic_project(), "oblique": cut_corner_project()}[
+        kind
+    ]
     level = only_level(project)
     result = run_blender(
         project, level.id, tmp_path / "run", blender_bin=str(BLENDER), preview=kind == "rect"

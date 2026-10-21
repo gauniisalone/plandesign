@@ -105,18 +105,24 @@ test("tracé cranté : angles, milieu, perpendiculaire, Maj libre, sommet dépla
   const dot = (b.x - a.x) * (d.x - c.x) + (b.y - a.y) * (d.y - c.y);
   expect(Math.abs(dot)).toBeLessThan(1e-6);
 
-  // 5. Maj : tracé libre, rien n'accroche (le mur garde son petit angle).
+  // 5. Maj (KAN-29) : l'accroche orthogonale lâche, le mur suit le curseur et affiche son
+  // angle ; il s'aimante encore, doucement, à un cran de 15° tout proche (à 2° près).
   await click(200, 650);
   await page.keyboard.down("Shift");
   await at(600, 656);
-  await expect(label(page)).toHaveCount(0);
-  await click(600, 656);
+  await expect(label(page)).toHaveText("0°");
+  await at(600, 700);
+  await expect(label(page)).toHaveText("353°");
+  await page.screenshot({ path: path.join(SHOTS, "kan29_maj_libre.png") });
+  await click(600, 700);
   await walls(page, 5);
   await page.keyboard.up("Shift");
   await page.keyboard.press("Escape");
   saved = await savedWalls(page, id);
   const free = saved[saved.length - 1]!;
-  expect(Math.abs(free[0].y - free[1].y)).toBeGreaterThan(0.01);
+  const slope =
+    (Math.atan2(free[1].y - free[0].y, free[1].x - free[0].x) * 180) / Math.PI;
+  expect(Math.abs(slope + 7.1)).toBeLessThan(0.6);
 
   // 6. Déplacer un sommet : mêmes accroches, depuis son voisin.
   await page.keyboard.press("v");
@@ -132,4 +138,27 @@ test("tracé cranté : angles, milieu, perpendiculaire, Maj libre, sommet dépla
   expect(Math.abs(after[0].x - after[1].x)).toBeLessThan(1e-6);
   const length = (w: [Pt, Pt]) => Math.hypot(w[1].x - w[0].x, w[1].y - w[0].y);
   expect(length(after)).toBeGreaterThan(length(before) + 0.2);
+
+  // 7. KAN-29 : avec Maj, l'extrémité commune des murs 3 et 4 part hors de l'axe ; les deux
+  // murs reliés suivent, l'angle est affiché pendant le glisser.
+  const joint = saved[2]![1];
+  await page.keyboard.down("Shift");
+  await page.mouse.move(box.x + 900, box.y + 660);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 937, box.y + 713, { steps: 4 });
+  await expect(label(page)).toHaveText(/^\d+°$/);
+  await page.screenshot({ path: path.join(SHOTS, "kan29_sommet_libre.png") });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await expect
+    .poll(async () => {
+      const w = await savedWalls(page, id);
+      return Math.hypot(w[2]![1].x - joint.x, w[2]![1].y - joint.y);
+    })
+    .toBeGreaterThan(0.3);
+  saved = await savedWalls(page, id);
+  expect(saved[3]![0]).toEqual(saved[2]![1]);
+  const [s, e] = saved[2]!;
+  const tilt = (Math.atan2(e.y - s.y, e.x - s.x) * 180) / Math.PI;
+  expect(Math.abs(tilt / 15 - Math.round(tilt / 15)) * 15).toBeGreaterThan(2);
 });

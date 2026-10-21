@@ -22,8 +22,8 @@ from openplan.geom.roof import roof_window_footprint
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.derived import compute_derived
 from openplan.schemas.common import Point2, Source
-from openplan.schemas.derived import DerivedLevel, DerivedRoom, DerivedStairs
-from openplan.schemas.elements import Furniture, Opening, OpeningKind, RoofWindow
+from openplan.schemas.derived import DerivedLevel, DerivedRoom, DerivedStairs, DerivedWall
+from openplan.schemas.elements import Furniture, Opening, OpeningKind, RoofWindow, Wall
 from openplan.schemas.numbers import area, centimetres, decimal, length
 from openplan.schemas.results import Artifact
 from openplan.schemas.scene import Level, Project
@@ -128,6 +128,20 @@ def _dxf_length(value_m: float, units: str) -> str:
     return f"{value_m:.2f} m"
 
 
+def dimension_angle(normal: Point2) -> float:
+    """Angle (degrés, sens direct du plan) d'une cote posée le long de son mur, ramené dans
+    ]−90°, 90°] pour se lire de gauche à droite ou de bas en haut."""
+    angle = math.degrees(math.atan2(normal.x, -normal.y))  # direction du mur
+    if angle > 90.0 or angle <= -90.0:
+        angle += 180.0
+    return angle
+
+
+def is_oblique(normal: Point2) -> bool:
+    """Mur ni horizontal ni vertical (KAN-29), à 0,1° près."""
+    return min(abs(normal.x), abs(normal.y)) > math.sin(math.radians(0.1))
+
+
 def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> str:
     level = project.levels.get(level_id)
     if level is None:
@@ -204,16 +218,9 @@ def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> s
         if isinstance(element, Opening) and element.host_wall in derived.walls:
             out.extend(_opening_svg(graph, element, sx, sy))
     # Cotations
-    for wid, wall in derived.walls.items():
-        element = graph.wall(wid)
-        cls = "dim uncertain" if element.source in UNCERTAIN else "dim"
-        gap = element.thickness / 2.0 + 0.18
-        lx = wall.midpoint.x + wall.normal.x * gap
-        ly = wall.midpoint.y + wall.normal.y * gap
-        label = format_length(wall.length_m, units)
-        if element.source in UNCERTAIN:
-            label = f"≈ {label}"
-        out.append(f'<text class="{cls}" x="{sx(lx):.1f}" y="{sy(ly) + 4:.1f}">{label}</text>')
+    out.extend(
+        _dimension_svg(graph.wall(wid), wall, units, sx, sy) for wid, wall in derived.walls.items()
+    )
     out.extend(
         [
             f'<text class="legend" x="{MARGIN_PX / 4:.0f}" y="{height - 8:.0f}">'
@@ -223,6 +230,29 @@ def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> s
         ]
     )
     return "\n".join(out)
+
+
+def _dimension_svg(
+    element: Wall,
+    wall: DerivedWall,
+    units: str,
+    sx: Callable[[float], float],
+    sy: Callable[[float], float],
+) -> str:
+    """Cote d'un mur, côté gauche de son axe. Mur oblique (KAN-29) : la cote suit le mur
+    (l'axe Y du SVG pointe vers le bas, d'où l'angle opposé) ; les murs droits gardent leur
+    cote horizontale."""
+    cls = "dim uncertain" if element.source in UNCERTAIN else "dim"
+    gap = element.thickness / 2.0 + 0.18
+    lx = sx(wall.midpoint.x + wall.normal.x * gap)
+    ly = sy(wall.midpoint.y + wall.normal.y * gap)
+    label = format_length(wall.length_m, units)
+    if element.source in UNCERTAIN:
+        label = f"≈ {label}"
+    turn = ""
+    if is_oblique(wall.normal):
+        turn = f' transform="rotate({-dimension_angle(wall.normal):.1f} {lx:.1f} {ly:.1f})"'
+    return f'<text class="{cls}" x="{lx:.1f}" y="{ly + 4:.1f}"{turn}>{label}</text>'
 
 
 def _furniture_parts(
@@ -620,9 +650,7 @@ class _PdfPlan:
             else:
                 c.setFont("Helvetica", 7)
                 c.setFillColorRGB(0.69, 0.0, 0.13)
-            angle = math.degrees(math.atan2(wall.normal.x, -wall.normal.y))  # direction du mur
-            if angle > 90.0 or angle <= -90.0:
-                angle += 180.0
+            angle = dimension_angle(wall.normal)
             c.saveState()
             c.translate(self.sx(lx), self.sy(ly))
             c.rotate(angle)
@@ -792,9 +820,7 @@ def render_dxf(project: Project, level_id: UUID) -> str:
         label = _dxf_length(wall.length_m, units)
         if element.source in UNCERTAIN:
             label = f"≈ {label}"
-        angle = math.degrees(math.atan2(wall.normal.x, -wall.normal.y))
-        if angle > 90.0 or angle <= -90.0:
-            angle += 180.0
+        angle = dimension_angle(wall.normal)
         text(
             label,
             wall.midpoint.x + wall.normal.x * gap,

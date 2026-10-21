@@ -24,10 +24,42 @@ from openplan.schemas.scene import Level
 
 Anchor = Literal["start", "end", "center"]
 _EPS = 1e-9
+_MITER_LIMIT = 4.0
+"""Pointe d'un angle très aigu : au-delà de 4 épaisseurs du sommet, les faces ne sont plus
+prolongées (bout droit), comme la limite de pointe des logiciels de dessin."""
+_PARALLEL_SIN = math.sin(math.radians(0.5))
+"""Deux faces presque parallèles (mur prolongé tout droit) ne se croisent pas : bout droit."""
+
+XY = tuple[float, float]
 
 
 class GeometryError(ValueError):
     """Référence manquante ou géométrie dégénérée."""
+
+
+@dataclass(frozen=True)
+class _End:
+    """Un bout de mur vu depuis un sommet : direction sortante `d`, normale gauche `n` et
+    décalage de ses deux faces le long de `n` (gauche > droite)."""
+
+    wall_id: UUID
+    d: XY
+    n: XY
+    left: float
+    right: float
+
+    @property
+    def angle(self) -> float:
+        return math.atan2(self.d[1], self.d[0])
+
+
+def _line_cross(p: XY, d: XY, q: XY, e: XY) -> XY | None:
+    """Croisement des droites p + t·d et q + s·e ; None si (presque) parallèles."""
+    det = d[0] * e[1] - d[1] * e[0]
+    if abs(det) < _PARALLEL_SIN:
+        return None
+    t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / det
+    return (p[0] + d[0] * t, p[1] + d[1] * t)
 
 
 @dataclass(frozen=True)
@@ -102,6 +134,113 @@ class WallGraph:
     def walls_union(self, wall_ids: Sequence[UUID] | None = None) -> Polygon:
         ids = list(self.walls) if wall_ids is None else list(wall_ids)
         return unary_union([self.wall_polygon(w) for w in ids])
+
+    # ------------------------------------------------------------------ jonctions (KAN-29)
+    def _ends(self) -> dict[UUID, list[_End]]:
+        """Bouts de mur par sommet, triés dans le sens antihoraire."""
+        out: dict[UUID, list[_End]] = {}
+        for wid, wall in self.walls.items():
+            try:
+                ux, uy = self.wall_direction(wid)
+            except GeometryError:
+                continue
+            half = wall.thickness / 2.0
+            shift = {"center": 0.0, "left": half, "right": -half}[wall.offset]
+            for vid, sign in ((wall.start_vertex, 1.0), (wall.end_vertex, -1.0)):
+                faces = (sign * (shift + half), sign * (shift - half))
+                d = (sign * ux, sign * uy)
+                out.setdefault(vid, []).append(_End(wid, d, (-d[1], d[0]), max(faces), min(faces)))
+        for ends in out.values():
+            ends.sort(key=lambda e: e.angle)
+        return out
+
+    def _caps(self) -> dict[tuple[UUID, UUID], tuple[XY, XY, XY | None]]:
+        """Coin gauche, coin droit (vus depuis le sommet) et sommet central de chaque bout.
+
+        Entre deux bouts voisins dans l'ordre angulaire, la face gauche du premier et la face
+        droite du second se prolongent jusqu'à leur croisement : les deux murs partagent ce
+        point, donc leurs emprises se touchent sans trou ni chevauchement, quel que soit
+        l'angle. Un bout seul, deux murs alignés ou une pointe trop longue : bout droit.
+        Trois murs ou plus : le sommet lui-même ferme le moyeu.
+        """
+        caps: dict[tuple[UUID, UUID], tuple[XY, XY, XY | None]] = {}
+        for vid, ends in self._ends().items():
+            p = self.vertex(vid).position
+
+            def foot(e: _End, offset: float, p: Point2 = p) -> XY:
+                return (p.x + e.n[0] * offset, p.y + e.n[1] * offset)
+
+            left = {e.wall_id: foot(e, e.left) for e in ends}
+            right = {e.wall_id: foot(e, e.right) for e in ends}
+            k = len(ends)
+            if k >= 2:
+                for i, e in enumerate(ends):
+                    f = ends[(i + 1) % k]
+                    if f.wall_id == e.wall_id:
+                        continue
+                    x = _line_cross(foot(e, e.left), e.d, foot(f, f.right), f.d)
+                    reach = _MITER_LIMIT * max(e.left - e.right, f.left - f.right)
+                    if x is None or math.hypot(x[0] - p.x, x[1] - p.y) > reach:
+                        continue
+                    left[e.wall_id] = x
+                    right[f.wall_id] = x
+            hub = (p.x, p.y) if k >= 3 else None
+            for e in ends:
+                caps[(e.wall_id, vid)] = (left[e.wall_id], right[e.wall_id], hub)
+        return caps
+
+    def wall_footprints(self) -> dict[UUID, Polygon]:
+        """Emprises raccordées des murs (KAN-29) : les faces de deux murs qui se rejoignent se
+        prolongent jusqu'à leur croisement (onglet), à tout angle. Les murs d'un même sommet
+        se partagent leurs coins : l'union est fermée, sans trou ni recouvrement.
+
+        `wall_polygon` (bouts droits) reste la référence des règles et des surfaces de pièce.
+        """
+        caps = self._caps()
+        out: dict[UUID, Polygon] = {}
+        for wid, wall in self.walls.items():
+            start = caps.get((wid, wall.start_vertex))
+            end = caps.get((wid, wall.end_vertex))
+            if start is None or end is None:
+                continue
+            ring: list[XY] = [start[1], end[0]]
+            if end[2] is not None:
+                ring.append(end[2])
+            ring += [end[1], start[0]]
+            if start[2] is not None:
+                ring.append(start[2])
+            polygon = Polygon(ring)
+            if not polygon.is_valid:
+                polygon = largest_polygon(polygon.buffer(0))
+            flat = self.wall_polygon(wid)
+            if polygon.is_empty or polygon.area < 0.5 * flat.area:
+                polygon = flat
+            out[wid] = polygon
+        return out
+
+    def wall_footprint(self, wall_id: UUID) -> Polygon:
+        """Emprise raccordée d'un mur (voir `wall_footprints`)."""
+        self.wall(wall_id)
+        return self.wall_footprints().get(wall_id) or self.wall_polygon(wall_id)
+
+    def corner_reach(self, wall_id: UUID, at_start: bool) -> float:
+        """Longueur, le long de l'axe depuis le bout, que l'angle prend sur les faces du mur :
+        au-delà, les deux faces sont pleines. 0 pour un bout libre ; la demi-épaisseur du mur
+        voisin à angle droit ; davantage pour un angle aigu, moins pour un pan coupé."""
+        wall = self.wall(wall_id)
+        vid = wall.start_vertex if at_start else wall.end_vertex
+        cap = self._caps().get((wall_id, vid))
+        if cap is None:
+            return 0.0
+        p = self.vertex(vid).position
+        a, b = self.wall_axis(wall_id)
+        inward = (b.x - a.x, b.y - a.y) if at_start else (a.x - b.x, a.y - b.y)
+        length = math.hypot(*inward)
+        if length < _EPS:
+            return 0.0
+        ux, uy = inward[0] / length, inward[1] / length
+        reach = max((q[0] - p.x) * ux + (q[1] - p.y) * uy for q in cap[:2])
+        return max(0.0, reach)
 
     # ------------------------------------------------------------------ pièces
     def loop_vertices(self, wall_ids: Sequence[UUID]) -> list[UUID]:

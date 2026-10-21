@@ -342,12 +342,15 @@ def _not_one(intent: AssistantIntent, pick: OpeningPick) -> AssistantAction:
 
 
 def _end_margin(graph: WallGraph, o: Opening, at_start: bool) -> float:
-    """Jambage à garder au bout du mur : un angle (autre mur au sommet) prend la moitié de
-    l'épaisseur du mur qui arrive, plus un jeu."""
+    """Jambage à garder au bout du mur : un angle (autre mur au sommet) prend ce que l'angle
+    mange sur les faces du mur (la demi-épaisseur du mur qui arrive à angle droit, plus pour un
+    angle aigu, moins pour un pan coupé, KAN-29), plus un jeu."""
     wall = graph.wall(o.host_wall)
     vertex = wall.start_vertex if at_start else wall.end_vertex
     others = [graph.wall(w) for w in graph.walls_at(vertex) if w != o.host_wall]
-    corner = max((w.thickness / 2 + CORNER_CLEARANCE_M for w in others), default=0.0)
+    if not others:
+        return OPENING_MARGIN_M
+    corner = graph.corner_reach(o.host_wall, at_start) + CORNER_CLEARANCE_M
     return max(OPENING_MARGIN_M, corner)
 
 

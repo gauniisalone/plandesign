@@ -29,15 +29,17 @@ from openplan.validation.layout import clearance_at
 def compute_derived(level: Level) -> DerivedLevel:
     graph = WallGraph.from_level(level)
     walls: dict[UUID, DerivedWall] = {}
+    footprints = graph.wall_footprints()  # KAN-29 : angles raccordés, même obliques
     for wid in graph.walls:
         try:
             ux, uy = graph.wall_direction(wid)
         except GeometryError:
             continue  # mur dégénéré : rien à dessiner, l'invariant le signalera
         a, b = graph.wall_axis(wid)
+        footprint = footprints.get(wid)
         walls[wid] = DerivedWall(
             length_m=graph.wall_length(wid),
-            polygon=to_points(graph.wall_polygon(wid)),
+            polygon=to_points(footprint if footprint is not None else graph.wall_polygon(wid)),
             midpoint=Point2(x=(a.x + b.x) / 2.0, y=(a.y + b.y) / 2.0),
             normal=Point2(x=-uy, y=ux),
         )
