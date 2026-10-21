@@ -146,6 +146,51 @@ test("formulaire rempli : « Commencer », connexion, arrivée sur /nouveau pré
   await expect(composer.getByText(/compris :.*combles/)).toBeVisible();
 });
 
+/** Session déjà ouverte (cookie pd_session de l'app) : « Ouvrir mon espace » sur le site mène
+ *  droit à l'app, sans fenêtre ni nouveau code. Le site ne lit que le statut de /api/auth/me. */
+test("déjà connecté : « Ouvrir mon espace » mène à l'app sans redemander de code", async ({
+  page,
+}) => {
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.183" });
+  const email = "site-deja-connecte@example.org";
+  await page.goto("/");
+  await page.getByRole("button", { name: "Se lancer" }).click();
+  await sendAddress(page, email);
+  await enterCodes(page, email);
+  await expect(page).toHaveURL(`${APP}/`);
+  await passNameStep(page);
+  // Retour sur le site, plus tard : la session de l'app est toujours là.
+  const codes: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/auth/email/")) codes.push(r.url());
+  });
+  await page.goto("/");
+  const me = page.waitForResponse((r) => r.url() === `${APP}/api/auth/me`);
+  await page.getByRole("button", { name: "Ouvrir mon espace" }).first().click();
+  expect((await me).status()).toBe(200);
+  await expect(page).toHaveURL(`${APP}/`, { timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Vos espaces de travail" }),
+  ).toBeVisible({ timeout: 30_000 });
+  expect(codes, "aucun nouveau code demandé").toEqual([]);
+});
+
+test("sans session : « Ouvrir mon espace » ouvre la fenêtre de connexion", async ({
+  page,
+}) => {
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.184" });
+  await page.goto("/");
+  const me = page.waitForResponse((r) => r.url() === `${APP}/api/auth/me`);
+  await page.getByRole("button", { name: "Ouvrir mon espace" }).first().click();
+  expect((await me).status()).toBe(401);
+  const dialog = page.getByRole("dialog", {
+    name: "Se connecter à PlanDesign",
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Adresse e-mail")).toBeFocused();
+  expect(page.url().startsWith(APP)).toBe(false);
+});
+
 test("mode « invite » : ligne bêta, réponse neutre pour une adresse inconnue", async ({
   page,
 }) => {

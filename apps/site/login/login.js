@@ -5,7 +5,8 @@
 // Deux temps : l'adresse (POST /api/auth/email/start), puis le code (POST
 // /api/auth/email/verify, avec les cookies : la session pd_session est posée par l'app, même
 // site que plandesign.fr). Code juste : on part vers l'app, sur /nouveau (contrat v1) si le
-// formulaire de l'accueil est rempli, sinon sur son accueil.
+// formulaire de l'accueil est rempli, sinon sur son accueil. Déjà connecté : pas de fenêtre,
+// on part tout de suite vers l'app (GET /api/auth/me, statut seulement).
 (function () {
   "use strict";
   var dialog = document.getElementById("connexion");
@@ -91,12 +92,36 @@
   var DOWN = "Le service ne répond pas : réessayez dans un instant.";
   var SLOW = "Trop de tentatives : réessayez dans une minute.";
 
+  // Déjà connecté (session pd_session de l'app, même site) ? On va droit à l'app, sans
+  // redemander de code. Seul le statut de GET /api/auth/me est lu (200 ou non) : rien de la
+  // réponse (adresse, nom) n'est lu ni gardé par le site. 401 ou panne : la fenêtre, comme avant.
+  var checking = false;
+  function signedIn() {
+    return fetch(app + "/api/auth/me", { credentials: "include", cache: "no-store" }).then(
+      function (response) {
+        return response.status === 200;
+      },
+      function () {
+        return false;
+      }
+    );
+  }
+
   document.addEventListener("click", function (event) {
     var opener = event.target.closest('[data-action="login"]');
     if (!opener) return;
     event.preventDefault();
-    if (!dialog.open) dialog.showModal();
-    step(email ? "code" : "email");
+    if (checking) return;
+    checking = true;
+    signedIn().then(function (yes) {
+      checking = false;
+      if (yes) {
+        window.location.assign(target());
+        return;
+      }
+      if (!dialog.open) dialog.showModal();
+      step(email ? "code" : "email");
+    });
   });
 
   emailForm.addEventListener("submit", function (event) {
