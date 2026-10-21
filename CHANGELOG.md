@@ -7,6 +7,21 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 21 octobre 2026 (KAN-75 : retour arrière sans perdre les données)
+
+- `openplan downgrade --to 0.16.0 <racine des données>` redescend le format des projets vers
+  celui de la version de production (MEP 5, 3da4d52), pour revenir à l'ancienne application sans
+  restaurer l'archive : seules les données des champs ajoutés depuis sont retirées (ici, la
+  confiance tenue avec l'échelle). Idempotent, `--dry-run`, écriture atomique projet par projet.
+  Les événements et réactions d'un type nouveau restent en place : l'ancienne application les
+  ignore sans erreur.
+- Procédure (Infra) : arrêter l'application, `openplan downgrade --to 0.16.0 <racine>`, puis
+  basculer sur l'ancienne version ; l'archive de `data/` reste le dernier recours.
+- Tests : un aller-retour réel (le code de production, extrait par `git archive`, relit la
+  liste, le plan, l'espace de travail, les commentaires, l'activité et la cloche des projets
+  redescendus, sans 409 ni 500) ; une garde qui échoue si un champ ajouté au format n'est ni
+  retiré par la descente ni toléré par l'ancien code (instantané des champs de la production).
+
 ### 21 octobre 2026 (KAN-46 : jambettes déduites du bord du sol)
 
 - Combles : les jambettes, trop petites pour être trouvées comme plans, sont déduites du bord

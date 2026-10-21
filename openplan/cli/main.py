@@ -73,7 +73,7 @@ def _add_journal_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
     jmetrics.add_argument("--data-dir", type=Path, help="défaut : OPENPLAN_DATA_DIR")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     parser = argparse.ArgumentParser(prog="openplan", description=APP_NAME)
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -166,7 +166,45 @@ def build_parser() -> argparse.ArgumentParser:
     _add_journal_parser(sub)
     _add_diagnostic_parsers(sub)
     _add_accounts_parser(sub)
+    _add_downgrade_parser(sub)
     return parser
+
+
+def _add_downgrade_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    down = sub.add_parser(
+        "downgrade",
+        help="KAN-75 : redescend le format des projets pour un retour arrière (app arrêtée)",
+    )
+    down.add_argument("--to", required=True, dest="target", help="version visée, ex. 0.16.0")
+    down.add_argument("root", type=Path, help="racine des données (dossier des projets)")
+    down.add_argument(
+        "--dry-run", action="store_true", help="dit ce qui serait changé, sans rien écrire"
+    )
+
+
+def _downgrade(args: argparse.Namespace) -> int:
+    """`openplan downgrade --to 0.16.0 <racine>` : à lancer application arrêtée, avant de
+    basculer sur l'ancienne version ; idempotent. Code 2 : version ou racine inconnue ; 1 : un
+    projet n'a pas pu être descendu (les autres le sont)."""
+    from openplan.scene.downgrade import downgrade_tree
+    from openplan.scene.migrate import UnsupportedSchemaVersionError
+
+    if not args.root.is_dir():
+        print(f"racine introuvable : {args.root}", file=sys.stderr)
+        return 2
+    try:
+        report = downgrade_tree(args.root, args.target, dry_run=args.dry_run)
+    except UnsupportedSchemaVersionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    verb = "à descendre" if args.dry_run else "descendu(s)"
+    print(
+        f"{len(report.changed)} projet(s) {verb} vers {report.target}, "
+        f"{report.unchanged} déjà à cette version, {report.removed} valeur(s) retirée(s)"
+    )
+    for path, reason in report.errors:
+        print(f"ÉCHEC {path} : {reason}", file=sys.stderr)
+    return 1 if report.errors else 0
 
 
 def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -325,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         "journal": _journal,
         "sentry-test": _sentry_test,
         "accounts": _accounts,
+        "downgrade": _downgrade,
     }
     return commands[args.command](args)
 
