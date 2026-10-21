@@ -7978,6 +7978,7 @@ button.link.home-empty-link {
     width: auto;
     transform: none;
   }
+}
 /* ---- KAN-78 : réactions sous les éléments de l'espace de travail ----
    Jetons de KAN-77 (--pd-*, --primary, --link) avec un repli neutre : aucune couleur en dur.
    Taille constante à tout zoom (--inv = 1/zoom), comme les épingles des commentaires. */

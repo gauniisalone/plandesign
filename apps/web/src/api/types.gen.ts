@@ -174,7 +174,14 @@ export interface Polyhedron {
     | "oak_dark"
     | "painted_wood"
     | "linen";
-  kind: "wall" | "roof" | "slab" | "roof_window" | "timber" | "reveal" | "furniture";
+  kind:
+    | "wall"
+    | "roof"
+    | "slab"
+    | "roof_window"
+    | "timber"
+    | "reveal"
+    | "furniture";
   part: number;
   source: Source;
   /**
