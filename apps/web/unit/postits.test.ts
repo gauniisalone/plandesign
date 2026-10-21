@@ -15,7 +15,7 @@ import {
 test("huit couleurs, en français, une note d'avant est jaune", () => {
   assert.deepEqual(
     POSTIT_COLORS.map((c) => c.label),
-    ["Jaune", "Orange", "Rose", "Violet", "Bleu", "Vert", "Gris", "Blanc"],
+    ["Jaune", "Orange", "Rose", "Lavande", "Bleu", "Vert", "Gris", "Blanc"],
   );
   assert.equal(colorOf({}), "yellow");
   assert.equal(colorOf({ color: null }), "yellow");

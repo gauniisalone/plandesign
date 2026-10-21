@@ -57,9 +57,11 @@ main, ils ne reviennent pas (`dismissed` : `frame:<rôle>`)."""
 # cadres Photos de la pièce puis Inspirations, au centre le plan, grand, à droite les Rendus.
 GAP = 48.0
 PAD = 24.0
-PAD_TOP = 88.0
+PAD_TOP = 160.0
 """T7b : le titre des cadres posés par le tableau est dans un en-tête, comme celui du plan ;
-leur contenu commence sous lui (l'en-tête grandit quand on dézoome)."""
+leur contenu commence sous lui (l'en-tête grandit quand on dézoome). KAN-77 : 160 (au lieu de
+88), l'en-tête ayant 16 px de marge à l'écran : il ne couvre pas le contenu jusqu'au zoom de
+départ (≈ 34 %). Les tableaux déjà posés gardent leur place."""
 CELL_W, CELL_H = 280.0, 190.0
 COLS = 2
 FRAME_W = PAD * 2 + COLS * CELL_W + (COLS - 1) * 16.0

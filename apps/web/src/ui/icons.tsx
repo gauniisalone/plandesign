@@ -97,6 +97,29 @@ export const IconComment = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-77 : post-it (un carré au coin replié), pour la barre de gauche. */
+export const IconNote = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 4h14v10l-6 6H5z" />
+    <path d="M13 20v-6h6" />
+  </Svg>
+);
+
+/** KAN-77 : cadre (un rectangle et ses repères de coin, comme les outils de maquette). */
+export const IconFrame = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 3v18M17 3v18M3 7h18M3 17h18" />
+  </Svg>
+);
+
+/** KAN-77 : lien (deux maillons). */
+export const IconLink = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 13a4 4 0 0 0 6 .4l3-3a4 4 0 0 0-5.7-5.7l-1.6 1.6" />
+    <path d="M14 11a4 4 0 0 0-6-.4l-3 3a4 4 0 0 0 5.7 5.7l1.6-1.6" />
+  </Svg>
+);
+
 /** KAN-58 : le journal d'activité (une horloge). */
 export const IconActivity = (p: IconProps) => (
   <Svg {...p}>

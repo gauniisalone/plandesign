@@ -1,6 +1,33 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { BoardItem, NoteColor } from "../api/client";
 import { colorOf, fitFontSize, POSTIT_COLORS } from "./postits";
+
+/** KAN-77 : change quand des polices finissent de charger (`document.fonts.ready`, puis
+ *  chaque « loadingdone ») : de quoi remesurer un texte. */
+function useFontsLoaded(): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const fonts = document.fonts as FontFaceSet | undefined;
+    if (!fonts) return;
+    let alive = true;
+    const bump = () => {
+      if (alive) setN((v) => v + 1);
+    };
+    void fonts.ready.then(bump);
+    fonts.addEventListener?.("loadingdone", bump);
+    return () => {
+      alive = false;
+      fonts.removeEventListener?.("loadingdone", bump);
+    };
+  }, []);
+  return n;
+}
 
 /** KAN-65 : le contenu d'un post-it. Double-clic pour écrire ; le texte se réduit pour tenir
  *  dans le post-it (mesuré sur une copie invisible, à la taille de la boîte). */
@@ -21,6 +48,9 @@ export function PostitBody({
   const [draft, setDraft] = useState<string | null>(null);
   const [size, setSize] = useState(24);
   const shown = editing ? (draft ?? item.text) : item.text;
+  // KAN-77 : la police (Outfit) peut arriver après la première mesure ; on remesure une fois
+  // les polices chargées, sinon un mot se coupait en deux.
+  const fonts = useFontsLoaded();
   useLayoutEffect(() => {
     const p = probe.current;
     const b = box.current;
@@ -41,7 +71,7 @@ export function PostitBody({
     // La copie garde la taille retenue : plus grande, elle ferait défiler la boîte.
     p.style.fontSize = `${best}px`;
     setSize(best);
-  }, [shown, item.w, item.h]);
+  }, [shown, item.w, item.h, fonts]);
   const style = { fontSize: `${size}px` };
   return (
     <>

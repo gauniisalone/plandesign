@@ -31,15 +31,26 @@ test("médias : vidéo, PDF avec vignette, lien jamais récupéré, fichiers de 
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
 
-  // Vidéo et PDF importés depuis le tableau.
-  await board.locator(".board-rail input[type=file]").setInputFiles([
-    { name: "visite.mp4", mimeType: "video/mp4", buffer: MP4 },
-    {
-      name: "plan.pdf",
-      mimeType: "application/pdf",
-      buffer: readFileSync(PDF),
+  // Vidéo et PDF déposés sur l'espace de travail (KAN-77 : le glisser-déposer reste ; le menu
+  // « Importer » de la barre de gauche n'existe plus).
+  const files = await page.evaluateHandle(
+    ({ mp4, pdf }) => {
+      const dt = new DataTransfer();
+      dt.items.add(
+        new File([new Uint8Array(mp4)], "visite.mp4", { type: "video/mp4" }),
+      );
+      dt.items.add(
+        new File([new Uint8Array(pdf)], "plan.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      return dt;
     },
-  ]);
+    { mp4: [...MP4], pdf: [...readFileSync(PDF)] },
+  );
+  await board
+    .locator(".board-stage")
+    .dispatchEvent("drop", { dataTransfer: files });
   await expect(board.getByLabel("Vidéo visite.mp4")).toBeVisible();
   const pdf = board.locator(".board-item.kind-pdf");
   await expect(pdf.locator("img.board-pdf")).toBeVisible();
@@ -48,8 +59,12 @@ test("médias : vidéo, PDF avec vignette, lien jamais récupéré, fichiers de 
     /noopener/,
   );
 
-  // Un lien : adresse et titre saisis ; refusé s'il n'est pas http(s).
-  await board.getByRole("button", { name: "Lien", exact: true }).click();
+  // Un lien : adresse et titre saisis ; refusé s'il n'est pas http(s). KAN-77 : par
+  // « Ajouter un lien » du cadre Inspirations (le bouton de la barre de gauche est parti).
+  await board
+    .locator(".board-item.kind-frame.role-inspirations")
+    .getByRole("button", { name: "Ajouter un lien" })
+    .click();
   const form = board.getByRole("dialog", { name: "Ajouter un lien" });
   await form.getByLabel("Adresse").fill("javascript:alert(1)");
   await form.getByRole("button", { name: "Ajouter le lien" }).click();

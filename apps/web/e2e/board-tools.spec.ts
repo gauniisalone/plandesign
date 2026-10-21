@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { createEmptyProject, expectSpace, goSpace } from "./helpers";
 
-/** T7c (maquette d'augus) : dans l'espace de travail, l'import est dans la barre d'outils de
- *  gauche (« Photo ou plan de la pièce » ouvre « Ajouter une source », « Fichiers » joint des
- *  fichiers) ; les actions de la sélection n'apparaissent qu'avec une sélection (KAN-64 : à la
- *  place de l'Assistant, dans le panneau de droite). Aucune requête externe. */
+/** T7c, KAN-77 (MH10) : la barre de gauche n'a plus que Sélection, Main, Post-it, Cadre,
+ *  Commentaire, puis Annuler et Rétablir à part (Lien et Importer sont dans les cadres :
+ *  e2e/kan77.spec.ts) ; les actions de la sélection n'apparaissent qu'avec une sélection
+ *  (KAN-64 : à la place de l'Assistant, dans le panneau de droite). Aucune requête externe. */
 const PLAN_DXF = path.resolve("../../tests/fixtures/plan_rect.dxf");
 
-test("espace de travail : import dans la barre de gauche, barre de la sélection en bas", async ({
+test("espace de travail : barre de gauche, barre de la sélection", async ({
   page,
 }) => {
   const outside: string[] = [];
@@ -23,24 +23,25 @@ test("espace de travail : import dans la barre de gauche, barre de la sélection
   await expectSpace(page, "plan", { timeout: 60_000 });
   await goSpace(page, "board");
 
-  // Plus de « Ajouter une source » dans la barre du haut : il est dans « Importer ».
+  // Plus de « Ajouter une source » dans la barre du haut ; KAN-77 : plus de Lien ni
+  // d'Importer dans la barre de gauche.
   await expect(page.locator(".topbar .add-source")).toHaveCount(0);
   const rail = page.getByRole("toolbar", {
     name: "Outils de l'espace de travail",
   });
-  await rail.getByRole("button", { name: "Importer" }).click();
-  const menu = page.getByRole("menu", { name: "Importer" });
-  await expect(menu.getByRole("menuitem")).toHaveCount(2);
-  await expect(menu).toContainText("Fichiers dans l'espace de travail");
-  await menu
-    .getByRole("menuitem", { name: /Photo ou plan de la pièce/ })
-    .click();
-  await expectSpace(page, "source");
-  await expect(
-    page.getByRole("heading", { name: "Ajouter une source" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: /Ajouter une source/ }).click();
-  await goSpace(page, "board");
+  await expect(rail.getByRole("button")).toHaveCount(7);
+  const names = await rail
+    .getByRole("button")
+    .evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+  expect(names).toEqual([
+    "Sélection",
+    "Main",
+    "Post-it",
+    "Cadre",
+    "Commentaire",
+    "Annuler dans l'espace de travail",
+    "Rétablir dans l'espace de travail",
+  ]);
 
   // Sans sélection, pas d'actions de sélection, l'Assistant ; avec une sélection (KAN-64),
   // ses actions prennent la place de l'Assistant dans le panneau de droite, jamais l'une

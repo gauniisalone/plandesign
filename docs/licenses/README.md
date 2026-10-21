@@ -86,8 +86,34 @@ de sécurité du dépôt n'est pas téléchargé).
 
 ## Assets (textures, mobilier, polices)
 
-Aucune texture ni police embarquée. Le champ `Material.license` du format de scène
+Le champ `Material.license` du format de scène
 (`open_source | cc0 | cc_by | commercial_restricted | unknown`) est partagé avec le catalogue.
+
+### Polices de l'application (KAN-77, 21 octobre 2026)
+
+Les fichiers du site (`apps/site/public/fonts`), copiés dans `apps/web/public/fonts` et servis
+par le front : aucune requête externe.
+
+| Police | Fichier | Licence | Preuve |
+|---|---|---|---|
+| Outfit (variable 100–900, latin) | `outfit-latin-wght.woff2` | SIL Open Font License 1.1 | `apps/web/public/fonts/OFL-Outfit.txt` |
+| JetBrains Mono 400 (latin) | `jetbrains-mono-latin-400.woff2` | SIL Open Font License 1.1 | `apps/web/public/fonts/OFL-JetBrainsMono.txt` |
+
+Outfit a la fonction OpenType `tnum` (chiffres de même chasse), utilisée pour les cotes.
+
+### Icônes de l'interface
+
+`apps/web/src/ui/icons.tsx` : icônes au trait (24 × 24, trait 1,8) dessinées dans le projet,
+sans dépendance. Certains tracés reprennent ceux de Lucide (licence ISC,
+https://lucide.dev/license), au moins la main (`IconHand`), Annuler et Rétablir
+(`IconUndo`, `IconRedo`) : avis de licence ci-dessous. KAN-77 ajoute Post-it, Cadre et Lien,
+dessinés par le projet.
+
+> ISC License — Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part
+> of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+> Permission to use, copy, modify, and/or distribute this software for any purpose with or
+> without fee is hereby granted, provided that the above copyright notice and this permission
+> notice appear in all copies.
 
 ### Catalogue de meubles (`assets/catalog.yaml`, 3.1, 25 septembre 2026)
 

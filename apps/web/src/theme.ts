@@ -33,37 +33,17 @@ export function saveTheme(choice: ThemeChoice): void {
   applyTheme(choice);
 }
 
-/** T7a : couleur d'accent, à comparer en un clic dans Réglages (augus n'a pas tranché) :
- *  Indigo (défaut, sans attribut), Violet (maquette du 16 oct.) ou Provence (palette
- *  provençale, terre cuite). Posée sur `<html data-accent>`, retenue par ce navigateur. */
-export type AccentChoice = "indigo" | "violet" | "provence";
-
+/** KAN-77 : l'accent à comparer de T7a (Indigo, Violet, Provence) n'existe plus : l'app prend
+ *  l'ocre du site. Un choix gardé par ce navigateur est oublié, et l'attribut retiré. */
 const ACCENT_KEY = "openplan:accent";
 
-export function loadAccent(): AccentChoice {
+export function forgetAccent(): void {
+  delete document.documentElement.dataset.accent;
   try {
-    const raw = window.localStorage.getItem(ACCENT_KEY);
-    return raw === "violet" || raw === "provence" ? raw : "indigo";
+    window.localStorage.removeItem(ACCENT_KEY);
   } catch {
-    return "indigo";
+    // Stockage indisponible (navigation privée) : rien à oublier.
   }
-}
-
-export function applyAccent(choice: AccentChoice): void {
-  const root = document.documentElement;
-  if (choice === "indigo") delete root.dataset.accent;
-  else root.dataset.accent = choice;
-  window.dispatchEvent(new Event(EVENT));
-}
-
-export function saveAccent(choice: AccentChoice): void {
-  try {
-    if (choice === "indigo") window.localStorage.removeItem(ACCENT_KEY);
-    else window.localStorage.setItem(ACCENT_KEY, choice);
-  } catch {
-    // Stockage indisponible (navigation privée) : le choix vaut pour la session.
-  }
-  applyAccent(choice);
 }
 
 /** Le thème réellement affiché est-il sombre ? */

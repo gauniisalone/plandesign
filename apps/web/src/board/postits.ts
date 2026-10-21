@@ -8,7 +8,8 @@ export const POSTIT_COLORS: readonly { id: NoteColor; label: string }[] = [
   { id: "yellow", label: "Jaune" },
   { id: "orange", label: "Orange" },
   { id: "pink", label: "Rose" },
-  { id: "violet", label: "Violet" },
+  // KAN-77 : « lavande » (décision d'augus du 21 oct.) ; la valeur gardée reste `violet`.
+  { id: "violet", label: "Lavande" },
   { id: "blue", label: "Bleu" },
   { id: "green", label: "Vert" },
   { id: "gray", label: "Gris" },

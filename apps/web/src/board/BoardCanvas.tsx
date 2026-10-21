@@ -32,7 +32,21 @@ import {
   QUEUED_TEXT,
 } from "../importFiles";
 import { walls } from "../model";
-import { IconPlus, IconReact, IconSliders, IconUpload } from "../ui/icons";
+import {
+  IconComment,
+  IconCursor,
+  IconFrame,
+  IconHand,
+  IconLink,
+  IconNote,
+  IconPencil,
+  IconPlus,
+  IconReact,
+  IconRedo,
+  IconSliders,
+  IconUndo,
+  IconUpload,
+} from "../ui/icons";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
@@ -68,6 +82,28 @@ import {
  *  taille : le cadre du plan n'a pas d'échelle. */
 
 type Tool = "select" | "hand" | "note" | "frame" | "comment";
+
+/** KAN-77 (MH10, MH11) : les outils de la barre de gauche, en icônes au trait (ui/icons,
+ *  même famille que la barre du haut) ; le libellé sert d'infobulle, son premier mot de nom. */
+const RAIL_TOOLS: readonly [
+  Tool,
+  (p: React.SVGProps<SVGSVGElement>) => React.JSX.Element,
+  string,
+][] = [
+  ["select", IconCursor, "Sélection (V)"],
+  ["hand", IconHand, "Main : déplacer la vue (H, ou espace)"],
+  ["note", IconNote, "Post-it (N) : cliquer où le poser"],
+  [
+    "frame",
+    IconFrame,
+    "Cadre (F) : tracer un cadre, ce qui est dedans lui appartient",
+  ],
+  [
+    "comment",
+    IconComment,
+    "Commentaire (C) : cliquer où le poser, ou sur un élément",
+  ],
+];
 type Drag =
   | { kind: "pan"; x: number; y: number; view: BoardView }
   | { kind: "move"; x: number; y: number; start: BoardItem[] }
@@ -298,7 +334,6 @@ export function BoardCanvas(props: Props) {
   const firstLevelId = Object.keys(project.levels)[0] ?? "";
   const frameLevel = (frame: BoardItem): string => frame.ref ?? firstLevelId;
   const stage = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const lastDown = useRef<{ id: string; t: number } | null>(null);
   const [tool, setTool] = useState<Tool>("select");
   /** KAN-64 : la zone « Assistant » du panneau, repliable. */
@@ -312,13 +347,13 @@ export function BoardCanvas(props: Props) {
   const [contextual, setContextual] = useState<ContextualEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [zooming, setZooming] = useState(false);
-  /** Formulaire « Lien » (C1) : adresse et titre saisis ; la page n'est jamais récupérée. */
+  /** Formulaire « Lien » (C1) : adresse et titre saisis ; la page n'est jamais récupérée.
+   *  KAN-77 : ouvert par « Ajouter un lien » du cadre Inspirations (`frame`), ou la touche L. */
   const [linkForm, setLinkForm] = useState<{
     url: string;
     title: string;
+    frame?: string;
   } | null>(null);
-  /** T7c : le menu « Importer » de la barre de gauche (source du plan, ou fichiers). */
-  const [importMenu, setImportMenu] = useState(false);
   /** KAN-66 : la photo ouverte dans le calque « Mesurer sur la photo ». */
   const [measureFor, setMeasureFor] = useState<{
     id: string;
@@ -637,24 +672,38 @@ export function BoardCanvas(props: Props) {
     url: string,
     title: string,
     at: { x: number; y: number },
+    into?: BoardItem,
   ) => {
     const [w, h] = MEDIA_SIZE.link;
+    // KAN-77 : depuis un cadre, le lien se range dans sa grille (le cadre grandit s'il le faut).
+    const placed = into
+      ? placeInFrame(into, items.filter((i) => i.frame === into.id).length, [
+          w,
+          h,
+        ])
+      : null;
     const link: BoardItem = {
       id: uid(),
       kind: "link",
-      x: at.x - w / 2,
-      y: at.y - h / 2,
+      x: placed ? placed.x : at.x - w / 2,
+      y: placed ? placed.y : at.y - h / 2,
       w,
       h,
       z: Math.max(0, ...items.map((i) => i.z)) + 1,
       locked: false,
-      frame: null,
+      frame: placed ? placed.frame.id : null,
       ref: null,
       text: (title.trim() || hostOf(url)).slice(0, 200),
       role: null,
       url,
     };
-    commit([...items, link]);
+    const grown = placed?.frame;
+    commit([
+      ...items.map((i) =>
+        grown && i.id === grown.id && i !== grown ? grown : i,
+      ),
+      link,
+    ]);
     setSelected(new Set([link.id]));
   };
 
@@ -675,7 +724,10 @@ export function BoardCanvas(props: Props) {
       );
       return;
     }
-    addLink(url, linkForm.title, centre());
+    const into = linkForm.frame
+      ? items.find((i) => i.id === linkForm.frame)
+      : undefined;
+    addLink(url, linkForm.title, centre(), into);
     setLinkForm(null);
   };
 
@@ -700,9 +752,9 @@ export function BoardCanvas(props: Props) {
     size: [number, number],
   ): { x: number; y: number; frame: BoardItem } => {
     const pad = 24;
-    // T7a : sous l'en-tête des cadres posés par le tableau (88 px, comme `PAD_TOP` côté
-    // serveur) ; sinon le contenu couvrait le titre.
-    const top = frame.role ? 88 : pad;
+    // T7a : sous l'en-tête des cadres posés par le tableau (160 px depuis KAN-77, comme
+    // `PAD_TOP` côté serveur) ; sinon le contenu couvrait le titre.
+    const top = frame.role ? 160 : pad;
     const cols = Math.max(
       1,
       Math.floor((frame.w - 2 * pad + 16) / (size[0] + 16)),
@@ -1267,14 +1319,23 @@ export function BoardCanvas(props: Props) {
                 ) : (
                   !readOnly && (
                     <>
-                      {/* T7d1 : deux boutons, sans paragraphe (retour d'augus). */}
+                      {/* T7d1 : des boutons, sans paragraphe (retour d'augus). KAN-77 :
+                          « Importer un plan » quitte la barre de gauche pour ce cadre. */}
                       <span className="board-plan-actions">
                         <button
                           type="button"
                           onClick={() => enterPlan(item)}
                           title="Tracer les murs à la main, dans le plan"
                         >
-                          ✎ Tracer moi-même
+                          <IconPencil aria-hidden="true" /> Tracer moi-même
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onAddSource()}
+                          title="Un plan DXF, PDF ou une image de plan, ou des photos de la pièce : le plan se construit"
+                        >
+                          <IconUpload aria-hidden="true" /> Importer un plan
+                          (DXF, PDF, image)
                         </button>
                         <button
                           type="button"
@@ -1462,15 +1523,19 @@ export function BoardCanvas(props: Props) {
             {FRAME_IMPORT[item.role ?? ""] &&
               !readOnly &&
               !items.some((i) => i.frame === item.id) && (
-                <button
-                  type="button"
-                  className="board-frame-import"
-                  title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                <span
+                  className="board-frame-import-row"
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => pickInto(item)}
                 >
-                  <IconUpload aria-hidden="true" /> Importer
-                </button>
+                  <button
+                    type="button"
+                    className="board-frame-import"
+                    title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                    onClick={() => pickInto(item)}
+                  >
+                    <IconUpload aria-hidden="true" /> Importer
+                  </button>
+                </span>
               )}
             <span
               className={
@@ -1510,22 +1575,39 @@ export function BoardCanvas(props: Props) {
                 item.text
               )}
               {FRAME_IMPORT[item.role ?? ""] &&
-                items.some((i) => i.frame === item.id) &&
-                editing !== item.id && (
-                  // T7a : cadre rempli : un petit « + » dans l'en-tête.
+                editing !== item.id &&
+                (items.some((i) => i.frame === item.id) ||
+                  (item.role === "inspirations" && !readOnly)) && (
+                  // T7a : cadre rempli : un petit « + » dans l'en-tête. KAN-77 : « Lien »
+                  // quitte la barre de gauche pour l'en-tête du cadre Inspirations.
                   <span
                     className="board-frame-actions"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <button
-                      type="button"
-                      className="icon board-frame-icon"
-                      aria-label={FRAME_IMPORT[item.role ?? ""]!.tip}
-                      title={FRAME_IMPORT[item.role ?? ""]!.tip}
-                      onClick={() => pickInto(item)}
-                    >
-                      <IconPlus />
-                    </button>
+                    {items.some((i) => i.frame === item.id) && (
+                      <button
+                        type="button"
+                        className="icon board-frame-icon"
+                        aria-label={FRAME_IMPORT[item.role ?? ""]!.tip}
+                        title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                        onClick={() => pickInto(item)}
+                      >
+                        <IconPlus />
+                      </button>
+                    )}
+                    {item.role === "inspirations" && !readOnly && (
+                      <button
+                        type="button"
+                        className="icon board-frame-icon"
+                        aria-label="Ajouter un lien"
+                        title="Ajouter un lien (la page n'est jamais récupérée)"
+                        onClick={() =>
+                          setLinkForm({ url: "", title: "", frame: item.id })
+                        }
+                      >
+                        <IconLink />
+                      </button>
+                    )}
                   </span>
                 )}
               {item.role === "renders" && (
@@ -1774,29 +1856,21 @@ export function BoardCanvas(props: Props) {
           role="toolbar"
           aria-label="Outils de l'espace de travail"
         >
-          {(
-            [
-              ["select", "↖", "Sélection (V)"],
-              ["hand", "✋", "Main : déplacer la vue (H, ou espace)"],
-              [
-                "comment",
-                "💬",
-                "Commentaire (C) : cliquer où le poser, ou sur un élément",
-              ],
-            ] as const
-          ).map(([id, icon, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`icon${tool === id ? " active" : ""}`}
-              aria-label={label.split(" ")[0]}
-              aria-pressed={tool === id}
-              title={label}
-              onClick={() => setTool(id)}
-            >
-              {icon}
-            </button>
-          ))}
+          {RAIL_TOOLS.filter(([id]) => id !== "note" && id !== "frame").map(
+            ([id, Icon, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`icon${tool === id ? " active" : ""}`}
+                aria-label={label.split(" ")[0]}
+                aria-pressed={tool === id}
+                title={label}
+                onClick={() => setTool(id)}
+              >
+                <Icon />
+              </button>
+            ),
+          )}
         </div>
       )}
       <div
@@ -1805,27 +1879,12 @@ export function BoardCanvas(props: Props) {
         role="toolbar"
         aria-label="Outils de l'espace de travail"
       >
-        {(
-          [
-            ["select", "↖", "Sélection (V)"],
-            ["hand", "✋", "Main : déplacer la vue (H, ou espace)"],
-            ["note", "🗒", "Post-it (N) : cliquer où le poser"],
-            [
-              "frame",
-              "▭",
-              "Cadre (F) : tracer un cadre, ce qui est dedans lui appartient",
-            ],
-            ...(props.comments?.canComment
-              ? ([
-                  [
-                    "comment",
-                    "💬",
-                    "Commentaire (C) : cliquer où le poser, ou sur un élément",
-                  ],
-                ] as const)
-              : []),
-          ] as const
-        ).map(([id, icon, label]) => (
+        {/* KAN-77 (MH10, MH11) : Sélection, Main, Post-it, Cadre, Commentaire, en icônes au
+            trait ; Lien et Importer sont dans les cadres (Inspirations, Plan) ; coller une
+            adresse et glisser-déposer un fichier marchent toujours. */}
+        {RAIL_TOOLS.filter(
+          ([id]) => id !== "comment" || props.comments?.canComment,
+        ).map(([id, Icon, label]) => (
           <button
             key={id}
             type="button"
@@ -1835,83 +1894,9 @@ export function BoardCanvas(props: Props) {
             title={label}
             onClick={() => setTool(id)}
           >
-            {icon}
+            <Icon />
           </button>
         ))}
-        <button
-          type="button"
-          className={`icon${linkForm ? " active" : ""}`}
-          aria-label="Lien"
-          title="Lien (L) : une adresse et un titre ; la page n'est jamais récupérée (coller une adresse marche aussi)"
-          onClick={() => setLinkForm(linkForm ? null : { url: "", title: "" })}
-        >
-          🔗
-        </button>
-        <span className="board-import">
-          <button
-            type="button"
-            className={`icon${importMenu ? " active" : ""}`}
-            aria-label="Importer"
-            aria-haspopup="menu"
-            aria-expanded={importMenu}
-            title="Importer : photo ou plan de la pièce (DXF, PDF, image), ou des fichiers (aussi : glisser-déposer, coller)"
-            onClick={() => setImportMenu((o) => !o)}
-          >
-            ⤓
-          </button>
-          {importMenu && (
-            <span
-              className="board-import-menu"
-              role="menu"
-              aria-label="Importer"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setImportMenu(false);
-                  props.onAddSource();
-                }}
-              >
-                <strong>Photo ou plan de la pièce</strong>
-                <span className="muted">
-                  photos, plan DXF, PDF, SVG ou image : le plan se construit
-                </span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setImportMenu(false);
-                  fileRef.current?.click();
-                }}
-              >
-                <strong>Fichiers dans l'espace de travail</strong>
-                <span className="muted">
-                  images d'ambiance, vidéos, PDF, documents joints
-                </span>
-              </button>
-            </span>
-          )}
-        </span>
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            const rect = stage.current?.getBoundingClientRect();
-            void importFiles(
-              files,
-              toWorld(
-                (rect?.left ?? 0) + (rect?.width ?? 0) / 2,
-                (rect?.top ?? 0) + (rect?.height ?? 0) / 2,
-              ),
-            );
-          }}
-        />
         <span className="board-sep" />
         <button
           type="button"
@@ -1921,7 +1906,7 @@ export function BoardCanvas(props: Props) {
           disabled={!props.canUndo}
           onClick={props.onUndo}
         >
-          ↶
+          <IconUndo />
         </button>
         <button
           type="button"
@@ -1931,7 +1916,7 @@ export function BoardCanvas(props: Props) {
           disabled={!props.canRedo}
           onClick={props.onRedo}
         >
-          ↷
+          <IconRedo />
         </button>
       </div>
 

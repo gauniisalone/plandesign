@@ -411,14 +411,11 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
       (p.pending_answers as { style?: string; aspect?: string } | null)
         ?.aspect === "4:5",
   );
-  // Le plan DXF par « Importer › Photo ou plan de la pièce » (T7c, barre de gauche) : le
-  // chemin automatique enchaîne.
+  // Le plan DXF par « Importer un plan » du cadre Plan (KAN-77 : ex-« Importer › Photo ou
+  // plan de la pièce » de la barre de gauche, même chemin) : le chemin automatique enchaîne.
   await page
-    .getByRole("toolbar", { name: "Outils de l'espace de travail" })
-    .getByRole("button", { name: "Importer" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: /Photo ou plan de la pièce/ })
+    .locator(".board-item.kind-plan")
+    .getByRole("button", { name: /Importer un plan/ })
     .click();
   await page
     .locator(".import-screen .dropzone input[type=file]")

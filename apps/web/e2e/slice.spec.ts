@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import path from "node:path";
 import {
   createEmptyProject,
@@ -432,10 +438,22 @@ test("première photo d'un projet neuf (tableau) : plan construit sans autre act
     timeout: 30_000,
   });
   await expectSpace(page, "board", { timeout: 30_000 });
+  // KAN-77 : plus de menu « Importer » dans la barre de gauche ; la photo est déposée sur
+  // l'espace de travail (le glisser-déposer reste).
+  const photo = await page.evaluateHandle(
+    (bytes) => {
+      const dt = new DataTransfer();
+      dt.items.add(
+        new File([new Uint8Array(bytes)], "image.png", { type: "image/png" }),
+      );
+      return dt;
+    },
+    [...readFileSync(FIXTURE)],
+  );
   await page
     .getByRole("region", { name: "Espace de travail" })
-    .locator(".board-rail input[type=file]")
-    .setInputFiles(FIXTURE);
+    .locator(".board-stage")
+    .dispatchEvent("drop", { dataTransfer: photo });
   const id = /projects\/([0-9a-f-]{36})/.exec(page.url())?.[1];
   await expect
     .poll(
