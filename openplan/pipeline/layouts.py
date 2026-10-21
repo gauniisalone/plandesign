@@ -28,7 +28,15 @@ from pydantic import Field
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
-from openplan.geom.built_in_bed import BUILT_IN_BED, MIN_HEADROOM_M, STANDING_M, standing_at
+from openplan.geom.built_in_bed import (
+    BUILT_IN_BED,
+    HEAD_THICKNESS_M,
+    MATTRESS_TOP_M,
+    MIN_HEADROOM_M,
+    PILLOW_FROM_HEAD_M,
+    STANDING_M,
+    standing_at,
+)
 from openplan.geom.roof import derived_roofs, roof_window_footprint
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import DINING_TABLES, TABLE_CHAIRS, Slot, compose
@@ -263,6 +271,12 @@ class Context:
     """KAN-67 : caissons des velux (volume du bake) ; aucun meuble généré n'y entre."""
     pools: dict[int, tuple[Want, list[Candidate]]] = field(default_factory=dict)
     """KAN-69 : candidats de chaque meuble avec leur emprise, calculés une fois par génération."""
+    statics: dict[int, tuple[Want, BriefItem, dict[int, Static]]] = field(default_factory=dict)
+    """KAN-74 : pour chaque meuble, ce que vaut chaque candidat sans les meubles posés."""
+    spots: dict[
+        int, tuple[Want, BriefItem, dict[tuple[float, float, float], tuple[Polygon, Static]]]
+    ] = field(default_factory=dict)
+    """KAN-74 : de même pour les positions d'ancrage des groupes."""
 
     @cached_property
     def inner(self) -> Polygon:
@@ -343,9 +357,28 @@ def _faces(level: Level, graph: WallGraph, room: Room | None, polygon: Polygon) 
             abs((e0[0] - a.x) * nx + (e0[1] - a.y) * ny) < 0.3
             and abs((e1[0] - a.x) * nx + (e1[1] - a.y) * ny) < 0.3
             for e0, e1 in eaves
-        )
+        ) or _low_wall(level, list(roofs.values()), start, (ux, uy), inward, mid_along)
         out.append(WallFace(wall, start, (ux, uy), inward, graph.wall_length(wid), eave))
     return out
+
+
+def _low_wall(
+    level: Level,
+    roofs: list[DerivedRoof],
+    start: tuple[float, float],
+    unit: tuple[float, float],
+    inward: tuple[float, float],
+    along: float,
+) -> bool:
+    """KAN-74 : un mur bas sous pente, même quand l'égout est à 0 m ou inconnu et passe au-delà
+    du mur (vrai grenier : égout 1,5 m dehors, mur de 0,96 m) — d'après la hauteur réelle de la
+    pente : elle monte d'au moins HEAD_DROP_M sur le premier mètre vers l'intérieur."""
+    if not roofs:
+        return False
+    x, y = start[0] + unit[0] * along, start[1] + unit[1] * along
+    low = clearance_at((x + inward[0] * 0.05, y + inward[1] * 0.05), roofs, level)
+    high = clearance_at((x + inward[0] * 1.05, y + inward[1] * 1.05), roofs, level)
+    return low < level.height - 0.05 and high - low >= HEAD_DROP_M
 
 
 def _inner_faces(graph: WallGraph, room: Room | None, polygon: Polygon) -> list[WallFace]:
@@ -541,6 +574,15 @@ class Placed:
         """Zone d'usage devant le meuble, calculée une fois (KAN-69)."""
         return _front(self.x, self.y, self.yaw, self.want)
 
+    @cached_property
+    def box(self) -> Box4:
+        """Boîte englobante de l'emprise, calculée une fois (KAN-74)."""
+        return _box(self.polygon)
+
+    @cached_property
+    def front_box(self) -> Box4:
+        return _box(self.front)
+
 
 # ------------------------------------------------------------------ usage de la pièce (F5)
 _USE_WORDS: tuple[tuple[str, str], ...] = (
@@ -660,6 +702,42 @@ def _yaw_facing(inward: tuple[float, float]) -> float:
     return math.atan2(inward[1], inward[0]) - math.pi / 2.0
 
 
+BED_SETBACK_STEPS = 4
+"""KAN-74 : reculs essayés pour un lit encastré au-delà du premier qui donne 0,90 m à l'oreiller."""
+
+
+def _bed_setbacks(face: WallFace, ctx: Context) -> tuple[float, ...]:
+    """Reculs d'un lit encastré depuis un mur bas (KAN-74) : ceux de V1 ; si aucun ne laisse
+    0,90 m au-dessus du matelas à l'oreiller (égout à 0 m ou inconnu, loin derrière le mur), le
+    premier qui les laisse d'après la hauteur réelle de la pente, et quelques pas au-delà.
+    L'oreiller est à WALL_GAP_M + recul + fond + PILLOW_FROM_HEAD_M du mur ; la hauteur est la
+    plus basse aux deux bouts et au milieu."""
+    need = MATTRESS_TOP_M + MIN_HEADROOM_M
+    offset = WALL_GAP_M + HEAD_THICKNESS_M + PILLOW_FROM_HEAD_M
+    points = [
+        (face.start[0] + face.unit[0] * t, face.start[1] + face.unit[1] * t)
+        for t in (0.0, face.length / 2.0, face.length)
+    ]
+
+    def fits(setback: float) -> bool:
+        d = offset + setback
+        return all(
+            clearance_at((x + face.inward[0] * d, y + face.inward[1] * d), ctx.roofs, ctx.level)
+            >= need - 1e-6
+            for x, y in points
+        )
+
+    # Quand un recul de V1 suffit, rien ne change (mêmes candidats qu'avant KAN-74).
+    if any(fits(s) for s in EAVE_SETBACKS_M):
+        return EAVE_SETBACKS_M
+    for k in range(61):  # jusqu'à 3 m de recul, par 5 cm
+        setback = k * 0.05
+        if fits(setback):
+            extra = {round(setback + WALL_STEP_M * 2 * j, 3) for j in range(BED_SETBACK_STEPS)}
+            return tuple(sorted(set(EAVE_SETBACKS_M) | extra))
+    return EAVE_SETBACKS_M
+
+
 def candidates(want: Want, ctx: Context) -> list[tuple[float, float, float]]:
     """Positions (x, y, lacet) à essayer pour ce meuble."""
     out: list[tuple[float, float, float]] = []
@@ -674,7 +752,9 @@ def candidates(want: Want, ctx: Context) -> list[tuple[float, float, float]]:
             n = max(1, int((face.length - want.width) / WALL_STEP_M) + 1)
             # Mur d'égout (V1) : sans jambette assez haute, le meuble recule dans la bande
             # basse, dos à la pente, jusqu'à tenir sous la hauteur libre.
-            setbacks = EAVE_SETBACKS_M if face.eave else (0.0,)
+            setbacks: tuple[float, ...] = EAVE_SETBACKS_M if face.eave else (0.0,)
+            if face.eave and want.asset.category == BUILT_IN_BED and ctx.roofs:
+                setbacks = _bed_setbacks(face, ctx)
             for setback in setbacks:
                 back = want.depth / 2.0 + WALL_GAP_M + setback
                 for k in range(n):
@@ -725,19 +805,47 @@ def _overlaps(a: Polygon, b: Polygon) -> bool:
     return bool(a.intersection(b).area > OVERLAP_EPS_M2)
 
 
+Box4 = tuple[float, float, float, float]
+"""Boîte englobante (x0, y0, x1, y1)."""
+
+
+def _box(polygon: Polygon) -> Box4:
+    x0, y0, x1, y1 = polygon.bounds
+    return float(x0), float(y0), float(x1), float(y1)
+
+
+def _apart(a: Box4, b: Box4) -> bool:
+    """Boîtes disjointes : les emprises ne peuvent pas se recouvrir (KAN-74, préfiltre exact)."""
+    return a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1]
+
+
 def feasible(polygon: Polygon, want: Want, ctx: Context, placed: list[Placed]) -> bool:
+    return (
+        _fits_room(polygon, want, ctx)
+        and _clear_of(polygon, _box(polygon), want, ctx, placed)
+        and ctx.fits_height(polygon, want.height)
+    )
+
+
+def _fits_room(polygon: Polygon, want: Want, ctx: Context) -> bool:
+    """Ce qui ne dépend pas des meubles posés : dans la pièce, hors des zones interdites et des
+    obstacles (la hauteur sous pente est à part, `Context.fits_height`)."""
     if not ctx.inner.contains(polygon):
         return False
     if not ctx.forbidden.is_empty and _overlaps(polygon, ctx.forbidden):
         return False
-    for obstacle in ctx.obstacles:
-        if not want.asset.walkable and _overlaps(polygon, obstacle):
-            return False
+    return not any(
+        not want.asset.walkable and _overlaps(polygon, obstacle) for obstacle in ctx.obstacles
+    )
+
+
+def _clear_of(polygon: Polygon, box: Box4, want: Want, ctx: Context, placed: list[Placed]) -> bool:
+    """Aucun recouvrement avec les meubles déjà posés (et l'écart du coin nuit, L3b)."""
     night = want.item.zone == "couchage"
     for other in placed:
         if want.asset.walkable or other.want.asset.walkable:
             continue  # un tapis se pose sous les meubles
-        if _overlaps(polygon, other.polygon):
+        if not _apart(box, other.box) and _overlaps(polygon, other.polygon):
             return False
         # Studio : le coin nuit ne touche pas le coin détente (80 cm entre les zones).
         zone = other.want.item.zone
@@ -749,7 +857,7 @@ def feasible(polygon: Polygon, want: Want, ctx: Context, placed: list[Placed]) -
             and polygon.distance(other.polygon) < ctx.night_gap
         ):
             return False
-    return ctx.fits_height(polygon, want.height)
+    return True
 
 
 def _front(x: float, y: float, yaw: float, want: Want) -> Polygon:
@@ -789,6 +897,40 @@ def score_candidate(
     x: float, y: float, yaw: float, polygon: Polygon, want: Want, ctx: Context, placed: list[Placed]
 ) -> tuple[float, list[str], list[str]]:
     """Score d'une position : préférences du brief tenues (+), manquées (−), règles souples."""
+    parts = _score_parts(x, y, yaw, polygon, want, ctx)
+    return parts.total(polygon, placed), parts.satisfied, parts.missed
+
+
+@dataclass
+class ScoreParts:
+    """Score d'une position découpé autour de ce qui dépend des meubles posés (KAN-74) : la tête
+    (préférences, mur, pièce) et la queue (fenêtres, bureau, meuble libre, zones) ne dépendent que
+    de la position ; `total` rejoue les termes dans l'ordre de toujours (mêmes nombres)."""
+
+    head: float
+    tail: tuple[float, ...]
+    zone: float
+    front: Polygon
+    box: Box4
+    front_box: Box4
+    satisfied: list[str]
+    missed: list[str]
+
+    def total(self, polygon: Polygon, placed: list[Placed]) -> float:
+        score = self.head
+        for other in placed:
+            if not _apart(self.front_box, other.box) and _overlaps(self.front, other.polygon):
+                score -= 2.0
+            if not _apart(other.front_box, self.box) and _overlaps(other.front, polygon):
+                score -= 2.0
+        for term in self.tail:
+            score += term
+        return score + self.zone
+
+
+def _score_parts(
+    x: float, y: float, yaw: float, polygon: Polygon, want: Want, ctx: Context
+) -> ScoreParts:
     lm = ctx.landmarks
     score, satisfied, missed = _preferences(want, polygon, lm)
     front = _front(x, y, yaw, want)
@@ -796,19 +938,66 @@ def score_candidate(
         score -= 6.0  # face contre un mur : le meuble ne sert à rien
     if not ctx.inner.contains(front):
         score -= 1.0
-    for other in placed:
-        if _overlaps(front, other.polygon):
-            score -= 2.0
-        if _overlaps(other.front, polygon):
-            score -= 2.0
+    tail: list[float] = []
     for zone in lm.windows:
         if want.height > 0.9 and _overlaps(polygon, zone):
-            score -= 3.0
+            tail.append(-3.0)
     if want.asset.category == "desk" and lm.windows and lm.near("window", polygon):
-        score += 1.0
+        tail.append(1.0)
     if want.asset.anchor == "free" and lm.walls is not None and polygon.distance(lm.walls) > 0.6:
-        score -= 0.3
-    return score + _zone_terms(want, polygon, lm), satisfied, missed
+        tail.append(-0.3)
+    return ScoreParts(
+        score,
+        tuple(tail),
+        _zone_terms(want, polygon, lm),
+        front,
+        _box(polygon),
+        _box(front),
+        satisfied,
+        missed,
+    )
+
+
+@dataclass
+class Static:
+    """Ce qu'un candidat vaut sans les meubles posés, calculé une fois par génération (KAN-74) :
+    s'il tient dans la pièce et sous la pente, et les parties fixes de son score."""
+
+    fits: bool
+    parts: ScoreParts | None
+
+
+def _spot(want: Want, ctx: Context, x: float, y: float, yaw: float) -> tuple[Polygon, Static]:
+    """Emprise et parties fixes d'une position quelconque (ancrage d'un groupe), en mémoire pour
+    la génération, comme les candidats de `_pool` (KAN-74)."""
+    entry = ctx.spots.get(id(want))
+    if entry is None or entry[0] is not want or entry[1] is not want.item:
+        entry = (want, want.item, {})
+        ctx.spots[id(want)] = entry
+    key = (x, y, yaw)
+    found = entry[2].get(key)
+    if found is None:
+        polygon = _polygon(x, y, yaw, want)
+        fits = _fits_room(polygon, want, ctx) and ctx.fits_height(polygon, want.height)
+        parts = _score_parts(x, y, yaw, polygon, want, ctx) if fits else None
+        found = entry[2][key] = (polygon, Static(fits, parts))
+    return found
+
+
+def _static(want: Want, ctx: Context, index: int, candidate: Candidate) -> Static:
+    key = id(want)
+    entry = ctx.statics.get(key)
+    if entry is None or entry[0] is not want or entry[1] is not want.item:
+        entry = (want, want.item, {})
+        ctx.statics[key] = entry
+    cache = entry[2]
+    static = cache.get(index)
+    if static is None:
+        x, y, yaw, polygon = candidate
+        fits = _fits_room(polygon, want, ctx) and ctx.fits_height(polygon, want.height)
+        parts = _score_parts(x, y, yaw, polygon, want, ctx) if fits else None
+        static = cache[index] = Static(fits, parts)
+    return static
 
 
 def _zone_terms(want: Want, polygon: Polygon, lm: Landmarks) -> float:
@@ -993,11 +1182,15 @@ def _place_group(
                 x = ox + ux * t.dx + nx * t.dy
                 y = oy + uy * t.dx + ny * t.dy
                 yaw = base + t.dyaw
-                polygon = _polygon(x, y, yaw, w)
-                if feasible(polygon, w, ctx, placed + group) and _bed_fits(
-                    w, x, y, yaw, ctx, placed + group
+                # KAN-74 : même mémoire que `_best_position` (les ancrages reviennent à chaque
+                # essai) ; même réponse que `feasible` puis `score_candidate`.
+                polygon, static = _spot(w, ctx, x, y, yaw)
+                if (
+                    static.parts is not None
+                    and _clear_of(polygon, static.parts.box, w, ctx, placed + group)
+                    and _bed_fits(w, x, y, yaw, ctx, placed + group)
                 ):
-                    spot = (x, y, yaw, polygon, w)
+                    spot = (x, y, yaw, polygon, w, static.parts)
                     break
             if spot is None:
                 if slot.optional:
@@ -1009,8 +1202,8 @@ def _place_group(
                     total -= MISSING_COMPANION
                     continue
                 break
-            x, y, yaw, polygon, chosen = spot
-            score, _, _ = score_candidate(x, y, yaw, polygon, chosen, ctx, placed + group)
+            x, y, yaw, polygon, chosen, parts = spot
+            score = parts.total(polygon, placed + group)
             if chosen.asset.category == BUILT_IN_BED and ctx.roofs:
                 score += _head_under_slope(x, y, yaw, chosen, ctx)
             group.append(Placed(chosen, x, y, yaw, polygon, score))
@@ -1031,22 +1224,31 @@ def _best_position(
     best_key = (-math.inf, 0.0)
     previous = taken.get(want.asset.category, [])
     pool = _pool(want, ctx)
-    passes = [pool]
+    passes = [list(range(len(pool)))]
     if want.bay is not None:
         # Brief par zones (V1) : d'abord dans la baie de la zone (et un peu autour), ce qui
         # regroupe la zone et borne le calcul ; ailleurs seulement si rien n'y tient.
         reach = want.bay.buffer(BAY_MARGIN_M)
-        near = [c for c in pool if reach.contains(Point(c[0], c[1]))]
-        far = [c for c in pool if not reach.contains(Point(c[0], c[1]))]
-        passes = [near, far]
+        inside = [reach.contains(Point(c[0], c[1])) for c in pool]
+        passes = [
+            [i for i, ok in enumerate(inside) if ok],
+            [i for i, ok in enumerate(inside) if not ok],
+        ]
     for batch in passes:
-        for x, y, yaw, polygon in batch:
-            if not feasible(polygon, want, ctx, placed):
+        for index in batch:
+            x, y, yaw, polygon = candidate = pool[index]
+            # KAN-74 : la pièce, la pente et les parties fixes du score sont en mémoire ;
+            # seuls les meubles posés se recalculent (mêmes réponses que `feasible` et
+            # `score_candidate`).
+            static = _static(want, ctx, index, candidate)
+            if static.parts is None:
+                continue
+            if not _clear_of(polygon, static.parts.box, want, ctx, placed):
                 continue
             # Lit encastré (H1) : 0,90 m libres au-dessus du matelas, à l'oreiller.
             if not _bed_fits(want, x, y, yaw, ctx, placed):
                 continue
-            score, _, _ = score_candidate(x, y, yaw, polygon, want, ctx, placed)
+            score = static.parts.total(polygon, placed)
             if want.asset.category == BUILT_IN_BED and ctx.roofs:
                 score += _head_under_slope(x, y, yaw, want, ctx)
             novelty = (
