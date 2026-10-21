@@ -44,7 +44,7 @@ def accounts_client(
 
 
 def code_of(mailer: FakeMailer, email: str) -> str:
-    message = mailer.last_to(email)
+    message = mailer.last_code_to(email)
     assert message is not None, f"aucun code pour {email}"
     return message.code
 

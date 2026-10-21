@@ -39,12 +39,18 @@ def test_migrations_up_and_down(db_url: str) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert {"token_hash", "expires_at", "used_at", "next", "ip", "attempts"} <= columns
     assert "token" not in columns and "code" not in columns  # jamais le secret en clair
-    assert head_revision() == "kan52_0004"
+    assert head_revision() == "kan55_0005"
     invitations = {c["name"] for c in inspect(engine).get_columns("invitations")}
-    assert {"token_hash", "role", "expires_at", "used_at", "revoked_at"} <= invitations
+    assert {"token_hash", "role", "expires_at", "used_at", "revoked_at", "email"} <= invitations
     assert "token" not in invitations  # jamais le jeton en clair
     reads = {c["name"] for c in inspect(engine).get_columns("notification_read_items")}
     assert reads == {"user_id", "event_id", "project_id", "event_at"}
+    # KAN-55 se défait seule (la colonne de l'adresse invitée part, la table reste).
+    downgrade(engine, "kan52_0004")
+    invitations = {c["name"] for c in inspect(engine).get_columns("invitations")}
+    assert "email" not in invitations and "token_hash" in invitations
+    indexes = {i["name"] for i in inspect(engine).get_indexes("invitations")}
+    assert "ix_invitations_email" not in indexes
     # KAN-52 se défait seule (les deux tables de la cloche partent), puis B1e (la table des
     # invitations), puis B1b2 (la colonne des essais).
     downgrade(engine, "b1e_0003")
@@ -57,7 +63,7 @@ def test_migrations_up_and_down(db_url: str) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert "attempts" not in columns and "token_hash" in columns
     upgrade(engine)
-    assert current_revision(engine) == "kan52_0004"
+    assert current_revision(engine) == "kan55_0005"
     downgrade(engine, "base")
     assert "invitations" not in inspect(engine).get_table_names()
     assert "notification_reads" not in inspect(engine).get_table_names()

@@ -6495,6 +6495,26 @@ button.link.home-empty-link {
   display: block;
   margin: 6px auto 2px;
 }
+/* KAN-55 : invitations nominatives en tête de la cloche. */
+.bell-invites {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+}
+.bell-invite {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px;
+}
+.bell-invite .bell-action {
+  font-weight: 600;
+}
+.bell-invite-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
 /* KAN-58 : le journal d'activité, à droite sous la barre du haut. */
 .activity-panel {
   position: absolute;
@@ -7429,6 +7449,10 @@ button.link.home-empty-link {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
+}
+/* KAN-55 : le champ de l'adresse prend la place disponible. */
+.share-new label:has(input[type="email"]) {
+  flex: 1 1 200px;
 }
 .share-link {
   display: grid;

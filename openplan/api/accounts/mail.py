@@ -63,11 +63,8 @@ class ConsoleMailer:
 
     def send(self, message: MailMessage) -> None:
         if not message.code:
-            log.warning(
-                "message « %s » (envoi « console », rien n'est parti) pour %s",
-                message.subject,
-                mask_address(message.to),
-            )
+            # KAN-55 : ni l'adresse, même masquée, ni l'objet (qui peut nommer un projet).
+            log.warning("un message (envoi « console », rien n'est parti)")
             return
         log.warning(
             "code de connexion (envoi « console », rien n'est parti) pour %s : %s",
@@ -90,6 +87,12 @@ class FakeMailer:
     def last_to(self, address: str) -> MailMessage | None:
         with self._lock:
             found = [m for m in self.outbox if m.to == address]
+        return found[-1] if found else None
+
+    def last_code_to(self, address: str) -> MailMessage | None:
+        """Le dernier code de connexion (KAN-55 : une invitation n'en porte pas)."""
+        with self._lock:
+            found = [m for m in self.outbox if m.to == address and m.code]
         return found[-1] if found else None
 
 
@@ -156,3 +159,22 @@ def login_message(to: str, code: str, minutes: int) -> MailMessage:
         "Ceci est un envoi automatique : merci de ne pas répondre.\n"
     )
     return MailMessage(to=to, subject=subject, text=text, code=code)
+
+
+def invitation_message(
+    to: str, inviter: str, project: str, role: str, app_url: str, days: int
+) -> MailMessage:
+    """KAN-55 : invitation nominative, pour une adresse sans compte. Texte seul et aucun
+    secret (B1b2) : l'adresse publique de l'application, sans jeton ; c'est la connexion avec
+    cette adresse qui ouvre le projet."""
+    subject = f"{inviter} vous invite sur « {project} » ({APP_NAME})"
+    text = (
+        f"Bonjour,\n\n{inviter} vous invite sur « {project} » dans {APP_NAME}, "
+        f"comme {role}.\n\n"
+        f"Pour accepter, connectez-vous avec cette adresse e-mail :\n\n    {app_url}\n\n"
+        "Un code de connexion vous sera envoyé ; le projet apparaîtra dans vos espaces de "
+        f"travail. L'invitation expire dans {days} jours.\n\n"
+        "Si vous ne connaissez pas cette personne, ignorez ce message.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text)

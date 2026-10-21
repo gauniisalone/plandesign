@@ -25,6 +25,7 @@ from openplan.api.access import (
     SESSION_COOKIE,
     SESSION_MAX_AGE_S,
     AdminDep,
+    AuthUser,
     SignedInDep,
 )
 from openplan.api.accounts.mail import FakeMailer, MailMessage
@@ -251,10 +252,11 @@ def login_verify_page(
     même page, avec le même texte quel que soit le motif."""
     agent = request.headers.get("user-agent", "")
     try:
-        _, raw, next_path = service(request).complete_login(email, code, agent)
+        user, raw, next_path = service(request).complete_login(email, code, agent)
     except LoginRefusedError as exc:
         text = REFUSAL_TEXT[exc.reason]
         return _code_step(email, safe_next(next), f"Connexion impossible : {text}", 400)
+    claim_invitations(request, user)
     response = RedirectResponse(next_path, status_code=303)
     set_session_cookie(response, raw)
     return response
@@ -271,6 +273,7 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
     except LoginRefusedError as exc:
         status = 403 if exc.reason is LoginRefusal.CLOSED else 400
         raise HTTPException(status_code=status, detail=REFUSAL_TEXT[exc.reason]) from exc
+    claim_invitations(request, user)
     set_session_cookie(response, raw)
     return Me(
         id=user.id,
@@ -292,16 +295,31 @@ def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> 
     except InvitationRefusedError as exc:
         raise HTTPException(status_code=410, detail=INVITE_REFUSED) from exc
     if project_id not in before:
-        # KAN-52 : « X a rejoint le projet », pour les autres membres.
-        store = request.app.state.store
-        if store.exists(project_id):
-            ProjectEvents(store.project_dir(project_id)).append(
-                ProjectEvent(type="member.joined", project_id=project_id, actor=str(user.id))
-            )
-            from openplan.api.accounts.live import ring_project
-
-            from_thread.run(ring_project, request.app, project_id, str(user.id))
+        announce_join(request, project_id, user.id)
     return Accepted(project_id=project_id, role=role)
+
+
+def announce_join(request: Request, project_id: UUID, user_id: UUID) -> None:
+    """KAN-52 : « X a rejoint le projet », pour les autres membres."""
+    store = request.app.state.store
+    if store.exists(project_id):
+        ProjectEvents(store.project_dir(project_id)).append(
+            ProjectEvent(type="member.joined", project_id=project_id, actor=str(user_id))
+        )
+        from openplan.api.accounts.live import ring_project
+
+        from_thread.run(ring_project, request.app, project_id, str(user_id))
+
+
+def claim_invitations(request: Request, user: AuthUser) -> None:
+    """KAN-55 : un compte créé par cette connexion devient membre des projets où son adresse
+    était invitée nommément (avec le rôle prévu)."""
+    if not user.first_login:
+        return
+    before = set(service(request).roles_of(user.id))
+    for project_id, _ in service(request).claim_email_invitations(user.id, user.email):
+        if project_id not in before:
+            announce_join(request, project_id, user.id)
 
 
 @router.get("/auth/me")
@@ -348,7 +366,7 @@ def admin_revoke(user_id: UUID, request: Request, admin: AdminDep) -> Revoked:
 def last_code(email: str, request: Request) -> LastCode:
     """Tests de bout en bout : le dernier code envoyé à cette adresse par le mailer `fake`."""
     mailer = service(request).mailer
-    message = mailer.last_to(email.strip().lower()) if isinstance(mailer, FakeMailer) else None
+    message = mailer.last_code_to(email.strip().lower()) if isinstance(mailer, FakeMailer) else None
     if message is None:
         raise HTTPException(status_code=404, detail="aucun code pour cette adresse")
     return LastCode(code=message.code)

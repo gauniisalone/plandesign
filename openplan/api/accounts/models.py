@@ -136,6 +136,7 @@ class Invitation(Base):
     __tablename__ = "invitations"
     __table_args__ = (
         CheckConstraint("role IN ('viewer', 'commenter', 'editor')", name="role_invitable"),
+        Index("ix_invitations_email", "email"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -154,6 +155,10 @@ class Invitation(Base):
     )
     used_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    """Révoquée par le propriétaire, ou refusée par l'invité (KAN-55)."""
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    """KAN-55 : l'adresse invitée (normalisée), pour une invitation nominative ; None pour un
+    lien. Montrée au seul propriétaire, jamais journalisée."""
 
 
 class NotificationRead(Base):

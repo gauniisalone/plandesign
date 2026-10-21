@@ -11,7 +11,8 @@
   vérification d'un code répond pareil qu'il soit faux, expiré, épuisé ou déjà servi.
 - Compte : retrouvé par l'adresse normalisée ; créé seulement si l'inscription est ouverte
   (`OPENPLAN_SIGNUP=open`), pour l'adresse administrateur, ou (B1e) avec le jeton d'un lien
-  d'invitation encore valable, présenté à la demande et à la vérification du code.
+  d'invitation encore valable, présenté à la demande et à la vérification du code, ou
+  (KAN-55) pour une adresse invitée nommément à un projet.
 - Session : 32 octets aléatoires en cookie `pd_session`, empreinte en base, 30 jours
   prolongés à l'usage (au plus une fois par heure), révocable.
 """
@@ -173,6 +174,8 @@ class AccountService(AccountsRepo, SharingMixin):
             return True
         if db.scalar(select(User.id).where(User.email == email)) is not None:
             return True
+        if self._live_for_email(db, email):  # KAN-55 : adresse invitée nommément
+            return True
         return invitation is not None and self._live_invitation(db, invitation) is not None
 
     def start_login(
@@ -301,6 +304,7 @@ class AccountService(AccountsRepo, SharingMixin):
                             is_admin_address
                             or self.settings.signup == "open"
                             or self.valid_invitation(invitation)
+                            or self.has_email_invitation(email)
                         ):
                             raise LoginRefusedError(LoginRefusal.CLOSED)
                         user = User(email=email, name="", is_admin=False, created_at=now)

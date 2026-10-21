@@ -8,13 +8,18 @@ import {
   relativeTime,
 } from "../state/bellText";
 import { IconBell } from "../ui/icons";
+import { useMyInvitations } from "../state/myInvitations";
+import { BellInvitations } from "./BellInvitations";
 
 /** KAN-52 : la cloche, en haut à droite (accueil et atelier). Badge des non-lus (« 9+ »),
  *  panneau à deux onglets (« Non lues », « Toutes »), 50 lignes puis « Voir plus » ; un clic
  *  sur une ligne la marque comme lue (elle seule) et ouvre le projet au bon endroit ;
  *  « Tout marquer comme lu » remet le compteur à 0. */
 export function Bell({ accounts }: { accounts: boolean }) {
-  const { unread, tick, refresh } = useBell(accounts);
+  const { unread: lineCount, tick, refresh } = useBell(accounts);
+  // KAN-55 : les invitations qui m'attendent comptent dans le badge.
+  const invites = useMyInvitations(accounts, tick);
+  const unread = lineCount + invites.list.length;
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"unread" | "all">("unread");
   const [lines, setLines] = useState<BellLine[]>([]);
@@ -122,17 +127,29 @@ export function Bell({ accounts }: { accounts: boolean }) {
             <button
               type="button"
               className="link"
-              disabled={unread === 0}
+              disabled={lineCount === 0}
               onClick={() => void readAll()}
             >
               Tout marquer comme lu
             </button>
           </header>
-          {lines.length === 0 && loaded === tab && (
-            <p className="bell-empty">
-              {tab === "unread" ? "Rien de nouveau." : "Aucune notification."}
-            </p>
-          )}
+          <BellInvitations
+            list={invites.list}
+            onDone={(projectId) => {
+              invites.reload();
+              refresh();
+              if (!projectId) return;
+              setOpen(false);
+              window.location.assign(`#/projects/${projectId}/board`);
+            }}
+          />
+          {lines.length === 0 &&
+            invites.list.length === 0 &&
+            loaded === tab && (
+              <p className="bell-empty">
+                {tab === "unread" ? "Rien de nouveau." : "Aucune notification."}
+              </p>
+            )}
           <ul className="bell-lines">
             {lines.map((line) => (
               <li key={line.id}>

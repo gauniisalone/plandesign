@@ -52,6 +52,7 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("GET", P + "/invitations"): O,
     ("POST", P + "/invitations"): O,
     ("DELETE", P + "/invitations/{invitation_id}"): O,
+    ("POST", P + "/invitations/email"): O,  # KAN-55 : invitation nominative
     ("GET", P + "/members"): O,
     ("PATCH", P + "/members/{user_id}"): O,
     ("DELETE", P + "/members/{user_id}"): O,
@@ -221,6 +222,10 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("PATCH", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
     ("POST", "/api/auth/invitation/accept"): "user",
+    # KAN-55 : mes invitations nominatives (cloche) ; filtrées par l'adresse du compte.
+    ("GET", "/api/invitations"): "user",
+    ("POST", "/api/invitations/{invitation_id}/accept"): "user",
+    ("POST", "/api/invitations/{invitation_id}/decline"): "user",
     ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",

@@ -13,7 +13,8 @@ import { ROLE_LABEL } from "../state/account";
 /** Menu « Partager » (B1e, propriétaire seulement). Un lien d'invitation par personne : rôle et
  *  durée choisis, lien montré UNE fois (le serveur n'en garde que l'empreinte) avec « Copier » ;
  *  il ne part par aucun e-mail, on le transmet soi-même. Liens en attente (révocables) et
- *  membres (rôle, retrait). */
+ *  membres (rôle, retrait). KAN-55 : inviter une adresse avec un rôle (toujours « Invitation
+ *  envoyée », compte ou non) ; invitations en attente, annulables, 14 jours. */
 
 const INVITE_ROLES: Role[] = ["viewer", "commenter", "editor"];
 const DAYS = [1, 7, 30] as const;
@@ -37,6 +38,10 @@ export function ShareDialog({
   const [members, setMembers] = useState<MemberOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // KAN-55 : invitation nominative (adresse et rôle).
+  const [email, setEmail] = useState("");
+  const [emailRole, setEmailRole] = useState<Role>("editor");
+  const [sent, setSent] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     shareApi.invitations(projectId).then(setPending, (e) => setError(text(e)));
@@ -58,6 +63,26 @@ export function ShareDialog({
       setBusy(false);
     }
   };
+  const inviteEmail = async () => {
+    if (!email.trim()) return;
+    setBusy(true);
+    setError(null);
+    setSent(null);
+    try {
+      const done = await shareApi.inviteEmail(
+        projectId,
+        email.trim(),
+        emailRole,
+      );
+      setSent(done.detail);
+      setEmail("");
+      refresh();
+    } catch (e) {
+      setError(text(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const copy = async () => {
     if (!link) return;
     try {
@@ -69,6 +94,8 @@ export function ShareDialog({
       );
     }
   };
+  const invited = pending.filter((p) => p.email);
+  const links = pending.filter((p) => !p.email);
   const act = (run: () => Promise<unknown>) => {
     setError(null);
     run().then(refresh, (e) => setError(text(e)));
@@ -97,6 +124,52 @@ export function ShareDialog({
             ×
           </button>
         </header>
+
+        <form
+          className="share-new"
+          aria-label="Inviter par e-mail"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void inviteEmail();
+          }}
+        >
+          <label>
+            Adresse e-mail
+            <input
+              type="email"
+              autoComplete="off"
+              maxLength={320}
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setSent(null);
+              }}
+            />
+          </label>
+          <label>
+            Rôle
+            <select
+              aria-label="Rôle de l'invité"
+              value={emailRole}
+              onChange={(e) => setEmailRole(e.target.value as Role)}
+            >
+              {INVITE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="primary" disabled={busy}>
+            Inviter
+          </button>
+        </form>
+        {sent && (
+          <p className="muted" role="status">
+            {sent}
+          </p>
+        )}
 
         <div className="share-new" role="group" aria-label="Nouveau lien">
           <label>
@@ -154,11 +227,35 @@ export function ShareDialog({
           </div>
         )}
 
-        {pending.length > 0 && (
+        {invited.length > 0 && (
+          <>
+            <h3>Invitations en attente</h3>
+            <ul className="share-list" aria-label="Invitations en attente">
+              {invited.map((p) => (
+                <li key={p.id}>
+                  <span className="share-email">{p.email}</span>
+                  <span className="muted">
+                    {ROLE_LABEL[p.role]} · expire le {formatDate(p.expires_at)}
+                  </span>
+                  <button
+                    type="button"
+                    className="link"
+                    aria-label={`Annuler l'invitation de ${p.email}`}
+                    onClick={() => act(() => shareApi.revoke(projectId, p.id))}
+                  >
+                    Annuler
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {links.length > 0 && (
           <>
             <h3>Liens en attente</h3>
             <ul className="share-list" aria-label="Liens en attente">
-              {pending.map((p) => (
+              {links.map((p) => (
                 <li key={p.id}>
                   <span>
                     {ROLE_LABEL[p.role]} · expire le {formatDate(p.expires_at)}

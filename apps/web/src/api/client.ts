@@ -245,6 +245,8 @@ export interface InvitationOut {
   role: Role;
   created_at: string;
   expires_at: string;
+  /** KAN-55 : l'adresse d'une invitation nominative ; absente pour un lien. */
+  email?: string | null;
 }
 
 export interface MemberOut {
@@ -266,6 +268,12 @@ export const shareApi = {
     request<InvitationOut[]>(`/projects/${pid}/invitations`),
   revoke: (pid: string, id: string) =>
     request<void>(`/projects/${pid}/invitations/${id}`, { method: "DELETE" }),
+  /** KAN-55 : toujours « Invitation envoyée », que l'adresse ait un compte ou non. */
+  inviteEmail: (pid: string, email: string, role: Role) =>
+    request<{ detail: string }>(
+      `/projects/${pid}/invitations/email`,
+      json({ email, role }),
+    ),
   members: (pid: string) => request<MemberOut[]>(`/projects/${pid}/members`),
   setRole: (pid: string, userId: string, role: Role) =>
     request<MemberOut[]>(`/projects/${pid}/members/${userId}`, {
@@ -276,6 +284,27 @@ export const shareApi = {
     request<MemberOut[]>(`/projects/${pid}/members/${userId}`, {
       method: "DELETE",
     }),
+};
+
+/** KAN-55 : une invitation nominative qui m'attend (cloche, comptes seulement). */
+export interface MyInvitation {
+  id: string;
+  project_id: string;
+  project_name: string;
+  role: Role;
+  inviter_name: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export const myInvitationsApi = {
+  list: () => request<MyInvitation[]>("/invitations"),
+  accept: (id: string) =>
+    request<{ project_id: string; role: Role }>(`/invitations/${id}/accept`, {
+      method: "POST",
+    }),
+  decline: (id: string) =>
+    request<void>(`/invitations/${id}/decline`, { method: "POST" }),
 };
 
 /** Le lien à copier : le jeton dans l'ancre (jamais envoyé au serveur dans une URL). */
