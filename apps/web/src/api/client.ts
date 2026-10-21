@@ -948,7 +948,11 @@ export const browserDepthApi = {
     width: number,
     height: number,
   ) =>
-    request<{ image_id: string; depth_size: [number, number]; model_id: string }>(
+    request<{
+      image_id: string;
+      depth_size: [number, number];
+      model_id: string;
+    }>(
       `/projects/${pid}/levels/${lid}/images/${imageId}/depth?image_width=${width}&image_height=${height}`,
       {
         method: "PUT",
@@ -961,7 +965,8 @@ export const browserDepthApi = {
     const res = await fetch(api.imageFileUrl(pid, imageId), {
       credentials: "same-origin",
     });
-    if (!res.ok) throw new ApiError(`photo illisible (${res.status})`, res.status);
+    if (!res.ok)
+      throw new ApiError(`photo illisible (${res.status})`, res.status);
     return res.blob();
   },
 };

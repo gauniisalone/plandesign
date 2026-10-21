@@ -103,8 +103,7 @@ def test_project_files_are_served_only_through_storage() -> None:
     offenders = [
         p.name
         for p in ROUTES_DIR.glob("*.py")
-        if p.name not in outside_projects
-        and re.search(r"FileResponse|StaticFiles", p.read_text())
+        if p.name not in outside_projects and re.search(r"FileResponse|StaticFiles", p.read_text())
     ]
     assert offenders == []
 

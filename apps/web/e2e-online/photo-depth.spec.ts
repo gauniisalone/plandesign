@@ -28,7 +28,12 @@ test.afterAll(() => {
 
 /** Profondeur exacte de la pièce 4 × 3 m de la fixture (tests/synthetic_depth.py, BoxDepth),
  *  aux pixels gardés (un sur `step`). */
-function boxDepth(width: number, height: number, gw: number, gh: number): Float32Array {
+function boxDepth(
+  width: number,
+  height: number,
+  gw: number,
+  gh: number,
+): Float32Array {
   const [px, py, pz] = [0.7, 0.6, 1.4];
   const yaw = 0.8727;
   const pitch = -0.2094;
@@ -124,7 +129,9 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
       await route.fulfill({
         status: 422,
         contentType: "application/json",
-        body: JSON.stringify({ detail: "profondeur refusée : valeurs non finies" }),
+        body: JSON.stringify({
+          detail: "profondeur refusée : valeurs non finies",
+        }),
       });
       return;
     }
@@ -137,7 +144,9 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   const health = (await (await page.request.get("/api/health")).json()) as {
     weights: string[];
   };
-  expect(health.weights).toContain("depth_anything_v2_metric_indoor_small_web@1.0");
+  expect(health.weights).toContain(
+    "depth_anything_v2_metric_indoor_small_web@1.0",
+  );
   const a = (await (
     await page.request.post("/api/projects", {
       data: { name: "Pièce photo" },
@@ -147,10 +156,14 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   await gotoApp(page, `/#/projects/${a.id}/board`);
   const board = page.getByRole("region", { name: "Espace de travail" });
   // Le plan depuis une photo n'est plus « bientôt en ligne ».
-  await expect(board.locator(".board-item.kind-frame.role-photos")).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(board.getByText("Plan depuis photo : bientôt en ligne")).toHaveCount(0);
+  await expect(board.locator(".board-item.kind-frame.role-photos")).toBeVisible(
+    {
+      timeout: 30_000,
+    },
+  );
+  await expect(
+    board.getByText("Plan depuis photo : bientôt en ligne"),
+  ).toHaveCount(0);
 
   // Dépôt d'une photo : analyse dans le navigateur, envoi refusé, « Réessayer ».
   const photos = board.locator(".board-item.kind-frame.role-photos");
@@ -170,10 +183,14 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   await expect(status).toHaveCount(0, { timeout: 30_000 });
 
   // Le plan est construit par le serveur, sans modèle, depuis la profondeur envoyée.
-  await expect(board.locator(".board-item.kind-plan img.board-plan")).toBeVisible({
+  await expect(
+    board.locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({
     timeout: 90_000,
   });
-  const project = (await (await page.request.get(`/api/projects/${a.id}`)).json()) as {
+  const project = (await (
+    await page.request.get(`/api/projects/${a.id}`)
+  ).json()) as {
     levels: Record<string, { elements: Record<string, { type: string }> }>;
   };
   const level = Object.values(project.levels)[0]!;
@@ -231,22 +248,30 @@ test("KAN-81 : deux photos importées, « Générer le plan » construit le plan
       timeout: 30_000,
     });
   }
-  await expect(board.getByText("Plan depuis photo : bientôt en ligne")).toHaveCount(0);
+  await expect(
+    board.getByText("Plan depuis photo : bientôt en ligne"),
+  ).toHaveCount(0);
   // Le bouton du cadre Plan vide, celui qu'augus a cliqué.
   await board
     .locator(".board-item.kind-plan")
     .getByRole("button", { name: "Générer le plan", exact: true })
     .click();
-  await expect(board.locator(".board-item.kind-plan img.board-plan")).toBeVisible({
+  await expect(
+    board.locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({
     timeout: 90_000,
   });
-  const project = (await (await page.request.get(`/api/projects/${a.id}`)).json()) as {
+  const project = (await (
+    await page.request.get(`/api/projects/${a.id}`)
+  ).json()) as {
     levels: Record<string, { elements: Record<string, { type: string }> }>;
   };
   const level = Object.values(project.levels)[0]!;
   expect(
     Object.values(level.elements).filter((e) => e.type === "wall").length,
   ).toBeGreaterThanOrEqual(3);
-  await expect(page.getByText("décrivez la pièce dans le compositeur")).toHaveCount(0);
+  await expect(
+    page.getByText("décrivez la pièce dans le compositeur"),
+  ).toHaveCount(0);
   expect(failures).toEqual([]);
 });

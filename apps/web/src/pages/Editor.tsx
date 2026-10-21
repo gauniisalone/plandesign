@@ -1454,13 +1454,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 state.photoDepth && !state.photoDepth.error
                   ? "Analyse de la photo…"
                   : state.autoJob?.status === "queued" ||
-                state.pilotJob?.status === "queued"
-                  ? "En attente"
-                  : state.autoJob?.status === "running"
-                    ? `Construction du plan : ${jobSentence(state.autoJob)}`
-                    : state.pilotJob?.status === "running"
-                      ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
-                      : null
+                      state.pilotJob?.status === "queued"
+                    ? "En attente"
+                    : state.autoJob?.status === "running"
+                      ? `Construction du plan : ${jobSentence(state.autoJob)}`
+                      : state.pilotJob?.status === "running"
+                        ? `Chemin automatique : ${jobSentence(state.pilotJob)}`
+                        : null
               }
               onAddSource={() => goStep("import")}
               onImportPlan={(file) => {

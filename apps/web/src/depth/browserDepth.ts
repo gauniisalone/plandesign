@@ -95,7 +95,9 @@ async function modelBytes(
   onProgress: (p: DepthProgress) => void,
 ): Promise<ArrayBuffer> {
   const cache = await openCache();
-  const cached = cache ? await cache.match(MODEL_URL).catch(() => undefined) : undefined;
+  const cached = cache
+    ? await cache.match(MODEL_URL).catch(() => undefined)
+    : undefined;
   const headers: Record<string, string> = {};
   const etag = cached?.headers.get("ETag");
   if (etag) headers["If-None-Match"] = etag;
@@ -143,7 +145,10 @@ interface Loaded {
 let loading: Promise<Loaded> | null = null;
 
 async function load(onProgress: (p: DepthProgress) => void): Promise<Loaded> {
-  onProgress({ label: "Chargement de la bibliothèque de calcul", fraction: null });
+  onProgress({
+    label: "Chargement de la bibliothèque de calcul",
+    fraction: null,
+  });
   const ort = (await import(/* @vite-ignore */ ORT_MODULE)) as typeof Ort;
   ort.env.wasm.wasmPaths = ORT_DIR;
   const bytes = new Uint8Array(await modelBytes(onProgress));
@@ -187,10 +192,9 @@ async function pixels(
         ? new OffscreenCanvas(width, height)
         : Object.assign(document.createElement("canvas"), { width, height });
     const ctx = canvas.getContext("2d") as
-      | CanvasRenderingContext2D
-      | OffscreenCanvasRenderingContext2D
-      | null;
-    if (!ctx) throw new Error("lecture de la photo impossible dans ce navigateur");
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+    if (!ctx)
+      throw new Error("lecture de la photo impossible dans ce navigateur");
     ctx.drawImage(bitmap, 0, 0);
     return { data: ctx.getImageData(0, 0, width, height).data, width, height };
   } finally {

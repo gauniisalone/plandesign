@@ -36,7 +36,10 @@ test("float16 : arrondi au pair le plus proche, comme numpy", () => {
   assert.equal(toHalf(2.5e-5), 0x01a3); // sous-normal
   assert.equal(toHalf(1 + 2 ** -11), 0x3c00); // milieu exact : pair
   assert.equal(toHalf(1 + 3 * 2 ** -11), 0x3c02);
-  assert.deepEqual([...toHalfArray(new Float32Array([1, 2]))], [0x3c00, 0x4000]);
+  assert.deepEqual(
+    [...toHalfArray(new Float32Array([1, 2]))],
+    [0x3c00, 0x4000],
+  );
 });
 
 test("photo uniforme : entrée normalisée ImageNet, à la taille du modèle", () => {
@@ -77,10 +80,19 @@ test("sortie du modèle → grille : lue au pixel gardé, bornée à la plage du
     const want = 1 + sx / dw + (2 * sy) / dh;
     assert.ok(Math.abs(grid.data[j * 640 + i]! - want) < 5e-4);
   }
-  const flat = depthGrid(new Float32Array(dw * dh).fill(2.5), dw, dh, 1280, 960);
+  const flat = depthGrid(
+    new Float32Array(dw * dh).fill(2.5),
+    dw,
+    dh,
+    1280,
+    960,
+  );
   assert.ok(flat.data.every((v) => Math.abs(v - 2.5) < 1e-6));
   const far = depthGrid(new Float32Array(dw * dh).fill(50), dw, dh, 1280, 960);
-  assert.equal(far.data.reduce((a, b) => Math.max(a, b), 0), 20);
+  assert.equal(
+    far.data.reduce((a, b) => Math.max(a, b), 0),
+    20,
+  );
   const near = depthGrid(new Float32Array(dw * dh), dw, dh, 1280, 960);
   const low = near.data.reduce((a, b) => Math.min(a, b), Infinity);
   assert.ok(Math.abs(low - 0.01) < 1e-6);
