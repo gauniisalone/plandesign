@@ -60,6 +60,7 @@ import {
   computeDepth,
   type DepthProgress,
   modelCached,
+  LibraryFailed,
   PhotoSizeMismatch,
 } from "../depth/browserDepth";
 import { takePendingArrival } from "./pendingArrival";
@@ -153,6 +154,9 @@ export interface PhotoDepthState {
   /** Premier dépôt : le modèle et la bibliothèque se téléchargent (annoncé). */
   firstTime: boolean;
   error: string | null;
+  /** La bibliothèque de calcul n'a pas démarré dans cette page : seul un rechargement aide
+   *  (« Recharger la page » au lieu de « Réessayer », correctif de KAN-79). */
+  reload?: boolean;
 }
 
 const INITIAL: EditorState = {
@@ -642,6 +646,7 @@ export function useProject(projectId: string) {
             patch({
               fraction: null,
               error: e instanceof Error ? e.message : String(e),
+              reload: e instanceof LibraryFailed,
             });
           }
         })();

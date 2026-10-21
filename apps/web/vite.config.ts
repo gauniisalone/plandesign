@@ -75,16 +75,29 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
+        // Correctif KAN-79 : la page (index.html) n'est plus précachée. Ses en-têtes, dont la
+        // CSP, sont ceux du serveur : précachée, elle gardait ceux de l'installation du service
+        // worker, et une CSP corrigée sur le serveur seul (front inchangé, donc aucune mise à
+        // jour détectée) n'arrivait jamais, même après un rechargement normal. Les navigations
+        // passent par le réseau d'abord ; la dernière page reçue sert hors ligne.
+        globPatterns: ["**/*.{js,css,png,svg,woff2}"],
         globIgnores: ["ort/**"],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [
-          /^\/api\//,
-          /^\/docs/,
-          /^\/redoc/,
-          /^\/openapi\.json/,
+        // Sans ce null, vite-plugin-pwa ajoute d'office une route de navigation vers
+        // l'index.html précaché (qui ne l'est plus), avant la nôtre.
+        navigateFallback: null,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === "navigate" &&
+              !/^\/(api\/|docs|redoc|openapi\.json)/.test(url.pathname),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "plandesign-pages",
+              networkTimeoutSeconds: 3, // réseau lent : la dernière page reçue après 3 s
+              expiration: { maxEntries: 8 },
+            },
+          },
         ],
-        runtimeCaching: [],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
       },

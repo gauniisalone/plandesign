@@ -202,6 +202,43 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   expect(failures).toEqual([]);
 });
 
+/** Correctif de KAN-79 : quand la bibliothèque de calcul ne démarre pas dans la page (en
+ *  production : WebAssembly refusé par une ancienne CSP), une nouvelle tentative au même endroit
+ *  échouerait encore (onnxruntime-web garde l'échec). Le bandeau propose alors « Recharger la
+ *  page », pas « Réessayer ». Ici, la bibliothèque est refusée (404), sans profondeur simulée. */
+test("correctif KAN-79 : bibliothèque non démarrée → « Recharger la page », pas « Réessayer »", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.182" });
+  await page.route("**/ort/ort.webgpu.min.mjs", (route) =>
+    route.fulfill({ status: 404, body: "" }),
+  );
+  await signIn(page, "kan79-recharger@example.org");
+  const origin = { Origin: new URL(page.url()).origin };
+  const a = (await (
+    await page.request.post("/api/projects", {
+      data: { name: "Bibliothèque absente" },
+      headers: origin,
+    })
+  ).json()) as { id: string };
+  await gotoApp(page, `/#/projects/${a.id}/board`);
+  const board = page.getByRole("region", { name: "Espace de travail" });
+  const photos = board.locator(".board-item.kind-frame.role-photos");
+  await expect(photos).toBeVisible({ timeout: 30_000 });
+  const chooser = page.waitForEvent("filechooser");
+  await photos.getByRole("button", { name: "Importer" }).click();
+  await (await chooser).setFiles(PHOTO);
+  const failed = page.getByRole("alert", { name: "Analyse de la photo" });
+  await expect(failed).toContainText("rechargez la page", { timeout: 30_000 });
+  await expect(
+    failed.getByRole("button", { name: "Recharger la page", exact: true }),
+  ).toBeVisible();
+  await expect(
+    failed.getByRole("button", { name: "Réessayer", exact: true }),
+  ).toHaveCount(0);
+});
+
 /** KAN-81 (signalé en production) : deux photos du grenier importées, « Générer le plan »
  *  disait « décrivez la pièce dans le compositeur ». Avec la profondeur du navigateur, le
  *  plan se construit depuis les photos. */

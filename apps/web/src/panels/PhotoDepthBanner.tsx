@@ -25,9 +25,17 @@ export function PhotoDepthBanner({
             La photo est rangée ; vous pouvez continuer à travailler.
           </span>
         </span>
-        <button className="primary" onClick={onRetry}>
-          Réessayer
-        </button>
+        {depth.reload ? (
+          // Correctif de KAN-79 : la bibliothèque n'a pas démarré dans cette page, une nouvelle
+          // tentative ici échouerait encore ; le rechargement repart de zéro.
+          <button className="primary" onClick={() => window.location.reload()}>
+            Recharger la page
+          </button>
+        ) : (
+          <button className="primary" onClick={onRetry}>
+            Réessayer
+          </button>
+        )}
         <button className="link" onClick={onDismiss}>
           fermer
         </button>

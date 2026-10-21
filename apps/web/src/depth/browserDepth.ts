@@ -31,6 +31,22 @@ export interface BrowserDepthResult {
  *  celle du serveur. */
 export class PhotoSizeMismatch extends Error {}
 
+/** La bibliothèque de calcul n'a pas démarré dans cette page (import, ou initialisation du
+ *  WebAssembly refusée) : onnxruntime-web garde l'échec en mémoire (« previous call to
+ *  'initWasm()' failed »), une nouvelle tentative dans la même page échouerait encore. Seul un
+ *  rechargement de la page repart de zéro (correctif de KAN-79). */
+export class LibraryFailed extends Error {}
+
+let broken: LibraryFailed | null = null;
+
+function libraryFailed(e: unknown): LibraryFailed {
+  const detail = e instanceof Error ? e.message : String(e);
+  broken = new LibraryFailed(
+    `la bibliothèque de calcul n'a pas démarré dans cette page (${detail}) : rechargez la page`,
+  );
+  return broken;
+}
+
 type DepthStub = (
   width: number,
   height: number,
@@ -145,12 +161,19 @@ interface Loaded {
 let loading: Promise<Loaded> | null = null;
 
 async function load(onProgress: (p: DepthProgress) => void): Promise<Loaded> {
+  if (broken) throw broken;
   onProgress({
     label: "Chargement de la bibliothèque de calcul",
     fraction: null,
   });
-  const ort = (await import(/* @vite-ignore */ ORT_MODULE)) as typeof Ort;
+  let ort: typeof Ort;
+  try {
+    ort = (await import(/* @vite-ignore */ ORT_MODULE)) as typeof Ort;
+  } catch (e) {
+    throw libraryFailed(e);
+  }
   ort.env.wasm.wasmPaths = ORT_DIR;
+  // Le téléchargement du modèle peut échouer (réseau) : là, « Réessayer » a un sens.
   const bytes = new Uint8Array(await modelBytes(onProgress));
   onProgress({ label: "Préparation du modèle", fraction: null });
   const gpu = typeof navigator !== "undefined" && "gpu" in navigator;
@@ -164,10 +187,14 @@ async function load(onProgress: (p: DepthProgress) => void): Promise<Loaded> {
       // WebGPU présent mais refusé (pilote, mémoire) : WASM.
     }
   }
-  const session = await ort.InferenceSession.create(bytes, {
-    executionProviders: ["wasm"],
-  });
-  return { ort, session, device: "wasm" };
+  try {
+    const session = await ort.InferenceSession.create(bytes, {
+      executionProviders: ["wasm"],
+    });
+    return { ort, session, device: "wasm" };
+  } catch (e) {
+    throw libraryFailed(e);
+  }
 }
 
 function loaded(onProgress: (p: DepthProgress) => void): Promise<Loaded> {
