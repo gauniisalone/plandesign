@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from openplan.geom.built_in_bed import INSET_M, SIDE_M
 from openplan.pipeline.decor import (
     DRAPE_DROP_M,
     JUTE_DEPTH_M,
@@ -40,7 +41,10 @@ def test_throw_drapes_over_the_sides_at_a_slight_angle() -> None:
 def test_built_in_bed_gets_a_soft_linen_duvet() -> None:
     decor = dress_level(_bedroom("bed_builtin"))
     duvet = next(d for d in decor if d.kind == "duvet")
-    assert duvet.drape == 1.4 / 2 and duvet.z == 0.55
+    # KAN-25 : la couette est bordée sur le matelas, entre les joues de la niche (largeur du lit
+    # moins les deux joues et le retrait du matelas), sans retomber sur les côtés.
+    inner = 1.4 - 2 * (SIDE_M + INSET_M)
+    assert duvet.drape == inner / 2 and duvet.width == inner and duvet.z == 0.55
     assert next(d for d in decor if d.kind == "throw").z > duvet.z
 
 
