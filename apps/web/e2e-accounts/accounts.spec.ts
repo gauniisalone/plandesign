@@ -924,14 +924,18 @@ test("KAN-12 : ma place affichée, un envoi trop gros refusé avant l'envoi et p
     )
       sent.push(r.url());
   });
+  // KAN-77 : plus de menu « Importer » dans la barre de gauche : le fichier est déposé sur
+  // l'espace de travail (le glisser-déposer reste).
+  const dropped = await page.evaluateHandle((size) => {
+    const dt = new DataTransfer();
+    dt.items.add(
+      new File([new Uint8Array(size)], "gros.pdf", { type: "application/pdf" }),
+    );
+    return dt;
+  }, big.length);
   await page
-    .locator('.board-stage ~ input[type="file"], input[type="file"]')
-    .first()
-    .setInputFiles({
-      name: "gros.pdf",
-      mimeType: "application/pdf",
-      buffer: big,
-    });
+    .locator(".board-stage")
+    .dispatchEvent("drop", { dataTransfer: dropped });
   await expect(page.getByText(/Pas assez de place/)).toBeVisible();
   expect(sent).toHaveLength(0);
   await shot(page, "16-envoi-refuse");
