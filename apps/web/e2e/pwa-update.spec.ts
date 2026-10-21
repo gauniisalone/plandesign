@@ -107,6 +107,35 @@ test("une nouvelle version publiée s'affiche au premier rechargement", async ({
   await context.close();
 });
 
+test("KAN-80 : un clic dans les premières secondes n'est jamais perdu dans un rechargement", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  current = builds.A!;
+  await page.goto(base + "/");
+  await controlled(page);
+  expect(await buildId(page)).toBe("A");
+  // Une mise en ligne (B) : la page rechargée la trouve dans ses premières secondes, mais la
+  // personne clique aussitôt (comme sur « Nouveau projet » juste après s'être connectée).
+  current = builds.B!;
+  await page.reload();
+  let loads = 0;
+  page.on("load", () => {
+    loads += 1;
+  });
+  await page.mouse.click(5, 5);
+  const banner = page
+    .getByRole("status")
+    .filter({ hasText: "Nouvelle version disponible" });
+  await expect(banner).toBeVisible({ timeout: 30_000 });
+  expect(loads, "aucun rechargement d'office après le clic").toBe(0);
+  expect(await buildId(page)).toBe("A");
+  await banner.getByRole("button", { name: "Recharger" }).click();
+  await expect.poll(() => buildId(page), { timeout: 30_000 }).toBe("B");
+  await context.close();
+});
+
 test("une mise à jour en cours de travail propose de recharger", async ({
   browser,
 }) => {

@@ -13,7 +13,12 @@ import { registerSW } from "virtual:pwa-register";
  *  Le rechargement est fait ici, au changement de contrôleur demandé par nous : celui de
  *  vite-plugin-pwa (1.3) ne recharge pas quand la mise à jour a été trouvée hors de lui (au
  *  chargement de la page, par le navigateur), ce qui laissait l'onglet sur l'ancienne
- *  version. */
+ *  version.
+ *
+ *  KAN-80 : « les premières secondes » s'arrêtent au premier geste. Une page sur laquelle la
+ *  personne a commencé à agir (un clic, une touche) n'est jamais rechargée d'office : juste
+ *  après une mise en ligne, le premier clic sur « Nouveau projet » se perdait dans ce
+ *  rechargement. La mise à jour passe alors par le bandeau. */
 
 const YOUNG_MS_DEFAULT = 15_000;
 const CHECK_EVERY_MS = 30 * 60 * 1000;
@@ -23,7 +28,17 @@ let registration: ServiceWorkerRegistration | undefined;
 let ready = false;
 let applying = false;
 let reloading = false;
+let acted = false;
+/** Application automatique (premières secondes), annulée si la personne agit entre-temps. */
+let automatic = false;
+/** La nouvelle version a déjà pris la main sans recharger (geste pendant l'application). */
+let activated = false;
 const listeners = new Set<() => void>();
+
+function showBanner(): void {
+  ready = true;
+  listeners.forEach((l) => l());
+}
 
 function youngMs(): number {
   try {
@@ -38,23 +53,34 @@ export function startPwa(): void {
   if (!("serviceWorker" in navigator)) return;
   const loadedAt = performance.now();
   const young = youngMs();
+  const act = () => {
+    acted = true;
+  };
+  window.addEventListener("pointerdown", act, { capture: true, once: true });
+  window.addEventListener("keydown", act, { capture: true, once: true });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     // La première prise de contrôle (installation) ne recharge pas : seule une mise à jour
     // demandée (applyUpdate) le fait, une seule fois.
-    if (applying && !reloading) {
-      reloading = true;
-      window.location.reload();
+    if (!applying || reloading) return;
+    if (automatic && acted) {
+      // KAN-80 : la personne a agi pendant l'application automatique : pas de rechargement.
+      activated = true;
+      applying = false;
+      showBanner();
+      return;
     }
+    reloading = true;
+    window.location.reload();
   });
   apply = registerSW({
     immediate: true,
     onNeedRefresh() {
-      if (performance.now() - loadedAt < young) {
+      if (performance.now() - loadedAt < young && !acted) {
+        automatic = true;
         applyUpdate();
         return;
       }
-      ready = true;
-      listeners.forEach((l) => l());
+      showBanner();
     },
     onRegisteredSW(_url, r) {
       registration = r;
@@ -76,8 +102,16 @@ export function subscribeUpdate(listener: () => void): () => void {
 /** Applique la nouvelle version : le service worker en attente prend la main, la page se
  *  recharge (une fois) au changement de contrôleur. */
 export function applyUpdate(): void {
+  if (activated) {
+    // Déjà aux commandes (KAN-80) : il ne reste qu'à recharger.
+    reloading = true;
+    window.location.reload();
+    return;
+  }
   applying = true;
-  void apply?.(true);
+  // Application automatique : vite-plugin-pwa ne recharge pas lui-même, c'est notre écoute du
+  // changement de contrôleur qui décide (rechargement, ou bandeau si la personne a agi).
+  void apply?.(!automatic);
   void navigator.serviceWorker.getRegistration().then((r) => {
     (r ?? registration)?.waiting?.postMessage({ type: "SKIP_WAITING" });
   });
