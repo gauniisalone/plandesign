@@ -5,11 +5,54 @@ import {
   type ReactionPill,
 } from "../api/client";
 import { LOCAL_REFRESH_MS } from "../state/bell";
+import { diffPills, type PillFx } from "../state/reactionFx";
 
 /** KAN-78 : les réactions de l'espace de travail. Relues au chargement, à chaque avis
  *  « reactions » d'un autre membre (WebSocket, avec les comptes) et, en local, comme les
  *  commentaires (KAN-68 : retour sur l'onglet, focus, 15 s). Un lecteur les voit sans pouvoir
  *  réagir ; on ne retire que sa propre réaction. */
+
+/** KAN-78, Must have 10 : les animations en cours (classes posées un instant, puis retirées).
+ *  La première lecture n'anime rien ; en mouvement réduit, rien du tout : seuls les états
+ *  changent (pas de pastille qui se replie, pas d'emoji qui monte). */
+const FX_MS = 650;
+
+const EMPTY_FX: PillFx = {
+  pops: [],
+  slides: [],
+  faded: [],
+  floats: [],
+  leaving: [],
+};
+
+function reducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  );
+}
+
+export function usePillFx(pills: ReactionPill[]): PillFx {
+  const before = useRef<ReactionPill[] | null>(null);
+  const [fx, setFx] = useState<PillFx>(EMPTY_FX);
+  useEffect(() => {
+    const previous = before.current;
+    before.current = pills;
+    if (previous === null || reducedMotion()) return;
+    const next = diffPills(previous, pills);
+    const any =
+      next.pops.length +
+      next.slides.length +
+      next.faded.length +
+      next.floats.length +
+      next.leaving.length;
+    if (!any) return;
+    setFx(next);
+    const timer = window.setTimeout(() => setFx(EMPTY_FX), FX_MS);
+    return () => window.clearTimeout(timer);
+  }, [pills]);
+  return fx;
+}
 
 /** Le bouton du survol reste un instant après la sortie de l'élément : le temps de l'atteindre
  *  sous l'élément. */

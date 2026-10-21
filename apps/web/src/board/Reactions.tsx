@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { REACTIONS, type BoardItem, type ReactionPill } from "../api/client";
 import { IconReact } from "../ui/icons";
-import type { ReactionsController } from "./useReactions";
+import { pillId } from "../state/reactionFx";
+import { usePillFx, type ReactionsController } from "./useReactions";
 
 /** KAN-78 (maquette validée le 21 oct.) : sous chaque élément, une pastille par emoji avec son
  *  nombre ; un clic ajoute ou retire ma réaction (la mienne mise en évidence), le survol dit
@@ -30,15 +31,24 @@ export function ReactionRows({
   onEnter: (id: string) => void;
   onLeave: () => void;
 }) {
+  // Must have 10 : les pastilles passées à 0 restent un instant (elles se replient).
+  const fx = usePillFx(r.pills);
   const byItem = useMemo(() => {
-    const map = new Map<string, ReactionPill[]>();
-    for (const p of r.pills) {
-      const list = map.get(p.item_id) ?? [];
-      list.push(p);
-      map.set(p.item_id, list);
-    }
+    const map = new Map<string, { pill: ReactionPill; leaving: boolean }[]>();
+    const add = (pill: ReactionPill, leaving: boolean) => {
+      const list = map.get(pill.item_id) ?? [];
+      list.push({ pill, leaving });
+      map.set(pill.item_id, list);
+    };
+    for (const p of r.pills) add(p, false);
+    for (const p of fx.leaving) add(p, true);
+    const order = REACTIONS.map((x) => x.key);
+    for (const list of map.values())
+      list.sort(
+        (a, b) => order.indexOf(a.pill.key) - order.indexOf(b.pill.key),
+      );
     return map;
-  }, [r.pills]);
+  }, [r.pills, fx.leaving]);
 
   // Échap ou un clic ailleurs ferme le sélecteur.
   const open = r.pickerFor;
@@ -66,11 +76,12 @@ export function ReactionRows({
   return (
     <>
       {items.map((item) => {
-        const pills = byItem.get(item.id) ?? [];
+        const entries = byItem.get(item.id) ?? [];
+        const pills = entries.filter((e) => !e.leaving).map((e) => e.pill);
         const showAdd =
           r.canReact &&
           (hovered === item.id || selectedId === item.id || open === item.id);
-        if (pills.length === 0 && !showAdd) return null;
+        if (entries.length === 0 && !showAdd) return null;
         return (
           <div
             key={item.id}
@@ -83,27 +94,56 @@ export function ReactionRows({
             onPointerEnter={() => onEnter(item.id)}
             onPointerLeave={onLeave}
           >
-            {pills.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                className={`board-reaction${p.mine ? " mine" : ""}`}
-                aria-pressed={p.mine}
-                aria-disabled={!r.canReact || undefined}
-                aria-label={pillLabel(p)}
-                title={p.names.join(", ")}
-                onClick={() => {
-                  if (r.canReact) void r.toggle(item.id, p.key);
-                }}
-              >
-                <span className="board-reaction-emoji" aria-hidden="true">
-                  {p.emoji}
-                </span>
-                <span className="board-reaction-count" aria-hidden="true">
-                  {p.count}
-                </span>
-              </button>
-            ))}
+            {entries.map(({ pill: p, leaving }) => {
+              const id = pillId(p);
+              if (leaving)
+                return (
+                  <span
+                    key={`${p.key}-leaving`}
+                    className="board-reaction leaving"
+                    aria-hidden="true"
+                  >
+                    <span className="board-reaction-emoji">{p.emoji}</span>
+                    <span className="board-reaction-count">0</span>
+                  </span>
+                );
+              const motion = fx.pops.includes(id)
+                ? " pop"
+                : fx.faded.includes(id)
+                  ? " faded"
+                  : "";
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  className={`board-reaction${p.mine ? " mine" : ""}${motion}`}
+                  aria-pressed={p.mine}
+                  aria-disabled={!r.canReact || undefined}
+                  aria-label={pillLabel(p)}
+                  title={p.names.join(", ")}
+                  onClick={() => {
+                    if (r.canReact) void r.toggle(item.id, p.key);
+                  }}
+                >
+                  <span className="board-reaction-emoji" aria-hidden="true">
+                    {p.emoji}
+                  </span>
+                  <span
+                    // Une nouvelle clé à chaque nombre : le chiffre glisse vers le nouveau.
+                    key={fx.slides.includes(id) ? `n${p.count}` : "n"}
+                    className={`board-reaction-count${fx.slides.includes(id) ? " slide" : ""}`}
+                    aria-hidden="true"
+                  >
+                    {p.count}
+                  </span>
+                  {fx.floats.includes(id) && (
+                    <span className="board-reaction-float" aria-hidden="true">
+                      {p.emoji}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {showAdd && (
               <button
                 type="button"

@@ -8063,3 +8063,112 @@ button.link.home-empty-link {
   background: var(--muted-bg);
   box-shadow: inset 0 0 0 2px var(--primary, var(--ink));
 }
+/* KAN-78, Must have 10 : animations (transform et opacity seulement ; la rangée est posée en
+   absolu, rien ne bouge autour). Aucune en mouvement réduit. */
+.board-reaction {
+  position: relative;
+}
+.board-reaction.pop {
+  animation: board-react-pop 180ms ease-out;
+}
+.board-reaction.faded {
+  animation: board-react-fade 120ms ease-out;
+}
+.board-reaction.leaving {
+  pointer-events: none;
+  animation: board-react-leave 120ms ease-in forwards;
+}
+.board-reaction-count {
+  display: inline-block;
+}
+.board-reaction-count.slide {
+  animation: board-react-slide 180ms ease-out;
+}
+.board-reaction-float {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  font-size: 15px;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  animation: board-react-float 600ms ease-out forwards;
+}
+.board-react-picker {
+  transform-origin: 0 0;
+  animation: board-react-open 120ms ease-out;
+}
+.board-react-picker button {
+  transition: transform 120ms ease-out;
+}
+.board-react-picker button:hover:not(:disabled) {
+  transform: scale(1.18);
+}
+@keyframes board-react-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes board-react-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes board-react-leave {
+  to {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes board-react-slide {
+  from {
+    opacity: 0;
+    transform: translateY(60%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes board-react-float {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -24px);
+  }
+}
+@keyframes board-react-open {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-reaction,
+  .board-reaction-count,
+  .board-reaction-float,
+  .board-react-picker,
+  .board-react-picker button {
+    animation: none !important;
+    transition: none !important;
+  }
+  .board-react-picker button:hover:not(:disabled) {
+    transform: none;
+  }
+}
