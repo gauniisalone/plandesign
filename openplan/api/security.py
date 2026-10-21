@@ -64,7 +64,10 @@ un rendu note le journal local) : refusées au cookie, Bearer seulement. Un test
 toute route GET/HEAD dont la source écrit est ici."""
 SAFE_METHODS = frozenset({"GET", "HEAD"})
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    # 'wasm-unsafe-eval' : compiler du WebAssembly (onnxruntime-web, profondeur dans le
+    # navigateur, KAN-79) sans autoriser eval() ni new Function() ('unsafe-eval' reste exclu).
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+    "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; "
     "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 )

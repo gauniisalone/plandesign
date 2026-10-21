@@ -235,6 +235,17 @@ def test_read_cookie_reads_only_and_never_mutates(tmp_path: Path) -> None:
         assert c.get(f"/api/projects/{pid}").status_code == 200
 
 
+def test_csp_allows_webassembly_but_never_eval() -> None:
+    """Correctif de KAN-79 : onnxruntime-web compile du WebAssembly ('wasm-unsafe-eval' dans
+    script-src), mais eval() et new Function() restent interdits (jamais 'unsafe-eval')."""
+    directives = {
+        d.split()[0]: d.split()[1:] for d in (part.strip() for part in CSP.split(";")) if d
+    }
+    assert directives["script-src"] == ["'self'", "'wasm-unsafe-eval'"]
+    assert "'unsafe-eval'" not in CSP
+    assert directives["worker-src"] == ["'self'", "blob:"]
+
+
 def test_headers_on_every_response_and_exposed_without_token_refused(tmp_path: Path) -> None:
     with TestClient(create_app(settings=Settings(data_dir=tmp_path / "data"))) as c:
         r = c.get("/api/health")
