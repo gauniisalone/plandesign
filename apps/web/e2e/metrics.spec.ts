@@ -35,7 +35,8 @@ test("P0 : passages d'espace mesurés au journal local, sans réseau extérieur"
   await expect(nav.getByRole("button", { name: "← Résultats" })).toHaveCount(0);
   await page
     .getByRole("region", { name: "Espace de travail" })
-    .getByRole("button", { name: "✎ Tracer moi-même" })
+    // KAN-77 : l'icône au trait remplace le glyphe « ✎ » ; le nom est le libellé seul.
+    .getByRole("button", { name: "Tracer moi-même", exact: true })
     .click();
   await expectSpace(page, "plan");
   await expect.poll(async () => (await metrics()).tab_changes).toBe(2);
