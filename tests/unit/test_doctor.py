@@ -38,7 +38,9 @@ def test_doctor_names_each_missing_piece_with_its_command(tmp_path: Path) -> Non
     assert blender.status == "missing" and "blender.org" in (blender.fix or "")
     weights = [c for c in report.checks if c.key.startswith("weights:")]
     assert weights and all(c.status == "missing" for c in weights)
-    assert all("openplan models pull" in (c.fix or "") for c in weights)
+    # KAN-79 : le modèle du navigateur se convertit (export-web-depth), il ne se télécharge pas.
+    commands = ("openplan models pull", "openplan models export-web-depth")
+    assert all(any(cmd in (c.fix or "") for cmd in commands) for c in weights)
     assert any("--accept-license" in (c.fix or "") for c in weights), "OpenRAIL à accepter"
     ai = _by_key(report, "ai")
     assert ai.status == "info" and "Ollama" in (ai.fix or "")

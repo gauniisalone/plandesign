@@ -232,8 +232,11 @@ test("KAN-81 : deux photos importées, « Générer le plan » construit le plan
     });
   }
   await expect(board.getByText("Plan depuis photo : bientôt en ligne")).toHaveCount(0);
-  const trigger = page.getByRole("group", { name: "Déclencheur" });
-  await trigger.getByRole("button", { name: "Générer le plan", exact: true }).click();
+  // Le bouton du cadre Plan vide, celui qu'augus a cliqué.
+  await board
+    .locator(".board-item.kind-plan")
+    .getByRole("button", { name: "Générer le plan", exact: true })
+    .click();
   await expect(board.locator(".board-item.kind-plan img.board-plan")).toBeVisible({
     timeout: 90_000,
   });
