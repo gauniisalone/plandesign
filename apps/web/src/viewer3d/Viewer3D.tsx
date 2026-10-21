@@ -75,6 +75,8 @@ interface Props {
 const NO_HIDDEN: ReadonlySet<string> = new Set();
 const LOOK_AHEAD_M = 3;
 const CUT_COLOR = 0x2b2b2e;
+/** KAN-77 : le voile du plan de coupe prend l'ocre du site (--primary), plus d'indigo. */
+const SECTION_TINT = 0xa63a2e;
 /** Plan repoussé très loin : ne coupe rien. */
 const NO_CLIP = 1e6;
 /** Un mur est « côté caméra » quand il est du côté de la caméra par rapport au centre. */
@@ -325,7 +327,7 @@ export function Viewer3D({
         const helper = new THREE.Mesh(
           new THREE.PlaneGeometry(1, 1),
           new THREE.MeshBasicMaterial({
-            color: 0x4f46e5,
+            color: SECTION_TINT,
             transparent: true,
             opacity: 0.08,
             side: THREE.DoubleSide,

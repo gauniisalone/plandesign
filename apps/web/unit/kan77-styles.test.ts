@@ -4,7 +4,7 @@
 // - arrondis : 8 px (contrôles), 12 px (cartes, panneaux), 999 px (pastilles), cercles ;
 // - contraste AA du texte sur chaque fond et sur l'ocre, calculé à partir des jetons.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const CSS = readFileSync(
@@ -94,10 +94,38 @@ test("aucune couleur violette ou indigo dans index.css (MH1)", () => {
   for (const { prop, value } of declarations())
     for (const c of colors(value)) {
       const { h, s, l } = hsl(c.rgb);
-      // Violet et indigo : teinte de 245° à 330°, assez saturée pour se voir comme telle.
-      if (h >= 245 && h <= 330 && s >= 0.25 && l > 0.08 && l < 0.97)
+      // Violet et indigo : teinte de 235° à 330° (l indigo #4f46e5 est à 244°), assez saturée pour se voir comme telle.
+      if (h >= 235 && h <= 330 && s >= 0.25 && l > 0.08 && l < 0.97)
         bad.push(`${prop}: ${c.text} (teinte ${h.toFixed(0)}°)`);
     }
+  assert.deepEqual(bad, []);
+});
+
+/** Les sources du front (.ts, .tsx), hors types générés. */
+function sources(dir: URL): { path: string; text: string }[] {
+  const out: { path: string; text: string }[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), dir);
+    if (entry.isDirectory()) out.push(...sources(url));
+    else if (/\.tsx?$/.test(entry.name) && entry.name !== "types.gen.ts")
+      out.push({ path: url.pathname, text: readFileSync(url, "utf8") });
+  }
+  return out;
+}
+
+test("aucune couleur violette ou indigo écrite en dur dans les .ts et .tsx (MH1)", () => {
+  const bad: string[] = [];
+  for (const { path, text } of sources(new URL("../src/", import.meta.url))) {
+    // Les couleurs des post-its sont choisies par l'utilisateur (hors périmètre).
+    if (path.endsWith("/postits.ts")) continue;
+    for (const m of text.matchAll(/(?:#|0x)([0-9a-f]{6})\b/gi)) {
+      const { h, s, l } = hsl(hexRgb(`#${m[1]}`));
+      if (h >= 235 && h <= 330 && s >= 0.25 && l > 0.08 && l < 0.97)
+        bad.push(
+          `${path.split("/src/")[1]} : ${m[0]} (teinte ${h.toFixed(0)}°)`,
+        );
+    }
+  }
   assert.deepEqual(bad, []);
 });
 
