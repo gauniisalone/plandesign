@@ -173,6 +173,16 @@ export const IconPlus = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-78 : « Réagir » (un visage souriant et un plus), au trait comme la barre du haut. */
+export const IconReact = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3" />
+    <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" />
+    <path d="M9 9.5h.01M15 9.5h.01" />
+    <path d="M19 2.5v5M16.5 5h5" />
+  </Svg>
+);
+
 export const IconCube = (p: IconProps) => (
   <Svg {...p}>
     <path d="m21 16-9 5-9-5V8l9-5 9 5v8z" />

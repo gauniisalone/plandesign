@@ -10,6 +10,7 @@ const KINDS: { value: ActivityKind | null; label: string }[] = [
   { value: "plan", label: "Plan" },
   { value: "members", label: "Membres" },
   { value: "renders", label: "Rendus" },
+  { value: "reactions", label: "Réactions" },
 ];
 
 /** KAN-58 : le journal d'activité du projet. Tout le journal (mes gestes compris, et ce que la

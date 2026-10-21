@@ -51,7 +51,11 @@ type Message =
   | { type: "lease.request"; level_id: string; from: string }
   | { type: "join"; peer: Peer }
   | { type: "leave"; user_id: string }
-  | { type: "changed"; scope: "project" | "board" | "comments" }
+  | {
+      type: "changed";
+      /** KAN-78 : « reactions », les pastilles seulement. */
+      scope: "project" | "board" | "comments" | "reactions";
+    }
   | {
       type: "cursor";
       user_id: string;
@@ -169,7 +173,7 @@ export function useLive(
   handlers: {
     /** Un autre membre (ou un autre onglet) a changé le projet, le tableau ou (KAN-51) les
      *  commentaires. */
-    onChanged: (scope: "project" | "board" | "comments") => void;
+    onChanged: (scope: "project" | "board" | "comments" | "reactions") => void;
     /** Reconnecté après une coupure : tout relire. */
     onResync: () => void;
     /** Session perdue (4401, ou /api/auth/me en 401 après des échecs de connexion). */

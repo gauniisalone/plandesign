@@ -23,6 +23,7 @@ EventType = Literal[
     "render.done",
     "board.changed",
     "plan.changed",
+    "reaction.added",
 ]
 MAX_LABEL = 200
 
@@ -50,4 +51,9 @@ class ProjectEvent(StrictModel):
     recolored: int | None = Field(default=None, ge=0)
     """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé (« a changé la couleur
     de … »)."""
+    emoji: str | None = Field(default=None, max_length=8)
+    """KAN-78 : l'emoji d'une réaction (« 😍 »)."""
+    item_author: str | None = Field(default=None, max_length=120)
+    """KAN-78 : l'auteur de l'élément qui a reçu la réaction (le lanceur d'un rendu, sinon celui
+    qui l'a posé) ; la cloche le prévient. Absent : le propriétaire du projet."""
     at: datetime = Field(default_factory=now_utc)

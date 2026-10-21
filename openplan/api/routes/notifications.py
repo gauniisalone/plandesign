@@ -52,6 +52,8 @@ class LineOut(StrictModel):
     removed: int
     recolored: int = 0
     """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé."""
+    emoji: str | None = None
+    """KAN-78 : l'emoji d'une réaction (« Fanny a réagi 😍 à « Rendu 2 » »)."""
 
 
 class BellPage(StrictModel):
@@ -201,6 +203,7 @@ def _out(
                 changed=line.changed,
                 removed=line.removed,
                 recolored=line.recolored,
+                emoji=line.emoji,
             )
         )
     return items
@@ -218,7 +221,7 @@ def activity(
     store: StoreDep,
     actor: ActorDep,
     who: str | None = Query(default=None, max_length=120),
-    kind: Literal["comments", "board", "plan", "members", "renders"] | None = None,
+    kind: Literal["comments", "board", "plan", "members", "renders", "reactions"] | None = None,
     before: str | None = Query(default=None, max_length=120),
 ) -> ActivityPage:
     """KAN-58 : le journal d'activité du projet, 50 lignes puis « Voir plus » ; tout membre le

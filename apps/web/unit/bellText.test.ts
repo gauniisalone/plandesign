@@ -145,6 +145,26 @@ test("modifications regroupées, rendu prêt, arrivée", () => {
   );
 });
 
+test("KAN-78 : réactions, seules ou regroupées", () => {
+  const reaction = { type: "reaction.added" as const };
+  assert.equal(
+    actionText(line({ ...reaction, emoji: "😍", label: "Rendu 2" })),
+    "Fanny a réagi 😍 à « Rendu 2 »",
+  );
+  assert.equal(
+    actionText(line({ ...reaction, emoji: "👍", item_kind: "render" })),
+    "Fanny a réagi 👍 à un rendu",
+  );
+  assert.equal(
+    actionText(line({ ...reaction, emoji: null, count: 3, label: "Rendu 2" })),
+    "Fanny a réagi 3 fois à « Rendu 2 »",
+  );
+  assert.equal(
+    actionText(line({ ...reaction, emoji: null, count: 2 })),
+    "Fanny a réagi 2 fois",
+  );
+});
+
 test("heure relative", () => {
   assert.equal(relativeTime("2026-10-20T11:59:40Z", NOW), "à l'instant");
   assert.equal(plain(relativeTime("2026-10-20T09:00:00Z", NOW)), "il y a 3 h");

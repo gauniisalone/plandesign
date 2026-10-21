@@ -21,6 +21,7 @@ from pydantic import TypeAdapter
 
 from openplan.pipeline.comments import CommentStore
 from openplan.pipeline.mainroom import main_room
+from openplan.pipeline.reactions import ReactionStore
 from openplan.pipeline.render import RenderEntry, list_renders
 from openplan.schemas.board import (
     MAX_ITEMS,
@@ -114,6 +115,9 @@ def save_board(project_dir: Path, board: Board, *, expect: int | None = None) ->
     tmp.replace(project_dir / BOARD_FILE)
     if current is not None:
         _detach_comments(project_dir, current, board)
+        # KAN-78 : un élément retiré emporte ses réactions.
+        kept = {i.id for i in board.items}
+        ReactionStore(project_dir).forget(i.id for i in current.items if i.id not in kept)
     return board
 
 
@@ -762,9 +766,10 @@ def media_file(project_dir: Path, media_id: UUID) -> tuple[MediaRef, Path]:
     return ref, path
 
 
-ARCHIVE_TOP = ("project.json", BOARD_FILE, "comments.json")
+ARCHIVE_TOP = ("project.json", BOARD_FILE, "comments.json", "reactions.json")
 """KAN-51 : les fils de commentaires suivent le projet ; un auteur local y reste « local »,
-sans donnée personnelle (« Utilisateur local » une fois en ligne)."""
+sans donnée personnelle (« Utilisateur local » une fois en ligne). KAN-78 : les réactions
+aussi."""
 ARCHIVE_DIRS = ("images", MEDIA_DIR)
 ARCHIVE_RUN_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".json")
 """Des rendus, les images et leurs réglages ; pas les fichiers de travail (scènes,

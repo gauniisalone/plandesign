@@ -34,8 +34,9 @@ from openplan.schemas.events import MAX_LABEL, ProjectEvent
 _LEVEL = re.compile(r"/levels/([0-9a-f-]{36})(/|$)")
 _SKIPPED = re.compile(
     r"^/api/projects/[0-9a-f-]{36}"
-    r"(/comments(/.*)?|/journal/ui|/board(/.*)?|/media(/.*)?|/view)?$"
+    r"(/comments(/.*)?|/reactions(/.*)?|/journal/ui|/board(/.*)?|/media(/.*)?|/view)?$"
 )
+# KAN-78 : les réactions publient elles-mêmes (`routes.reactions`).
 """Publiés ailleurs, ou pas des modifications : les commentaires et l'espace de travail (par
 leurs routes), le renommage ou la suppression du projet, la mesure d'usage de l'écran, ma vue
 (KAN-43)."""

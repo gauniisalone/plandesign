@@ -50,6 +50,7 @@ import { BoardSide } from "../panels/BoardSide";
 import { takeBellTarget, useBellTargetToken } from "../state/bell";
 import { useLive } from "../state/live";
 import { useComments } from "../board/useComments";
+import { useReactions } from "../board/useReactions";
 import {
   authApi,
   leaseApi,
@@ -398,16 +399,26 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     commentsTick,
     account === null,
   );
+  // KAN-78 : réactions ; relues à chaque avis « reactions » (comptes), comme la cloche en local.
+  const [reactionsTick, setReactionsTick] = useState(0);
+  const reactions = useReactions(
+    projectId,
+    role === "owner" || role === "editor" || role === "commenter",
+    reactionsTick,
+    account === null,
+  );
   const live = useLive(projectId, account !== null, {
     onChanged: (scope) => {
       if (scope === "board") setLiveTick((n) => n + 1);
       else if (scope === "comments") setCommentsTick((n) => n + 1);
+      else if (scope === "reactions") setReactionsTick((n) => n + 1);
       else actions.reload();
     },
     onResync: () => {
       actions.reload();
       setLiveTick((n) => n + 1);
       setCommentsTick((n) => n + 1);
+      setReactionsTick((n) => n + 1);
     },
     // Session perdue (KAN-49) : la page de connexion tout de suite, sans attendre la 401
     // d'un rechargement du projet.
@@ -1458,6 +1469,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               side={sideOpen && boardZones ? boardSlots : null}
               presence={account ? live.presence : undefined}
               comments={comments}
+              reactions={reactions}
               peers={live.peers}
               onRerender={rerenderViews}
               onOpenRendersPane={(levelId) => {
@@ -1636,7 +1648,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           {activityOpen && step !== "board" && (
             <ActivityPanel
               projectId={projectId}
-              tick={`${liveTick}|${commentsTick}.${comments.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+              tick={`${liveTick}|${commentsTick}.${comments.revision}|${reactionsTick}.${reactions.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
               onClose={() => setActivityOpen(false)}
             />
           )}
@@ -2026,7 +2038,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                           <ActivityPanel
                             inline
                             projectId={projectId}
-                            tick={`${liveTick}|${commentsTick}.${comments.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
+                            tick={`${liveTick}|${commentsTick}.${comments.revision}|${reactionsTick}.${reactions.revision}|${state.project.history_cursor}|${board.board?.revision ?? 0}`}
                             onClose={() => setActivityOpen(false)}
                           />
                         )

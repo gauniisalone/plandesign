@@ -58,6 +58,7 @@ from openplan.api.routes import (
     notifications,
     plans,
     projects,
+    reactions,
     reference,
     scene,
     scene3d,
@@ -316,6 +317,7 @@ def create_app(
         notifications.router,
         contextual.router,
         reference.router,
+        reactions.router,
     ):
         app.include_router(router, prefix="/api", dependencies=guarded)
     if app.state.accounts is not None:

@@ -89,6 +89,11 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", P + "/comments/{thread_id}/resolve"): C,
     ("POST", P + "/comments/{thread_id}/reopen"): C,
     ("DELETE", P + "/comments/{thread_id}"): C,
+    # Réactions (KAN-78) : lire, lecteur ; réagir, commentateur et plus ; chacun ne retire que
+    # la sienne (la route ne touche qu'à celle de l'appelant).
+    ("GET", P + "/reactions"): V,
+    ("PUT", P + "/reactions/{item_id}/{key}"): C,
+    ("DELETE", P + "/reactions/{item_id}/{key}"): C,
     ("GET", P + "/media"): V,
     ("POST", P + "/media"): E,
     ("GET", P + "/media/{media_id}/thumb"): V,

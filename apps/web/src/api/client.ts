@@ -1952,14 +1952,7 @@ export type BoardRole =
 
 /** KAN-65 : les huit couleurs d'un post-it (comme `NoteColor` côté serveur). */
 export type NoteColor =
-  | "yellow"
-  | "orange"
-  | "pink"
-  | "violet"
-  | "blue"
-  | "green"
-  | "gray"
-  | "white";
+  "yellow" | "orange" | "pink" | "violet" | "blue" | "green" | "gray" | "white";
 
 export interface BoardItem {
   id: string;
@@ -2092,7 +2085,8 @@ export type BellType =
   | "member.joined"
   | "render.done"
   | "board.changed"
-  | "plan.changed";
+  | "plan.changed"
+  | "reaction.added";
 
 export interface BellLine {
   id: string;
@@ -2119,10 +2113,47 @@ export interface BellLine {
   removed: number;
   /** KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé. */
   recolored?: number;
+  /** KAN-78 : l'emoji d'une réaction (absent si la ligne en regroupe plusieurs). */
+  emoji?: string | null;
 }
 
 export type ActivityKind =
-  "comments" | "board" | "plan" | "members" | "renders";
+  "comments" | "board" | "plan" | "members" | "renders" | "reactions";
+
+/* KAN-78 : réactions aux éléments de l'espace de travail (six emojis fixes). */
+export type ReactionKey = "up" | "heart" | "love" | "think" | "down" | "fire";
+
+/** L'ordre du sélecteur et des pastilles (le même que le serveur). */
+export const REACTIONS: { key: ReactionKey; emoji: string; label: string }[] = [
+  { key: "up", emoji: "👍", label: "J'aime" },
+  { key: "heart", emoji: "❤️", label: "J'adore" },
+  { key: "love", emoji: "😍", label: "Coup de cœur" },
+  { key: "think", emoji: "🤔", label: "À voir" },
+  { key: "down", emoji: "👎", label: "Je n'aime pas" },
+  { key: "fire", emoji: "🔥", label: "Génial" },
+];
+
+/** Une pastille : un emoji sur un élément, combien, si j'en suis, et qui (« Vous » d'abord). */
+export interface ReactionPill {
+  item_id: string;
+  key: ReactionKey;
+  emoji: string;
+  count: number;
+  mine: boolean;
+  names: string[];
+}
+
+export const reactionsApi = {
+  list: (pid: string) => request<ReactionPill[]>(`/projects/${pid}/reactions`),
+  add: (pid: string, itemId: string, key: ReactionKey) =>
+    request<ReactionPill[]>(`/projects/${pid}/reactions/${itemId}/${key}`, {
+      method: "PUT",
+    }),
+  remove: (pid: string, itemId: string, key: ReactionKey) =>
+    request<ReactionPill[]>(`/projects/${pid}/reactions/${itemId}/${key}`, {
+      method: "DELETE",
+    }),
+};
 
 /** KAN-58 : le journal d'activité d'un projet (tout membre le lit). */
 export const activityApi = {

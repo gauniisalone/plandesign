@@ -112,6 +112,14 @@ export function actionText(line: BellLine): string {
       return line.mine ? "Votre rendu est prêt" : `Le rendu de ${who} est prêt`;
     case "board.changed":
       return boardText(line);
+    case "reaction.added": {
+      // KAN-78 : « Fanny a réagi 😍 à « Rendu 2 » » ; regroupé : « a réagi 3 fois ».
+      const target =
+        object ?? (line.item_kind ? KIND_NOUN[line.item_kind] : null);
+      const emoji = line.emoji ? ` ${line.emoji}` : "";
+      const times = line.count > 1 ? ` ${line.count} fois` : "";
+      return `${who} a réagi${emoji}${times}${target ? ` à ${target}` : ""}`;
+    }
     case "plan.changed":
       // Un seul geste : son libellé (« Ajouter un mur », « Annulé : … »).
       return line.label && line.count === 1

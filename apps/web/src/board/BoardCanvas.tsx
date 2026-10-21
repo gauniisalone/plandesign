@@ -32,7 +32,7 @@ import {
   QUEUED_TEXT,
 } from "../importFiles";
 import { walls } from "../model";
-import { IconPlus, IconSliders, IconUpload } from "../ui/icons";
+import { IconPlus, IconReact, IconSliders, IconUpload } from "../ui/icons";
 import { AuthedImg } from "./AuthedImg";
 import { ContextualCard, LinkCard, PdfCard, VideoCard } from "./MediaCards";
 import { Composer } from "./Composer";
@@ -48,6 +48,8 @@ import {
 import { PhotoMeasure } from "./PhotoMeasure";
 import { referenceOf } from "../state/photoReference";
 import { CommentPins, CommentsPanel } from "./comments";
+import { ReactionRows } from "./Reactions";
+import { useHoveredItem, type ReactionsController } from "./useReactions";
 import { pinPlace, type CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
 import {
@@ -170,6 +172,8 @@ interface Props {
   peers?: Peer[];
   /** KAN-51 : commentaires (épingles, fils, panneau), en local comme avec les comptes. */
   comments?: CommentsController;
+  /** KAN-78 : réactions aux éléments (pastilles, sélecteur). */
+  reactions?: ReactionsController;
 }
 
 /** T2, T7d1 : ce qu'un cadre fixe attend, tant qu'il est vide : une ligne courte (retour
@@ -321,6 +325,8 @@ export function BoardCanvas(props: Props) {
     label: string;
   } | null>(null);
   const dark = useDarkTheme();
+  /** KAN-78 : l'élément survolé (son bouton « Réagir » sous lui). */
+  const hover = useHoveredItem();
   const caps = useCapabilities();
   // B1d : lecteur (et commentateur jusqu'à B2) : ni outils, ni compositeur, ni « Générer ».
   const readOnly = useReadOnly();
@@ -1646,6 +1652,22 @@ export function BoardCanvas(props: Props) {
             Modifier le plan
           </button>
         )}
+        {/* KAN-78 : réagir à l'élément choisi (commentateur et plus). */}
+        {single && props.reactions?.canReact && (
+          <button
+            type="button"
+            className="board-react-open"
+            aria-expanded={props.reactions.pickerFor === single.id}
+            onClick={() =>
+              props.reactions?.openPicker(
+                props.reactions.pickerFor === single.id ? null : single.id,
+              )
+            }
+            title="Réagir à cet élément (👍 ❤️ 😍 🤔 👎 🔥)"
+          >
+            <IconReact aria-hidden="true" /> Réagir
+          </button>
+        )}
         {caps.images &&
           single &&
           single.ref &&
@@ -1977,6 +1999,8 @@ export function BoardCanvas(props: Props) {
               data-kind={item.kind}
               aria-label={`${item.kind === "frame" ? "Cadre" : item.kind} ${item.text}`.trim()}
               onPointerDown={(e) => onItemDown(e, item)}
+              onPointerEnter={() => hover.enter(item.id)}
+              onPointerLeave={hover.leave}
             >
               {body(item)}
               {item.reference && (
@@ -2009,6 +2033,17 @@ export function BoardCanvas(props: Props) {
             />
           )}
           {props.comments && <CommentPins c={props.comments} items={items} />}
+          {/* KAN-78 : pastilles des réactions sous chaque élément, et le sélecteur. */}
+          {props.reactions && (
+            <ReactionRows
+              r={props.reactions}
+              items={items}
+              hovered={hover.hovered}
+              selectedId={single?.id ?? null}
+              onEnter={hover.enter}
+              onLeave={hover.leave}
+            />
+          )}
           {newPlanAt && (
             <button
               type="button"

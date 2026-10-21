@@ -26,10 +26,13 @@ from openplan.schemas.events import EventType, ProjectEvent
 GROUP_GAP = timedelta(minutes=10)
 RETENTION = timedelta(days=90)
 PAGE = 50
-GROUPED: frozenset[EventType] = frozenset({"board.changed", "plan.changed"})
+GROUPED: frozenset[EventType] = frozenset({"board.changed", "plan.changed", "reaction.added"})
 NOTIFIED: frozenset[EventType] = frozenset(
     {"comment.created", "comment.replied", "member.joined", "render.done", *GROUPED}
 )
+"""KAN-78 : une réaction prévient l'auteur de l'élément (le propriétaire s'il n'est pas
+connu), regroupée comme les modifications (même personne, 10 min) ; jamais ses propres
+réactions."""
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,8 @@ class BellLine:
     """KAN-58 : le détail cumulé des modifications regroupées de l'espace de travail."""
     recolored: int = 0
     """KAN-65 : parmi les modifiés, ceux dont seule la couleur a changé (cumulé)."""
+    emoji: str | None = None
+    """KAN-78 : l'emoji de la réaction (unique dans la ligne, sinon absent)."""
 
 
 @dataclass(frozen=True)
@@ -88,6 +93,8 @@ def _concerns(event: ProjectEvent, me: str, feed: ProjectFeed) -> bool:
     if event.type in ("comment.created", "comment.replied"):
         writers = feed.thread_writers.get(event.thread_id, set()) if event.thread_id else set()
         return feed.owner or me in writers
+    if event.type == "reaction.added":
+        return event.item_author == me if event.item_author else feed.owner
     return True
 
 
@@ -109,6 +116,7 @@ def _line(event: ProjectEvent, feed: ProjectFeed) -> BellLine:
         changed=event.changed or 0,
         removed=event.removed or 0,
         recolored=event.recolored or 0,
+        emoji=event.emoji,
     )
 
 
@@ -134,6 +142,8 @@ def _grouped(feed: ProjectFeed, events: Iterable[ProjectEvent], out: list[BellLi
         group.changed += event.changed or 0
         group.removed += event.removed or 0
         group.recolored += event.recolored or 0
+        if group.emoji != event.emoji:
+            group.emoji = None
         if not same:
             group.item_id = group.item_kind = group.label = None
 
@@ -162,6 +172,7 @@ ACTIVITY_KINDS: dict[str, frozenset[EventType]] = {
     "plan": frozenset({"plan.changed"}),
     "members": frozenset({"member.joined"}),
     "renders": frozenset({"render.done"}),
+    "reactions": frozenset({"reaction.added"}),
 }
 """KAN-58 : les filtres du journal d'activité."""
 

@@ -7978,4 +7978,88 @@ button.link.home-empty-link {
     width: auto;
     transform: none;
   }
+/* ---- KAN-78 : réactions sous les éléments de l'espace de travail ----
+   Jetons de KAN-77 (--pd-*, --primary, --link) avec un repli neutre : aucune couleur en dur.
+   Taille constante à tout zoom (--inv = 1/zoom), comme les épingles des commentaires. */
+.board-reactions {
+  position: absolute;
+  z-index: 38;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  transform: scale(var(--inv, 1));
+  transform-origin: 0 0;
+  white-space: nowrap;
+}
+.board-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--pd-radius-pill, 999px);
+  border: 1px solid var(--pd-pill-border, var(--line));
+  background: var(--pd-pill-bg, var(--panel));
+  color: var(--pd-pill-fg, var(--ink));
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--pd-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.08));
+}
+.board-reaction[aria-disabled="true"] {
+  cursor: default;
+}
+.board-reaction.mine {
+  border-color: var(--pd-pill-mine-border, var(--primary, var(--ink)));
+  background: var(
+    --pd-pill-mine-bg,
+    color-mix(in oklab, var(--primary, var(--ink)) 12%, var(--panel))
+  );
+  color: var(--pd-pill-mine-fg, var(--link, var(--ink)));
+  font-weight: 600;
+}
+.board-reaction-emoji {
+  font-size: 15px;
+  line-height: 1;
+}
+.board-react-add {
+  padding: 0 8px;
+  color: var(--muted);
+}
+.board-react-add svg,
+.board-react-open svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+.board-react-picker {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 45;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border-radius: var(--pd-radius-pill, 999px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+}
+.board-react-picker button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--pd-radius-pill, 999px);
+  font-size: 21px;
+  line-height: 1;
+}
+.board-react-picker button:hover:not(:disabled) {
+  background: var(--muted-bg);
+  border: none;
+}
+.board-react-picker button.on {
+  background: var(--muted-bg);
+  box-shadow: inset 0 0 0 2px var(--primary, var(--ink));
 }

@@ -459,7 +459,8 @@ async def _ring_bells(request: Request, path: str, me: str) -> None:
     match = LIVE_PROJECT.match(path)
     if match is None:
         return
-    if getattr(request.state, "journaled", False) or "/comments" in path:
+    # KAN-78 : une réaction sonne aussi (la cloche filtre : l'auteur de l'élément seulement).
+    if getattr(request.state, "journaled", False) or "/comments" in path or "/reactions" in path:
         await ring_project(request.app, UUID(match.group(1)), but=me)
 
 
@@ -473,7 +474,16 @@ async def _announce(request: Request, path: str) -> None:
     from openplan.api.accounts.live import hub_of
 
     # KAN-51 : un commentaire n'oblige pas les autres à relire le projet, seulement les fils.
-    scope = "board" if "/board" in path else "comments" if "/comments" in path else "project"
+    # KAN-78 : une réaction, seulement les pastilles.
+    scope = (
+        "board"
+        if "/board" in path
+        else "comments"
+        if "/comments" in path
+        else "reactions"
+        if "/reactions" in path
+        else "project"
+    )
     await hub_of(request.app).publish(
         UUID(match.group(1)),
         {"type": "changed", "scope": scope},
