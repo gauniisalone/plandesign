@@ -21,6 +21,7 @@ import {
 } from "../model";
 import { roomForView } from "../refineView";
 import { AiPanel } from "../panels/AiPanel";
+import { PhotoDepthBanner } from "../panels/PhotoDepthBanner";
 import { AmenagerPanel } from "../panels/AmenagerPanel";
 import { AssistantPanel } from "../panels/AssistantPanel";
 import { AutoDiagnostic } from "../panels/AutoDiagnostic";
@@ -1450,7 +1451,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onCancelQueued={actions.cancelQueued}
               hasRenders={state.renders.length > 0}
               planProgress={
-                state.autoJob?.status === "queued" ||
+                state.photoDepth && !state.photoDepth.error
+                  ? "Analyse de la photo…"
+                  : state.autoJob?.status === "queued" ||
                 state.pilotJob?.status === "queued"
                   ? "En attente"
                   : state.autoJob?.status === "running"
@@ -1792,6 +1795,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           )}
           {/* Au-dessus des barres du bas (bande, barre) : jamais dessus. */}
           <div className="stage-notices" style={{ bottom: insets.bottom + 8 }}>
+            {state.photoDepth && (
+              <PhotoDepthBanner
+                depth={state.photoDepth}
+                onRetry={actions.retryPhotoDepth}
+                onDismiss={actions.dismissPhotoDepth}
+              />
+            )}
             {homeNotices.length > 0 && (
               <div
                 className="auto-banner estimated"

@@ -113,6 +113,8 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("PUT", P + "/images/{image_id}/reference"): E,
     ("DELETE", P + "/images/{image_id}/reference/{segment_id}"): E,
     ("POST", L + "/images/{image_id}/reestimate"): E,
+    # KAN-79 : profondeur calculée par le navigateur (bail du plan, place disque)
+    ("PUT", L + "/images/{image_id}/depth"): E,
     # Mesures
     ("POST", P + "/measurements"): E,
     ("DELETE", P + "/measurements/{measurement_id}"): E,
@@ -246,6 +248,7 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("GET", "/api/catalog/symbols"): "user",
     ("GET", "/api/catalog/{asset_id}/preview"): "user",
     ("GET", "/api/catalog/{asset_id}/model"): "user",
+    ("GET", "/api/web-models/depth"): "user",  # KAN-79 : modèle de profondeur du navigateur
     ("POST", "/api/instruction/preview"): "user",
     ("GET", "/api/home/settings"): "user",
     # Réglages du serveur et bilan de l'installation

@@ -15,11 +15,15 @@ export interface Capabilities {
   /** Plan depuis une photo : en ligne, seulement avec l'estimation de profondeur (sans elle,
    *  le plan par lignes de fuite est souvent faux ou vide : décision PO du 19 oct.). */
   photoPlan: boolean;
+  /** KAN-79 : avec les comptes, la profondeur se calcule dans le navigateur (modèle servi
+   *  par l'API) et le serveur la relit sans modèle. */
+  browserDepth: boolean;
   /** Modèle d'images (finition, inspiration, rendus contextualisés, Version catalogue). */
   images: boolean;
 }
 
 const DEPTH = "depth_anything_v2_metric_indoor_small@1.0";
+const WEB_DEPTH = "depth_anything_v2_metric_indoor_small_web@1.0";
 const IMAGE_MODELS = ["stable_diffusion_1_5@1.5", "controlnet_depth_sd15@1.1"];
 const REFRESH_MS = 60_000;
 
@@ -38,6 +42,7 @@ const FULL: Capabilities = {
   online: false,
   renders: true,
   photoPlan: true,
+  browserDepth: false,
   images: true,
 };
 
@@ -45,10 +50,12 @@ export function capabilitiesFrom(h: Health): Capabilities {
   const weights = new Set(h.weights ?? []);
   const online = Boolean(h.exposed || h.accounts);
   const depth = Boolean(h.compute?.depth ?? weights.has(DEPTH));
+  const browserDepth = Boolean(h.accounts) && weights.has(WEB_DEPTH);
   return {
     online,
     renders: Boolean(h.compute?.renders ?? h.blender),
-    photoPlan: !online || depth,
+    photoPlan: !online || depth || browserDepth,
+    browserDepth,
     images: Boolean(
       h.compute?.images ?? IMAGE_MODELS.every((id) => weights.has(id)),
     ),
@@ -63,6 +70,7 @@ function set(next: Capabilities): void {
     next.online === current.online &&
     next.renders === current.renders &&
     next.photoPlan === current.photoPlan &&
+    next.browserDepth === current.browserDepth &&
     next.images === current.images
   )
     return;

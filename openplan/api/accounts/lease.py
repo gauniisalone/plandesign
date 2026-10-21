@@ -56,7 +56,7 @@ LEASED_ROUTES: frozenset[tuple[str, str]] = frozenset(
         "/programme",
         "/images/{image_id}/reestimate",
     )
-)
+) | {("PUT", L + "/images/{image_id}/depth")}  # KAN-79 : profondeur du navigateur
 """Écritures d'une personne sur un plan : elles prennent ou prolongent son bail."""
 IMG = "/api/projects/{project_id}/images/{image_id}"
 IMAGE_LEASED: frozenset[tuple[str, str]] = frozenset(

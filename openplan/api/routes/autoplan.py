@@ -25,6 +25,7 @@ from openplan.api.deps import (
 from openplan.api.jobs import JobStatus
 from openplan.api.public_errors import public_detail
 from openplan.pipeline.autoplan import AutoPlanRun, ImageKind, run_autoplan
+from openplan.pipeline.client_depth import StoredDepthEstimator, has_stored_depth
 from openplan.pipeline.floorplan import DetectionError
 from openplan.pipeline.ingestion import ImageNotFoundError
 from openplan.schemas.common import StrictModel
@@ -52,6 +53,12 @@ def _optional[T](
         # API exposée : la phrase fixe, sans chemin du serveur (contrôle D2).
         missing.append(public_detail(exc, exposed=exposed))
         return None
+
+
+OPENINGS_NOT_ONLINE = (
+    "Portes et fenêtres pas encore détectées en ligne : ajoutez-les dans le plan si besoin."
+)
+"""KAN-79 : distances lues dans la profondeur du navigateur, seul le détecteur manque."""
 
 
 def _missing_notice(missing: list[str]) -> list[str]:
@@ -96,12 +103,18 @@ def autoplan(
         progress("Préparation…")
         missing: list[str] = []
         exposed = not settings.local_only
-        depth: DepthEstimator | None = _optional(
-            get_depth_estimator, request, missing, exposed=exposed
+        project_dir = store.project_dir(project_id)
+        # KAN-79 : en ligne, la profondeur envoyée par le navigateur est relue, sans modèle.
+        from_browser = settings.accounts_enabled and has_stored_depth(project_dir, image_id)
+        depth: DepthEstimator | None = (
+            StoredDepthEstimator(project_dir)
+            if from_browser
+            else _optional(get_depth_estimator, request, missing, exposed=exposed)
         )
         detector: RoomElementDetector | None = _optional(
             get_opening_detector, request, missing, exposed=exposed
         )
+        notices = [OPENINGS_NOT_ONLINE] if from_browser and missing else _missing_notice(missing)
         before = store.load(project_id)
         run = run_autoplan(
             before,
@@ -111,7 +124,7 @@ def autoplan(
             store.runs_dir(project_id),
             depth=depth,
             openings=detector,
-            notices=_missing_notice(missing),
+            notices=notices,
             progress=progress,
             kind=kind,
         )

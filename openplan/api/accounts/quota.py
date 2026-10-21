@@ -31,6 +31,7 @@ UPLOADS: frozenset[tuple[str, str]] = frozenset(
     {
         ("POST", P + "/images"),
         ("POST", P + "/media"),
+        ("PUT", L + "/images/{image_id}/depth"),  # KAN-79 : profondeur du navigateur
     }
 )
 """Envois : refusés si la place utilisée plus le corps reçu dépasserait la limite."""

@@ -2516,6 +2516,16 @@ button.cta:hover:not(:disabled) {
   border-color: color-mix(in oklab, var(--ok) 40%, var(--mix));
 }
 
+/* KAN-79 : analyse de la photo dans le navigateur (progression, puis « Réessayer »). */
+.auto-banner.photo-depth progress {
+  flex: none;
+  width: 8rem;
+}
+
+.auto-banner.photo-depth.failed {
+  border-color: color-mix(in oklab, var(--warn) 45%, var(--mix));
+}
+
 .scale-card .field.ceiling {
   margin-top: 8px;
 }

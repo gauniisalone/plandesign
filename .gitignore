@@ -168,3 +168,5 @@ apps/web/e2e/screenshots/
 apps/web/test-results-audit/
 apps/web/.e2e-site/
 apps/web/test-results-site/
+# KAN-79 : onnxruntime-web copié de node_modules par vite.config.ts (dev et build)
+apps/web/public/ort/

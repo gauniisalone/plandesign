@@ -727,7 +727,8 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
     except (DetectionError, ValueError) as exc:
         chain.stage("depth", "Profondeur", "failed", str(exc)[:160])
     seen = memo.seen(image_id)
-    if seen is not None and factors:
+    # KAN-79 : profondeur relue (calculée par le navigateur) : déjà gardée, telle quelle.
+    if seen is not None and factors and not getattr(depth, "from_store", False):
         try:
             if not save_depth(project_dir, *seen):
                 factors.clear()

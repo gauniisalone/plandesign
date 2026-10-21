@@ -89,6 +89,8 @@ class ModelEntry(StrictModel):
     """Fichier qui signe une installation complète dans le dossier des poids."""
     allow_patterns: list[str] | None = None
     """Fichiers à télécharger (motifs Hugging Face) ; None = configurations et safetensors."""
+    install: str | None = None
+    """Commande d'installation quand ce n'est pas `models pull` (KAN-79 : conversion locale)."""
 
 
 def load_registry(path: Path = REGISTRY_PATH) -> list[ModelEntry]:

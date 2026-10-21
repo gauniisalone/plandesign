@@ -73,7 +73,27 @@ def _add_journal_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
     jmetrics.add_argument("--data-dir", type=Path, help="défaut : OPENPLAN_DATA_DIR")
 
 
-def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
+def _add_models_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    models = sub.add_parser("models", help="registre des modèles : liste, téléchargement des poids")
+    models_sub = models.add_subparsers(dest="models_command", required=True)
+    listing = models_sub.add_parser("list", help="modèles du registre et poids installés")
+    listing.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
+    pull = models_sub.add_parser("pull", help="télécharge les poids d'un modèle (action explicite)")
+    pull.add_argument("model_id")
+    pull.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
+    pull.add_argument(
+        "--accept-license",
+        action="store_true",
+        help="accepte la licence des poids (OpenRAIL-M…) ; exigé pour certains modèles",
+    )
+    web = models_sub.add_parser(
+        "export-web-depth",
+        help="KAN-79 : convertit le modèle de profondeur installé en ONNX fp16 pour le navigateur",
+    )
+    web.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="openplan", description=APP_NAME)
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -140,20 +160,7 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     evaluate.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
 
     _add_bench_parser(sub)
-
-    models = sub.add_parser("models", help="registre des modèles : liste, téléchargement des poids")
-    models_sub = models.add_subparsers(dest="models_command", required=True)
-    listing = models_sub.add_parser("list", help="modèles du registre et poids installés")
-    listing.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
-    pull = models_sub.add_parser("pull", help="télécharge les poids d'un modèle (action explicite)")
-    pull.add_argument("model_id")
-    pull.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
-    pull.add_argument(
-        "--accept-license",
-        action="store_true",
-        help="accepte la licence des poids (OpenRAIL-M…) ; exigé pour certains modèles",
-    )
-
+    _add_models_parser(sub)
     _add_materials_parser(sub)
 
     token = sub.add_parser(
@@ -508,7 +515,21 @@ def _materials(args: argparse.Namespace) -> int:
     return 0
 
 
-def _models(args: argparse.Namespace) -> int:
+def _export_web_depth(models_dir: Path) -> int:
+    """KAN-79 : le modèle de profondeur installé, converti pour le navigateur (processeur)."""
+    from openplan.adapters.neural.web_depth import export_web_depth, read_sha256
+    from openplan.adapters.protocols import AdapterUnavailableError
+
+    try:
+        out = export_web_depth(models_dir)
+    except AdapterUnavailableError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(f"{out} ({out.stat().st_size / 1e6:.1f} Mo, sha256 {read_sha256(out)})")
+    return 0
+
+
+def _models(args: argparse.Namespace) -> int:  # noqa: PLR0911
     from openplan.adapters.neural import weights
     from openplan.adapters.neural.download import hf_download
     from openplan.adapters.registry import load_registry, registry_entry
@@ -530,8 +551,13 @@ def _models(args: argparse.Namespace) -> int:
                 state = entry.status
             print(f"{entry.id:48s} {entry.role:24s} {entry.license:22s} {state}")
         return 0
+    if args.models_command == "export-web-depth":
+        return _export_web_depth(models_dir)
     entry = registry_entry(args.model_id)
-    if entry.kind != "weights" or not entry.hf_repo:
+    if entry.kind != "weights" or not entry.hf_repo or entry.install:
+        if entry.install:
+            print(f"{entry.id} ne se télécharge pas : {entry.install}")
+            return 2
         print(f"{entry.id} n'a pas de poids à télécharger ({entry.kind})")
         return 2
     if not entry.commercial_ok:

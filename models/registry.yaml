@@ -73,6 +73,21 @@ models:
     hf_repo: depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf
     notes: Profondeur métrique intérieure (Hypersim), 24,8 M de paramètres, sortie bornée à 20 m. Seule la variante Small est Apache-2.0 ; Base/Large sont CC-BY-NC et exclues. Poids par `openplan models pull`.
 
+  - id: depth_anything_v2_metric_indoor_small_web@1.0
+    role: depth_estimator_browser
+    kind: weights
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 300
+    weights_mb: 50
+    device: navigateur (WebGPU ou WASM)
+    status: implemented
+    module: openplan.adapters.neural.web_depth
+    sentinel: model_fp16.onnx
+    install: uv run --extra neural --with onnx --with onnxscript openplan models export-web-depth
+    notes: KAN-79, le modèle précédent converti en ONNX fp16 (opset 17, entrées et sorties float32) pour le navigateur, servi par GET /api/web-models/depth. Pas de téléchargement, conversion sur le processeur (≈ 10 s) depuis les poids du modèle précédent. Écart avec le modèle du serveur sur la photo du grenier, prétraitement de transformers, médiane 0,04 %. Hors du dépôt.
+
   - id: stable_diffusion_1_5@1.5
     role: image_generator
     kind: weights

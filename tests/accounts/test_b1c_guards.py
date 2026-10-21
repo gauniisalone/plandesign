@@ -97,11 +97,14 @@ def test_every_api_route_has_a_guard_and_a_declared_rule(tmp_path: Path, migrate
 
 def test_project_files_are_served_only_through_storage() -> None:
     """Aucune route ne sert un fichier par elle-même : `served_file` (Storage + garde)
-    seulement ; le catalogue (ressources du paquet) est la seule exception."""
+    seulement ; exceptions : le catalogue (ressources du paquet) et, KAN-79, le modèle de
+    profondeur du navigateur (dossier des poids, aucun fichier de projet)."""
+    outside_projects = {"catalog.py", "web_depth.py"}
     offenders = [
         p.name
         for p in ROUTES_DIR.glob("*.py")
-        if p.name != "catalog.py" and re.search(r"FileResponse|StaticFiles", p.read_text())
+        if p.name not in outside_projects
+        and re.search(r"FileResponse|StaticFiles", p.read_text())
     ]
     assert offenders == []
 

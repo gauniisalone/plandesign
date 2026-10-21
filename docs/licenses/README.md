@@ -55,6 +55,8 @@ types-PyYAML : Apache-2.0.
 | eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, globals | 9.39 / 8.70 / 6.1 / 0.4 / 16.5 | MIT |
 | json-schema-to-typescript | 15.0 | MIT |
 | @playwright/test (dev, e2e) | 1.63 | Apache-2.0 ; Chromium headless téléchargé par l'outil (BSD-3-Clause) |
+| onnxruntime-web (KAN-79, profondeur dans le navigateur ; servi par le front sous /ort/) | 1.30.0 (figée) | MIT (Microsoft, https://github.com/microsoft/onnxruntime/blob/main/LICENSE) |
+| dépendances d'onnxruntime-web : onnxruntime-common, platform / flatbuffers, long / guid-typescript / protobufjs | 1.30.0, 1.3 / 25.x, 5.x / 1.0 / 7.x | MIT / Apache-2.0 / ISC / BSD-3-Clause |
 
 ## Outils externes
 
@@ -62,6 +64,7 @@ types-PyYAML : Apache-2.0.
 |---|---|---|
 | Blender 4.2 LTS | GPL-3.0-or-later | Binaire installé par l'utilisateur, appelé en sous-processus ; non redistribué |
 | uv, Node.js, nvm | MIT / MIT / MIT | Outillage, hors produit |
+| onnx 1.23, onnx-ir 1.1, ml_dtypes 0.6 / onnxscript 0.7 / protobuf 7.36 | Apache-2.0 / MIT / BSD-3-Clause | KAN-79 : conversion du modèle de profondeur pour le navigateur (`uv run --with … openplan models export-web-depth`), sur la machine ; pas des dépendances du serveur |
 
 ## Modèles et poids
 

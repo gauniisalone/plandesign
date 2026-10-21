@@ -9,7 +9,7 @@ import yaml
 
 from openplan.adapters import exif_camera
 from openplan.adapters.heuristic import box_detector, camera
-from openplan.adapters.neural import depth_anything, finish, inspiration, openings
+from openplan.adapters.neural import depth_anything, finish, inspiration, openings, web_depth
 from openplan.adapters.remote import openai_compatible
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +37,7 @@ IN_CODE = {
     inspiration.CONTROLNET_MODEL_ID,
     finish.CANNY_MODEL_ID,
     finish.IP_ADAPTER_MODEL_ID,
+    web_depth.WEB_MODEL_ID,
     openings.MODEL_ID,
 }
 """Algorithmes locaux : identifiant du registre = model_id dans le code."""

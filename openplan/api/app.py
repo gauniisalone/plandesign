@@ -62,6 +62,7 @@ from openplan.api.routes import (
     reference,
     scene,
     scene3d,
+    web_depth,
 )
 from openplan.api.routes import settings as settings_routes
 from openplan.api.routes.gallery import purge_all
@@ -318,6 +319,7 @@ def create_app(
         contextual.router,
         reference.router,
         reactions.router,
+        web_depth.router,
     ):
         app.include_router(router, prefix="/api", dependencies=guarded)
     if app.state.accounts is not None:

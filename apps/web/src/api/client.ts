@@ -938,6 +938,34 @@ export const autoplanApi = {
     ),
 };
 
+/** KAN-79 : profondeur calculée par le navigateur (float16, grille de 640 px au plus). */
+export const browserDepthApi = {
+  put: (
+    pid: string,
+    lid: string,
+    imageId: string,
+    grid: Uint16Array,
+    width: number,
+    height: number,
+  ) =>
+    request<{ image_id: string; depth_size: [number, number]; model_id: string }>(
+      `/projects/${pid}/levels/${lid}/images/${imageId}/depth?image_width=${width}&image_height=${height}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: new Blob([grid as Uint16Array<ArrayBuffer>]),
+      },
+    ),
+  /** La photo telle que le serveur la garde (orientation appliquée). */
+  photo: async (pid: string, imageId: string): Promise<Blob> => {
+    const res = await fetch(api.imageFileUrl(pid, imageId), {
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw new ApiError(`photo illisible (${res.status})`, res.status);
+    return res.blob();
+  },
+};
+
 export interface DeviceInfo {
   requested: string;
   device: string;

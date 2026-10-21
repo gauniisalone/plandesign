@@ -7,6 +7,7 @@ import {
   type AssistantMessage,
   autoplanApi,
   type AutoPlanResult,
+  browserDepthApi,
   inspirationApi,
   jobActive,
   type InspirationRun,
@@ -55,6 +56,12 @@ import { hasAnswers, type Requirements } from "../guided";
 import { isPlanFile } from "../importFiles";
 import { firstLevel, NO_SELECTION, walls, type Selection } from "../model";
 import { currentCapabilities } from "./capabilities";
+import {
+  computeDepth,
+  type DepthProgress,
+  modelCached,
+  PhotoSizeMismatch,
+} from "../depth/browserDepth";
 import { takePendingArrival } from "./pendingArrival";
 
 /** `updated_at` en microsecondes (le serveur l'écrit à la microseconde, strictement croissant
@@ -134,6 +141,18 @@ export interface EditorState {
   pilotRun: AutopilotRun | null;
   /** Compte les chemins arrivés au bout : l'atelier passe alors à Rendre. */
   pilotArrival: number;
+  /** KAN-79 : « Analyse de la photo… » dans le navigateur, avant la construction du plan ;
+   *  `error` : l'analyse a échoué (bouton « Réessayer »), l'espace reste utilisable. */
+  photoDepth: PhotoDepthState | null;
+}
+
+export interface PhotoDepthState {
+  imageId: string;
+  label: string;
+  fraction: number | null;
+  /** Premier dépôt : le modèle et la bibliothèque se téléchargent (annoncé). */
+  firstTime: boolean;
+  error: string | null;
 }
 
 const INITIAL: EditorState = {
@@ -178,6 +197,7 @@ const INITIAL: EditorState = {
   pilotJob: null,
   pilotRun: null,
   pilotArrival: 0,
+  photoDepth: null,
 };
 
 export function useProject(projectId: string) {
@@ -538,6 +558,104 @@ export function useProject(projectId: string) {
     [applyProject, startAutopilot],
   );
 
+  /** KAN-79 : avec les comptes (serveur sans GPU), la profondeur de la photo se calcule dans
+   *  le navigateur (« Analyse de la photo… »), part au serveur, puis la construction du plan
+   *  démarre et la relit sans modèle. Échec : un message et « Réessayer », l'espace de
+   *  travail reste utilisable. Sans cette capacité (mode local), rien ne change. */
+  const depthSent = useRef(new Set<string>());
+  const depthRetry = useRef<(() => void) | null>(null);
+  const autoplanFromPhoto = useCallback(
+    (
+      project: Project,
+      lid: string,
+      imageId: string,
+      base: number,
+      file?: File,
+      kind?: "photo" | "plan",
+    ) => {
+      const ref = project.images[imageId];
+      if (
+        !currentCapabilities().browserDepth ||
+        kind === "plan" ||
+        !ref ||
+        depthSent.current.has(imageId)
+      ) {
+        autoplan(project.id, lid, imageId, base, kind);
+        return;
+      }
+      const pid = project.id;
+      const patch = (p: Partial<PhotoDepthState>) =>
+        setState((s) =>
+          s.photoDepth ? { ...s, photoDepth: { ...s.photoDepth, ...p } } : s,
+        );
+      const progress = (p: DepthProgress) =>
+        patch({ label: p.label, fraction: p.fraction });
+      const go = (): void => {
+        setState((s) => ({
+          ...s,
+          error: null,
+          photoDepth: {
+            imageId,
+            label: "Analyse de la photo…",
+            fraction: null,
+            firstTime: false,
+            error: null,
+          },
+        }));
+        void (async () => {
+          try {
+            patch({ firstTime: !(await modelCached()) });
+            const local = file ?? (await browserDepthApi.photo(pid, imageId));
+            let result;
+            try {
+              result = await computeDepth(
+                local,
+                ref.width_px,
+                ref.height_px,
+                progress,
+              );
+            } catch (e) {
+              if (!(e instanceof PhotoSizeMismatch) || !file) throw e;
+              // Photo réorientée ou recompressée à l'import : celle du serveur fait foi.
+              result = await computeDepth(
+                await browserDepthApi.photo(pid, imageId),
+                ref.width_px,
+                ref.height_px,
+                progress,
+              );
+            }
+            patch({ label: "Envoi de l'analyse", fraction: null });
+            await browserDepthApi.put(
+              pid,
+              lid,
+              imageId,
+              result.grid,
+              result.width,
+              result.height,
+            );
+            depthSent.current.add(imageId);
+            depthRetry.current = null;
+            setState((s) => ({ ...s, photoDepth: null }));
+            autoplan(pid, lid, imageId, base, kind);
+          } catch (e) {
+            depthRetry.current = go;
+            patch({
+              fraction: null,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
+      };
+      go();
+    },
+    [autoplan],
+  );
+  const retryPhotoDepth = useCallback(() => depthRetry.current?.(), []);
+  const dismissPhotoDepth = useCallback(() => {
+    depthRetry.current = null;
+    setState((s) => ({ ...s, photoDepth: null }));
+  }, []);
+
   /** Plan vectoriel (DXF, PDF, SVG) : lu puis appliqué tout de suite avec les calques
    *  retenus. `correction` : relecture du même plan (autre échelle papier, autres
    *  calques) ; les murs sont refaits tant que rien n'a été modifié depuis. */
@@ -615,6 +733,7 @@ export function useProject(projectId: string) {
       const { project, levelId } = state;
       if (!project || !levelId) return;
       if (jobActive(state.autoJob)) return;
+      if (state.photoDepth && !state.photoDepth.error) return;
       if (isPlanFile(file)) {
         importPlan(file);
         return;
@@ -635,15 +754,16 @@ export function useProject(projectId: string) {
           setState((s) => ({ ...s, arrival: s.arrival + 1 }));
           return;
         }
-        autoplan(
-          project.id,
+        autoplanFromPhoto(
+          result.project,
           levelId,
           result.image.id,
           result.project.history_cursor,
+          file,
         );
       });
     },
-    [state, run, applyProject, autoplan, importPlan],
+    [state, run, applyProject, autoplanFromPhoto, importPlan],
   );
 
   /** Les exigences telles qu'elles sont dans le compositeur au moment du clic. */
@@ -655,9 +775,10 @@ export function useProject(projectId: string) {
       const { project, levelId } = state;
       if (!project || !levelId) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      if (state.photoDepth && !state.photoDepth.error) return;
       const photo = Object.keys(project.images)[0];
       if (photo && currentCapabilities().photoPlan) {
-        autoplan(project.id, levelId, photo, project.history_cursor);
+        autoplanFromPhoto(project, levelId, photo, project.history_cursor);
         return;
       }
       // Les exigences du compositeur au moment du clic, sinon celles du projet.
@@ -690,7 +811,7 @@ export function useProject(projectId: string) {
           startAutopilot(project.id, levelId);
       });
     },
-    [state, run, applyProject, autoplan, startAutopilot],
+    [state, run, applyProject, autoplanFromPhoto, startAutopilot],
   );
 
   /** Une photo déposée sur le tableau (T4) : projet sans plan et bascule « générer au dépôt
@@ -703,9 +824,10 @@ export function useProject(projectId: string) {
       if (!level || walls(level).length > 0) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       if (!currentCapabilities().photoPlan) return; // photo rangée, plan bientôt en ligne
-      autoplan(project.id, levelId, imageId, project.history_cursor);
+      if (state.photoDepth && !state.photoDepth.error) return;
+      autoplanFromPhoto(project, levelId, imageId, project.history_cursor);
     },
-    [state, autoplan],
+    [state, autoplanFromPhoto],
   );
 
   /** « Générer maintenant » (T4) : sans plan, comme « Générer le plan » ; avec un plan, le
@@ -742,10 +864,17 @@ export function useProject(projectId: string) {
           current = await api.undo(project.id);
         await applyProject(current);
         setState((s) => ({ ...s, lastAuto: null }));
-        autoplan(project.id, levelId, lastAuto.run.image_id, autoBase, kind);
+        autoplanFromPhoto(
+          current,
+          levelId,
+          lastAuto.run.image_id,
+          autoBase,
+          undefined,
+          kind,
+        );
       });
     },
-    [state, run, applyProject, autoplan],
+    [state, run, applyProject, autoplanFromPhoto],
   );
 
   /** Corrections de la lecture du dernier plan : échelle papier, calques. */
@@ -1693,6 +1822,8 @@ export function useProject(projectId: string) {
       importFile,
       generatePlan,
       planFromPhoto,
+      retryPhotoDepth,
+      dismissPhotoDepth,
       generateNow,
       rereadAs,
       recalibrate,

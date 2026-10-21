@@ -157,6 +157,8 @@ def _weights(models_dir: Path) -> list[DoctorCheck]:
         command = f"uv run openplan models pull {entry.id}"
         if entry.requires_license_acceptance:
             command += " --accept-license"
+        if entry.install:
+            command = entry.install
         if installed and accepted:
             out.append(
                 DoctorCheck(
