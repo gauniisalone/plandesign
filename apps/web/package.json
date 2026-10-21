@@ -17,6 +17,7 @@
     "e2e:site": "playwright test -c playwright.site.config.ts"
   },
   "dependencies": {
+    "onnxruntime-web": "1.30.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "three": "^0.186.0"
