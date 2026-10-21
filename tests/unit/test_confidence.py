@@ -5,6 +5,7 @@ de la scène KAN-27 (tests/fixtures/control_attic_depth.npz)."""
 from __future__ import annotations
 
 import itertools
+import math
 from pathlib import Path
 
 import numpy as np
@@ -21,14 +22,19 @@ from openplan.pipeline.bench import (
     run_bench,
 )
 from openplan.pipeline.confidence import (
+    BENCH_SCENES,
     CHECK_MAX,
     EAVE_UNSEEN_ERROR,
     FLOOR_UNSEEN_ERROR,
+    FOCAL_FALLBACK_ERROR,
+    MIN_BENCH_SCENES_FOR_RELIABLE,
     RELIABLE_MAX,
     SCALE_ERROR,
+    EstimateConfidence,
     ScaleSource,
     assess,
     assess_plan_image,
+    level_for,
 )
 from openplan.pipeline.ingestion import import_image
 from openplan.scene.factory import new_project
@@ -51,15 +57,30 @@ def test_control_truth_is_the_kan27_scene() -> None:
     assert round(CONTROL_RIDGE, 2) == 3.54
 
 
+FLAGS = (True, False)
+
+
+def _all_cases(bench_scenes: int = BENCH_SCENES) -> list[EstimateConfidence]:
+    return [
+        assess(
+            source,
+            focal_from_vps=vps,
+            floor_out_of_view=floor,
+            eave_unseen=eave,
+            bench_scenes=bench_scenes,
+        )
+        for source, vps, floor, eave in itertools.product(SOURCES, FLAGS, FLAGS, FLAGS)
+    ]
+
+
 def test_weights_are_the_bench_numbers(control: dict[str, float]) -> None:
     """Must have 2 : les poids des trois sources d'échelle sont les erreurs médianes du contrôle,
-    seul jeu qui les mesure toutes (à 3 points près)."""
+    seul jeu qui les mesure toutes (option A, à 3 points près) ; focale, sol et égout aussi."""
+    entered = control["contrôle · hauteur saisie 1,45 m"]
     assert SCALE_ERROR["reference"] == pytest.approx(
         control["contrôle · mesure de référence"], abs=0.03
     )
-    assert SCALE_ERROR["entered"] == pytest.approx(
-        control["contrôle · hauteur saisie 1,45 m"], abs=0.03
-    )
+    assert SCALE_ERROR["entered"] == pytest.approx(entered, abs=0.03)
     assert SCALE_ERROR["assumed"] == pytest.approx(
         control["contrôle · hauteur supposée 1,50 m"], abs=0.03
     )
@@ -67,30 +88,50 @@ def test_weights_are_the_bench_numbers(control: dict[str, float]) -> None:
         pytest.approx(control["contrôle · sol hors champ (hauteur saisie 1,45 m)"], abs=0.03)
         == FLOOR_UNSEEN_ERROR
     )
-    assert control["contrôle · égout"] >= EAVE_UNSEEN_ERROR
-    assert SCALE_ERROR["reference"] < SCALE_ERROR["entered"] < SCALE_ERROR["assumed"]
+    # Focale de repli (≈ 10 % d'écart) : la moitié de l'effet d'une focale faussée de −20 %.
+    focal_shift = control["contrôle · focale × 0,80"] - entered
+    assert pytest.approx(focal_shift / 2, abs=0.03) == FOCAL_FALLBACK_ERROR
+    # Égout non vu : largeur prise au sol au lieu de l'égout, sur la géométrie vraie du contrôle.
+    from tests import control_attic
+
+    at_floor = control_attic.WIDTH + 2 * control_attic.EAVE / math.tan(control_attic.PITCH)
+    assert pytest.approx(at_floor / control_attic.WIDTH - 1, abs=0.03) == EAVE_UNSEEN_ERROR
+    # Depuis KAN-72, le contrôle range la référence derrière les hauteurs (voir la docstring de
+    # confidence) : seul l'ordre entre les deux hauteurs est attendu.
+    assert SCALE_ERROR["entered"] < SCALE_ERROR["assumed"]
+
+
+def test_one_scene_is_never_fiable() -> None:
+    """Plancher (décision PO du 21 oct.) : avec une seule scène au banc, rien n'est jamais
+    « fiable », même sous 10 % ; le niveau le plus haut est « à vérifier »."""
+    assert BENCH_SCENES == 1 < MIN_BENCH_SCENES_FOR_RELIABLE
+    assert level_for(0.0) == "a_verifier"
+    assert level_for(0.0, bench_scenes=1) == "a_verifier"
+    assert all(c.level != "fiable" for c in _all_cases())
+    # Les hauteurs seules sont sous 10 % : c'est bien le plancher qui retient « fiable ».
+    assert assess("entered").expected_error < RELIABLE_MAX
+    assert assess("entered").level == "a_verifier"
 
 
 def test_fiable_only_when_the_bench_is_under_ten_percent(control: dict[str, float]) -> None:
-    """Must have 4 : « fiable » n'est atteignable que si l'erreur médiane du banc est sous 10 %.
-    Au 20 oct. 2026 aucune configuration ne l'est : aucune combinaison n'est « fiable »."""
+    """Must have 4 : une fois le plancher levé (deux scènes), « fiable » n'est atteignable que
+    sous 10 % d'erreur attendue, et seulement si le banc a une configuration sous 10 %."""
     best = min(control.values())
-    flags = (True, False)
-    for source, vps, floor, eave in itertools.product(SOURCES, flags, flags, flags):
-        c = assess(source, focal_from_vps=vps, floor_out_of_view=floor, eave_unseen=eave)
+    lifted = _all_cases(bench_scenes=MIN_BENCH_SCENES_FOR_RELIABLE)
+    for c in lifted:
         if c.level == "fiable":
             assert c.expected_error < RELIABLE_MAX
             assert best < RELIABLE_MAX, "« fiable » sans configuration du banc sous 10 %"
+        elif c.expected_error < RELIABLE_MAX:
+            pytest.fail(f"sous 10 % sans être « fiable » une fois le plancher levé : {c}")
     if best >= RELIABLE_MAX:
-        assert all(assess(s, focal_from_vps=True).level != "fiable" for s in SOURCES), (
-            "le banc ne justifie aucun « fiable »"
-        )
+        assert all(c.level != "fiable" for c in lifted), "le banc ne justifie aucun « fiable »"
 
 
 def test_three_levels_and_main_reason() -> None:
     """Must have 3 et 5 : trois niveaux, la raison principale, textes KAN-62 / KAN-66."""
     assumed = assess("assumed")
-    assert assumed.level == "approximatif" and assumed.label == "approximatif"
+    assert assumed.level == "a_verifier" and assumed.label == "à vérifier"
     assert assumed.reason == "échelle supposée : ajoutez une mesure de référence"
     assert assumed.factors[0].label == "hauteur supposée 1,50 m (par défaut)"
     entered = assess("entered", camera_height_m=1.45)

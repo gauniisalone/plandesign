@@ -7,44 +7,55 @@ et photos réelles avec une règle de 1,00 m) ; les erreurs des facteurs présen
 en somme quadratique (sources supposées indépendantes) et l'erreur attendue donne l'un des
 trois niveaux affichés :
 
-- « fiable » : erreur attendue sous 10 % (`RELIABLE_MAX`, Must have 4 de KAN-31) ;
-- « à vérifier » : sous 40 % (`CHECK_MAX`) : échelle calée sur une mesure (17 %) ou tirée
-  d'une hauteur saisie (35 %) ;
-- « approximatif » : à partir de 40 % (échelle supposée : 40 %, cas limite assumé, « ajoutez
-  une mesure de référence »).
+- « fiable » : erreur attendue sous 10 % (`RELIABLE_MAX`, Must have 4 de KAN-31) **et** banc
+  d'au moins `MIN_BENCH_SCENES_FOR_RELIABLE` scènes mesurées (plancher, décision PO du
+  21 oct.) ;
+- « à vérifier » : sous 40 % (`CHECK_MAX`), ou sous 10 % tant que le banc n'a qu'une scène ;
+- « approximatif » : à partir de 40 % (égout non vu, échelle devinée sur un dessin).
 
-Aucune configuration du banc n'est sous 10 % au 21 oct. 2026 : aucune estimation depuis une
-photo n'est donc dite « fiable » (le test le vérifie). La raison affichée est celle du facteur
-qui pèse le plus, avec le geste qui l'améliore.
+Plancher : le banc ne compte qu'une scène qui mesure les trois sources d'échelle (le contrôle
+KAN-27, `BENCH_SCENES = 1`) ; une seule scène ne suffit pas à promettre « fiable », le niveau le
+plus haut est donc « à vérifier ». Une seconde scène mesurée (la chambre de KAN-33, privée,
+hors dépôt, une fois ses cotes relevées) le lèvera en passant `BENCH_SCENES` à 2. La raison
+affichée est celle du facteur qui pèse le plus, avec le geste qui l'améliore.
 
 Facteurs (Must have 2) :
 
-1. **Source de l'échelle** : mesure de référence (KAN-66) > hauteur de prise de vue saisie >
-   hauteur supposée 1,50 m (par défaut).
+1. **Source de l'échelle** : mesure de référence (KAN-66), hauteur de prise de vue saisie, ou
+   hauteur supposée 1,50 m (par défaut). Depuis KAN-72, le contrôle ne les range plus dans
+   cet ordre (voir plus bas).
 2. **Focale** : déduite des lignes de fuite, ou valeur de repli (EXIF absent : 0,8 × grand côté).
 3. **Sol hors champ** (KAN-45) : sol posé à la hauteur de l'appareil, verticale prise entre
    les pentes.
 4. **Égout non vu** (KAN-61) : hauteur des murs latéraux sous pente supposée.
 
-Chiffres du banc du 21 oct. 2026, après KAN-70 (sol sous un plateau) et KAN-46 (jambettes
-déduites du bord du sol). Erreur médiane absolue des cotes ; contrôle = faîtage, largeur du
-pignon, distance au pignon ; règle = deux photos d'une règle de 1,00 m. Les trois sources
-d'échelle sont comparées sur le contrôle, seul jeu qui les mesure toutes (décision PO) :
+Chiffres du banc du 21 oct. 2026, après KAN-72 (verticale corrigée, toit supposé symétrique).
+Erreur médiane absolue des cotes ; contrôle = faîtage, largeur du pignon, distance au pignon ;
+règle = deux photos d'une règle de 1,00 m. Les trois sources d'échelle sont comparées sur le
+contrôle, seul jeu qui les mesure toutes (décision PO, option A) :
 
+- hauteur saisie, la vraie (1,45 m), contrôle : 5 % (avant KAN-72 : 35 %) ;
+- hauteur supposée 1,50 m, contrôle : 9 % (avant : 40 %). Recoupement sur la règle de la
+  chambre : 17 % (+14 % et −20 %), non pris dans le poids ;
 - mesure de référence, contrôle : chaque cote vraie prise à tour de rôle comme référence,
-  erreur médiane des autres : 17 % (avant KAN-46 : 31 %) ;
-- hauteur saisie, la vraie (1,45 m), contrôle : 35 % (avant : 61 %) ;
-- hauteur supposée 1,50 m, contrôle : 40 % (avant : 66 %). Recoupement sur la règle de la
-  chambre : 17 % (+14 % et −20 %), non pris dans le poids (la règle ne mesure ni la hauteur
-  saisie ni la référence : la mêler au seul poids « supposée » inverserait l'ordre) ;
-- focale de repli : règle, 5 points d'écart entre focale des lignes et repli (photo du lit) ;
-  contrôle, focale faussée de −20 % / +25 % : 30 / 64 %, soit 5 / 29 points autour de la
-  hauteur saisie ; le repli (29 mm équivalent) s'écarte d'environ 10 % d'un mobile courant
-  (26 mm) → 10 % ;
+  erreur médiane des autres : 10 % (avant : 17 %).
+
+**L'ordre s'inverse** : la référence (10 %) passe derrière les deux hauteurs. Deux raisons, qui
+tiennent au banc plus qu'à la méthode : la « hauteur saisie » du banc est la vraie hauteur, au
+centimètre (une saisie réelle ne l'est pas : `PRIOR_REL_SIGMA` du module attic la suppose à
+±10 %) ; et la référence prise à tour de rôle hérite de l'erreur de la cote choisie (la distance
+au pignon, −13 % avec la hauteur saisie, recalée seule, donne +22 % sur le faîtage). Les poids
+sont gardés tels que mesurés (pas d'ordre forcé) ; avec le plancher, les trois sources
+s'affichent « à vérifier », l'inversion ne se voit pas à l'écran.
+
+- focale de repli : contrôle, focale faussée de −20 % / +25 % : 13 / 5 %, soit 8 / 0 points
+  autour de la hauteur saisie ; règle, 5 points entre focale des lignes et repli (photo du
+  lit) ; le repli (29 mm équivalent) s'écarte d'environ 10 % d'un mobile courant (26 mm),
+  la moitié de l'écart −20 % → 5 % ;
 - sol hors champ : contrôle privé des 40 % bas de l'image, hauteur juste saisie : 14 % ;
 - égout non vu : tiré de la géométrie du contrôle : égout ramené au sol au lieu de 1,00 m, la
-  largeur est prise au sol (6,96 m au lieu de 5,00 m, +39 %) → 40 % ; égout lu par KAN-46 sur
-  le contrôle : 1,60 m pour 1,00 (60 %).
+  largeur est prise au sol (6,96 m au lieu de 5,00 m, +39 %) → 40 %. L'égout vu, lui, est à
+  5 % sur le contrôle (1,05 m pour 1,00) : ce chiffre mesure un égout vu, pas l'égout manquant.
 
 Le détail chiffré, régénéré à chaque passage du banc, est dans `data/eval/rapport-kan33.md`
 (hors dépôt) ; `tests/unit/test_confidence.py` recalcule la partie contrôle sur la fixture.
@@ -74,13 +85,20 @@ RELIABLE_MAX = 0.10
 CHECK_MAX = 0.40
 """Erreur attendue sous laquelle elle est « à vérifier » ; au-delà, « approximatif »."""
 
+BENCH_SCENES = 1
+"""Scènes du banc dont la vérité mesure les trois sources d'échelle (le contrôle KAN-27)."""
+MIN_BENCH_SCENES_FOR_RELIABLE = 2
+"""Plancher (décision PO du 21 oct.) : « fiable » n'est jamais affiché tant que le banc compte
+moins de scènes que cela ; le niveau le plus haut est alors « à vérifier »."""
+
 SCALE_ERROR: dict[ScaleSource, float] = {
-    "reference": 0.17,
-    "entered": 0.35,
-    "assumed": 0.40,
+    "reference": 0.10,
+    "entered": 0.05,
+    "assumed": 0.09,
 }
-"""Erreur relative médiane des cotes selon la source de l'échelle (banc KAN-33, contrôle)."""
-FOCAL_FALLBACK_ERROR = 0.10
+"""Erreur relative médiane des cotes selon la source de l'échelle (banc KAN-33, contrôle,
+après KAN-72) ; ordre inversé par le banc, voir la docstring du module."""
+FOCAL_FALLBACK_ERROR = 0.05
 """Erreur ajoutée quand la focale est la valeur de repli et non celle des lignes de fuite."""
 FLOOR_UNSEEN_ERROR = 0.14
 """Erreur ajoutée quand le sol est hors champ (KAN-45)."""
@@ -142,8 +160,11 @@ def assess(
     focal_from_vps: bool = True,
     floor_out_of_view: bool = False,
     eave_unseen: bool = False,
+    bench_scenes: int = BENCH_SCENES,
 ) -> EstimateConfidence:
-    """Niveau de confiance d'une estimation depuis une photo et sa raison principale."""
+    """Niveau de confiance d'une estimation depuis une photo et sa raison principale.
+    `bench_scenes` : taille du banc qui fonde les poids (plancher de « fiable ») ; ne se change
+    que dans les tests, ou ici même quand une seconde scène mesurée rejoint le banc."""
     factors = [scale_factor(scale, camera_height_m)]
     if not focal_from_vps:
         factors.append(
@@ -173,18 +194,20 @@ def assess(
                 advice="égout non vu : saisissez la hauteur des murs sous pente",
             )
         )
-    return _combine(factors)
+    return _combine(factors, bench_scenes)
 
 
-def level_for(expected_error: float) -> Level:
-    if expected_error < RELIABLE_MAX:
+def level_for(expected_error: float, bench_scenes: int = BENCH_SCENES) -> Level:
+    """Niveau d'une erreur attendue. Plancher : sous `MIN_BENCH_SCENES_FOR_RELIABLE` scènes
+    au banc, jamais « fiable » (« à vérifier » au mieux)."""
+    if expected_error < RELIABLE_MAX and bench_scenes >= MIN_BENCH_SCENES_FOR_RELIABLE:
         return "fiable"
     return "a_verifier" if expected_error < CHECK_MAX else "approximatif"
 
 
-def _combine(factors: list[Factor]) -> EstimateConfidence:
+def _combine(factors: list[Factor], bench_scenes: int = BENCH_SCENES) -> EstimateConfidence:
     expected = math.sqrt(sum(f.error**2 for f in factors))
-    level = level_for(expected)
+    level = level_for(expected, bench_scenes)
     main = max(factors, key=lambda f: f.error)
     return EstimateConfidence(
         level=level,
