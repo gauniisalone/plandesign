@@ -84,22 +84,49 @@ test("KAN-66 MH1 + MH7 : deux clics, loupe ×4, longueur, 422 tel quel, gardée,
 
   // MH1 : la loupe ×4 suit le curseur pendant le choix d'un point.
   const photo = dialog.locator(".pm-photo-box img");
-  const box = await photo.boundingBox();
-  if (!box) throw new Error("photo absente du calque");
-  const at = (fx: number, fy: number) =>
-    [box.x + box.width * fx, box.y + box.height * fy] as const;
+  // Passage 5 (MEP 9) : sous charge, la photo du calque finit de se charger (et prend sa
+  // taille) après l'ouverture ; une position lue trop tôt tombe hors de l'image. On attend
+  // l'image chargée, et chaque position est relue sur la boîte du moment.
+  await expect
+    .poll(
+      () =>
+        photo.evaluate(
+          (i: HTMLImageElement) => i.complete && i.naturalWidth > 0,
+        ),
+      {
+        timeout: 15_000,
+      },
+    )
+    .toBe(true);
+  const at = async (fx: number, fy: number, dx = 0) => {
+    const box = await photo.boundingBox();
+    if (!box) throw new Error("photo absente du calque");
+    return [
+      box.x + box.width * fx + dx,
+      box.y + box.height * fy + dx / 2,
+    ] as const;
+  };
   const loupe = page.getByRole("img", { name: "Loupe ×4" });
+  /** Survol répété, à des positions voisines (quelques pixels), jusqu'à la loupe : un
+   *  pointermove peut arriver avant que l'image soit prête. 15 s au plus ; l'assertion sur la
+   *  loupe reste entière. */
+  const hoverUntilLoupe = async (fx: number, fy: number) => {
+    let n = 0;
+    await expect(async () => {
+      const dx = (n++ % 4) * 2;
+      await page.mouse.move(...(await at(fx, fy, dx)), { steps: 3 });
+      await expect(loupe).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000, intervals: [200, 400, 800] });
+  };
   await expect(loupe).toHaveCount(0);
-  await page.mouse.move(...at(0.25, 0.75));
-  await expect(loupe).toBeVisible();
+  await hoverUntilLoupe(0.25, 0.75);
   const first = await loupe.boundingBox();
-  await page.mouse.click(...at(0.25, 0.75));
+  await page.mouse.click(...(await at(0.25, 0.75)));
   await expect(dialog).toContainText("Point 2 sur 2");
-  await page.mouse.move(...at(0.6, 0.3));
-  await expect(loupe).toBeVisible();
+  await hoverUntilLoupe(0.6, 0.3);
   const second = await loupe.boundingBox();
   expect(second?.x).not.toBe(first?.x);
-  await page.mouse.click(...at(0.25, 0.3));
+  await page.mouse.click(...(await at(0.25, 0.3)));
   await expect(loupe).toHaveCount(0);
 
   // MH1 : la longueur, saisie avec une virgule ; une saisie illisible est refusée avant
