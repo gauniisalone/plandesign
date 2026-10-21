@@ -139,12 +139,12 @@ def plausible_eaves(estimate: AtticEstimate) -> AtticEstimate:
         gap = min(ridge.value - e.value for e in estimate.eave_heights)
         if gap < EAVE_MIN_BELOW_RIDGE_M:
             reason = (
-                f"égout trouvé à {_fr(ridge.value - gap)} m, seulement {_fr(gap)} m sous le "
-                f"faîtage : non retenu"
+                f"égout trouvé à {decimal(ridge.value - gap)} m, seulement {decimal(gap)} m sous "
+                f"le faîtage : non retenu"
             )
     width = estimate.width
     if reason is None and width is not None and width.value < EAVE_MIN_WIDTH_M:
-        reason = f"largeur entre égouts de {_fr(width.value)} m : non retenue"
+        reason = f"largeur entre égouts de {decimal(width.value)} m : non retenue"
     if reason is None:
         return estimate
     return estimate.model_copy(update={"eave_heights": [], "width": None, "eave_rejected": reason})
