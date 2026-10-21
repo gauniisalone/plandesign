@@ -81,6 +81,15 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.16.0", "0.17.0")
+def _scale_confidence(data: dict[str, Any]) -> dict[str, Any]:
+    """0.17.0 (KAN-66 + KAN-31) : `ScaleBasis.confidence` et `ScaleBasis.confidence_inputs`,
+    la confiance de l'estimation tenue à jour avec l'échelle ; un projet 0.16.0 (en production
+    depuis la MEP 5) n'en a pas, sa confiance revient à la prochaine estimation ou mesure. Version
+    montée pour qu'un retour arrière vers 0.16.0 refuse proprement (409) au lieu de casser."""
+    return data
+
+
 @register("0.15.0", "0.16.0")
 def _reference_segments(data: dict[str, Any]) -> dict[str, Any]:
     """0.16.0 (KAN-66) : `ImageRef.reference_segments` (mesure de référence sur une photo) et

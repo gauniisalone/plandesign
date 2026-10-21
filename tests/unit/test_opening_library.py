@@ -170,7 +170,7 @@ def test_a_030_project_loads_unchanged() -> None:
     door = next(
         e for e in only_level(loaded).elements.values() if isinstance(e, Opening) and e.swing
     )
-    assert door.leaves == 1 and door.split == 0.5 and loaded.schema_version == "0.16.0"
+    assert door.leaves == 1 and door.split == 0.5 and loaded.schema_version == "0.17.0"
 
 
 @pytest.mark.parametrize(

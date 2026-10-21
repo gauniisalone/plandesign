@@ -1,6 +1,6 @@
 /** KAN-66 : la mesure de référence d'une photo (deux points, une longueur connue) et l'origine
  *  de l'échelle du plan estimé depuis cette photo (`Level.scale_basis`), lues dans le projet.
- *  Schéma 0.16.0 (types.gen.ts) ; p1/p2 y sortent en `[unknown, unknown]` : ils sont lus ici
+ *  Schéma 0.16.0 et suivants (types.gen.ts) ; p1/p2 y sortent en `[unknown, unknown]` : ils sont lus ici
  *  en `[number, number]` (pixels de l'image d'origine). */
 
 import type { Level, Project, ScaleBasis } from "../api/types.gen";

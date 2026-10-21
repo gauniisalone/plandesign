@@ -189,5 +189,5 @@ def test_014_project_loads_with_every_level_a_storey() -> None:
     for level in data["levels"].values():
         level.pop("variant_of", None)
     loaded = load_project(data)
-    assert loaded.schema_version == SCHEMA_VERSION == "0.16.0"
+    assert loaded.schema_version == SCHEMA_VERSION == "0.17.0"
     assert all(lv.variant_of is None for lv in loaded.levels.values())
