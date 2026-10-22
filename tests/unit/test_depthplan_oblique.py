@@ -44,30 +44,31 @@ def _oblique_face(through: tuple[float, float], tilt_deg: float) -> Face:
     return Face(n, n[0] * through[0] + n[1] * through[1])
 
 
-def _to_plan(obs, camera: Camera, polygon: Polygon) -> Polygon:  # type: ignore[no-untyped-def]
+def _to_plan(obs, camera: Camera, polygon: Polygon, cam: SyntheticCamera = CAMERA) -> Polygon:  # type: ignore[no-untyped-def]
     """Vérité (monde) exprimée dans le repère du plan (comme pour la pièce en L)."""
-    right, cam_up, forward = CAMERA.basis()
+    right, cam_up, forward = cam.basis()
     to_world = np.vstack([right, -cam_up, forward])
     x_dir, y_dir = obs.axes[0] @ to_world, obs.axes[1] @ to_world
-    origin = np.asarray(CAMERA.position)
+    origin = np.asarray(cam.position)
+    h = cam.position[2]
     return Polygon(
         [
             (
-                float((np.array([x, y, H]) - origin) @ x_dir) + camera.position.x,
-                float((np.array([x, y, H]) - origin) @ y_dir) + camera.position.y,
+                float((np.array([x, y, h]) - origin) @ x_dir) + camera.position.x,
+                float((np.array([x, y, h]) - origin) @ y_dir) + camera.position.y,
             )
             for x, y in polygon.exterior.coords
         ]
     )
 
 
-def _propose(faces_or_cells, union: bool = False):  # type: ignore[no-untyped-def]
+def _propose(faces_or_cells, union: bool = False, cam: SyntheticCamera = CAMERA):  # type: ignore[no-untyped-def]
     depth = (
-        render_depth_union(faces_or_cells, CAMERA, noise=0.01, seed=4)
+        render_depth_union(faces_or_cells, cam, noise=0.01, seed=4)
         if union
-        else render_depth(faces_or_cells, CAMERA, noise=0.01, seed=4)
+        else render_depth(faces_or_cells, cam, noise=0.01, seed=4)
     )
-    obs, _ = observe_room(depth, CAMERA.focal_px, CAMERA.principal_point)
+    obs, _ = observe_room(depth, cam.focal_px, cam.principal_point)
     assert obs is not None
     project, ref = _project_with_image()
     level_id = only_level(project).id  # type: ignore[arg-type]
@@ -76,10 +77,10 @@ def _propose(faces_or_cells, union: bool = False):  # type: ignore[no-untyped-de
         level_id,
         obs,
         image_id=ref.id,
-        camera_height_m=H,
-        yaw=CAMERA.yaw,
-        pitch=CAMERA.pitch,
-        focal_px=CAMERA.focal_px,
+        camera_height_m=cam.position[2],
+        yaw=cam.yaw,
+        pitch=cam.pitch,
+        focal_px=cam.focal_px,
     )
     return obs, after, result
 
@@ -128,7 +129,8 @@ def test_trapezoid_room_keeps_its_oblique_wall() -> None:
 
 def test_l_room_with_an_oblique_far_wall() -> None:
     # Pièce en L de test_depthplan, fond de la cellule B de biais (6,00 m à droite, 5,30 m à
-    # gauche) : renfoncement et mur de biais ensemble.
+    # gauche) : renfoncement et mur de biais ensemble. Photo prise à 2 m de haut : le fond, à
+    # 4,6 m, reste à moins de 2,5 hauteurs (au-delà, son angle ne se juge pas).
     cell_a = box_faces(4.0, 3.0, 2.5)
     cell_b = [
         Face((0.0, 0.0, -1.0), 0.0),
@@ -138,7 +140,15 @@ def test_l_room_with_an_oblique_far_wall() -> None:
         Face((0.0, -1.0, 0.0), 0.0),
         _oblique_face((6.0, 6.0), 10.0),
     ]
-    obs, after, result = _propose([cell_a, cell_b], union=True)
+    high = SyntheticCamera(
+        position=(1.0, 0.5, 2.0),
+        yaw=math.radians(45),
+        pitch=math.radians(-12),
+        focal_px=500.0,
+        width_px=960,
+        height_px=720,
+    )
+    obs, after, result = _propose([cell_a, cell_b], union=True, cam=high)
     level = only_level(after)
     walls = [e for e in level.elements.values() if isinstance(e, Wall)]
     assert len(walls) == 6, "pièce en L : six murs"
@@ -149,7 +159,7 @@ def test_l_room_with_an_oblique_far_wall() -> None:
     camera = next(e for e in level.elements.values() if isinstance(e, Camera))
     tan = math.tan(math.radians(10.0))
     truth_l = box(0, 0, 4, 3).union(Polygon([(2, 0), (6, 0), (6, 6), (2, 6 - 4 * tan)]))
-    iou = _iou(_polygon(level), _to_plan(obs, camera, truth_l))
+    iou = _iou(_polygon(level), _to_plan(obs, camera, truth_l, high))
     assert iou >= 0.7, f"IoU {iou:.2f}"
 
 
@@ -160,6 +170,7 @@ def _oblique(
     *,
     count: int = 800,
     height_m: float = 2.4,
+    heights: float = 1.5,
 ) -> WallObservation:
     """Mur de fond (côté +y) tourné de `tilt_deg` (il monte vers +x), à `distance` de la
     caméra, vu sur `along` le long de sa tangente (x décroît quand on avance)."""
@@ -168,7 +179,9 @@ def _oblique(
     ends = [(n[0] * distance - n[1] * s, n[1] * distance + n[0] * s) for s in along]
     xs = sorted(x for x, _ in ends)
     offset = (ends[0][1] + ends[1][1]) / 2
-    return WallObservation("y", offset, (xs[0], xs[1]), count, 0.01, n, distance, along, height_m)
+    return WallObservation(
+        "y", offset, (xs[0], xs[1]), count, 0.01, n, distance, along, height_m, heights
+    )
 
 
 def _side(x: float, top: float) -> WallObservation:
@@ -210,6 +223,9 @@ def test_an_oblique_wall_cuts_the_room() -> None:
         (_oblique(2.0, 15.0, WARDROBE, height_m=0.9), "trop bas"),
         # Quelques points seulement.
         (_oblique(2.0, 15.0, WARDROBE, count=50), "trop peu de points"),
+        # Mur droit que la profondeur apprise courbe au loin (pièce en L Blender : 7,7° à
+        # 3,3 hauteurs de prise de vue).
+        (_oblique(2.0, 8.0, WARDROBE, heights=3.3), "trop loin"),
         # Un bout de 20 cm.
         (_oblique(2.0, 15.0, (-2.30, -2.09)), "trop court"),
     ],

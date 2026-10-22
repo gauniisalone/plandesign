@@ -9,7 +9,8 @@ rattachée à l'axe le plus proche (x = a ou y = b, étendue le long de l'autre 
 Le polygone : l'emprise des murs extrêmes, puis, quand deux murs parallèles du même côté sont
 vus à des distances différentes sur des étendues disjointes (un renfoncement, une pièce en L),
 le rectangle entre les deux est retiré. Un mur vu de biais (au moins 4° de son axe) coupe la
-pièce par son demi-plan s'il est assez soutenu (points, longueur, hauteur) et qu'aucun autre
+pièce par son demi-plan s'il est assez soutenu (points, longueur, hauteur), assez proche pour
+que la profondeur apprise ne l'ait pas courbé (2,5 hauteurs de prise de vue) et qu'aucun autre
 mur n'est vu derrière lui (un meuble ne déforme pas la pièce) ; sinon il est posé sur son axe
 (hypothèse Manhattan, comme avant) ou écarté. Les côtés qu'aucun mur ne ferme sont `inferred`,
 placés comme dans la proposition mono-photo (derrière la caméra) ; les murs vus sont
@@ -81,6 +82,10 @@ OBLIQUE_MIN_LENGTH_M = 0.5
 """… au moins 50 cm de long…"""
 OBLIQUE_MIN_HEIGHT_M = 1.2
 """… vu sur au moins 1,20 m de haut (un lit, un bureau, une commode sont plus bas)…"""
+OBLIQUE_MAX_HEIGHTS = 2.5
+"""… à au plus 2,5 hauteurs de prise de vue de la caméra : plus loin, la profondeur apprise
+courbe les murs de quelques degrés (pièce en L rendue par Blender : mur droit vu à 7,7° à
+3,3 hauteurs), son angle ne se juge pas…"""
 OBLIQUE_BEHIND_TOL_M = 0.3
 """… et aucun autre mur vu à plus de 30 cm derrière lui : c'est alors un meuble ou une cloison
 basse devant le vrai mur, pas le bord de la pièce."""
@@ -106,6 +111,8 @@ class WallObservation:
     distance: float = 0.0
     along: tuple[float, float] = (0.0, 0.0)
     height_m: float = 0.0
+    heights: float = 0.0
+    """Distance à la caméra en hauteurs de prise de vue (sans unité : l'échelle n'y change rien)."""
 
     @property
     def side(self) -> int:
@@ -210,7 +217,16 @@ def observe_room(
         height = float(np.percentile(z, 95) - np.percentile(z, 5)) if z.size else 0.0
         axis: Axis = "x" if abs(nx) >= abs(ny) else "y"
         wall = WallObservation(
-            axis, 0.0, (0.0, 0.0), fitted.count, fitted.rms_m, n2, d, along, height
+            axis,
+            0.0,
+            (0.0, 0.0),
+            fitted.count,
+            fitted.rms_m,
+            n2,
+            d,
+            along,
+            height,
+            d / obs.camera_height_m if obs.camera_height_m > 0 else math.inf,
         )
         if wall.aligned:  # comme avant KAN-polygone : droite prise sur l'axe de la caméra
             other = 1 if axis == "x" else 0
@@ -344,6 +360,8 @@ def _oblique_refusal(wall: WallObservation, walls: list[WallObservation]) -> str
         return "trop court"
     if wall.height_m < OBLIQUE_MIN_HEIGHT_M:
         return "trop bas, sans doute un meuble"
+    if wall.heights > OBLIQUE_MAX_HEIGHTS:
+        return "trop loin pour juger son angle dans la profondeur"
     assert wall.normal is not None
     nx, ny = wall.normal
     for other in walls:
