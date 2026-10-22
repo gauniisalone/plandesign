@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter
 
+from openplan.pipeline import board_links as bl
 from openplan.pipeline.comments import CommentStore
 from openplan.pipeline.mainroom import main_room
 from openplan.pipeline.reactions import ReactionStore
@@ -195,7 +196,18 @@ def replaced(before: Board | None, after: Board) -> Board:
     """Un tableau reçu du client : ce qu'il a retiré parmi ce que le projet fournit (photo,
     rendu, plan, note de la demande) est noté, pour que la synchronisation ne le remette pas."""
     if before is None:
-        return after
+        return after.model_copy(update={"items": bl.with_membership(after.items)})
+    # KAN-91 : un onglet d'avant les liens n'en envoie pas ; ceux d'avant restent (moins ceux
+    # dont une carte a disparu), et `reference` suit l'appartenance.
+    after = after.model_copy(
+        update={
+            "items": bl.with_membership(after.items),
+            "links": bl.auto_links(after.items, before.links, before.cut_links)
+            if not after.links
+            else after.links,
+            "cut_links": list(dict.fromkeys([*before.cut_links, *after.cut_links])),
+        }
+    )
     kept = {_key(i) for i in after.items}
     gone = [
         _key(i)
@@ -220,16 +232,24 @@ def patched(before: Board | None, patch: BoardPatch, actor: str) -> Board:
     stamp = now_utc()
     items = {i.id: i for i in board.items}
     gone = [items.pop(i) for i in patch.delete if i in items]
+    previous = {i.id: i.frame for i in board.items}
     for item in patch.set:
         items[item.id] = item.model_copy(update={"updated_at": stamp, "updated_by": actor})
     if len(items) > MAX_ITEMS:
         msg = f"l'espace de travail est limité à {MAX_ITEMS} éléments"
         raise TooManyItemsError(msg)
+    # KAN-91 (C3) : une carte métier n'accepte que ce qu'elle sait lire.
+    for item in patch.set:
+        if item.frame is not None and item.frame != previous.get(item.id):
+            reason = bl.accepts(items.get(item.frame), item)
+            if reason is not None:
+                raise bl.LinkError(reason)
     frames = {i.id for i in items.values() if i.kind == "frame"}
-    kept = [
+    kept = bl.with_membership(
         i if i.frame is None or i.frame in frames else i.model_copy(update={"frame": None})
         for i in items.values()
-    ]
+    )
+    links, cut = bl.written_links(board, kept, patch.links_set, patch.links_delete, actor, stamp)
     # Retiré pour de bon seulement si plus aucune carte ne montre la même chose (une copie
     # « Dupliquer », ou la carte du client qui remplace le doublon de la synchronisation).
     remaining = {_key(i) for i in kept}
@@ -245,6 +265,8 @@ def patched(before: Board | None, patch: BoardPatch, actor: str) -> Board:
             "items": kept,
             "view": patch.view or board.view,
             "dismissed": list(dict.fromkeys([*board.dismissed, *(k for k in dismissed if k)])),
+            "links": links,
+            "cut_links": cut,
         }
     )
 
@@ -441,8 +463,22 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
         if f"contextual:{ref}" not in present | dismissed:
             added.into("moodboard", "Moodboard", "contextual", ref, title)
 
-    changed = fresh or added.items != list(current.items)
-    return current.model_copy(update={"items": added.items}), changed
+    # KAN-91 : migration douce. Une image cochée « Référence » hors de toute carte métier (avant
+    # les cartes reliées) entre dans la carte Inspirations : elle continue de guider les rendus,
+    # et « Référence » ne se décide plus que par l'appartenance.
+    by_id = {i.id: i for i in added.items}
+    for item in list(added.items):
+        if (
+            item.reference
+            and item.kind in bl.IMAGE_KINDS
+            and bl.card_role(by_id.get(item.frame) if item.frame else None) is None
+            and "frame:inspirations" not in dismissed
+        ):
+            added.move_into(item, "inspirations", FIXED_FRAMES["inspirations"])
+    items = bl.with_membership(added.items)
+    links = bl.auto_links(items, list(current.links), list(current.cut_links))
+    changed = fresh or items != list(current.items) or links != list(current.links)
+    return current.model_copy(update={"items": items, "links": links}), changed
 
 
 class _Adder:
@@ -552,16 +588,7 @@ class _Adder:
         frame: BoardItem | None = None,
     ) -> None:
         frame = frame or self._frame(role, title)
-        inside = sum(1 for i in self.items if i.frame == frame.id)
-        row, col = divmod(inside, COLS)
-        x = frame.x + PAD + col * (CELL_W + 16.0)
-        y = frame.y + PAD_TOP + row * (CELL_H + 16.0)
-        need = PAD_TOP + PAD + (row + 1) * CELL_H + row * 16.0
-        if frame.h < need:
-            grown = frame.model_copy(update={"h": need})
-            self._push_below(frame, need - frame.h)
-            self.items[self.items.index(frame)] = grown
-            frame = grown
+        x, y, frame = self._slot(frame)
         self.items.append(
             BoardItem(
                 kind=kind,  # type: ignore[arg-type]
@@ -575,6 +602,27 @@ class _Adder:
                 role=item_role,
             )
         )
+
+    def _slot(self, frame: BoardItem) -> tuple[float, float, BoardItem]:
+        """La case libre suivante du cadre (il grandit d'une rangée s'il est plein)."""
+        inside = sum(1 for i in self.items if i.frame == frame.id)
+        row, col = divmod(inside, COLS)
+        x = frame.x + PAD + col * (CELL_W + 16.0)
+        y = frame.y + PAD_TOP + row * (CELL_H + 16.0)
+        need = PAD_TOP + PAD + (row + 1) * CELL_H + row * 16.0
+        if frame.h < need:
+            grown = frame.model_copy(update={"h": need})
+            self._push_below(frame, need - frame.h)
+            self.items[self.items.index(frame)] = grown
+            frame = grown
+        return x, y, frame
+
+    def move_into(self, item: BoardItem, role: BoardRole, title: str) -> None:
+        """KAN-91 : un élément déjà posé entre dans un cadre (à sa prochaine case)."""
+        frame = self._frame(role, title)
+        x, y, frame = self._slot(frame)
+        index = next(k for k, i in enumerate(self.items) if i.id == item.id)
+        self.items[index] = self.items[index].model_copy(update={"x": x, "y": y, "frame": frame.id})
 
     def _push_below(self, frame: BoardItem, dy: float) -> None:
         """Un cadre qui grandit pousse ce qui est posé dessous, dans la même colonne ; à droite

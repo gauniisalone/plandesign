@@ -2080,6 +2080,22 @@ export interface BoardItem {
   /** B2c : heure et acteur de la dernière écriture de cet élément, posés par le serveur. */
   updated_at?: string | null;
   updated_by?: string | null;
+  /** KAN-91 : étiquettes de matière ou de style désactivées (`m:lin`, `s:japandi`). */
+  ignored_tags?: string[];
+}
+
+/** KAN-91 : les trois liens entre cartes (le type se déduit des deux cartes). */
+export type LinkKind = "feeds_plan" | "guides_style" | "renders_view";
+
+export interface BoardLink {
+  id: string;
+  source: string;
+  target: string;
+  kind: LinkKind;
+  /** Posé par PlanDesign (zéro geste), pas tiré à la main. */
+  auto?: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
 }
 
 /** B2c : les écritures d'un geste ; la dernière écriture gagne, élément par élément. */
@@ -2087,6 +2103,40 @@ export interface BoardPatch {
   set: BoardItem[];
   delete: string[];
   view?: BoardView;
+  /** KAN-91 : liens posés ou modifiés, liens coupés (leur paire est retenue). */
+  links_set?: BoardLink[];
+  links_delete?: string[];
+}
+
+/** KAN-91 : ce que lit la génération d'une carte, tel que le serveur le lira (C1). */
+export interface GenerationInputs {
+  target: string;
+  kind: "plan" | "renders" | "none";
+  photos: string[];
+  photo_card: string | null;
+  plan_level: string | null;
+  plan_item: string | null;
+  inspirations: {
+    item: string;
+    kind: string;
+    ref: string | null;
+    card: string;
+    ignored_tags: string[];
+  }[];
+  inspiration_cards: string[];
+  can_render: boolean;
+  /** « Reliez un plan pour rendre » (D2). */
+  reason: string | null;
+}
+
+/** KAN-91 : la bulle de survol d'un lien. */
+export interface LinkSummary {
+  id: string;
+  kind: LinkKind;
+  sentence: string;
+  auto: boolean;
+  updated_by: string | null;
+  rights: string;
 }
 
 export interface BoardView {
@@ -2103,6 +2153,9 @@ export interface Board {
   view: BoardView;
   dismissed: string[];
   updated_at: string;
+  /** KAN-91 : liens entre cartes, et paires coupées à la main (jamais recréées). */
+  links?: BoardLink[];
+  cut_links?: string[];
 }
 
 export interface MediaRef {
@@ -2364,6 +2417,12 @@ export const boardApi = {
     }),
   putViewKeepalive: (pid: string, view: BoardView): void =>
     keepalive("PUT", `/projects/${pid}/view`, view),
+  /** KAN-91 : ce que lit la génération d'un plan ou d'une carte Rendus (C1). */
+  inputs: (pid: string, targetId: string) =>
+    request<GenerationInputs>(`/projects/${pid}/board/inputs/${targetId}`),
+  /** KAN-91 : la phrase de survol d'un lien, recalculée depuis les membres. */
+  link: (pid: string, linkId: string) =>
+    request<LinkSummary>(`/projects/${pid}/board/links/${linkId}`),
 };
 
 /* Rendu contextualisé (A1) : une source du tableau et une intention → prompt enrichi par le

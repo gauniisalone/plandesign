@@ -18,6 +18,7 @@ import {
   contextualApi,
   type Board,
   type BoardItem,
+  type BoardLink,
   type BoardView,
   type ContextualEntry,
   type MediaRef,
@@ -61,6 +62,25 @@ import {
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
 import { RealisticRenders } from "./RealisticRenders";
+import {
+  WireBanner,
+  WireLayer,
+  WireToast,
+  type WireDrag,
+} from "./BoardLinks";
+import {
+  accepts,
+  cardRole,
+  cardTitle,
+  dropEffect,
+  hasPlan,
+  linkRefusal,
+  newLink,
+  NO_PLAN,
+  OFF_CARD,
+  offCard,
+  plansFedBy,
+} from "./links";
 import { referenceOf } from "../state/photoReference";
 import { CommentPins, CommentsPanel } from "./comments";
 import { ReactionRows } from "./Reactions";
@@ -123,6 +143,10 @@ const ENTER_MS = 280;
 const DOUBLE_MS = 450;
 /** KAN-50 : un lecteur dépose ou colle quelque chose : rien n'est ajouté, et il le sait. */
 const READ_ONLY_NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
+/** KAN-91 : durée du bandeau « Annuler » (dépôt, lien coupé) et délai avant le recalcul du
+ *  plan dont les photos ont changé. */
+const TOAST_MS = 6000;
+const DRAG_THRESHOLD_PX = 5;
 /** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
 const NEW_PLAN_GAP = 32;
 const NEW_PLAN_BOX = { w: 180, h: 48 };
@@ -147,6 +171,11 @@ interface Props {
   onProjectChanged: (project: Project) => void;
   /** T7d2 : un rendu en grand dans la visionneuse ; "" = la première vue. */
   onOpenRender: (runId: string) => void;
+  /** KAN-91 : pose ou coupe des liens entre cartes ; résout à vrai si le serveur accepte. */
+  onWriteLinks: (set: BoardLink[], cut: string[]) => Promise<boolean>;
+  /** KAN-91 : des photos sont entrées dans la carte Photos d'un plan ou en sont sorties (après
+   *  le délai d'« Annuler ») : le plan se recalcule. */
+  onPlanMembers?: (levelId: string, added: string[], removed: string[]) => void;
   onEditPlan: (levelId: string) => void;
   onVariant: (text: string) => void;
   /** T1 : la note Exigences écrit la consigne et les réponses gardées dans le projet. */
@@ -278,6 +307,7 @@ function RendersFrameActions({
   levelId,
   stale,
   hasRender,
+  noPlan,
   onRerender,
   onOpenViewer,
   onOpenRendersPane,
@@ -285,6 +315,8 @@ function RendersFrameActions({
   levelId: string;
   stale: string[];
   hasRender: boolean;
+  /** KAN-91 (D2) : aucun plan relié à cette carte : elle ne rend pas. */
+  noPlan: boolean;
   onRerender: (cameraIds: string[], levelId?: string) => void;
   onOpenViewer: (levelId: string) => void;
   onOpenRendersPane: (levelId?: string) => void;
@@ -295,12 +327,22 @@ function RendersFrameActions({
       className="board-frame-actions"
       onPointerDown={(e) => e.stopPropagation()}
     >
+      {noPlan && (
+        <span className="board-wire-noplan" role="note">
+          {NO_PLAN}
+        </span>
+      )}
       {n > 0 && (
         <button
           type="button"
           className="board-stale-btn"
+          disabled={noPlan}
           onClick={() => onRerender(stale, levelId)}
-          title="Le plan, l'ambiance ou le point de vue ont changé depuis ces rendus"
+          title={
+            noPlan
+              ? NO_PLAN
+              : "Le plan, l'ambiance ou le point de vue ont changé depuis ces rendus"
+          }
         >
           Re-rendre {n} vue{n > 1 ? "s" : ""} périmée{n > 1 ? "s" : ""}
         </button>
@@ -360,6 +402,24 @@ export function BoardCanvas(props: Props) {
     id: string;
     label: string;
   } | null>(null);
+  /** KAN-91 : le lien choisi (barre « Couper »), le lien tiré depuis une poignée, les liens
+   *  coupés à l'instant (pointillé fantôme), le bandeau avec « Annuler », la phrase de dépôt
+   *  d'une image dans (ou hors d') une carte, et le recalcul du plan qui attend son délai. */
+  const [wireSelected, setWireSelected] = useState<string | null>(null);
+  const [wireDrag, setWireDrag] = useState<WireDrag | null>(null);
+  const [ghosts, setGhosts] = useState<BoardLink[]>([]);
+  const [toast, setToast] = useState<{
+    text: string;
+    undo?: () => void;
+  } | null>(null);
+  const [dropHint, setDropHint] = useState<{
+    frame: string | null;
+    text: string;
+    ok: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+  const recompute = useRef<number | null>(null);
   const dark = useDarkTheme();
   /** KAN-78 : l'élément survolé (son bouton « Réagir » sous lui). */
   const hover = useHoveredItem();
@@ -634,10 +694,172 @@ export function BoardCanvas(props: Props) {
       (item.kind === "file" &&
         media.find((m) => m.id === item.ref)?.kind === "image"));
   const referenceable = selection.filter(canReference);
-  const toggleReference = () => {
-    const on = referenceable.some((i) => !i.reference);
-    const ids = new Set(referenceable.map((i) => i.id));
-    commit(items.map((i) => (ids.has(i.id) ? { ...i, reference: on } : i)));
+  /** KAN-91 : « Référence » ne se coche plus, il suit l'appartenance (C1). « Dans
+   *  Inspirations » fait entrer les images choisies dans la carte Inspirations, comme si on
+   *  les y glissait : leur allure guide alors les rendus reliés. */
+  const inspirationsCard = items.find((i) => cardRole(i) === "inspirations");
+  const outsideInspirations = referenceable.filter(
+    (i) => !inspirationsCard || i.frame !== inspirationsCard.id,
+  );
+  const toInspirations = () => {
+    const card = inspirationsCard;
+    if (!card || !outsideInspirations.length) return;
+    let target = card;
+    let inside = items.filter((i) => i.frame === card.id).length;
+    const moved = new Map<string, BoardItem>();
+    for (const i of outsideInspirations) {
+      const placed = placeInFrame(target, inside, [i.w, i.h]);
+      moved.set(i.id, {
+        ...i,
+        x: placed.x,
+        y: placed.y,
+        frame: card.id,
+        reference: true,
+      });
+      target = placed.frame;
+      inside += 1;
+    }
+    const before = new Map(items.map((i) => [i.id, i]));
+    commit(
+      items.map((i) => moved.get(i.id) ?? (i.id === card.id ? target : i)),
+    );
+    afterMembership(before, [...moved.values()]);
+  };
+
+  /** KAN-91 (C3) : ce qu'un geste a changé dans l'appartenance des images. Le bandeau dit
+   *  l'effet, avec « Annuler » (le geste entier) ; une photo entrée dans la carte Photos d'un
+   *  plan, ou sortie, recalcule ce plan après le délai d'« Annuler ». */
+  const afterMembership = (
+    before: Map<string, BoardItem>,
+    after: BoardItem[],
+  ) => {
+    const byId = new Map(items.map((i) => [i.id, i]));
+    let text: string | null = null;
+    const plans = new Map<string, { added: string[]; removed: string[] }>();
+    for (const item of after) {
+      const old = before.get(item.id);
+      if (!old || old.frame === item.frame || item.kind === "frame") continue;
+      const from = old.frame ? (byId.get(old.frame) ?? null) : null;
+      const to = item.frame ? (byId.get(item.frame) ?? null) : null;
+      const effect = dropEffect(board, item, from, to);
+      if (effect?.ok)
+        text ??= effect.text
+          .replace(/^Déposer : /, "Déposée : ")
+          .replace(/^Déplacer : /, "Déplacée : ")
+          .replace(/^Relâcher hors carte : /, "Hors carte : ");
+      if (item.kind !== "photo" || !item.ref) continue;
+      const left = plansFedBy(board, from?.id ?? null);
+      const entered = plansFedBy(board, to?.id ?? null);
+      for (const lid of left.filter((l) => !entered.includes(l))) {
+        const p = plans.get(lid) ?? { added: [], removed: [] };
+        p.removed.push(item.ref);
+        plans.set(lid, p);
+      }
+      for (const lid of entered.filter((l) => !left.includes(l))) {
+        const p = plans.get(lid) ?? { added: [], removed: [] };
+        p.added.push(item.ref);
+        plans.set(lid, p);
+      }
+    }
+    if (!text && !plans.size) return;
+    if (recompute.current !== null) window.clearTimeout(recompute.current);
+    recompute.current = null;
+    if (plans.size && props.onPlanMembers && !readOnly) {
+      const go = props.onPlanMembers;
+      recompute.current = window.setTimeout(() => {
+        recompute.current = null;
+        for (const [lid, p] of plans) go(lid, p.added, p.removed);
+      }, TOAST_MS);
+    }
+    setToast({
+      text: `${text ?? "Cartes modifiées"}${plans.size ? " · le plan se recalculera" : ""}`,
+      undo: () => {
+        if (recompute.current !== null) window.clearTimeout(recompute.current);
+        recompute.current = null;
+        props.onUndo();
+        setToast(null);
+      },
+    });
+  };
+
+  /** KAN-91 : la carte (plan, cadre Photos, Inspirations ou Rendus) sous un point. */
+  const cardAt = (at: { x: number; y: number }, except: string) =>
+    items
+      .filter(
+        (i) =>
+          i.id !== except &&
+          cardRole(i) !== null &&
+          at.x >= i.x &&
+          at.x <= i.x + i.w &&
+          at.y >= i.y &&
+          at.y <= i.y + i.h,
+      )
+      .sort((a, b) => a.w * a.h - b.w * b.h)[0] ?? null;
+
+  const onWireHandleDown = (e: ReactPointerEvent, source: BoardItem) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (readOnly) return;
+    stage.current?.setPointerCapture(e.pointerId);
+    setWireSelected(null);
+    setWireDrag({
+      source,
+      to: toWorld(e.clientX, e.clientY),
+      target: null,
+      refused: null,
+    });
+  };
+
+  const finishWire = (current: WireDrag) => {
+    setWireDrag(null);
+    const { source, target, refused } = current;
+    if (!target) return;
+    if (refused) {
+      setMessage(refused);
+      return;
+    }
+    const link = newLink(source, target);
+    if (!link) return;
+    void props.onWriteLinks([link], []).then((ok) => {
+      if (ok)
+        setToast({
+          text: `Lien posé : ${cardTitle(source)} → ${cardTitle(target)}`,
+          undo: () => {
+            void props.onWriteLinks([], [link.id]);
+            setToast(null);
+          },
+        });
+    });
+  };
+
+  const cutText = (link: BoardLink): string => {
+    const s = cardTitle(items.find((i) => i.id === link.source));
+    const t = cardTitle(items.find((i) => i.id === link.target));
+    if (link.kind === "guides_style")
+      return `Lien coupé : ${s} ne guide plus ${t}. Les rendus déjà faits restent.`;
+    if (link.kind === "feeds_plan")
+      return `Lien coupé : les photos de ${s} ne construisent plus ${t}.`;
+    return `Lien coupé : ${t} n'a plus de plan relié (« ${NO_PLAN} »). Les rendus déjà faits restent.`;
+  };
+
+  const cutLink = (link: BoardLink) => {
+    setWireSelected(null);
+    setGhosts((g) => [...g, link]);
+    window.setTimeout(
+      () => setGhosts((g) => g.filter((x) => x.id !== link.id)),
+      TOAST_MS,
+    );
+    void props.onWriteLinks([], [link.id]).then((ok) => {
+      if (!ok) return;
+      setToast({
+        text: cutText(link),
+        undo: () => {
+          setGhosts((g) => g.filter((x) => x.id !== link.id));
+          void props.onWriteLinks([{ ...link, id: uid(), auto: false }], []);
+          setToast(null);
+        },
+      });
+    });
   };
 
   const order = (front: boolean) => {
@@ -791,6 +1013,7 @@ export function BoardCanvas(props: Props) {
     let firstPhoto: string | null = null;
     let offset = 0;
     let target = into ?? frameAt(at);
+    const dropped = target;
     let inside = target
       ? items.filter((i) => i.frame === target?.id).length
       : 0;
@@ -868,7 +1091,19 @@ export function BoardCanvas(props: Props) {
       ]);
       setSelected(new Set(added.map((a) => a.id)));
       if (changed) props.onProjectChanged(changed);
-      if (changed && firstPhoto) props.onPhotoDropped(changed, firstPhoto);
+      // KAN-91 (C1) : une photo ne construit le plan que déposée dans la carte Photos reliée
+      // à ce plan ; posée librement, elle attend qu'on l'y glisse (et le dit).
+      const level = props.activeLevelId ?? firstLevelId;
+      const feeds =
+        !!dropped &&
+        cardRole(dropped) === "photos" &&
+        plansFedBy(board, dropped.id).includes(level);
+      if (changed && firstPhoto && feeds)
+        props.onPhotoDropped(changed, firstPhoto);
+      else if (firstPhoto && cardRole(dropped) !== "photos")
+        setToast({
+          text: "Photo posée hors carte : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
+        });
     }
   };
 
@@ -941,6 +1176,7 @@ export function BoardCanvas(props: Props) {
     }
     if (!e.shiftKey) setSelected(new Set());
     setEditing(null);
+    setWireSelected(null);
     setDrag({ kind: "marquee", x: p.x, y: p.y, to: p });
   };
 
@@ -1014,6 +1250,18 @@ export function BoardCanvas(props: Props) {
   };
 
   const onMove = (e: ReactPointerEvent) => {
+    if (wireDrag) {
+      // KAN-91 : un lien tiré : la cible sous le pointeur, valide ou refusée (raison dite).
+      const to = toWorld(e.clientX, e.clientY);
+      const target = cardAt(to, wireDrag.source.id);
+      setWireDrag({
+        ...wireDrag,
+        to,
+        target,
+        refused: target ? linkRefusal(board, wireDrag.source, target) : null,
+      });
+      return;
+    }
     if (!drag) return;
     if (drag.kind === "pan") {
       setViewState({
@@ -1039,6 +1287,39 @@ export function BoardCanvas(props: Props) {
           moving.has(i.id) ? { ...i, x: i.x + dx, y: i.y + dy } : i,
         ),
       );
+      // KAN-91 (C3) : une image glissée vers une carte (ou hors d'elle) : la carte visée
+      // s'entoure, une phrase dit ce qui arrivera (au-delà de 5 px : le clic reste un clic).
+      const primary = drag.start.find(
+        (i) => selected.has(i.id) && i.kind !== "frame" && !i.locked,
+      );
+      if (
+        primary &&
+        Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > DRAG_THRESHOLD_PX
+      ) {
+        const moved = { ...primary, x: primary.x + dx, y: primary.y + dy };
+        const host =
+          drag.start.find(
+            (f) =>
+              f.kind === "frame" &&
+              f.id !== primary.id &&
+              !moving.has(f.id) &&
+              inside(moved, f),
+          ) ?? null;
+        const from = primary.frame
+          ? (drag.start.find((f) => f.id === primary.frame) ?? null)
+          : null;
+        const effect = dropEffect(board, moved, from, host);
+        setDropHint(
+          effect
+            ? {
+                frame: host?.id ?? null,
+                ...effect,
+                x: moved.x + moved.w / 2,
+                y: moved.y + moved.h,
+              }
+            : null,
+        );
+      }
     } else if (drag.kind === "resize") {
       // KAN-65 : un post-it reste carré, sauf avec Maj.
       const size = {
@@ -1058,7 +1339,12 @@ export function BoardCanvas(props: Props) {
   };
 
   const onUp = () => {
+    if (wireDrag) {
+      finishWire(wireDrag);
+      return;
+    }
     if (!drag) return;
+    setDropHint(null);
     if (drag.kind === "pan") applyView(view);
     else if ((drag.kind === "move" || drag.kind === "resize") && live) {
       // Rangement : un élément lâché dans un cadre lui appartient, hors de tout cadre il
@@ -1069,6 +1355,21 @@ export function BoardCanvas(props: Props) {
         const host = frames.find((f) => f.id !== i.id && inside(i, f));
         return { ...i, frame: host ? host.id : null };
       });
+      // KAN-91 (C3) : une carte qui n'accepte pas cet élément (une inspiration dans la carte
+      // Photos) : le geste est refusé, l'élément revient, la raison est dite.
+      const before = new Map(
+        (drag.kind === "move" ? drag.start : board.items).map((i) => [i.id, i]),
+      );
+      const refused = next
+        .filter((i) => i.frame && before.get(i.id)?.frame !== i.frame)
+        .map((i) => accepts(frames.find((f) => f.id === i.frame) ?? null, i))
+        .find((reason) => reason !== null);
+      if (refused) {
+        setMessage(refused);
+        setDrag(null);
+        setLive(null);
+        return;
+      }
       // B2c : seuls les éléments de ce geste partent, posés sur le tableau d'à présent (un
       // autre membre a pu en changer d'autres pendant le geste).
       const base = new Set(drag.kind === "move" ? drag.start : board.items);
@@ -1076,6 +1377,7 @@ export function BoardCanvas(props: Props) {
         next.filter((i) => !base.has(i)).map((i) => [i.id, i]),
       );
       commit(board.items.map((i) => touched.get(i.id) ?? i));
+      afterMembership(before, [...touched.values()]);
     } else if (drag.kind === "marquee") {
       const x0 = Math.min(drag.x, drag.to.x);
       const y0 = Math.min(drag.y, drag.to.y);
@@ -1174,12 +1476,17 @@ export function BoardCanvas(props: Props) {
       } else if (mod && e.key === "0") {
         e.preventDefault();
         fit();
-      } else if (e.key === "Delete" || e.key === "Backspace") remove();
-      else if (e.key === "Escape") {
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        // KAN-91 : un lien choisi se coupe avec Suppr (avant les éléments choisis).
+        const link = (board.links ?? []).find((l) => l.id === wireSelected);
+        if (link && !readOnly) cutLink(link);
+        else remove();
+      } else if (e.key === "Escape") {
         // KAN-51 : Échap quitte l'outil Commentaire, les boutons des cadres reviennent.
         setTool((t) => (t === "comment" ? "select" : t));
         setSelected(new Set());
         setEditing(null);
+        setWireSelected(null);
       } else if (e.key === "]") order(true);
       else if (e.key === "[") order(false);
       else if (e.key === "v") setTool("select");
@@ -1634,6 +1941,7 @@ export function BoardCanvas(props: Props) {
                       i.kind === "render" &&
                       i.role !== "inspiration",
                   )}
+                  noPlan={!hasPlan(board, item.id)}
                   onRerender={props.onRerender}
                   onOpenViewer={props.onOpenViewer}
                   onOpenRendersPane={props.onOpenRendersPane}
@@ -1699,6 +2007,19 @@ export function BoardCanvas(props: Props) {
       (a.kind === "frame" ? 0 : 1) - (b.kind === "frame" ? 0 : 1) || a.z - b.z,
   );
   const single = selection.length === 1 ? selection[0] : undefined;
+  // KAN-91 : cartes par id (pastille « hors carte »), images jointes, et rendus d'une carte
+  // Rendus sans plan relié (D2 : ils restent visibles, atténués).
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const isImageFile = (i: BoardItem) =>
+    i.kind === "file" && media.find((m) => m.id === i.ref)?.kind === "image";
+  const unplanned = new Set(
+    items
+      .filter((i) => cardRole(i) === "renders" && !hasPlan(board, i.id))
+      .map((i) => i.id),
+  );
+  const dimmed = new Set(
+    items.filter((i) => i.frame && unplanned.has(i.frame)).map((i) => i.id),
+  );
   const box =
     selection.length > 0
       ? {
@@ -1814,16 +2135,13 @@ export function BoardCanvas(props: Props) {
               Voir en grand
             </button>
           )}
-        {referenceable.length > 0 && (
+        {outsideInspirations.length > 0 && inspirationsCard && !readOnly && (
           <button
             type="button"
-            onClick={toggleReference}
-            aria-pressed={referenceable.every((i) => !!i.reference)}
-            title="Référence : l'allure de cette image (matières, ambiance) guide les rendus contextualisés, pas sa géométrie"
+            onClick={toInspirations}
+            title="Comme un glisser dans la carte Inspirations : l'allure de cette image (matières, ambiance) guide les rendus reliés, pas sa géométrie"
           >
-            {referenceable.every((i) => i.reference)
-              ? "Retirer la référence"
-              : "Référence"}
+            Dans Inspirations
           </button>
         )}
         <button type="button" onClick={duplicate} title="Dupliquer (Ctrl+D)">
@@ -1982,7 +2300,7 @@ export function BoardCanvas(props: Props) {
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}`}
               style={{
                 left: item.x,
                 top: item.y,
@@ -2000,9 +2318,22 @@ export function BoardCanvas(props: Props) {
               {item.reference && (
                 <span
                   className="board-reference"
-                  title="Référence : son allure guide les rendus contextualisés"
+                  title="Dans une carte Inspirations : son allure guide les rendus reliés"
                 >
                   Référence
+                </span>
+              )}
+              {offCard(item, byId, isImageFile(item)) && (
+                // KAN-91 (C1) : une image libre n'est jamais utilisée ; elle dit où la glisser.
+                <span
+                  className="board-offcard"
+                  title={
+                    item.kind === "photo"
+                      ? "Glissez-la dans « Photos de la pièce » pour qu'elle serve au plan"
+                      : "Glissez-la dans « Inspirations » pour qu'elle guide un rendu"
+                  }
+                >
+                  {OFF_CARD}
                 </span>
               )}
               {item.locked && (
@@ -2019,6 +2350,34 @@ export function BoardCanvas(props: Props) {
               )}
             </div>
           ))}
+          {/* KAN-91 : les liens entre cartes, au-dessus des cadres, sous les cartes. */}
+          <WireLayer
+            projectId={project.id}
+            board={board}
+            items={items}
+            zoom={view.zoom}
+            readOnly={readOnly}
+            selected={wireSelected}
+            ghosts={ghosts}
+            drag={wireDrag}
+            onSelect={setWireSelected}
+            onCut={cutLink}
+            onHandleDown={onWireHandleDown}
+          />
+          {dropHint && (
+            <div
+              className={`board-wire-bubble board-drop-hint${dropHint.ok ? "" : " refused"}`}
+              role="status"
+              style={{
+                left: dropHint.x,
+                top: dropHint.y,
+                transform: `translate(-50%, 8px) scale(${1 / view.zoom})`,
+                transformOrigin: "top center",
+              }}
+            >
+              {dropHint.text}
+            </div>
+          )}
           {props.presence && (
             <PresenceLayer
               store={props.presence.store}
@@ -2131,6 +2490,15 @@ export function BoardCanvas(props: Props) {
             <CommentsPanel c={props.comments} items={items} inline />,
             props.side.comments,
           )}
+        {!readOnly && <WireBanner projectId={project.id} board={board} />}
+        {toast && (
+          <WireToast
+            text={toast.text}
+            onUndo={readOnly ? undefined : toast.undo}
+            onClose={() => setToast(null)}
+            ms={TOAST_MS}
+          />
+        )}
         <div
           className="board-zoom"
           role="group"

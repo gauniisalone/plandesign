@@ -43,7 +43,20 @@ NoteColor = Literal["yellow", "orange", "pink", "violet", "blue", "green", "gray
 MAX_ITEMS = 2000
 MAX_SIDE = 20000.0
 MAX_URL = 2000
+MAX_TAGS = 64
 _URL = re.compile(r"https?://[^\s\x00-\x1f\x7f<>\"]+", re.IGNORECASE)
+_TAG = re.compile(r"[ms]:[^\s\x00-\x1f\x7f]{1,58}")
+LinkKind = Literal["feeds_plan", "guides_style", "renders_view"]
+"""KAN-91 : les trois liens entre cartes. `feeds_plan` : carte Photos → plan (ses photos le
+construisent) ; `guides_style` : carte Inspirations → carte Rendus (ses images guident
+l'ambiance) ; `renders_view` : plan → carte Rendus (la géométrie rendue)."""
+LINK_ROLES: dict[str, tuple[str, str]] = {
+    "feeds_plan": ("photos", "plan"),
+    "guides_style": ("inspirations", "renders"),
+    "renders_view": ("plan", "renders"),
+}
+"""Le rôle de la source et de la cible de chaque lien (`plan` : un élément de sorte plan ;
+sinon le rôle d'un cadre). Le type d'un lien se déduit des deux cartes, jamais choisi."""
 
 
 class BoardItem(StrictModel):
@@ -70,7 +83,9 @@ class BoardItem(StrictModel):
     url: str | None = Field(default=None, max_length=MAX_URL)
     """Adresse d'un lien (C1), http ou https seulement ; la page n'est jamais récupérée."""
     reference: bool = False
-    """Coché « Référence » (A2) : cette image guide l'allure des rendus contextualisés."""
+    """« Référence » (A2) : cette image guide l'allure des rendus. Depuis KAN-91, dérivé de
+    l'appartenance et posé par le serveur : vrai si et seulement si l'image est membre d'une
+    carte Inspirations (gardé pour les projets d'avant)."""
     kept: bool = False
     """« À conserver » (A3) : une variante retenue, marquée sur sa carte."""
     comment: str = Field(default="", max_length=2000)
@@ -83,6 +98,18 @@ class BoardItem(StrictModel):
     le client envoie est ignoré. Absent d'un tableau d'avant B2c."""
     updated_by: str | None = Field(default=None, max_length=120)
     """B2c : l'acteur de cette écriture (`user`, `user:<id>`), posé par le serveur."""
+    ignored_tags: list[str] = Field(default_factory=list, max_length=MAX_TAGS)
+    """KAN-91 : étiquettes de matière ou de style désactivées sur cette image (`m:terracotta`,
+    `s:japandi`) ; elles ne guident plus les rendus. Pas de couleur (décision C2)."""
+
+    @field_validator("ignored_tags")
+    @classmethod
+    def _tags(cls, value: list[str]) -> list[str]:
+        for tag in value:
+            if not _TAG.fullmatch(tag):
+                msg = "étiquette : « m:<matière> » ou « s:<style> », 60 caractères au plus"
+                raise ValueError(msg)
+        return list(dict.fromkeys(value))
 
     @field_validator("url")
     @classmethod
@@ -101,6 +128,26 @@ class BoardView(StrictModel):
     zoom: float = Field(default=1.0, gt=0.05, le=8.0)
 
 
+class BoardLink(StrictModel):
+    """KAN-91 : un lien d'une carte à une autre. Ce qui entre dans une génération, ce sont les
+    membres des cartes reliées (décision C1) : une image hors carte ne compte jamais."""
+
+    id: UUID = Field(default_factory=uuid4)
+    source: UUID
+    target: UUID
+    kind: LinkKind
+    """Vérifié contre les rôles des deux cartes (`LINK_ROLES`)."""
+    auto: bool = False
+    """Posé par la synchronisation (zéro geste), pas tiré à la main."""
+    updated_at: datetime | None = None
+    """Posé par le serveur à chaque écriture du lien (la dernière gagne, comme B2c)."""
+    updated_by: str | None = Field(default=None, max_length=120)
+
+    @property
+    def pair(self) -> str:
+        return f"{self.source}>{self.target}"
+
+
 class Board(StrictModel):
     version: Literal[1] = 1
     revision: int = Field(default=0, ge=0)
@@ -110,6 +157,11 @@ class Board(StrictModel):
     view: BoardView = Field(default_factory=BoardView)
     dismissed: list[str] = Field(default_factory=list, max_length=MAX_ITEMS)
     """Références retirées à la main : la synchronisation ne les remet pas."""
+    links: list[BoardLink] = Field(default_factory=list, max_length=MAX_ITEMS)
+    """KAN-91 : les liens entre cartes (photos → plan, plan → rendus, inspirations → rendus)."""
+    cut_links: list[str] = Field(default_factory=list, max_length=MAX_ITEMS)
+    """KAN-91 : paires « source>cible » coupées à la main : la synchronisation ne les recrée
+    pas (même rôle que `dismissed` pour les éléments)."""
     updated_at: datetime = Field(default_factory=now_utc)
 
 
@@ -121,6 +173,10 @@ class BoardPatch(StrictModel):
     set: list[BoardItem] = Field(default_factory=list, max_length=MAX_ITEMS)
     delete: list[UUID] = Field(default_factory=list, max_length=MAX_ITEMS)
     view: BoardView | None = None
+    links_set: list[BoardLink] = Field(default_factory=list, max_length=MAX_ITEMS)
+    """KAN-91 : liens posés ou modifiés, lien par lien (la dernière écriture gagne)."""
+    links_delete: list[UUID] = Field(default_factory=list, max_length=MAX_ITEMS)
+    """KAN-91 : liens coupés ; leur paire est notée dans `cut_links`."""
 
 
 class MediaRef(StrictModel):

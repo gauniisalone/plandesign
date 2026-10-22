@@ -26,9 +26,9 @@ from openplan.schemas import events as event_schema
 from openplan.schemas.events import ProjectEvent
 from openplan.schemas.scene import ImageRef, ReferenceSegment
 
-PRODUCTION = "3da4d52"
-"""MEP 5 (21 oct. 2026), schéma 0.16.0 : la version vers laquelle on revient."""
-TARGET = "0.16.0"
+PRODUCTIONS = [("3da4d52", "0.16.0"), ("a1c630f", "0.17.0")]
+"""Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0) et MEP 13
+(22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91)."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
@@ -48,15 +48,15 @@ print(json.dumps(out))
 """
 
 
-def _old_code(tmp: Path) -> Path:
+def _old_code(tmp: Path, production: str) -> Path:
     try:
         archive = subprocess.run(
-            ["git", "-C", str(REPO), "archive", PRODUCTION, "openplan"],
+            ["git", "-C", str(REPO), "archive", production, "openplan"],
             capture_output=True,
             check=True,
         ).stdout
     except (OSError, subprocess.CalledProcessError):
-        pytest.skip(f"historique git sans {PRODUCTION} (clone superficiel)")
+        pytest.skip(f"historique git sans {production} (clone superficiel)")
     root = tmp / "production"
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(root, filter="data")
@@ -94,6 +94,25 @@ def _write_with_the_new_code(data: Path) -> list[str]:
         ).status_code
         == 200
     )
+    # KAN-91 : liens automatiques (posés à la lecture), un lien coupé, une étiquette ignorée.
+    board = client.get(f"/api/projects/{pid2}/board").json()
+    assert board["links"], "liens posés par la synchronisation"
+    tagged = {
+        "id": str(uuid4()),
+        "kind": "note",
+        "x": 900,
+        "y": 0,
+        "w": 200,
+        "h": 200,
+        "ignored_tags": ["m:terracotta"],
+    }
+    assert (
+        client.patch(
+            f"/api/projects/{pid2}/board/items",
+            json={"set": [tagged], "links_delete": [board["links"][0]["id"]]},
+        ).status_code
+        == 200
+    )
     ids.append(pid2)
     if "reaction" in event_schema.EventType.__args__:  # type: ignore[attr-defined]
         ProjectEvents(store.project_dir(__import__("uuid").UUID(pid2))).append(
@@ -105,11 +124,14 @@ def _write_with_the_new_code(data: Path) -> list[str]:
     return ids
 
 
-def test_production_rereads_downgraded_projects_without_409_or_500(tmp_path: Path) -> None:
-    old = _old_code(tmp_path)
+@pytest.mark.parametrize(("production", "target"), PRODUCTIONS)
+def test_production_rereads_downgraded_projects_without_409_or_500(
+    tmp_path: Path, production: str, target: str
+) -> None:
+    old = _old_code(tmp_path, production)
     data = tmp_path / "data"
     _write_with_the_new_code(data)
-    report = downgrade_tree(data, TARGET)
+    report = downgrade_tree(data, target)
     assert not report.errors and report.changed
     seen = subprocess.run(
         [sys.executable, "-c", OLD_READER, str(data)],

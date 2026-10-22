@@ -263,9 +263,10 @@ def test_three_variants_share_the_seed_and_never_touch_the_plan(tmp_path: Path) 
 
 
 def test_references_guide_the_look_and_are_recorded(tmp_path: Path) -> None:
-    """A2 : les images du tableau cochées « Référence » (photo du projet, image jointe)
-    arrivent au modèle avec leur poids, sont nommées dans les métadonnées ; une référence
-    inconnue ou un fichier joint qui n'est pas une image sont refusés avant la tâche."""
+    """A2, KAN-91 (C1) : les images de la carte Inspirations reliée à la carte Rendus du niveau
+    (photo du projet, image jointe) arrivent au modèle avec leur poids, sont nommées dans les
+    métadonnées ; « Référence » suit l'appartenance ; la liste envoyée par le front n'est plus
+    suivie (une image hors carte n'est jamais utilisée)."""
     project = _project_with_window()
     inspirer = _Inspirer()
     client, _ = _client(tmp_path, project, inspirer)
@@ -276,17 +277,27 @@ def test_references_guide_the_look_and_are_recorded(tmp_path: Path) -> None:
     )
     assert joined.status_code == 201, joined.text
     media_id = joined.json()["id"]
-    text_file = client.post(
-        f"/api/projects/{pid}/media", files={"file": ("notes.txt", b"pas une image", "text/plain")}
-    ).json()["id"]
-    # Le tableau garde la coche « Référence » sur l'élément.
+    # La photo et l'image jointe entrent dans la carte Inspirations : « Référence » suit.
     board = client.get(f"/api/projects/{pid}/board").json()
+    insp = next(i for i in board["items"] if i["kind"] == "frame" and i["role"] == "inspirations")
     photo_item = next(i for i in board["items"] if i["kind"] == "photo")
     assert photo_item["reference"] is False
-    photo_item["reference"] = True
     # A3 : « À conserver » et le commentaire attaché voyagent avec la carte.
-    photo_item["kept"] = True
-    photo_item["comment"] = "garder le lit"
+    photo_item.update(frame=insp["id"], kept=True, comment="garder le lit")
+    board["items"].append(
+        {
+            "id": "00000000-0000-4000-8000-00000000a091",
+            "kind": "file",
+            "x": insp["x"] + 24,
+            "y": insp["y"] + 24,
+            "w": 280,
+            "h": 190,
+            "ref": media_id,
+            "text": "inspi.png",
+            "frame": insp["id"],
+            "reference": True,
+        }
+    )
     saved = client.put(f"/api/projects/{pid}/board", json=board)
     assert saved.status_code == 200, saved.text
     again = client.get(f"/api/projects/{pid}/board").json()
@@ -305,24 +316,12 @@ def test_references_guide_the_look_and_are_recorded(tmp_path: Path) -> None:
         "variants": ["creative"],
         "seed": 3,
     }
-    for bad in (
-        {"kind": "photo", "ref": "00000000-0000-4000-8000-000000000009"},
-        {"kind": "file", "ref": text_file, "label": "notes.txt"},
-        {"kind": "render", "ref": "00000000-0000-4000-8000-000000000008"},
-    ):
-        r = client.post(
-            f"/api/projects/{pid}/levels/{lid}/contextual", json={**base, "references": [bad]}
-        )
-        assert r.status_code == 409 and "référence" in r.json()["detail"], (bad, r.text)
-    assert inspirer.requests == []
-
+    # Une référence envoyée par le front, inconnue ou hors carte, n'est plus suivie : ce sont
+    # les membres des cartes reliées qui partent.
     body = {
         **base,
         "variants": ["creative", "radicale"],
-        "references": [
-            {"kind": "photo", "ref": image, "label": "Photo 1"},
-            {"kind": "file", "ref": media_id, "label": "inspi.png"},
-        ],
+        "references": [{"kind": "photo", "ref": "00000000-0000-4000-8000-000000000009"}],
         "reference_scale": 0.7,
     }
     with client:
@@ -334,10 +333,16 @@ def test_references_guide_the_look_and_are_recorded(tmp_path: Path) -> None:
     assert len(request.references) == 2 and request.reference_scale == 0.7
     assert request.references[1].shape == (72, 96, 3)
     creative, radical = done["result"]["entries"]
-    assert creative["references"] == ["Photo 1", "inspi.png"] and creative["reference_scale"] == 0.7
+    assert creative["references"] == ["Photo", "inspi.png"] and creative["reference_scale"] == 0.7
     # La radicale écoute davantage les références (A4 : +0,2, borné à 1).
     assert radical["reference_scale"] == 0.9 and inspirer.requests[1].reference_scale == 0.9
-    # Sans référence : rien n'est envoyé, rien n'est noté.
+    # Les deux images sorties de la carte : rien n'est envoyé, rien n'est noté.
+    out = [
+        {**i, "frame": None, "x": 9000 + k * 300}
+        for k, i in enumerate(again["items"])
+        if i.get("ref") in (image, media_id)
+    ]
+    assert client.patch(f"/api/projects/{pid}/board/items", json={"set": out}).status_code == 200
     with client:
         job = client.post(f"/api/projects/{pid}/levels/{lid}/contextual", json=base)
         done = _wait(client, pid, job.json())

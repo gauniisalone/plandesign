@@ -450,10 +450,16 @@ test("première photo d'un projet neuf (tableau) : plan construit sans autre act
     },
     [...readFileSync(FIXTURE)],
   );
-  await page
-    .getByRole("region", { name: "Espace de travail" })
-    .locator(".board-stage")
-    .dispatchEvent("drop", { dataTransfer: photo });
+  // KAN-91 (C1) : une photo ne construit le plan que déposée dans la carte « Photos de la
+  // pièce » reliée à ce plan ; posée librement, elle n'est jamais utilisée.
+  const space = page.getByRole("region", { name: "Espace de travail" });
+  const photos = space.locator(".board-item.kind-frame.role-photos");
+  const box = (await photos.boundingBox())!;
+  await space.locator(".board-stage").dispatchEvent("drop", {
+    dataTransfer: photo,
+    clientX: box.x + box.width / 2,
+    clientY: box.y + box.height / 2,
+  });
   const id = /projects\/([0-9a-f-]{36})/.exec(page.url())?.[1];
   await expect
     .poll(

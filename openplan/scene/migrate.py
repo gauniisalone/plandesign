@@ -81,6 +81,14 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.17.0", "0.18.0")
+def _board_links(data: dict[str, Any]) -> dict[str, Any]:
+    """0.18.0 (KAN-91) : l'espace de travail en cartes reliées, dans `board.json` (liens, paires
+    coupées, étiquettes ignorées) ; `project.json` ne change pas. Version montée pour qu'un retour
+    arrière vers 0.17.0 passe par la descente (qui retire ces champs de `board.json`)."""
+    return data
+
+
 @register("0.16.0", "0.17.0")
 def _scale_confidence(data: dict[str, Any]) -> dict[str, Any]:
     """0.17.0 (KAN-66 + KAN-31) : `ScaleBasis.confidence` et `ScaleBasis.confidence_inputs`,

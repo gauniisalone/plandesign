@@ -13,6 +13,7 @@ from openplan.adapters.protocols import (
     RoomElementDetector,
 )
 from openplan.adapters.registry import resolve_device
+from openplan.api.board_rules import require_plan_photo
 from openplan.api.deps import (
     ActorDep,
     JobsDep,
@@ -96,6 +97,8 @@ def autoplan(
     if image_id not in project.images:
         msg = f"image inconnue : {image_id}"
         raise ImageNotFoundError(msg)
+    # KAN-91 (C1) : seule une photo de la carte Photos reliée à ce plan le construit.
+    require_plan_photo(project, store, level_id, image_id)
     project_id = project.id
     device, _ = resolve_device(settings.device)
 

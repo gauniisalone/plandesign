@@ -7,6 +7,35 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 23 octobre 2026 (KAN-91, lots L1 et L1b : l'espace de travail en cartes reliées)
+
+- Des liens relient les cartes : carte Photos → plan (ses photos le construisent), plan →
+  carte Rendus (la géométrie rendue), carte Inspirations → carte Rendus (le style). PlanDesign
+  les pose tout seul (une fois les photos reliées aux plans et les inspirations aux rendus,
+  un bandeau le dit) ; une poignée « + » au bord d'une carte en tire un autre, les cibles
+  valides restent vives, une cible refusée est expliquée. Survol : ce que la génération lira
+  vraiment (« Les 2 photos de cette carte construisent Plan · RDC… »). Clic : « Couper » (ou
+  Suppr), avec « Annuler » ; un lien coupé à la main n'est jamais recréé.
+- Décision C1 d'augus : une génération ne lit que les membres des cartes reliées. Le plan ne se
+  construit que depuis les photos de la carte Photos reliée (409 sinon) ; les rendus ne lisent
+  que les images des cartes Inspirations reliées à leur carte Rendus (elles remplacent les
+  images cochées « Référence », qui suit désormais l'appartenance) ; une image posée librement
+  porte la pastille « hors carte : non utilisée ».
+- Glisser une image dans une carte en fait un membre, la sortir la retire : la carte visée
+  s'entoure, une phrase dit l'effet (« Déposer : cette photo servira au Plan · RDC »), un
+  bandeau confirme avec « Annuler ». Une inspiration déposée dans la carte Photos est refusée,
+  avec la raison. Une photo entrée dans la carte du plan est analysée (sauf si elle l'a déjà
+  été) ; une photo sortie quitte le plan (sa caméra estimée), après le délai d'« Annuler ».
+- Une carte Rendus sans plan relié ne rend pas : « Reliez un plan pour rendre », ses rendus
+  restent visibles, atténués (D2) ; la demande de rendu réaliste est refusée en 409.
+  Plusieurs cartes Inspirations peuvent guider un rendu, à poids égal (D1). Tous les éditeurs
+  du projet modifient les liens (D3).
+- « Référence » ne se coche plus : « Dans Inspirations » range l'image dans la carte. Les images
+  cochées hors de toute carte (projets d'avant) entrent d'elles-mêmes dans la carte Inspirations.
+- Format 0.18.0 (`board.json` : liens, paires coupées, étiquettes ignorées). Retour arrière :
+  `openplan downgrade --to 0.17.0` retire ces champs (aller-retour vérifié avec la production
+  a1c630f).
+
 ### 22 octobre 2026 (KAN-88 : rendu local par Z-Image-Turbo)
 
 - En local, la finition IA des rendus passe par **Z-Image-Turbo** dès que ses quatre poids sont

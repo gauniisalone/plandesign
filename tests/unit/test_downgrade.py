@@ -20,9 +20,11 @@ from openplan.schemas.common import SCHEMA_VERSION
 from openplan.schemas.scene import ImageRef, Project
 from tests.format_paths import current_paths
 
-PRODUCTION = Path(__file__).parents[1] / "fixtures" / "format_paths_3da4d52.json"
-"""Instantané des chemins de champs de la production (MEP 5, 3da4d52), produit par
-`python -m tests.format_paths` avec le code de 3da4d52 en PYTHONPATH."""
+FIXTURES = Path(__file__).parents[1] / "fixtures"
+SNAPSHOTS = [FIXTURES / "format_paths_3da4d52.json", FIXTURES / "format_paths_a1c630f.json"]
+"""Instantanés des chemins de champs des productions (MEP 5, 3da4d52, schéma 0.16.0 ; MEP 13,
+a1c630f, schéma 0.17.0), produits par `python -m tests.format_paths` avec le code de chaque
+version en PYTHONPATH."""
 TOLERATED: dict[str, dict[str, str]] = {
     "events.jsonl": {
         "": "une ligne d'un type ou d'un champ inconnu est ignorée par l'ancien code "
@@ -51,10 +53,10 @@ def _dump(project: Project) -> dict[str, object]:
 
 def test_the_step_removes_the_confidence_everywhere_and_is_idempotent() -> None:
     data = _dump(_with_confidence())
-    assert data["schema_version"] == SCHEMA_VERSION == "0.17.0"
+    assert data["schema_version"] == SCHEMA_VERSION == "0.18.0"
     down, removed, lost = downgrade_data(data, "0.16.0")
     assert down["schema_version"] == "0.16.0" and removed == 4  # la mesure et sa « previous »
-    assert "confiance" in lost[0]
+    assert "liens" in lost[0] and "confiance" in lost[1], "0.18.0 → 0.17.0 puis 0.16.0"
     text = json.dumps(down)
     assert "confidence" not in text
     again, removed_again, _ = downgrade_data(down, "0.16.0")
@@ -92,16 +94,48 @@ def test_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     project = store.save(_with_confidence())
     assert main(["downgrade", "--to", "0.16.0", "--dry-run", str(tmp_path)]) == 0
     assert "1 projet(s) à descendre" in capsys.readouterr().out
-    assert json.loads(project.read_text())["schema_version"] == "0.17.0"
+    assert json.loads(project.read_text())["schema_version"] == "0.18.0"
     assert main(["downgrade", "--to", "0.16.0", str(tmp_path)]) == 0
     assert json.loads(project.read_text())["schema_version"] == "0.16.0"
     assert main(["downgrade", "--to", "0.1.0", str(tmp_path)]) == 2
 
 
-def test_every_field_added_since_production_is_removed_or_tolerated() -> None:
+def test_board_links_go_down_with_the_project_to_0_17(tmp_path: Path) -> None:
+    """KAN-91 : 0.18.0 → 0.17.0 retire du `board.json` les liens, les paires coupées et les
+    étiquettes ignorées ; le reste du tableau (cartes, appartenance `frame`) ne bouge pas."""
+    from uuid import uuid4
+
+    from openplan.pipeline.board import save_board
+    from openplan.schemas.board import Board, BoardItem, BoardLink
+
+    store = ProjectStore(tmp_path / "projects")
+    path = store.save(new_project("Cartes"))
+    frame = BoardItem(kind="frame", x=0, y=0, w=10, h=10, role="photos")
+    photo = BoardItem(
+        kind="photo", x=1, y=1, w=2, h=2, ref=str(uuid4()), frame=frame.id, ignored_tags=["m:lin"]
+    )
+    plan = BoardItem(kind="plan", x=20, y=0, w=10, h=10, ref=str(uuid4()))
+    link = BoardLink(source=frame.id, target=plan.id, kind="feeds_plan")
+    save_board(
+        path.parent,
+        Board(items=[frame, photo, plan], links=[link], cut_links=[f"{uuid4()}>{uuid4()}"]),
+    )
+    done = downgrade_tree(tmp_path, "0.17.0")
+    assert len(done.changed) == 1 and done.removed == 3 and not done.errors
+    board = json.loads((path.parent / "board.json").read_text())
+    assert "links" not in board and "cut_links" not in board
+    assert all("ignored_tags" not in i for i in board["items"])
+    assert board["items"][1]["frame"] == str(frame.id), "l'appartenance reste"
+    assert json.loads(path.read_text())["schema_version"] == "0.17.0"
+    again = downgrade_tree(tmp_path, "0.17.0")
+    assert again.changed == [] and again.unchanged == 1
+
+
+@pytest.mark.parametrize("snapshot", SNAPSHOTS, ids=lambda p: p.stem.split("_")[-1])
+def test_every_field_added_since_production_is_removed_or_tolerated(snapshot: Path) -> None:
     """Un ticket qui ajoute un champ à un fichier relu par un modèle strict doit l'ajouter à
     une marche de descente (REMOVED_PATHS), ou dire ici pourquoi l'ancien code le tolère."""
-    production = json.loads(PRODUCTION.read_text(encoding="utf-8"))
+    production = json.loads(snapshot.read_text(encoding="utf-8"))
     missing: list[str] = []
     for file, paths in current_paths().items():
         added = set(paths) - set(production.get(file) or [])

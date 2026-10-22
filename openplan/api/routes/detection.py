@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 from pydantic import Field
 
+from openplan.api.board_rules import require_plan_photo
 from openplan.api.deps import DepthEstimatorDep, OpeningDetectorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.routes.scene import EditResult, _result
@@ -40,6 +41,7 @@ def detect(level_id: UUID, body: DetectBody, project: ProjectDep, store: StoreDe
     """Analyse la photo. Niveau vide : propose un rectangle `estimated`. Niveau déjà muni de
     murs : confronte la photo à la scène (caméra « Photo n », murs inférés confirmés,
     violation `inconsistent_views` en cas d'écart ; voir `pipeline.multiview`)."""
+    require_plan_photo(project, store, level_id, body.image_id)  # KAN-91 (C1)
     run = detect_and_propose(
         project,
         store.project_dir(project.id),
@@ -76,6 +78,7 @@ def detect_from_depth(
 ) -> DepthPlanResult:
     """Plan depuis la profondeur (2.3) : sol, murs verticaux, polygone avec renfoncements,
     appliqué au niveau vide. 409 si le niveau a déjà des murs ou si les poids manquent."""
+    require_plan_photo(project, store, level_id, body.image_id)  # KAN-91 (C1)
     run = run_depthplan(
         project,
         store.project_dir(project.id),
@@ -108,6 +111,7 @@ def detect_openings(
     """Portes et fenêtres vues sur la photo (2.4b), projetées par la caméra de la photo sur le
     mur hôte → ouvertures `observed`, corrigeables ; le rapport dit ce qui a été écarté et
     pourquoi. 409 sans caméra pour cette photo ou sans poids."""
+    require_plan_photo(project, store, level_id, image_id)  # KAN-91 (C1)
     run = run_openings(
         project,
         store.project_dir(project.id),

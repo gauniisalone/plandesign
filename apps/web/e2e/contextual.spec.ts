@@ -51,16 +51,17 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
     panel.getByRole("button", { name: "Construire le prompt" }),
   ).toBeDisabled();
 
-  // A2 : la photo cochée « Référence » (barre de sélection, badge sur la carte).
+  // A2, KAN-91 : « Référence » suit l'appartenance. « Dans Inspirations » (barre de
+  // sélection) met la photo dans la carte Inspirations, reliée aux rendus : badge sur la carte.
   const photo = board.locator(".board-item.kind-photo").first();
   await photo.click();
   await expect(panel).not.toContainText("Photo · Photo");
   const bar = page.getByRole("toolbar", { name: "Actions de la sélection" });
-  await bar.getByRole("button", { name: "Référence", exact: true }).click();
+  await bar.getByRole("button", { name: "Dans Inspirations", exact: true }).click();
   await expect(photo.locator(".board-reference")).toHaveText("Référence");
   await expect(
-    bar.getByRole("button", { name: "Retirer la référence" }),
-  ).toBeVisible();
+    bar.getByRole("button", { name: "Dans Inspirations", exact: true }),
+  ).toHaveCount(0);
 
   // La photo comme source (A4 : sans vue 3D rendue, la photo telle quelle est la seule
   // source, et l'écran dit où rendre une vue) : intention, budget, prompt enrichi,

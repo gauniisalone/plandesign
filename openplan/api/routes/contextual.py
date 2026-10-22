@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from openplan.adapters.gateway import ModelGateway
 from openplan.adapters.registry import resolve_device
+from openplan.api.board_rules import style_references
 from openplan.api.deps import (
     ActorDep,
     JobsDep,
@@ -94,6 +95,17 @@ def contextual_generate(
         )
     if body.source.kind == "photo" and body.source.id not in project.images:
         raise HTTPException(status_code=409, detail=f"photo inconnue : {body.source.id}")
+    # KAN-91 (C1) : les références sont les membres des cartes Inspirations reliées à la carte
+    # Rendus de ce niveau, lues au serveur ; la liste envoyée par le front n'est plus suivie
+    # (une image hors carte n'est jamais utilisée).
+    body = body.model_copy(
+        update={
+            "references": [
+                c.ContextualReference(kind=kind, ref=ref, label=label)  # type: ignore[arg-type]
+                for kind, ref, label in style_references(project, store, level_id, c.MAX_REFERENCES)
+            ]
+        }
+    )
     try:
         c.check_references(project, project_dir, runs_dir, body.references)
     except ContextualError as exc:

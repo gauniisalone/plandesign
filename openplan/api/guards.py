@@ -77,7 +77,9 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     # Espace de travail et fichiers joints
     ("GET", P + "/board"): V,
     ("PUT", P + "/board"): E,  # compatibilité (onglets d'avant B2c)
-    ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément
+    ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément (KAN-91 : et liens, D3)
+    ("GET", P + "/board/inputs/{target_id}"): V,  # KAN-91 : ce qu'une génération lit
+    ("GET", P + "/board/links/{link_id}"): V,  # KAN-91 : la phrase de survol d'un lien
     # Commentaires (KAN-51) : lire, lecteur ; écrire, commentateur et plus. L'auteur seul
     # modifie ou supprime son message ; le propriétaire supprime tout fil (vérifié dans la route).
     ("GET", P + "/activity"): V,  # KAN-58 : le journal d'activité, lecteur compris

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   boardApi,
   type Board,
   type BoardItem,
+  type BoardLink,
   type BoardPatch,
   type BoardView,
 } from "../api/client";
@@ -165,9 +167,17 @@ export function useBoard(projectId: string, syncKey: string) {
       // Un geste fait pendant l'envoi part à son tour.
       if (pending.current.size || pendingView.current) again.current();
       else setSave("saved");
-    } catch {
-      // Rien n'est perdu : ces écritures repartiront, sous celles faites depuis.
+    } catch (e) {
       inflight.current = null;
+      if (e instanceof ApiError && (e.status === 409 || e.status === 422)) {
+        // KAN-91 : un geste refusé par une règle (une carte qui n'accepte pas cet élément) ne
+        // repart pas en boucle : il est retiré, la raison est dite, le tableau est relu.
+        setNotice(e.message);
+        setSave("saved");
+        void boardApi.get(projectId).then(show, () => undefined);
+        return;
+      }
+      // Rien n'est perdu : ces écritures repartiront, sous celles faites depuis.
       pending.current = new Map([...ops, ...pending.current]);
       setSave("error");
     }
@@ -322,6 +332,41 @@ export function useBoard(projectId: string, syncKey: string) {
     replay(gesture.after, gesture.before);
   }, [replay]);
 
+  /** KAN-91 : pose ou coupe des liens, tout de suite (pas d'attente : le geste est rare et
+   *  sa conséquence se lit aussitôt). Montré avant la réponse ; refusé (409, 422), le tableau
+   *  revient à celui du serveur et la raison est dite. Renvoie si le serveur l'a accepté. */
+  const writeLinks = useCallback(
+    async (set: BoardLink[], cut: string[]): Promise<boolean> => {
+      const current = latest.current;
+      if (!current) return false;
+      const gone = new Set([...cut, ...set.map((l) => l.id)]);
+      const pairs = new Set(set.map((l) => `${l.source}>${l.target}`));
+      const links = [
+        ...(current.links ?? []).filter(
+          (l) => !gone.has(l.id) && !pairs.has(`${l.source}>${l.target}`),
+        ),
+        ...set,
+      ];
+      latest.current = { ...current, links };
+      setBoard(latest.current);
+      try {
+        const saved = await boardApi.patch(projectId, {
+          set: [],
+          delete: [],
+          links_set: set,
+          links_delete: cut,
+        });
+        show(saved);
+        return true;
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : String(e));
+        if (server.current) show(server.current);
+        return false;
+      }
+    },
+    [projectId, show],
+  );
+
   return {
     board,
     save,
@@ -329,6 +374,7 @@ export function useBoard(projectId: string, syncKey: string) {
     canUndo: history.undo > 0,
     canRedo: history.redo > 0,
     commit,
+    writeLinks,
     setView,
     undo,
     redo,

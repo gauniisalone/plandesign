@@ -6,13 +6,14 @@ ajouté. L'ancien code refuse un projet « plus récent » (409) ou un champ inc
 stricts) ; après descente, il le relit comme avant. Ce qui est perdu : les seules données des
 champs retirés (dit par marche dans `DOWNGRADES`).
 
-Hors de `project.json`, rien à réécrire jusqu'ici : les lignes d'un type futur dans
+Depuis 0.18.0 (KAN-91), une marche peut aussi réécrire le `board.json` du projet (les liens
+entre cartes). Hors de ces deux fichiers, rien à réécrire : les lignes d'un type futur dans
 `events.jsonl` (réactions, KAN-78) sont ignorées par l'ancien code, jamais une erreur, et
 `reactions.json` lui est inconnu (gardé, il revient à la remontée). Le test de garde
 (`tests/unit/test_downgrade.py`) compare les champs des modèles lus sur disque à ceux de la
 version de production : un champ nouveau que ce module ne retire pas le fait échouer.
 
-Procédure (Infra) : arrêter l'application, `openplan downgrade --to 0.16.0 <racine des
+Procédure (Infra) : arrêter l'application, `openplan downgrade --to 0.17.0 <racine des
 données>`, puis basculer sur l'ancienne version ; l'archive de `data/` reste le dernier recours.
 """
 
@@ -35,23 +36,65 @@ DowngradeFn = Callable[[dict[str, Any]], int]
 _DOWNGRADES: dict[str, tuple[str, DowngradeFn, str]] = {}
 """version de départ → (version d'arrivée, fonction, ce qui est perdu)."""
 
-REMOVED_PATHS: dict[str, set[str]] = {"project.json": set()}
+_BOARD_DOWNGRADES: dict[str, DowngradeFn] = {}
+"""version de départ → fonction appliquée au `board.json` du projet (KAN-91), s'il existe."""
+
+BOARD_FILE = "board.json"
+REMOVED_PATHS: dict[str, set[str]] = {"project.json": set(), BOARD_FILE: set()}
 """Chemins de champs (notation de `tests/unit/test_downgrade.py`) retirés par une marche :
 la garde vérifie que tout champ ajouté depuis la production y figure."""
 
 
 def step(
-    from_version: str, to_version: str, *, lost: str, removes: set[str]
+    from_version: str,
+    to_version: str,
+    *,
+    lost: str,
+    removes: set[str],
+    board: DowngradeFn | None = None,
+    board_removes: set[str] | None = None,
 ) -> Callable[[DowngradeFn], DowngradeFn]:
+    """Une marche de descente : `fn` réécrit `project.json` ; `board`, s'il est donné, réécrit
+    le `board.json` du même projet (la version du format est celle du projet)."""
+
     def decorator(fn: DowngradeFn) -> DowngradeFn:
         if from_version in _DOWNGRADES:
             msg = f"descente déjà enregistrée depuis {from_version}"
             raise ValueError(msg)
         _DOWNGRADES[from_version] = (to_version, fn, lost)
         REMOVED_PATHS["project.json"] |= removes
+        if board is not None:
+            _BOARD_DOWNGRADES[from_version] = board
+            REMOVED_PATHS[BOARD_FILE] |= board_removes or set()
         return fn
 
     return decorator
+
+
+def _drop_board_links(board: dict[str, Any]) -> int:
+    removed = 0
+    for key in ("links", "cut_links"):
+        if key in board:
+            removed += len(board[key]) if isinstance(board[key], list) else 1
+            del board[key]
+    for item in board.get("items") or []:
+        if isinstance(item, dict) and "ignored_tags" in item:
+            removed += len(item["ignored_tags"] or [])
+            del item["ignored_tags"]
+    return removed
+
+
+@step(
+    "0.18.0",
+    "0.17.0",
+    lost="les liens entre cartes de l'espace de travail et les étiquettes désactivées ; les "
+    "images restent dans leurs cartes (l'ancienne application relit toutes les photos)",
+    removes=set(),
+    board=_drop_board_links,
+    board_removes={".links", ".cut_links", ".items[].ignored_tags"},
+)
+def _board_links_only(data: dict[str, Any]) -> int:
+    return 0  # project.json n'a pas changé en 0.18.0 : seul board.json descend
 
 
 def _scale_bases(data: dict[str, Any]) -> Iterator[dict[str, Any]]:
@@ -139,7 +182,15 @@ def downgrade_tree(root: Path, target: str, *, dry_run: bool = False) -> Downgra
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             before = data.get("schema_version")
+            steps = _steps(before, target) if isinstance(before, str) else []
             data, removed, _ = downgrade_data(data, target)
+            board_path = path.with_name(BOARD_FILE)
+            board = None
+            if board_path.is_file() and any(s in _BOARD_DOWNGRADES for s in steps):
+                board = json.loads(board_path.read_text(encoding="utf-8"))
+                for version in steps:
+                    if version in _BOARD_DOWNGRADES:
+                        removed += _BOARD_DOWNGRADES[version](board)
         except (OSError, ValueError) as exc:
             report.errors.append((path, str(exc)[:200]))
             continue
@@ -149,7 +200,27 @@ def downgrade_tree(root: Path, target: str, *, dry_run: bool = False) -> Downgra
         report.changed.append(path)
         report.removed += removed
         if not dry_run:
-            tmp = path.with_name(path.name + ".downgrade.tmp")
-            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            os.replace(tmp, path)
+            # Le tableau d'abord : un arrêt entre les deux laisse un projet encore « récent »,
+            # que la prochaine descente reprend (elle est idempotente).
+            if board is not None:
+                _write(path.with_name(BOARD_FILE), board)
+            _write(path, data)
     return report
+
+
+def _steps(version: str, target: str) -> list[str]:
+    """Les versions de départ des marches entre `version` et `target`."""
+    out: list[str] = []
+    try:
+        while _parse(version) > _parse(target) and version in _DOWNGRADES:
+            out.append(version)
+            version = _DOWNGRADES[version][0]
+    except UnsupportedSchemaVersionError:
+        return out
+    return out
+
+
+def _write(path: Path, data: dict[str, Any]) -> None:
+    tmp = path.with_name(path.name + ".downgrade.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)

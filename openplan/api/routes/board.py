@@ -12,11 +12,13 @@ from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 
 from openplan.api import change_events
 from openplan.api.access import accounts_of
+from openplan.api.board_rules import board_now
 from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import role_of
 from openplan.pipeline import board as b
+from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
 from openplan.pipeline.board_views import ViewStore, bounded
 from openplan.schemas.board import Board, BoardPatch, BoardView, MediaRef
@@ -144,7 +146,7 @@ def patch_board_items(
         # KAN-43 : la vue envoyée (onglets d'avant KAN-43) est la mienne, pas celle du projet.
         if body.view is not None:
             ViewStore(project_dir).set(author_of(actor), body.view)
-        if not body.set and not body.delete:
+        if not body.set and not body.delete and not body.links_set and not body.links_delete:
             # Une vue seule : rien n'est écrit dans le tableau, personne n'est prévenu.
             request.state.quiet = True
             current = before if before is not None else Board()
@@ -153,9 +155,97 @@ def patch_board_items(
             after = b.patched(before, body.model_copy(update={"view": None}), actor)
         except b.TooManyItemsError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except bl.LinkError as exc:
+            # KAN-91 : lien entre cartes qui ne se relient pas (422), deuxième plan relié (409),
+            # carte qui n'accepte pas cet élément (422) ; rien n'est écrit.
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         saved = b.save_board(project_dir, after)
         _journal(request, project_dir, project.id, actor, before, saved)
         return _mine(request, actor, project_dir, saved)
+
+
+class InspirationOut(StrictModel):
+    item: UUID
+    kind: str
+    ref: str | None
+    card: UUID
+    ignored_tags: list[str]
+
+
+class GenerationInputsOut(StrictModel):
+    """KAN-91 : ce que lit la génération d'une carte (C1), tel que le serveur le lira."""
+
+    target: UUID
+    kind: str
+    photos: list[str]
+    photo_card: UUID | None
+    plan_level: str | None
+    plan_item: UUID | None
+    inspirations: list[InspirationOut]
+    inspiration_cards: list[UUID]
+    can_render: bool
+    reason: str | None
+    """Pourquoi une carte Rendus ne rend pas (« Reliez un plan pour rendre », D2)."""
+
+
+class LinkSummary(StrictModel):
+    """KAN-91 : la bulle de survol d'un lien."""
+
+    id: UUID
+    kind: str
+    sentence: str
+    """Ce que le lien fait, recalculé depuis les membres (`generation_inputs`)."""
+    auto: bool
+    updated_by: str | None
+    rights: str
+
+
+def inputs_out(board: Board, target_id: UUID) -> GenerationInputsOut:
+    found = bl.generation_inputs(board, target_id)
+    return GenerationInputsOut(
+        target=found.target,
+        kind=found.kind,
+        photos=found.photos,
+        photo_card=found.photo_card,
+        plan_level=found.plan_level,
+        plan_item=found.plan_item,
+        inspirations=[
+            InspirationOut(
+                item=i.item, kind=i.kind, ref=i.ref, card=i.card, ignored_tags=list(i.ignored_tags)
+            )
+            for i in found.inspirations
+        ],
+        inspiration_cards=found.inspiration_cards,
+        can_render=found.can_render,
+        reason=bl.NO_PLAN if found.kind == "renders" and not found.can_render else None,
+    )
+
+
+@router.get("/projects/{project_id}/board/inputs/{target_id}")
+def board_inputs(target_id: UUID, project: ProjectDep, store: StoreDep) -> GenerationInputsOut:
+    """KAN-91 : ce que lit la génération d'un plan (ses photos) ou d'une carte Rendus (son plan,
+    ses inspirations). 404 si la carte n'existe pas."""
+    board = board_now(project, store)
+    if not any(i.id == target_id for i in board.items):
+        raise HTTPException(status_code=404, detail="carte inconnue")
+    return inputs_out(board, target_id)
+
+
+@router.get("/projects/{project_id}/board/links/{link_id}")
+def board_link(link_id: UUID, project: ProjectDep, store: StoreDep) -> LinkSummary:
+    """KAN-91 : la bulle de survol d'un lien, tirée de ce que la génération lira vraiment."""
+    board = board_now(project, store)
+    link = next((k for k in board.links if k.id == link_id), None)
+    if link is None:
+        raise HTTPException(status_code=404, detail="lien inconnu")
+    return LinkSummary(
+        id=link.id,
+        kind=link.kind,
+        sentence=bl.link_sentence(board, link),
+        auto=link.auto,
+        updated_by=link.updated_by,
+        rights="modifiable par tous les éditeurs du projet",
+    )
 
 
 @router.get("/projects/{project_id}/exports/archive")

@@ -89,7 +89,7 @@ def test_migration_moves_the_c3_ambiance_into_the_intent_without_loss() -> None:
     room.pop("intent", None)
     room["metadata"] = {"ambiance": "chalet", "note": "à garder"}
     loaded = load_project(data)
-    assert loaded.schema_version == SCHEMA_VERSION == "0.17.0"
+    assert loaded.schema_version == SCHEMA_VERSION == "0.18.0"
     migrated = _room(loaded)
     assert migrated.intent is not None and migrated.intent.style == "chalet"
     assert migrated.intent.chosen_by_user("style"), "l'ambiance avait été choisie"

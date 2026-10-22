@@ -86,6 +86,7 @@ import { useProject } from "../state/useProject";
 import { BoardCanvas } from "../board/BoardCanvas";
 import { ContextualPanel, type ContextualPick } from "../board/ContextualPanel";
 import { useBoard } from "../board/useBoard";
+import { planPhotos, styleImages } from "../board/links";
 import { IconClose } from "../ui/icons";
 import {
   type CameraPreset,
@@ -1407,6 +1408,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               active={step === "board"}
               planVersion={state.project.history_cursor}
               onCommit={board.commit}
+              onWriteLinks={board.writeLinks}
+              onPlanMembers={readOnly ? undefined : actions.recomputePlan}
               onView={board.setView}
               onUndo={board.undo}
               onRedo={board.redo}
@@ -1440,11 +1443,12 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onSettings={actions.updateSettings}
               onGeneratePlan={() => {
                 journalApi.ui(projectId, "generate_clicked", "plan");
-                actions.generatePlan();
+                // KAN-91 (C1) : la première photo de la carte Photos reliée à ce plan.
+                actions.generatePlan(undefined, planPhotos(board.board, level.id)[0]);
               }}
               onGenerateNow={(fresh) => {
                 journalApi.ui(projectId, "generate_clicked", "now");
-                actions.generateNow(fresh);
+                actions.generateNow(fresh, planPhotos(board.board, level.id)[0]);
               }}
               onPhotoDropped={actions.planFromPhoto}
               queued={queued}
@@ -2122,8 +2126,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                         level={level}
                         renders={state.renders}
                         pick={contextualPick}
-                        references={(board.board?.items ?? [])
-                          .filter((i) => i.reference && i.ref)
+                        references={styleImages(
+                          board.board,
+                          level.id,
+                          Object.keys(state.project.levels)[0] ?? "",
+                        )
+                          // KAN-91 (C1) : les images des cartes Inspirations reliées à la
+                          // carte Rendus de ce plan, celles que le serveur lira.
                           .map((i) => ({
                             kind: i.kind as
                               "photo" | "render" | "contextual" | "file",

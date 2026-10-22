@@ -7649,6 +7649,254 @@ button.link.home-empty-link {
   font-style: italic;
 }
 
+/* ---- KAN-91 : cartes reliées (maquette « carte reliée » d'augus, 22 oct.) ----
+   Trois couleurs de lien, chacune avec son icône : volet (photo → plan), olive (plan →
+   rendu), tuile (inspiration → rendu). Les fils sont dans le monde (ils suivent le zoom),
+   pastilles et bulles gardent une taille lisible (échelle 1/zoom). */
+.board-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  /* Au-dessus des cartes (un fil qui contourne le plan reste visible) ; seules les pastilles
+     prennent la souris. */
+  pointer-events: none;
+  z-index: 25;
+}
+.board-wire {
+  --wire: var(--pd-volet-encre);
+}
+.board-wire.wire-style,
+.board-wire-ghost.wire-style,
+marker.wire-style {
+  --wire: var(--pd-tuile);
+}
+.board-wire.wire-view,
+.board-wire-ghost.wire-view,
+marker.wire-view {
+  --wire: var(--pd-olive);
+}
+marker.wire-feeds,
+.board-wire-ghost.wire-feeds {
+  --wire: var(--pd-volet-encre);
+}
+.board-wire path,
+.board-wire-ghost path,
+.board-wire-drawing path {
+  fill: none;
+  stroke: var(--wire, var(--pd-volet-encre));
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.board-wire-head {
+  fill: var(--wire, var(--pd-volet-encre));
+}
+.board-wire.selected path {
+  stroke-width: 4;
+}
+.board-wire-start {
+  fill: var(--surface);
+  stroke: var(--wire);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.board-wire-badge {
+  pointer-events: all;
+  cursor: pointer;
+}
+.board-wire-badge > circle {
+  fill: var(--surface);
+  stroke: var(--wire);
+  stroke-width: 2;
+}
+.board-wire-badge path,
+.board-wire-badge rect,
+.board-wire-badge g > circle {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.board-wire-badge:hover > circle,
+.board-wire-badge:focus-visible > circle,
+.board-wire.selected .board-wire-badge > circle {
+  fill: color-mix(in srgb, var(--wire) 14%, var(--surface));
+}
+.board-wire-badge:focus-visible {
+  outline: none;
+}
+.board-wire-auto {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.board-wire-ghost path {
+  stroke-dasharray: 6 6;
+  opacity: 0.55;
+}
+.board-wire-ghost text {
+  fill: var(--wire);
+}
+.board-wire-drawing path {
+  stroke: var(--pd-tuile);
+  stroke-dasharray: 7 5;
+}
+.board-wire-drawing.refused path {
+  stroke: var(--danger);
+}
+.board-wire-target {
+  fill: none;
+  stroke: var(--pd-tuile);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.board-wire-dim {
+  fill: var(--canvas);
+  opacity: 0.55;
+}
+.board-wire-handle {
+  position: absolute;
+  z-index: 26;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: crosshair;
+  opacity: 0.55;
+}
+.board-wire-handle:hover,
+.board-wire-handle:focus-visible {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--pd-tuile);
+}
+.board-wire-bubble {
+  position: absolute;
+  z-index: 30;
+  /* Dans le monde (sans largeur) : sans cela, la bulle prend la largeur d'un mot. */
+  width: max-content;
+  max-width: 360px;
+  padding: 8px 12px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: normal;
+  pointer-events: none;
+  transform-origin: top left;
+}
+.board-wire-bubble.bar {
+  display: grid;
+  gap: 6px;
+  pointer-events: all;
+  width: max-content;
+}
+.board-wire-bubble.refused {
+  border: 1px dashed var(--danger);
+  color: var(--danger);
+}
+.board-wire-type {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pd-tuile);
+}
+.board-wire-text,
+.board-wire-cards {
+  display: block;
+}
+.board-wire-cards {
+  font-weight: 600;
+}
+.board-wire-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.board-wire-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.board-wire-noplan {
+  font-size: calc(11px * max(1, var(--inv, 1)));
+  font-style: italic;
+  color: var(--warn);
+  white-space: nowrap;
+}
+.board-wire-banner,
+.board-wire-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: min(720px, 92%);
+  padding: 10px 14px;
+  border-radius: var(--r-card);
+  background: var(--pd-encre);
+  color: var(--pd-creme);
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+}
+.board-wire-banner {
+  top: 12px;
+}
+.board-wire-toast {
+  bottom: 64px;
+}
+.board-wire-banner button,
+.board-wire-toast button {
+  background: transparent;
+  color: var(--pd-creme);
+  border: 1px solid rgb(237 227 209 / 0.45);
+  border-radius: var(--r-control);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.board-item.board-drop-ok {
+  outline: 3px solid var(--pd-tuile);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--pd-tuile) 8%, transparent);
+}
+.board-item.board-drop-refused {
+  outline: 3px dashed var(--danger);
+  outline-offset: 3px;
+}
+.board-item.board-noplan {
+  opacity: 0.5;
+}
+.board-item.board-offcard-item {
+  outline: 1.5px dashed var(--line-strong);
+  outline-offset: 2px;
+}
+.board-item.board-offcard-item img {
+  filter: saturate(0.35);
+}
+.board-offcard {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  border: 1px solid var(--pd-tuile);
+  color: var(--warn);
+  font-size: calc(11px * max(1, var(--inv, 1)));
+  pointer-events: auto;
+}
+
 /* ---- KAN-66 : mesure de référence sur la photo (calque plein écran, loupe ×4) ---- */
 .photo-measure {
   position: fixed;

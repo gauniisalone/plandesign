@@ -37,6 +37,7 @@ from openplan.api.accounts.render_queue import (
     RenderQueue,
     public_request,
 )
+from openplan.api.board_rules import render_inputs
 from openplan.api.files import served_file
 from openplan.pipeline.render import NoCameraError, camera_view
 from openplan.pipeline.scene3d import bake_level
@@ -126,10 +127,14 @@ def create_realistic(
     est rendue telle quelle (double clic)."""
     user = allowed_user(request)
     store = store_of(request)
+    project = store.load(project_id)
     try:
-        camera_view(store.load(project_id), level_id, body.camera_id)
+        camera_view(project, level_id, body.camera_id)
     except NoCameraError as exc:
         raise HTTPException(status_code=404, detail="vue inconnue") from exc
+    # KAN-91 (D2) : la carte Rendus de ce niveau doit avoir un plan relié, sinon 409 « Reliez un
+    # plan pour rendre ». Ses inspirations (C1) remplacent les images cochées « Référence ».
+    render_inputs(project, store, level_id)
     queue = queue_of(request)
     for row in queue.list_for(user.id, project_id):
         if (row.level_id, row.camera_id) == (level_id, body.camera_id) and row.state in (

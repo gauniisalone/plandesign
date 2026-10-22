@@ -776,12 +776,14 @@ export function useProject(projectId: string) {
    *  puis chemin automatique ; sinon la note Exigences (texte, réponses) → plan proposé ou
    *  plan de départ (L3, L1b) puis chemin automatique ; sinon rien à lire, et on le dit. */
   const generatePlan = useCallback(
-    (fresh?: Requirements) => {
+    (fresh?: Requirements, member?: string) => {
       const { project, levelId } = state;
       if (!project || !levelId) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       if (state.photoDepth && !state.photoDepth.error) return;
-      const photo = Object.keys(project.images)[0];
+      // KAN-91 (C1) : la première photo de la carte Photos reliée à ce plan (l'espace de
+      // travail la donne) ; sans carte reliée ni photo dedans, le plan se lit des exigences.
+      const photo = member;
       if (photo && currentCapabilities().photoPlan) {
         autoplanFromPhoto(project, levelId, photo, project.history_cursor);
         return;
@@ -819,6 +821,47 @@ export function useProject(projectId: string) {
     [state, run, applyProject, autoplanFromPhoto, startAutopilot],
   );
 
+  /** KAN-91 : les photos de la carte Photos reliée au plan `levelId` ont changé (après le
+   *  délai d'« Annuler » de l'espace de travail). Une photo sortie quitte le plan : sa caméra
+   *  estimée s'en va (un pas d'historique, annulable). Une photo entrée qui n'a jamais été
+   *  analysée sur ce plan l'est : elle construit le plan s'il est vide, sinon elle y est
+   *  confrontée. Une photo déjà analysée garde son analyse (décision d'augus). */
+  const recomputePlan = useCallback(
+    (levelId: string, added: string[], removed: string[]) => {
+      const { project } = state;
+      if (!project || !project.levels[levelId]) return;
+      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      const level = project.levels[levelId];
+      const cameras = Object.values(level.elements).filter(
+        (e) =>
+          e.type === "camera" &&
+          "image_id" in e &&
+          e.image_id &&
+          removed.includes(e.image_id),
+      );
+      const analysed = new Set(
+        Object.values(level.elements)
+          .filter((e) => e.type === "camera" && "image_id" in e && e.image_id)
+          .map((e) => ("image_id" in e ? e.image_id : null)),
+      );
+      const fresh = added.filter((id) => !analysed.has(id));
+      void run(async () => {
+        let current = project;
+        for (const camera of cameras) {
+          const result = await api.applyOp(project.id, levelId, {
+            op: "remove_element",
+            element_id: camera.id,
+          });
+          current = result.project;
+        }
+        if (cameras.length) await applyProject(current);
+        if (fresh[0] && currentCapabilities().photoPlan)
+          autoplanFromPhoto(current, levelId, fresh[0], current.history_cursor);
+      });
+    },
+    [state, run, applyProject, autoplanFromPhoto],
+  );
+
   /** Une photo déposée sur le tableau (T4) : projet sans plan et bascule « générer au dépôt
    *  d'une photo » active → construction du plan puis chemin automatique, sans autre geste. */
   const planFromPhoto = useCallback(
@@ -838,12 +881,12 @@ export function useProject(projectId: string) {
   /** « Générer maintenant » (T4) : sans plan, comme « Générer le plan » ; avec un plan, le
    *  chemin automatique (ambiance, aménagement, vues, rendus). */
   const generateNow = useCallback(
-    (fresh?: Requirements) => {
+    (fresh?: Requirements, member?: string) => {
       const { project, levelId } = state;
       if (!project || !levelId) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       const level = project.levels[levelId];
-      if (!level || walls(level).length === 0) generatePlan(fresh);
+      if (!level || walls(level).length === 0) generatePlan(fresh, member);
       else if (currentCapabilities().renders)
         startAutopilot(project.id, levelId);
     },
@@ -1827,6 +1870,7 @@ export function useProject(projectId: string) {
       importFile,
       generatePlan,
       planFromPhoto,
+      recomputePlan,
       retryPhotoDepth,
       dismissPhotoDepth,
       generateNow,
