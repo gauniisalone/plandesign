@@ -750,9 +750,15 @@ test("B2c : deux éditeurs, dernière écriture par élément, annuler sans recr
 test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async ({
   browser,
 }) => {
-  const owner = await person(browser, "198.51.100.61");
+  // Adresses et IP uniques par passage : le test se rejoue dans la même base (--repeat-each)
+  // sans reprendre les comptes, les codes, ni la limite de 10 codes par IP et par heure
+  // (1er passage : ses IP habituelles ; répétitions : 203.0.113.x, plage de documentation).
+  const run = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const rep = test.info().repeatEachIndex;
+  const ip = (k: 1 | 2) => (rep === 0 ? `198.51.100.${60 + k}` : `203.0.113.${10 * rep + k}`);
+  const owner = await person(browser, ip(1));
   await gotoApp(owner, "/");
-  await signInHere(owner, "fanny@example.org", "Fanny");
+  await signInHere(owner, `fanny-${run}@example.org`, "Fanny");
   const origin = { Origin: new URL(owner.url()).origin };
   const made = await owner.request.post("/api/projects", {
     data: { name: "Plan partagé" },
@@ -764,9 +770,9 @@ test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async
     headers: origin,
   });
   const { token } = (await invite.json()) as { token: string };
-  const guest = await person(browser, "198.51.100.62");
+  const guest = await person(browser, ip(2));
   await gotoApp(guest, `/#/invitation/${token}`);
-  await signInHere(guest, "gilles@example.org", "Gilles");
+  await signInHere(guest, `gilles-${run}@example.org`, "Gilles");
   // Tous deux dans l'onglet Plan du même plan.
   // Comme avec les comptes : depuis le cadre Plan de l'espace de travail (le bouton n'apparaît
   // qu'une fois le rôle d'éditeur connu).
@@ -809,8 +815,10 @@ test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async
     [300, 400],
     [300, 600],
   ]);
-  await expect.poll(walls).toBeGreaterThan(0);
-  const afterFanny = await walls();
+  // Le contour entier (4 murs), pas le premier mur enregistré : lire le compte dès qu'il
+  // dépasse 0 tombait parfois entre deux enregistrements (cible 3, puis 4 chez Gilles).
+  const afterFanny = 4;
+  await expect.poll(walls, { timeout: 15_000 }).toBe(afterFanny);
   // Enregistrés, et relus chez Gilles (avis « changed ») : il les voit dans sa page.
   await expect(guest.locator("svg.plan polygon.wall")).toHaveCount(afterFanny, {
     timeout: 15_000,
@@ -855,7 +863,7 @@ test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async
     [850, 400],
     [850, 600],
   ]);
-  await expect.poll(walls).toBeGreaterThan(afterFanny);
+  await expect.poll(walls, { timeout: 15_000 }).toBe(afterFanny + 4);
   await expect(
     owner.getByRole("status").filter({ hasText: "Gilles modifie ce plan" }),
   ).toBeVisible({ timeout: 15_000 });
