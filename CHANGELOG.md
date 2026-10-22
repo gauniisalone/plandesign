@@ -7,6 +7,18 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 22 octobre 2026 (KAN-86 : la description du rendu suit la scène)
+
+- La finition IA et l'inspiration décrivent la scène réellement rendue (`bake.json`, à côté de
+  l'image), plus seulement l'ambiance : matière dominante de chaque surface (sol, murs, pignons
+  d'un comble, pentes ou plafond, charpente), meubles vus dans la vue, nommés et comptés
+  (« four single beds, a low open bookcase »), habillage avec les couleurs de sa palette
+  (literie, tapis de jute, suspension en rotin, lampes, plantes). Un grenier aux murs de pierre
+  n'est plus décrit en « plastered walls » ; nommer les meubles évite qu'un modèle d'images en
+  invente un autre (cheminée à la place de la bibliothèque basse, KAN-84b).
+- Longueur selon le moteur : 60 mots pour SD 1.5 (CLIP), budget long pour Z-Image (KAN-88).
+  Rendu d'avant sans `bake.json` : le prompt d'ambiance, inchangé.
+
 ### 21 octobre 2026 (KAN-72 : combles, hauteurs justes)
 
 - La profondeur apprise penche le sol de quelques degrés (≈ 6° sur la scène de contrôle) : les

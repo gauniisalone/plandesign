@@ -17,6 +17,7 @@ from numpy.typing import NDArray
 from pydantic import Field
 
 from openplan.adapters.protocols import FinishRequest, ImageFinisher
+from openplan.pipeline.scene_prompt import SceneWords, load_scene_words
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Room
 from openplan.schemas.intent import DesignIntent
@@ -135,6 +136,10 @@ COLOR_WORDS: dict[str, str] = {
 }
 MAX_PROMPT_WORDS = 60
 """Le texte du modèle d'images est coupé vers 75 jetons : on reste en dessous."""
+PromptEngine = Literal["sd15", "zimage"]
+ENGINE_WORDS: dict[str, int] = {"sd15": MAX_PROMPT_WORDS, "zimage": 300}
+"""KAN-86 : budget de mots par moteur. SD 1.5 lit 75 jetons (CLIP) ; Z-Image lit 512 jetons
+(encodeur Qwen3), la description complète de la scène y tient."""
 
 
 def render_level(render_dir: Path) -> UUID | None:
@@ -164,12 +169,52 @@ def _room_word(project: Project, level_id: UUID | None = None) -> tuple[str, Des
     return room, intent
 
 
-def finish_prompt(project: Project, style: str | None = None, level_id: UUID | None = None) -> str:
+def finish_prompt(
+    project: Project,
+    style: str | None = None,
+    level_id: UUID | None = None,
+    *,
+    scene: SceneWords | None = None,
+    engine: PromptEngine = "sd15",
+) -> str:
     """Le prompt (anglais, que le modèle comprend mieux), dérivé de l'ambiance de la pièce
     (V1, point 5) : la pièce, le style, l'humeur, les matières par surface, les couleurs, la
-    lumière, la densité du décor. `style` force le style ; sans ambiance, le style seul (D5)."""
+    lumière, la densité du décor. `style` force le style ; sans ambiance, le style seul (D5).
+
+    KAN-86 : avec `scene` (la scène rendue), les matières par surface sont celles de la scène
+    et non celles par défaut du style, et les meubles vus et l'habillage sont nommés ; la
+    longueur suit le moteur (`ENGINE_WORDS`)."""
     room, intent = _room_word(project, level_id)
-    return prompt_words(room, intent, style)
+    limit = ENGINE_WORDS[engine]
+    if scene is None:
+        return prompt_words(room, intent, style, limit=limit)
+    groups = prompt_groups(room, intent, style)
+    surfaces = scene.surfaces or groups["surfaces"]
+    parts = [
+        *groups["lead"],
+        *groups["style"],
+        *groups["mood"],
+        *surfaces,
+        *scene.furniture,
+        *scene.textiles,
+        *groups["palette"],
+        *groups["light"],
+        *groups["warmth"],
+        *groups["density"],
+        ENGLISH.tail,
+    ]
+    return _cut([p for p in parts if p], limit)
+
+
+def _cut(parts: list[str], limit: int) -> str:
+    """Les morceaux joints par des virgules, coupés au dernier morceau entier sous `limit` mots."""
+    words: list[str] = []
+    for part in parts:
+        chunk = part.split()
+        if len(words) + len(chunk) > limit:
+            break
+        words.extend([*chunk[:-1], chunk[-1] + ","])
+    return " ".join(words).rstrip(",")
 
 
 @dataclass(frozen=True)
@@ -276,13 +321,7 @@ def prompt_words(
     limit: int = MAX_PROMPT_WORDS,
 ) -> str:
     """Le prompt anglais (partagé avec le rendu contextualisé, A1), coupé à `limit` mots."""
-    words: list[str] = []
-    for part in prompt_parts(room, intent, style, extra=extra):
-        chunk = part.split()
-        if len(words) + len(chunk) > limit:
-            break
-        words.extend([*chunk[:-1], chunk[-1] + ","])
-    return " ".join(words).rstrip(",")
+    return _cut(prompt_parts(room, intent, style, extra=extra), limit)
 
 
 def depth_control(depth_z: NDArray[np.float32]) -> NDArray[np.uint8]:
@@ -325,7 +364,8 @@ def finish_render(
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None
     edges = edges_of(pixels)
     level_id = render_level(render_dir)
-    prompt = finish_prompt(project, options.style, level_id)
+    scene = load_scene_words(project, render_dir, level_id)
+    prompt = finish_prompt(project, options.style, level_id, scene=scene)
     result = finisher.finish(
         FinishRequest(
             prompt=prompt,

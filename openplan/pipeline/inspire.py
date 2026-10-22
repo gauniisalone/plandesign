@@ -30,6 +30,7 @@ from openplan.pipeline.finish import (
     finish_prompt,
     render_level,
 )
+from openplan.pipeline.scene_prompt import load_scene_words
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.scene import Project
 
@@ -147,7 +148,11 @@ def inspire_render(
         pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
     depth_npy = render_dir / "depth_z.npy"
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None
-    prompt = finish_prompt(project, None, render_level(render_dir))
+    level_id = render_level(render_dir)
+    # KAN-86 : les matières, les meubles vus et l'habillage de la scène rendue.
+    prompt = finish_prompt(
+        project, None, level_id, scene=load_scene_words(project, render_dir, level_id)
+    )
     result = inspirer.inspire(
         InspirationRequest(
             prompt=prompt,
