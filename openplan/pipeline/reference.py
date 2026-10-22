@@ -29,7 +29,7 @@ from numpy.typing import NDArray
 from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
 from openplan.adapters.protocols import CameraParameters, DepthEstimator, DepthMap, ImageArray
 from openplan.geom.scale import CalibrationError, apply_axis_scale
-from openplan.pipeline.confidence import ScaleSource, assess
+from openplan.pipeline.confidence import MIN_ROOM_WIDTH_M, ScaleSource, assess
 from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.pipeline.ingestion import IMAGES_DIR, ImageNotFoundError, load_image
 from openplan.pipeline.recalibrate import room_axes
@@ -262,16 +262,22 @@ def scale_3d(level: Level, factor: float) -> Level:
 
 
 def scale_confidence(
-    source: ScaleSource, inputs: ConfidenceInputs, camera_height_m: float | None = None
+    source: ScaleSource,
+    inputs: ConfidenceInputs,
+    camera_height_m: float | None = None,
+    *,
+    narrow_room: bool = False,
 ) -> ScaleConfidence:
     """KAN-31 : confiance de l'estimation pour cette source d'échelle, les autres facteurs
-    (focale, sol, égout) étant ceux de l'estimation de la photo."""
+    (focale, sol, égout) étant ceux de l'estimation de la photo. `narrow_room` (KAN-87) se lit
+    sur le plan lui-même, à cette échelle (`narrow`), il n'est pas gardé."""
     found = assess(
         source,
         camera_height_m=camera_height_m if source == "entered" else None,
         focal_from_vps=inputs.focal_from_vps,
         floor_out_of_view=inputs.floor_out_of_view,
         eave_unseen=inputs.eave_unseen,
+        narrow_room=narrow_room,
     )
     return ScaleConfidence(
         level=found.level,
@@ -288,6 +294,7 @@ def camera_basis(
     *,
     entered: bool,
     inputs: ConfidenceInputs | None = None,
+    narrow_room: bool = False,
 ) -> ScaleBasis:
     """L'échelle d'un plan estimé : hauteur de prise de vue saisie, ou supposée par défaut,
     avec la confiance qui va avec."""
@@ -300,9 +307,17 @@ def camera_basis(
         image_id=image_id,
         factor=factor,
         camera_height_m=camera_height_m,
-        confidence=scale_confidence("entered" if entered else "assumed", inputs, camera_height_m),
+        confidence=scale_confidence(
+            "entered" if entered else "assumed", inputs, camera_height_m, narrow_room=narrow_room
+        ),
         confidence_inputs=inputs,
     )
+
+
+def narrow(size: RoomSize | None, factor: float = 1.0) -> bool:
+    """KAN-87 : la pièce estimée (à `factor` près) est-elle plus étroite qu'une pièce
+    habitable plausible ? Sans pièce, non."""
+    return size is not None and min(size.length_m, size.width_m) * factor < MIN_ROOM_WIDTH_M
 
 
 def with_basis(project: Project, level_id: UUID, basis: ScaleBasis) -> Project:
@@ -328,7 +343,7 @@ def basis_level(project: Project, image_id: UUID) -> UUID:
     return min(found)[1]
 
 
-def _room_size(project: Project, level_id: UUID) -> RoomSize | None:
+def room_size(project: Project, level_id: UUID) -> RoomSize | None:
     try:
         _, length, width = room_axes(project, level_id)
     except CalibrationError:
@@ -425,6 +440,7 @@ def apply_reference(
         )
     )
     what = f" ({label})" if label else ""
+    before = room_size(project, level_id)
     scaled = scale_3d(level, relative).model_copy(
         update={
             "scale_basis": ScaleBasis(
@@ -433,10 +449,12 @@ def apply_reference(
                 image_id=image_id,
                 segment_id=segment.id,
                 factor=basis.factor * relative,
-                before=_room_size(project, level_id),
+                before=before,
                 previous=camera,
                 camera_height_m=basis.camera_height_m,
-                confidence=scale_confidence("reference", basis.confidence_inputs),
+                confidence=scale_confidence(
+                    "reference", basis.confidence_inputs, narrow_room=narrow(before, relative)
+                ),
                 confidence_inputs=basis.confidence_inputs,
             )
         }
@@ -554,5 +572,12 @@ def reestimate(
         if old is not None and old.image_id == image_id
         else ConfidenceInputs(focal_from_vps=bool(analysis.frame and analysis.frame.focal_from_vps))
     )
-    basis = camera_basis(image_id, factor, height, entered=entered, inputs=inputs)
+    basis = camera_basis(
+        image_id,
+        factor,
+        height,
+        entered=entered,
+        inputs=inputs,
+        narrow_room=narrow(room_size(project, level_id)),
+    )
     return with_basis(project, level_id, basis)

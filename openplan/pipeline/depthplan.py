@@ -115,7 +115,7 @@ def observe_room(
         return None, planes
     planes, floor_idx = lower_floor(points, pixels, planes, floor_idx, h)  # KAN-70
     up = planes[floor_idx].plane.normal
-    axes = attic_axes(up, planes, floor_idx)
+    axes = room_axes(up, planes, floor_idx)
     obs = RoomObservation(camera_height_m=planes[floor_idx].plane.distance, axes=axes)
     world_points = points @ axes.T
     for i, fitted in enumerate(planes):
@@ -138,6 +138,43 @@ def observe_room(
         lo, hi = dense_span(world_points[fitted.inliers, other])
         obs.walls.append(WallObservation(axis, float(offset), (lo, hi), fitted.count, fitted.rms_m))
     return obs, planes
+
+
+def _aligned(normal: Float) -> bool:
+    return abs(float(normal[0])) >= AXIS_ALIGNED or abs(float(normal[1])) >= AXIS_ALIGNED
+
+
+def room_axes(up: Float, planes: list[FittedPlane], floor_idx: int) -> Float:
+    """Repère de la pièce pour les murs (KAN-87) : celui qui aligne le plus de points de murs.
+    Candidats : le repère des combles (`attic_axes`, aligné sur la pente la mieux soutenue,
+    sinon sur le plus grand mur), puis celui de chaque plan vertical. Dans une chambre, une
+    couette ou un meuble incliné passait pour une « pente » : le repère s'alignait dessus, tous
+    les vrais murs devenaient obliques et étaient écartés, et le plan retombait sur les lignes
+    de fuite (un couloir de 0,83 m). À soutien égal, le repère des combles est gardé (combles :
+    les murs y sont parallèles au faîtage)."""
+    walls = [
+        i
+        for i, p in enumerate(planes)
+        if i != floor_idx and math.acos(min(1.0, abs(float(p.plane.normal @ up)))) > SLOPE_MAX_TILT
+    ]
+
+    def support(axes: Float) -> int:
+        return sum(
+            planes[i].count for i in walls if _aligned(rotate_plane(planes[i].plane, axes).normal)
+        )
+
+    best = attic_axes(up, planes, floor_idx)
+    best_support = support(best)
+    for i in sorted(walls, key=lambda i: -planes[i].count):
+        x = planes[i].plane.normal - float(planes[i].plane.normal @ up) * up
+        if np.linalg.norm(x) < 1e-6:
+            continue
+        x = x / np.linalg.norm(x)
+        axes: Float = np.vstack([x, np.cross(up, x), up])
+        found = support(axes)
+        if found > best_support:
+            best, best_support = axes, found
+    return best
 
 
 def dense_span(

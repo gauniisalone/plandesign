@@ -72,7 +72,7 @@ from openplan.schemas.numbers import metres
 
 ScaleSource = Literal["reference", "entered", "assumed"]
 Level = Literal["fiable", "a_verifier", "approximatif"]
-FactorKey = Literal["scale", "focal", "floor", "eave"]
+FactorKey = Literal["scale", "focal", "floor", "eave", "room"]
 
 LEVEL_LABEL: dict[Level, str] = {
     "fiable": "fiable",
@@ -104,6 +104,12 @@ FLOOR_UNSEEN_ERROR = 0.14
 """Erreur ajoutée quand le sol est hors champ (KAN-45)."""
 EAVE_UNSEEN_ERROR = 0.40
 """Erreur ajoutée sur les combles quand l'égout n'est pas vu (KAN-61)."""
+MIN_ROOM_WIDTH_M = 2.0
+"""KAN-87 : sous cette largeur, le plan estimé n'est pas une pièce habitable plausible (une
+chambre vue de près, « 0,92 × 2,14 m ») : la photo montre sans doute un détail."""
+NARROW_ROOM_ERROR = 0.45
+"""Erreur ajoutée à un plan plus étroit que MIN_ROOM_WIDTH_M : seule, elle dépasse CHECK_MAX
+(« approximatif »)."""
 
 
 class Factor(StrictModel):
@@ -160,6 +166,7 @@ def assess(
     focal_from_vps: bool = True,
     floor_out_of_view: bool = False,
     eave_unseen: bool = False,
+    narrow_room: bool = False,
     bench_scenes: int = BENCH_SCENES,
 ) -> EstimateConfidence:
     """Niveau de confiance d'une estimation depuis une photo et sa raison principale.
@@ -192,6 +199,17 @@ def assess(
                 label="égout non vu",
                 error=EAVE_UNSEEN_ERROR,
                 advice="égout non vu : saisissez la hauteur des murs sous pente",
+            )
+        )
+    if narrow_room:
+        factors.append(
+            Factor(
+                key="room",
+                label=f"pièce de moins de {metres(MIN_ROOM_WIDTH_M)} de large",
+                error=NARROW_ROOM_ERROR,
+                advice=f"pièce estimée à moins de {metres(MIN_ROOM_WIDTH_M)} de large : la photo "
+                "montre peut-être un détail (un meuble, un coin) ; prenez la pièce entière, "
+                "ou ajoutez une mesure de référence",
             )
         )
     return _combine(factors, bench_scenes)

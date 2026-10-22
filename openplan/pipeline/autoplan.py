@@ -51,7 +51,7 @@ from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, Detectio
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
 from openplan.pipeline.openings import run_openings
 from openplan.pipeline.plan_import import PlanApplyBody, apply_segments, preview_image
-from openplan.pipeline.reference import camera_basis, save_depth, with_basis
+from openplan.pipeline.reference import camera_basis, narrow, room_size, save_depth, with_basis
 from openplan.scene import history
 from openplan.schemas.common import Source, StrictModel
 from openplan.schemas.elements import Opening, RoofWindow, Wall
@@ -948,12 +948,16 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 and estimate is not None
                 and not estimate.eave_heights,
             )
+            # KAN-87 : un plan plus étroit qu'une pièce habitable (photo d'un détail, chambre
+            # vue de près) est « approximatif », avec la raison et le geste qui l'améliore.
+            too_narrow = narrow(room_size(after, level_id))
             trust = assess(
                 "entered" if entered else "assumed",
                 camera_height_m=height if entered else None,
                 focal_from_vps=inputs.focal_from_vps,
                 floor_out_of_view=inputs.floor_out_of_view,
                 eave_unseen=inputs.eave_unseen,
+                narrow_room=too_narrow,
             )
             if method != "attic":
                 after = _ceiling(after, level_id, estimate)
@@ -963,7 +967,9 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             # KAN-66 : l'origine de l'échelle, dite à l'utilisateur ; sans profondeur gardée
             # (facteur None), la photo est à réestimer avant de pouvoir y mesurer.
             factor = factors.get(method) or factors.get("depth") or factors.get("attic")
-            basis = camera_basis(image_id, factor, height, entered=entered, inputs=inputs)
+            basis = camera_basis(
+                image_id, factor, height, entered=entered, inputs=inputs, narrow_room=too_narrow
+            )
             after = with_basis(after, level_id, basis)
         else:
             said.append(
