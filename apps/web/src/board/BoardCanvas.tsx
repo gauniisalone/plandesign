@@ -60,6 +60,7 @@ import {
   resizedPostit,
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
+import { RealisticRenders } from "./RealisticRenders";
 import { referenceOf } from "../state/photoReference";
 import { CommentPins, CommentsPanel } from "./comments";
 import { ReactionRows } from "./Reactions";
@@ -1500,6 +1501,14 @@ export function BoardCanvas(props: Props) {
                   {READ_ONLY_EMPTY[item.role ?? ""]}
                 </span>
               )
+            ) : item.role === "renders" && caps.online && !caps.renders ? (
+              // KAN-89 : le compte autorisé y demande ses rendus au poste d'augus ; les
+              // autres y lisent toujours « Rendus réalistes : bientôt en ligne ».
+              <RealisticRenders
+                project={project}
+                levelId={frameLevel(item)}
+                readOnly={readOnly}
+              />
             ) : missingHint(item.role ?? "", caps) ? (
               <span
                 className="board-frame-hint board-frame-missing"

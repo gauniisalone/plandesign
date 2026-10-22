@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { defineConfig } from "@playwright/test";
+import { E2E_WORKER_TOKEN, RENDER_ACCOUNT } from "./e2e-online/render-account";
 
 /**
  * MVP en ligne sans GPU (19 oct.) : comme les e2e des comptes, mais SANS Blender (binaire
@@ -16,6 +18,8 @@ import { defineConfig } from "@playwright/test";
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
 const dir = "apps/web/.e2e-online";
+// KAN-89 : compte autorisé aux rendus réalistes et empreinte du jeton du poste simulé.
+const workerHash = createHash("sha256").update(E2E_WORKER_TOKEN).digest("hex");
 const env = [
   "OPENPLAN_DOTENV=",
   "OPENPLAN_AUTO_PATH=0",
@@ -27,6 +31,8 @@ const env = [
   "OPENPLAN_BLENDER_BIN=/nonexistent/blender",
   `OPENPLAN_MODELS_DIR=${dir}/weights`,
   `OPENPLAN_MATERIALS_DIR=${dir}/materials`,
+  `OPENPLAN_RENDER_ACCOUNTS=${RENDER_ACCOUNT.id}`,
+  `OPENPLAN_WORKER_TOKEN_SHA256=${workerHash}`,
 ].join(" ");
 
 export default defineConfig({
@@ -49,6 +55,8 @@ export default defineConfig({
       command:
         `cd ../.. && rm -rf ${dir} && mkdir -p ${dir}/weights ${dir}/materials && ` +
         `${env} uv run --extra comptes openplan accounts migrate && ` +
+        `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
+        `sqlite:///${dir}/comptes.db ${RENDER_ACCOUNT.id} ${RENDER_ACCOUNT.email} && ` +
         `${env} uv run --extra comptes openplan serve --port ${apiPort} --data-dir ${dir}/data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,

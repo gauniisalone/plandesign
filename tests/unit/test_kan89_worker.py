@@ -253,6 +253,21 @@ def test_zimage_contract_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         assert caught.value.reason == reason
 
 
+def test_real_zimage_module_without_weights_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Après intégration de KAN-88 : le vrai module, sans poids, échoue en « unavailable »
+    (jamais de GPU ici). Sauté tant que le module n'est pas dans la branche."""
+    pytest.importorskip(engine.ZIMAGE_MODULE)
+    monkeypatch.setenv("OPENPLAN_MODELS_DIR", str(tmp_path / "aucun-poids"))
+    _camera(tmp_path / CAMERA)
+    with pytest.raises(EngineFailedError) as caught:
+        engine.render(
+            "zimage", tmp_path / PROJECT, tmp_path / BAKE, tmp_path / CAMERA, tmp_path / OUT
+        )
+    assert caught.value.reason == "unavailable"
+
+
 def test_socket_guard_blocks_the_network() -> None:
     code = (
         "import socket\n"

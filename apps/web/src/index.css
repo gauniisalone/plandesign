@@ -8441,3 +8441,68 @@ button.link,
   height: 1.2em;
   flex: none;
 }
+
+/* ---- KAN-89 : rendus réalistes calculés par le poste d'augus, dans le cadre Rendus ----
+   Jetons de KAN-77 seulement (--surface, --line, --muted, --text, --danger, --r-*, --s-*) ;
+   taille constante à tout zoom comme la consigne du cadre (--inv). */
+.realistic-renders {
+  position: absolute;
+  inset: calc(
+      min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 1.2 + 2 *
+        min(calc(16px * max(1, var(--inv, 1))), 8cqw)
+    )
+    0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: 0 var(--s-4) var(--s-4);
+  overflow: auto;
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+  color: var(--text);
+  pointer-events: auto;
+}
+.realistic-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.realistic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.realistic-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.realistic-head button {
+  font-size: inherit;
+  flex: none;
+}
+.realistic-state {
+  color: var(--muted);
+}
+.realistic-state.state-failed,
+.realistic-message {
+  color: var(--danger);
+}
+.realistic-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-control);
+}
+.realistic-empty {
+  color: var(--muted);
+}
+.realistic-empty,
+.realistic-message {
+  margin: 0;
+}

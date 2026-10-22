@@ -312,6 +312,44 @@ export function invitationLink(token: string): string {
   return `${window.location.origin}/#/invitation/${token}`;
 }
 
+/** KAN-89 : rendus réalistes calculés par le poste d'augus (comptes autorisés seulement). */
+export interface RealisticStatus {
+  allowed: boolean;
+  worker: "online" | "offline" | "paused" | "busy";
+  quota: number;
+  used_today: number;
+}
+
+export interface RealisticRequest {
+  id: string;
+  level_id: string;
+  camera_id: string;
+  state: "pending" | "taken" | "done" | "failed" | "expired";
+  created_at: string;
+  finished_at: string | null;
+  expires_at: string;
+  seconds: number | null;
+  width: number | null;
+  height: number | null;
+  error: string | null;
+  image: boolean;
+}
+
+export const realisticApi = {
+  status: () => request<RealisticStatus>("/realistic/status"),
+  list: (pid: string) =>
+    request<{ status: RealisticStatus; requests: RealisticRequest[] }>(
+      `/projects/${pid}/realistic`,
+    ),
+  ask: (pid: string, levelId: string, cameraId: string) =>
+    request<RealisticRequest>(
+      `/projects/${pid}/levels/${levelId}/realistic`,
+      json({ camera_id: cameraId }),
+    ),
+  imageUrl: (pid: string, requestId: string) =>
+    `${BASE}/projects/${pid}/realistic/${requestId}/image`,
+};
+
 /** Connexion par code (B1b2) et rôle par projet (B1d). */
 export const authApi = {
   /** Même réponse que l'adresse ait un compte ou non. */
