@@ -2,13 +2,16 @@
 
 Le sol est le plan dominant dont la normale regarde vers le haut de l'image (comme pour les
 combles) : il donne la verticale et la hauteur de prise de vue. Les murs sont les plans
-verticaux ; le repère du plan est aligné sur le plus grand d'entre eux (hypothèse Manhattan :
-murs perpendiculaires entre eux). Chaque mur vu devient une droite du plan (x = a ou y = b)
-avec l'étendue de ses points le long de l'autre axe.
+verticaux ; le repère du plan est celui qui aligne le plus de points de murs (KAN-87). Chaque
+mur vu devient une droite quelconque du plan (normale, distance, étendue le long de la droite),
+rattachée à l'axe le plus proche (x = a ou y = b, étendue le long de l'autre axe).
 
 Le polygone : l'emprise des murs extrêmes, puis, quand deux murs parallèles du même côté sont
 vus à des distances différentes sur des étendues disjointes (un renfoncement, une pièce en L),
-le rectangle entre les deux est retiré. Les côtés qu'aucun mur ne ferme sont `inferred`,
+le rectangle entre les deux est retiré. Un mur vu de biais (au moins 4° de son axe) coupe la
+pièce par son demi-plan s'il est assez soutenu (points, longueur, hauteur) et qu'aucun autre
+mur n'est vu derrière lui (un meuble ne déforme pas la pièce) ; sinon il est posé sur son axe
+(hypothèse Manhattan, comme avant) ou écarté. Les côtés qu'aucun mur ne ferme sont `inferred`,
 placés comme dans la proposition mono-photo (derrière la caméra) ; les murs vus sont
 `estimated`, avec un sigma d'échelle relative tant que la hauteur de prise de vue n'est pas
 saisie. La hauteur saisie recale tout (l'échelle du modèle de profondeur est peu fiable).
@@ -20,14 +23,14 @@ import itertools
 import json
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
 import numpy as np
 from numpy.typing import NDArray
-from shapely.geometry import Polygon, box
+from shapely.geometry import Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
 from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
@@ -70,24 +73,95 @@ la plus petite sont le même mur vu deux fois (le mieux soutenu gagne), pas un r
 MIN_NOTCH_M = 0.25
 """Renfoncement plus petit que cela : bruit, ignoré."""
 WALL_CONFIDENCE = 0.5
+MIN_OBLIQUE_DEG = 4.0
+"""Mur à moins de 4° de son axe : posé sur l'axe (Manhattan), comme avant."""
+OBLIQUE_MIN_SHARE = 0.05
+"""Mur oblique gardé en biais : au moins 5 % des points de murs…"""
+OBLIQUE_MIN_LENGTH_M = 0.5
+"""… au moins 50 cm de long…"""
+OBLIQUE_MIN_HEIGHT_M = 1.2
+"""… vu sur au moins 1,20 m de haut (un lit, un bureau, une commode sont plus bas)…"""
+OBLIQUE_BEHIND_TOL_M = 0.3
+"""… et aucun autre mur vu à plus de 30 cm derrière lui : c'est alors un meuble ou une cloison
+basse devant le vrai mur, pas le bord de la pièce."""
+FAR_M = 100.0
+"""Borne provisoire d'un côté fermé par un mur oblique, avant la coupe par son demi-plan."""
 Axis = Literal["x", "y"]
 
 
 @dataclass(frozen=True)
 class WallObservation:
     """Un mur vu : droite `axis` = `offset` dans le repère de la pièce (caméra à l'origine),
-    étendue de ses points le long de l'autre axe, soutien et résidu."""
+    étendue de ses points le long de l'autre axe, soutien et résidu. `normal` (unitaire, vers
+    l'extérieur) et `distance` donnent la droite vraie `normal · p = distance`, `along` son
+    étendue le long de la tangente (−ny, nx) et `height_m` la hauteur vue ; `normal` None :
+    mur posé sur son axe."""
 
     axis: Axis
     offset: float
     span: tuple[float, float]
     count: int
     rms_m: float
+    normal: tuple[float, float] | None = None
+    distance: float = 0.0
+    along: tuple[float, float] = (0.0, 0.0)
+    height_m: float = 0.0
 
     @property
     def side(self) -> int:
         """+1 : devant/à droite de la caméra (coordonnée positive), −1 : derrière/à gauche."""
         return 1 if self.offset >= 0 else -1
+
+    @property
+    def tilt_deg(self) -> float:
+        """Écart de la droite vraie à son axe, en degrés (0 pour un mur posé sur l'axe)."""
+        if self.normal is None:
+            return 0.0
+        c = abs(self.normal[0] if self.axis == "x" else self.normal[1])
+        return math.degrees(math.acos(min(1.0, c)))
+
+    @property
+    def aligned(self) -> bool:
+        """Assez proche de son axe pour y être posé (Manhattan) s'il n'est pas gardé en biais."""
+        return self.normal is None or math.cos(math.radians(self.tilt_deg)) >= AXIS_ALIGNED
+
+    def scaled(self, k: float) -> WallObservation:
+        return replace(
+            self,
+            offset=self.offset * k,
+            span=(self.span[0] * k, self.span[1] * k),
+            distance=self.distance * k,
+            along=(self.along[0] * k, self.along[1] * k),
+            height_m=self.height_m * k,
+        )
+
+    def shifted(self, dx: float, dy: float) -> WallObservation:
+        """Même mur, origine déplacée en (−dx, −dy) (le point p devient p + (dx, dy))."""
+        x, y = (dx, dy) if self.axis == "x" else (dy, dx)
+        moved = replace(self, offset=self.offset + x, span=(self.span[0] + y, self.span[1] + y))
+        if self.normal is None:
+            return moved
+        nx, ny = self.normal
+        t = -ny * dx + nx * dy
+        return replace(
+            moved,
+            distance=self.distance + nx * dx + ny * dy,
+            along=(self.along[0] + t, self.along[1] + t),
+        )
+
+    def posed(self) -> WallObservation:
+        """Le mur posé sur son axe (droite vraie oubliée)."""
+        return replace(self, normal=None)
+
+    def segment(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Extrémités vues du mur."""
+        if self.normal is None:
+            if self.axis == "x":
+                return (self.offset, self.span[0]), (self.offset, self.span[1])
+            return (self.span[0], self.offset), (self.span[1], self.offset)
+        nx, ny = self.normal
+        ends = [(nx * self.distance - ny * s, ny * self.distance + nx * s) for s in self.along]
+        return ends[0], ends[1]
 
 
 @dataclass
@@ -125,18 +199,29 @@ def observe_room(
         nx, ny, nz = (float(v) for v in world.normal)
         if math.acos(min(1.0, abs(nz))) <= SLOPE_MAX_TILT:
             continue  # plafond, pente, autre : pas un mur
-        if abs(nx) >= AXIS_ALIGNED:
-            axis: Axis = "x"
-            offset, other = -world.distance / nx, 1
-        elif abs(ny) >= AXIS_ALIGNED:
-            axis, offset, other = "y", -world.distance / ny, 0
-        else:
-            obs.warnings.append(
-                f"Mur oblique ignoré ({math.degrees(math.atan2(ny, nx)):.0f}° du repère)."
-            )
-            continue
-        lo, hi = dense_span(world_points[fitted.inliers, other])
-        obs.walls.append(WallObservation(axis, float(offset), (lo, hi), fitted.count, fitted.rms_m))
+        # Droite vraie n · p = d (d > 0 : la caméra est du côté intérieur).
+        flat = math.hypot(nx, ny)
+        n2, d = (nx / flat, ny / flat), -float(world.distance) / flat
+        if d < 0:
+            n2, d = (-n2[0], -n2[1]), -d
+        inliers = world_points[fitted.inliers]
+        along = dense_span(inliers[:, :2] @ np.array([-n2[1], n2[0]]))
+        z = inliers[:, 2]
+        height = float(np.percentile(z, 95) - np.percentile(z, 5)) if z.size else 0.0
+        axis: Axis = "x" if abs(nx) >= abs(ny) else "y"
+        wall = WallObservation(
+            axis, 0.0, (0.0, 0.0), fitted.count, fitted.rms_m, n2, d, along, height
+        )
+        if wall.aligned:  # comme avant KAN-polygone : droite prise sur l'axe de la caméra
+            other = 1 if axis == "x" else 0
+            offset = -world.distance / (nx if axis == "x" else ny)
+            span = dense_span(inliers[:, other])
+        else:  # repli sur l'axe : le milieu de l'étendue vue
+            (ax, ay), (bx, by) = wall.segment()
+            offset = (ax + bx) / 2 if axis == "x" else (ay + by) / 2
+            ends = sorted((ay, by) if axis == "x" else (ax, bx))
+            span = (ends[0], ends[1])
+        obs.walls.append(replace(wall, offset=float(offset), span=span))
     return obs, planes
 
 
@@ -251,16 +336,63 @@ def _bounds(
     return (low, high), (lo, hi)
 
 
-def room_polygon(
+def _oblique_refusal(wall: WallObservation, walls: list[WallObservation]) -> str | None:
+    """Pourquoi un mur vu de biais ne coupe pas la pièce (None : il la coupe)."""
+    if wall.count < OBLIQUE_MIN_SHARE * sum(w.count for w in walls):
+        return "trop peu de points"
+    if wall.along[1] - wall.along[0] < OBLIQUE_MIN_LENGTH_M:
+        return "trop court"
+    if wall.height_m < OBLIQUE_MIN_HEIGHT_M:
+        return "trop bas, sans doute un meuble"
+    assert wall.normal is not None
+    nx, ny = wall.normal
+    for other in walls:
+        if other is not wall and any(
+            nx * x + ny * y - wall.distance > OBLIQUE_BEHIND_TOL_M for x, y in other.segment()
+        ):
+            return "un autre mur est vu derrière lui, sans doute un meuble"
+    return None
+
+
+def _half_plane(wall: WallObservation) -> Polygon:
+    """Côté intérieur (celui de la caméra) de la droite du mur, borné à `FAR_M`."""
+    assert wall.normal is not None
+    nx, ny = wall.normal
+    px, py = nx * wall.distance, ny * wall.distance
+    tx, ty = -ny * FAR_M, nx * FAR_M
+    bx, by = -2 * nx * FAR_M, -2 * ny * FAR_M
+    return Polygon(
+        [
+            (px + tx, py + ty),
+            (px - tx, py - ty),
+            (px - tx + bx, py - ty + by),
+            (px + tx + bx, py + ty + by),
+        ]
+    )
+
+
+def _shape(
     walls: list[WallObservation], assumptions: list[Assumption]
-) -> tuple[Polygon, list[WallObservation]]:
-    """Polygone rectiligne (caméra à l'origine) et murs retenus après dédoublonnage."""
-    walls = _dedupe(walls)
-    xs, _ = _bounds(walls, "x", "latéral", assumptions)
-    ys, _ = _bounds(walls, "y", "de face", assumptions)
-    shape: BaseGeometry = box(xs[0], ys[0], xs[1], ys[1])
+) -> tuple[BaseGeometry, tuple[float, float], tuple[float, float]]:
+    """Emprise des murs extrêmes, coupée par les murs gardés en biais (`normal` non None),
+    moins les renfoncements."""
+    oblique = [w for w in walls if w.normal is not None]
+    posed = [w.posed() for w in walls]
+    xs, _ = _bounds(posed, "x", "latéral", assumptions)
+    ys, _ = _bounds(posed, "y", "de face", assumptions)
+    # Un côté fermé par un mur en biais : borne lointaine, la droite du mur la remplace.
+    far = {(w.axis, w.side) for w in oblique}
+    xs_cut = (-FAR_M if ("x", -1) in far else xs[0], FAR_M if ("x", 1) in far else xs[1])
+    ys_cut = (-FAR_M if ("y", -1) in far else ys[0], FAR_M if ("y", 1) in far else ys[1])
+    shape: BaseGeometry = box(xs_cut[0], ys_cut[0], xs_cut[1], ys_cut[1])
+    for wall in oblique:
+        shape = shape.intersection(_half_plane(wall))
+    if oblique:
+        minx, miny, maxx, maxy = shape.bounds
+        xs, ys = (minx, maxx), (miny, maxy)
     # Renfoncements : deux murs parallèles du même côté, étendues disjointes, le plus proche
-    # ferme la pièce sur son étendue seulement.
+    # ferme la pièce sur son étendue seulement. Le plus proche est posé sur son axe (un mur vu
+    # derrière lui l'empêche d'être gardé en biais) ; le lointain en biais va jusqu'à sa droite.
     for axis in ("x", "y"):
         for side in (-1, 1):
             same = sorted(
@@ -268,20 +400,23 @@ def room_polygon(
                 key=lambda w: abs(w.offset),
             )
             bounds_lo, bounds_hi = ys if axis == "x" else xs
-            for near, far in itertools.pairwise(same):
-                if abs(far.offset - near.offset) < MIN_NOTCH_M:
+            for near, far_wall in itertools.pairwise(same):
+                if near.normal is not None or abs(far_wall.offset - near.offset) < MIN_NOTCH_M:
                     continue
                 # Le renfoncement est la part de la largeur que le mur lointain ne couvre pas,
                 # du côté du mur proche : borné par le bord de l'emprise et le début (ou la
                 # fin) de l'étendue du mur lointain, bord net vu sans occultation.
                 near_mid = (near.span[0] + near.span[1]) / 2
-                far_mid = (far.span[0] + far.span[1]) / 2
+                far_mid = (far_wall.span[0] + far_wall.span[1]) / 2
                 lo, hi = (
-                    (bounds_lo, far.span[0]) if near_mid < far_mid else (far.span[1], bounds_hi)
+                    (bounds_lo, far_wall.span[0])
+                    if near_mid < far_mid
+                    else (far_wall.span[1], bounds_hi)
                 )
                 if hi - lo < MIN_NOTCH_M:
                     continue
-                a, b = min(near.offset, far.offset), max(near.offset, far.offset)
+                reach = side * FAR_M if far_wall.normal is not None else far_wall.offset
+                a, b = min(near.offset, reach), max(near.offset, reach)
                 notch = box(a, lo, b, hi) if axis == "x" else box(lo, a, hi, b)
                 candidate = shape.difference(notch)
                 if isinstance(candidate, Polygon) and candidate.area > 0.5 * shape.area:
@@ -292,12 +427,78 @@ def room_polygon(
                             impact="medium",
                         )
                     )
+    return shape, xs, ys
+
+
+def room_polygon(
+    walls: list[WallObservation], assumptions: list[Assumption]
+) -> tuple[Polygon, list[WallObservation]]:
+    """Polygone (caméra à l'origine) et murs retenus après dédoublonnage : `normal` non None
+    pour un mur gardé en biais, None pour un mur posé sur son axe."""
+    walls = _dedupe(walls)
+    kept: list[WallObservation] = []
+    notes: list[Assumption] = []
+    for wall in walls:
+        why = None
+        if wall.normal is not None and wall.tilt_deg >= MIN_OBLIQUE_DEG:
+            why = _oblique_refusal(wall, walls)
+            if why is None:
+                kept.append(wall)
+                continue
+            if wall.aligned:
+                notes.append(
+                    Assumption(
+                        text=f"Mur vu à {wall.tilt_deg:.0f}° du repère, posé d'équerre : {why}.",
+                        impact="low",
+                    )
+                )
+        if wall.aligned:
+            kept.append(wall.posed())
+        else:
+            notes.append(
+                Assumption(
+                    text=f"Mur oblique ({wall.tilt_deg:.0f}° du repère) ignoré : {why}.",
+                    impact="low",
+                )
+            )
+    if any(w.normal is not None for w in kept):
+        tried: list[Assumption] = []
+        shape, _, _ = _shape(kept, tried)
+        rectangle = box(*_shape([w.posed() for w in kept], [])[0].bounds)
+        if (
+            isinstance(shape, Polygon)
+            and shape.contains(Point(0.0, 0.0))
+            and shape.area >= 0.5 * rectangle.area
+            and max(abs(v) for v in shape.bounds) < FAR_M / 2
+        ):
+            angles = ", ".join(f"{w.tilt_deg:.0f}°" for w in kept if w.normal is not None)
+            assumptions.extend(notes)
+            assumptions.append(
+                Assumption(
+                    text=f"Mur vu de biais ({angles} du repère) : pièce non rectangulaire.",
+                    impact="medium",
+                )
+            )
+            assumptions.extend(tried)
+            return shape.simplify(1e-6), kept
+        notes.append(
+            Assumption(
+                text="Murs vus de biais incohérents avec le reste de la pièce : posés d'équerre.",
+                impact="low",
+            )
+        )
+        kept = [k.posed() for k in kept if k.aligned]
+    assumptions.extend(notes)
+    shape, xs, ys = _shape(kept, assumptions)
     if not isinstance(shape, Polygon):
         shape = box(xs[0], ys[0], xs[1], ys[1])
-    return shape.simplify(1e-6), walls
+    return shape.simplify(1e-6), kept
 
 
 def _matches(a: Point2, b: Point2, wall: WallObservation, tol: float) -> bool:
+    if wall.normal is not None:
+        nx, ny = wall.normal
+        return all(abs(nx * p.x + ny * p.y - wall.distance) < tol for p in (a, b))
     if wall.axis == "x":
         return abs(a.x - wall.offset) < tol and abs(b.x - wall.offset) < tol
     return abs(a.y - wall.offset) < tol and abs(b.y - wall.offset) < tol
@@ -340,7 +541,7 @@ def propose_floorplan_from_depth(
             model_ids=[MODEL_ID],
         )
     scale = 1.0
-    assumptions = [Assumption(text="Murs supposés perpendiculaires (Manhattan).", impact="medium")]
+    assumptions: list[Assumption] = []
     if camera_height_m is not None and observation.camera_height_m > 0:
         scale = camera_height_m / observation.camera_height_m
         assumptions.append(
@@ -360,24 +561,30 @@ def propose_floorplan_from_depth(
                 impact="high",
             )
         )
-    scaled = [
-        WallObservation(
-            w.axis, w.offset * scale, (w.span[0] * scale, w.span[1] * scale), w.count, w.rms_m
+    polygon, kept = room_polygon([w.scaled(scale) for w in observation.walls], assumptions)
+    if not kept:
+        return project, StepResult(
+            step=STEP,
+            confidence=0.0,
+            assumptions=assumptions,
+            warnings=[*observation.warnings, "Aucun mur retenu dans la profondeur : pas de plan."],
+            duration_s=time.perf_counter() - started,
+            model_ids=[MODEL_ID],
         )
-        for w in observation.walls
-    ]
-    polygon, kept = room_polygon(scaled, assumptions)
+    assumptions.insert(
+        0,
+        Assumption(
+            text="Murs supposés perpendiculaires (Manhattan)"
+            + (", sauf ceux vus de biais." if any(w.normal for w in kept) else "."),
+            impact="medium",
+        ),
+    )
     minx, miny, _, _ = polygon.bounds
     shift = (-minx, -miny)
     ring = [Point2(x=x + shift[0], y=y + shift[1]) for x, y in list(polygon.exterior.coords)[:-1]]
     if polygon.exterior.is_ccw is False:
         ring.reverse()
-    seen = [
-        WallObservation(
-            w.axis, w.offset + (shift[0] if w.axis == "x" else shift[1]), w.span, w.count, w.rms_m
-        )
-        for w in kept
-    ]
+    seen = [w.shifted(*shift) for w in kept]
     tol = 1e-3
     provenance = Provenance(image_ids=[image_id], step=STEP, model=MODEL_ID, run_id=run_id)
     vertices: list[Vertex] = []
@@ -522,7 +729,14 @@ def run_depthplan(
     (out_dir / "walls.json").write_text(
         json.dumps(
             [
-                {"axis": w.axis, "offset_m": w.offset, "span_m": list(w.span), "count": w.count}
+                {
+                    "axis": w.axis,
+                    "offset_m": w.offset,
+                    "span_m": list(w.span),
+                    "count": w.count,
+                    "tilt_deg": round(w.tilt_deg, 1),
+                    "height_m": round(w.height_m, 2),
+                }
                 for w in observation.walls
             ],
             indent=2,
@@ -547,17 +761,16 @@ def _sigma(touching: list[WallObservation], rescaled: bool) -> float | None:
 
 
 def _wall_distance(a: Point2, b: Point2, shift: tuple[float, float]) -> float:
-    """Distance de la caméra (à `shift`) à la droite du mur, en mètres."""
-    if abs(a.x - b.x) < 1e-9:
-        return abs(a.x - shift[0])
-    return abs(a.y - shift[1])
+    """Distance de la caméra (à `shift`) à la droite du mur, en mètres (mur oblique compris)."""
+    dx, dy = b.x - a.x, b.y - a.y
+    return abs(dx * (shift[1] - a.y) - dy * (shift[0] - a.x)) / math.hypot(dx, dy)
 
 
 def _wall_name(a: Point2, b: Point2, polygon: Polygon, shift: tuple[float, float]) -> str:
-    """« Mur haut/bas/gauche/droit » d'après la position par rapport au centre ; les murs
-    d'un renfoncement sont numérotés."""
+    """« Mur haut/bas/gauche/droit » d'après la position par rapport au centre (un mur oblique
+    est rangé d'après sa direction dominante) ; les murs d'un renfoncement sont numérotés."""
     cx, cy = polygon.centroid.x + shift[0], polygon.centroid.y + shift[1]
     mx, my = (a.x + b.x) / 2, (a.y + b.y) / 2
-    if abs(a.x - b.x) < 1e-9:
+    if abs(a.x - b.x) < abs(a.y - b.y):
         return "Mur gauche" if mx < cx else "Mur droit"
     return "Mur bas" if my < cy else "Mur haut"
