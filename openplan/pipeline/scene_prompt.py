@@ -20,6 +20,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from openplan.pipeline.guides import VISIBLE_MIN_PX, visible_pixels
 from openplan.schemas.bake import Bake, Decor, Polyhedron, Prism, RenderCamera
 from openplan.schemas.elements import Furniture
 from openplan.schemas.intent import COLORS
@@ -153,7 +154,8 @@ COLOR_ENGLISH: dict[str, str] = {
 }
 
 FURNITURE_MIN_PX = 4.0
-"""Un meuble dont le centre se projette hors de l'image (à cette marge près) n'est pas « vu »."""
+"""Un objet d'habillage dont le centre se projette hors de l'image (à cette marge près) n'est
+pas « vu » ; les meubles, eux, suivent `VISIBLE_MIN_PX` (KAN-88)."""
 
 
 @dataclass(frozen=True)
@@ -252,10 +254,14 @@ def _furniture(
 ) -> list[str]:
     seen: dict[UUID, str] = {}
     woods: Counter[str] = Counter()
+    # KAN-88 (décision du PO, 22 oct.) : un meuble est nommé dès qu'au moins 200 px de lui
+    # sont visibles (rastérisation de la vue, critère de l'essai), pas seulement si son centre
+    # est dans l'image : un chevet en bord de cadre oublié devenait autre chose.
+    visible = visible_pixels(bake, camera) if camera is not None else None
     for prism in bake.prisms:
         if prism.kind != "furniture" or prism.element_id in seen:
             continue
-        if camera is not None and not in_view(camera, *_center(prism)):
+        if visible is not None and visible.get(str(prism.element_id), 0) < VISIBLE_MIN_PX:
             continue
         category = _category(project, level_id, prism.element_id)
         if category is None or category not in FURNITURE_WORDS:

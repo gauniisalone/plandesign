@@ -321,6 +321,26 @@ def edge_map(element: Array, normal: Array, z: Array) -> NDArray[np.uint8]:
     return (e * 255).astype(np.uint8)
 
 
+VISIBLE_MIN_PX = 200
+"""Un meuble est « vu » (et nommé dans la description) dès que 200 px de lui sont visibles,
+mesurés sur une image de 768 px de grand côté (critère de l'essai KAN-84b, retenu par le PO)."""
+VISIBLE_LONG_SIDE = 768
+
+
+def visible_pixels(bake: Bake, camera: RenderCamera) -> dict[str, int]:
+    """Pixels visibles (non cachés) de chaque élément du bake dans la vue, à 768 px de grand
+    côté ; un élément absent du dictionnaire n'est pas vu."""
+    scale = VISIBLE_LONG_SIDE / max(camera.width_px, camera.height_px)
+    w, h = max(16, round(camera.width_px * scale)), max(16, round(camera.height_px * scale))
+    mesh = scene_mesh(bake)
+    _, face = rasterize(mesh, camera, w, h)
+    hit = face[face >= 0]
+    if hit.size == 0:
+        return {}
+    counts = np.bincount(mesh.face_element[hit], minlength=len(mesh.labels))
+    return {mesh.labels[i]: int(c) for i, c in enumerate(counts) if c}
+
+
 def view_guides(bake: Bake, camera: RenderCamera, size: tuple[int, int]) -> ViewGuides:
     """Arêtes (et élément vu par pixel) de la vue `camera`, à la taille `size` (largeur,
     hauteur) : rastérisées aux 3/4 puis agrandies au plus proche."""

@@ -223,7 +223,10 @@ def load_controlnet_mmap(path: Path, cls: Any, torch: Any) -> Any:
             t = torch.frombuffer(mm, dtype=torch.uint8, count=b - a, offset=8 + n + a)
             t = t.view(dtypes[meta["dtype"]]).view(meta["shape"])
             set_module_tensor_to_device(model, key, "cpu", value=t, dtype=t.dtype)
-    missing = [k for k, v in names.items() if getattr(v, "is_meta", False)]
+    # Relu après chargement : `names` garde les paramètres vides d'avant (l'essai comptait
+    # donc tout comme manquant).
+    loaded = [*model.named_parameters(), *model.named_buffers()]
+    missing = [k for k, v in loaded if getattr(v, "is_meta", False)]
     if missing:
         msg = f"ControlNet incomplet : {len(missing)} tenseurs manquants"
         raise RuntimeError(msg)

@@ -158,6 +158,36 @@ def test_only_the_furniture_in_view_is_named() -> None:
     assert "single bed" in seen, seen
 
 
+def test_furniture_at_the_frame_edge_is_named_from_200_visible_px() -> None:
+    """KAN-88 (décision du PO) : le chevet dont le centre sort du cadre mais dont 200 px au
+    moins se voient est nommé ; le critère du centre l'oubliait."""
+    from openplan.pipeline.guides import VISIBLE_MIN_PX, visible_pixels
+    from openplan.pipeline.scene_prompt import _center, in_view
+
+    project = _stone_attic()
+    level = only_level(project)
+    bake = bake_level(project, level.id, style="realistic")
+    stand = next(p for p in bake.prisms if p.kind == "furniture" and abs(_center(p)[1] - 0.5) < 0.3)
+    base = RenderCamera(
+        position=Point3(x=5.6, y=2.5, z=1.6),
+        yaw=math.pi,
+        pitch=0.0,
+        focal_px=760.0,
+        width_px=768,
+        height_px=1024,
+    )
+    found = None
+    for k in range(240):
+        cam = base.model_copy(update={"yaw": math.pi + math.radians(k * 0.5)})
+        px = visible_pixels(bake, cam).get(str(stand.element_id), 0)
+        if not in_view(cam, *_center(stand)) and px >= VISIBLE_MIN_PX:
+            found = cam
+            break
+    assert found is not None, "une vue où le chevet n'est vu qu'en partie"
+    words = scene_words(bake, project, level.id, found)
+    assert any("nightstand" in w for w in words.furniture), words.furniture
+
+
 def test_without_a_scene_the_prompt_is_unchanged() -> None:
     """Rendu d'avant (sans bake.json) : la finition garde le prompt de l'ambiance, mot pour mot."""
     project = _stone_attic()
