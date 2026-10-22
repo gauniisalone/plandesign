@@ -46,6 +46,7 @@ from openplan.api.access import (
 from openplan.api.guards import route_guard
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
+from openplan.api.worker_auth import WORKER_PREFIX, worker_refusal
 from openplan.scene.history import USER_ACTOR, user_actor
 from openplan.schemas.common import StrictModel
 
@@ -390,7 +391,7 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         return with_security_headers(_with_csp(response, path, csp), path)
 
     @app.middleware("http")
-    async def _session_guard(
+    async def _session_guard(  # noqa: PLR0911 - une sortie par refus (KAN-89 : poste)
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         started = time.perf_counter()
@@ -398,6 +399,14 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
         request.state.user = None
         if not path.startswith("/api/"):
             return finish(await call_next(request), request, "-", started)
+        if path.startswith(WORKER_PREFIX):
+            # KAN-89 : le poste de rendu n'a ni session ni origine (pas un navigateur) ; la
+            # session est ignorée, le jeton du poste est exigé ici, AVANT la lecture du corps
+            # (et de nouveau par la garde de la route), avec un corps de taille plafonnée.
+            refusal = worker_refusal(request, settings.realistic.worker_token_sha256)
+            if refusal is not None:
+                return finish(refusal, request, "-", started)
+            return finish(await call_next(request), request, "worker", started)
         if request.method == "OPTIONS" and from_site(request):
             return finish(_site_preflight(), request, "-", started)
         site_mutation = from_site(request) and path in SITE_MUTATIONS | {CONTACT_PATH}

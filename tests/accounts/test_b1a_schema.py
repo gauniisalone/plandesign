@@ -39,7 +39,7 @@ def test_migrations_up_and_down(db_url: str) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert {"token_hash", "expires_at", "used_at", "next", "ip", "attempts"} <= columns
     assert "token" not in columns and "code" not in columns  # jamais le secret en clair
-    assert head_revision() == "kan55_0005"
+    assert head_revision() == "kan89_0006"
     invitations = {c["name"] for c in inspect(engine).get_columns("invitations")}
     assert {"token_hash", "role", "expires_at", "used_at", "revoked_at", "email"} <= invitations
     assert "token" not in invitations  # jamais le jeton en clair
@@ -63,7 +63,7 @@ def test_migrations_up_and_down(db_url: str) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("login_tokens")}
     assert "attempts" not in columns and "token_hash" in columns
     upgrade(engine)
-    assert current_revision(engine) == "kan55_0005"
+    assert current_revision(engine) == "kan89_0006"
     downgrade(engine, "base")
     assert "invitations" not in inspect(engine).get_table_names()
     assert "notification_reads" not in inspect(engine).get_table_names()

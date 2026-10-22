@@ -37,7 +37,9 @@ class Role(IntEnum):
 
 ROLE_BY_NAME = {role.name.lower(): role for role in Role}
 
-Policy = Literal["public", "user", "admin", "legacy"]
+Policy = Literal["public", "user", "admin", "legacy", "worker"]
+"""`worker` (KAN-89) : le jeton du poste de rendu seulement (`api.worker_auth`), jamais une
+session ; ce jeton n'ouvre aucune autre route."""
 
 API_PREFIX = "/api"
 P = API_PREFIX + "/projects/{project_id}"
@@ -204,6 +206,11 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", L + "/lease"): E,
     ("DELETE", L + "/lease"): E,
     ("POST", L + "/lease/request"): E,
+    # KAN-89 : rendus réalistes par le poste d'augus ; en plus du rôle, la route exige un
+    # compte de OPENPLAN_RENDER_ACCOUNTS (403 sinon).
+    ("GET", P + "/realistic"): V,
+    ("GET", P + "/realistic/{request_id}/image"): V,
+    ("POST", L + "/realistic"): E,
 }
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
@@ -257,6 +264,14 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # Cookie de lecture de l'API exposée par jeton (note 16) : absent avec les comptes
     ("POST", "/api/session"): "legacy",
     ("DELETE", "/api/session"): "legacy",
+    # KAN-89 : ce que le cadre Rendus montre (autorisé ou non, poste en ligne, quota).
+    ("GET", "/api/realistic/status"): "user",
+    # KAN-89 : API du poste de rendu (jeton du poste, appels sortants du poste).
+    ("POST", "/api/worker/heartbeat"): "worker",
+    ("POST", "/api/worker/claim"): "worker",
+    ("GET", "/api/worker/jobs/{request_id}/files/{name}"): "worker",
+    ("POST", "/api/worker/jobs/{request_id}/result"): "worker",
+    ("POST", "/api/worker/jobs/{request_id}/fail"): "worker",
 }
 
 NOT_A_MEMBER = "projet inconnu : {}"
@@ -339,6 +354,11 @@ def route_guard(request: Request) -> None:
         return
     policy = GLOBAL_ROUTES.get(key)
     if policy == "public":
+        return
+    if policy == "worker":
+        from openplan.api.worker_auth import require_worker
+
+        require_worker(request)
         return
     if policy is None or policy == "legacy":
         raise HTTPException(status_code=403, detail=NO_RULE)

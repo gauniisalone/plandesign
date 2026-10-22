@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -184,3 +185,54 @@ class NotificationReadItem(Base):
     event_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"))
     event_at: Mapped[datetime] = mapped_column(_utc())
+
+
+RENDER_STATES = ("pending", "taken", "done", "failed", "expired")
+
+
+class RenderRequest(Base):
+    """KAN-89 : une demande de rendu réaliste d'une vue, calculée par le poste de rendu.
+    Stockée sans calcul ; le poste la prend (`taken`, avec un bail), puis la dépose (`done`)
+    ou signale un échec (`failed`) ; non prise à temps, elle expire (`expired`)."""
+
+    __tablename__ = "render_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('pending', 'taken', 'done', 'failed', 'expired')", name="state_known"
+        ),
+        Index("ix_render_requests_state_created", "state", "created_at"),
+        Index("ix_render_requests_user_created", "user_id", "created_at"),
+        Index("ix_render_requests_project", "project_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"))
+    level_id: Mapped[UUID] = mapped_column(Uuid)
+    camera_id: Mapped[UUID] = mapped_column(Uuid)
+    state: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(_utc())
+    expires_at: Mapped[datetime] = mapped_column(_utc())
+    """Au-delà, une demande encore en attente expire."""
+    taken_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    """Bail de la prise en cours : exigé pour télécharger, déposer ou signaler un échec."""
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    finished_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    """Code d'échec (`FAILURE_TEXT`) ; jamais un texte libre."""
+    seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vram_peak_mib: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class RenderWorker(Base):
+    """KAN-89 : dernier battement de cœur du poste de rendu (une ligne par poste)."""
+
+    __tablename__ = "render_workers"
+
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    last_seen_at: Mapped[datetime] = mapped_column(_utc())
+    state: Mapped[str] = mapped_column(String(16))

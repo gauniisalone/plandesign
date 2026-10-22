@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openplan.adapters.registry import AiConfig
+from openplan.api.realistic_config import RealisticConfig
 
 DOTENV = Path(".env")
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -113,6 +114,8 @@ class Settings:
     """OPENPLAN_QUOTA_MB (KAN-12) : place disque par compte, en Mo, pour les projets dont il est
     le premier propriétaire (photos, fichiers joints, plans, rendus) ; 0 = sans limite. Avec
     les comptes seulement : le mode local n'a pas de limite."""
+    realistic: RealisticConfig = field(default_factory=RealisticConfig)
+    """KAN-89 : rendus réalistes calculés par le poste d'augus (voir `realistic_config`)."""
 
     @property
     def local_only(self) -> bool:
@@ -168,6 +171,7 @@ class Settings:
             site_origin=parse_origin(merged.get("OPENPLAN_SITE_ORIGIN")),
             contact_to=merged.get("OPENPLAN_CONTACT_TO", "").strip() or None,
             quota_mb=parse_quota(merged.get("OPENPLAN_QUOTA_MB")),
+            realistic=RealisticConfig.from_env(merged),
         )
 
     @property

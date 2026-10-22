@@ -374,5 +374,13 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     app.include_router(lease_router, dependencies=guarded)
     # Place disque par compte (KAN-12).
     app.include_router(quota_router, dependencies=guarded)
+    # KAN-89 : rendus réalistes calculés par le poste d'augus (file en base, API du poste).
+    from openplan.api.accounts.render_queue import RenderQueue
+    from openplan.api.accounts.render_routes import router as render_router
+
+    app.state.render_queue = RenderQueue(
+        app.state.accounts.engine, settings.realistic, settings.data_dir
+    )
+    app.include_router(render_router, dependencies=guarded)
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)
