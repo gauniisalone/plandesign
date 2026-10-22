@@ -122,6 +122,21 @@ def test_render_scene_without_weights(tmp_path: Path) -> None:
     assert issubclass(ZImageVramGuard, zimage.AdapterUnavailableError)
 
 
+def test_weights_are_found_from_another_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Le poste de rendu calcule depuis le dossier de la demande : les poids restent ceux de la
+    copie du code (ou d'OPENPLAN_MODELS_DIR)."""
+    import openplan
+
+    monkeypatch.delenv("OPENPLAN_MODELS_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    root = Path(openplan.__file__).resolve().parents[1]
+    assert zimage_render.models_root() == root / "models" / "weights"
+    monkeypatch.setenv("OPENPLAN_MODELS_DIR", str(tmp_path / "ailleurs"))
+    assert zimage_render.models_root() == tmp_path / "ailleurs"
+
+
 def test_app_finish_uses_the_geometric_edges_with_zimage(tmp_path: Path) -> None:
     project, bake, camera = _ridge_scene()
     folder = tmp_path / "blender"

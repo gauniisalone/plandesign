@@ -52,7 +52,17 @@ class ZImageResult:
 
 
 def models_root() -> Path:
-    return Path(os.environ.get("OPENPLAN_MODELS_DIR") or DEFAULT_WEIGHTS_ROOT)
+    """Dossier des poids : OPENPLAN_MODELS_DIR, sinon `models/weights` du dossier courant s'il
+    existe, sinon celui de la copie du code. Le poste de rendu (KAN-89) lance le calcul depuis
+    le dossier de la demande : un chemin relatif seul n'y trouvait rien (« unavailable »)."""
+    configured = os.environ.get("OPENPLAN_MODELS_DIR")
+    if configured:
+        return Path(configured)
+    if DEFAULT_WEIGHTS_ROOT.is_dir():
+        return DEFAULT_WEIGHTS_ROOT
+    import openplan
+
+    return Path(openplan.__file__).resolve().parents[1] / DEFAULT_WEIGHTS_ROOT
 
 
 def render_scene(
