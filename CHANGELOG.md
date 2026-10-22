@@ -7,6 +7,32 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 22 octobre 2026 (KAN-88 : rendu local par Z-Image-Turbo)
+
+- En local, la finition IA des rendus passe par **Z-Image-Turbo** dès que ses quatre poids sont
+  installés et qu'une carte CUDA est là (4/5 à l'essai KAN-84, contre 2/5 pour SD 1.5) ; sinon,
+  ou avec `OPENPLAN_FINISH_ENGINE=sd15`, la chaîne SD 1.5 d'avant, inchangée. L'inspiration reste
+  sur SD 1.5. En ligne, rien ne change.
+- Chaîne : transformer GGUF Q4_K_M, ControlNet Union 2.1 complet guidé à 0,7 par les arêtes de
+  la géométrie de la vue (rastérisées depuis `bake.json` et `camera.json`, sans la texture), 8 pas,
+  1 024 px de grand côté ; encodeur Qwen3-4B sur le processeur, qui lit la description entière
+  de KAN-86. ≈ 1 min de génération par vue sur une carte de 6 Go, plus ≈ 45 s d'encodage.
+- **Garde-fou** : la génération tourne dans un processus à part, surveillé toutes les 0,5 s ;
+  au-delà de 5 000 Mio sur la carte (ou sous 1 500 Mio de RAM libre, ou après 15 min), il est
+  tué et la finition échoue avec un message clair, sans geler la machine. Rien ne part si
+  nvidia-smi est illisible ou si la carte sert déjà.
+- **Aucun réseau** pendant la génération : poids lus sur le disque seulement, connexions
+  refusées dans le processus, espace de noms réseau vide (`unshare -rn`) quand c'est possible.
+- `openplan models pull <id>` : révisions figées et empreintes sha256 vérifiées ; `--from
+  <dossier>` reprend des poids déjà sur la machine par lien (aucune place en plus, aucun
+  téléchargement), après vérification de toutes les empreintes.
+- Sous des combles, avec Z-Image, les vues automatiques gagnent une **vue dans l'axe du
+  faîtage** : œil à 1,60 m, en portrait, vers le pignon, du côté qui voit le plus de meubles.
+- `openplan.pipeline.zimage_render.render_scene` : rendu d'une vue depuis bake + caméra
+  (+ projet pour la description), point d'entrée du worker de rendu (KAN-89).
+- Dépendance : `gguf` (MIT) et diffusers 0.40 au moins, dans l'extra `neural` seulement : l'image
+  Docker de production ne change pas (mêmes paquets, vérifié par `uv export`).
+
 ### 22 octobre 2026 (KAN-86 : la description du rendu suit la scène)
 
 - La finition IA et l'inspiration décrivent la scène réellement rendue (`bake.json`, à côté de

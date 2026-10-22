@@ -308,11 +308,13 @@ def run_autopilot(  # noqa: PLR0912, PLR0913, PLR0915 - un chemin de bout en bou
     timings: Timings | None = None,
     home: HomeRequest | None = None,
     taken_names: Callable[[], list[str]] | None = None,
+    ridge_view: bool = False,
 ) -> AutopilotRun:
     """Le chemin de bout en bout, une étape après l'autre ; une étape qui échoue est dite
     et les suivantes continuent si elles le peuvent. Le temps restant est annoncé en direct
     (`stage(texte, remaining=…)`), d'après les durées mesurées ; chaque durée réelle de
-    rendu, de finition et d'aménagement est rangée pour les prochaines estimations."""
+    rendu, de finition et d'aménagement est rangée pour les prochaines estimations.
+    `ridge_view` (KAN-88, finition Z-Image) : la vue dans l'axe du faîtage s'ajoute aux vues."""
     run = AutopilotRun()
     home_reading: Reading | None = None
     started = time.perf_counter()
@@ -461,7 +463,7 @@ def run_autopilot(  # noqa: PLR0912, PLR0913, PLR0915 - un chemin de bout en bou
         holder: dict[str, str] = {}
 
         def views(p: Project) -> Project:
-            after, report = apply_auto_views(p, level_id, actor=ACTOR)
+            after, report = apply_auto_views(p, level_id, actor=ACTOR, ridge=ridge_view)
             holder["note"] = "; ".join([*report.notes, *report.kept, *report.skipped])
             return after
 

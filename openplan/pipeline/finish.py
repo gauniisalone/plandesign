@@ -346,6 +346,27 @@ def edges_of(pixels: NDArray[np.uint8]) -> NDArray[np.uint8]:
     return edges
 
 
+def scene_edges(render_dir: Path, width: int, height: int) -> NDArray[np.uint8] | None:
+    """KAN-88 : arêtes de la vue rastérisées depuis bake.json et camera.json du rendu ; None
+    s'ils manquent ou sont illisibles (rendu d'avant : le Canny du rendu sert)."""
+    from openplan.pipeline.guides import view_guides
+    from openplan.schemas.bake import Bake, RenderCamera
+
+    try:
+        bake = Bake.model_validate_json((render_dir / "bake.json").read_text(encoding="utf-8"))
+        camera = RenderCamera.model_validate_json(
+            (render_dir / "camera.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    return view_guides(bake, camera, (width, height)).edges
+
+
+def finisher_engine(finisher: object) -> str:
+    """Moteur d'un adaptateur de finition (`prompt_engine`, KAN-88) ; sd15 par défaut."""
+    return str(getattr(finisher, "prompt_engine", "sd15"))
+
+
 def finish_render(
     project: Project,
     render_dir: Path,
@@ -365,7 +386,14 @@ def finish_render(
     edges = edges_of(pixels)
     level_id = render_level(render_dir)
     scene = load_scene_words(project, render_dir, level_id)
-    prompt = finish_prompt(project, options.style, level_id, scene=scene)
+    # KAN-88 : Z-Image lit la description entière (Qwen3, 512 jetons) ; SD 1.5 en garde 60 mots.
+    engine: PromptEngine = "zimage" if finisher_engine(finisher) == "zimage" else "sd15"
+    prompt = finish_prompt(project, options.style, level_id, scene=scene, engine=engine)
+    if engine == "zimage":
+        # Arêtes de la géométrie (bake + caméra), sans la texture : celles de l'essai KAN-84b.
+        geometric = scene_edges(render_dir, pixels.shape[1], pixels.shape[0])
+        if geometric is not None:
+            edges = geometric
     result = finisher.finish(
         FinishRequest(
             prompt=prompt,
@@ -378,9 +406,12 @@ def finish_render(
         )
     )
     Image.fromarray(result.pixels).save(render_dir / FINISHED)
-    guided = (["profondeur"] if depth is not None else []) + (
-        ["arêtes"] if any("canny" in m for m in result.model_ids) else []
-    )
+    if engine == "zimage":
+        guided = ["arêtes"]  # ControlNet Union guidé par les seules arêtes du rendu
+    else:
+        guided = (["profondeur"] if depth is not None else []) + (
+            ["arêtes"] if any("canny" in m for m in result.model_ids) else []
+        )
     _, intent = _room_word(project, level_id)
     entry = FinishEntry(
         run_id=run_id,

@@ -19,6 +19,7 @@ from openplan.adapters.registry import (
     build_image_finisher,
     build_image_generator,
     build_opening_detector,
+    finish_engine,
 )
 from openplan.api.jobs import JobRegistry
 from openplan.api.settings import Settings
@@ -67,9 +68,25 @@ def get_image_finisher(request: Request) -> ImageFinisher:
     state = request.app.state
     if state.image_finisher is None:
         settings: Settings = state.settings
-        state.image_finisher = build_image_finisher(settings.models_dir, settings.device)
+        state.image_finisher = build_image_finisher(
+            settings.models_dir, settings.device, settings.finish_engine
+        )
     finisher: ImageFinisher = state.image_finisher
     return finisher
+
+
+def ridge_view_wanted(request: Request) -> bool:
+    """KAN-88 : la vue « axe du faîtage » s'ajoute aux vues automatiques des combles quand la
+    finition locale est Z-Image (poids installés, carte CUDA). Jamais avec les comptes : en
+    ligne, les vues ne changent pas. Ne charge aucun modèle."""
+    state = request.app.state
+    settings: Settings = state.settings
+    if settings.accounts_enabled:
+        return False
+    if state.image_finisher is not None:
+        return getattr(state.image_finisher, "prompt_engine", "sd15") == "zimage"
+    engine = finish_engine(settings.models_dir, settings.device, settings.finish_engine)
+    return engine == "zimage"
 
 
 def get_opening_detector(request: Request) -> RoomElementDetector:

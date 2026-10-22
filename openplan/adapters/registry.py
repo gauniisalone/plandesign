@@ -91,6 +91,11 @@ class ModelEntry(StrictModel):
     """Fichiers à télécharger (motifs Hugging Face) ; None = configurations et safetensors."""
     install: str | None = None
     """Commande d'installation quand ce n'est pas `models pull` (KAN-79 : conversion locale)."""
+    revision: str | None = None
+    """Révision figée du dépôt Hugging Face (KAN-88) ; None : la branche principale."""
+    files: dict[str, str] | None = None
+    """Fichiers attendus et leur empreinte sha256 (KAN-88) : vérifiés après téléchargement, et
+    seuls téléchargés ; une copie déjà présente est reprise par lien si les empreintes collent."""
 
 
 def load_registry(path: Path = REGISTRY_PATH) -> list[ModelEntry]:
@@ -152,12 +157,32 @@ def build_image_generator(weights_root: Path, device: str = DEVICE_AUTO) -> Imag
     return DepthGuidedDiffusion(weights_root, resolve_device(device)[0])
 
 
-def build_image_finisher(weights_root: Path, device: str = DEVICE_AUTO) -> ImageFinisher:
-    """Finition IA locale des rendus (D5) ; AdapterUnavailableError si paquets, poids ou
-    acceptation de licence manquent (le ControlNet arêtes est facultatif)."""
+def finish_engine(weights_root: Path, device: str = DEVICE_AUTO, engine: str | None = None) -> str:
+    """Moteur de finition effectif (KAN-88) : `zimage` quand ses poids sont installés et
+    qu'une carte CUDA est là, sinon `sd15` (la chaîne d'avant). Ne charge aucun modèle."""
+    from openplan.adapters.neural import zimage
+
+    if (engine or "auto").strip().lower() == "sd15" or not zimage.installed(weights_root):
+        return "sd15"
+    return zimage.choose_engine(engine, installed=True, device=resolve_device(device)[0])
+
+
+def build_image_finisher(
+    weights_root: Path, device: str = DEVICE_AUTO, engine: str | None = None
+) -> ImageFinisher:
+    """Finition IA locale des rendus (D5) : Z-Image-Turbo par défaut quand ses poids sont là
+    (KAN-88), sinon SD 1.5 ; AdapterUnavailableError si paquets, poids ou acceptation de
+    licence manquent (le ControlNet arêtes de SD 1.5 est facultatif)."""
     from openplan.adapters.neural.finish import ControlledRefiner
 
-    return ControlledRefiner(weights_root, resolve_device(device)[0])
+    resolved = resolve_device(device)[0]
+    if finish_engine(weights_root, device, engine) == "zimage":
+        from openplan.adapters.neural.zimage import ZImageFinisher
+
+        return ZImageFinisher(
+            weights_root, fallback=lambda: ControlledRefiner(weights_root, resolved)
+        )
+    return ControlledRefiner(weights_root, resolved)
 
 
 def build_opening_detector(weights_root: Path, device: str = DEVICE_AUTO) -> RoomElementDetector:

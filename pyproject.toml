@@ -50,7 +50,11 @@ neural = [
     "torchvision>=0.19",
     "transformers>=4.45",
     "huggingface-hub>=0.24",
-    "diffusers>=0.30",
+    # KAN-88 : ZImageControlNetPipeline (diffusers 0.40) ; gguf lit le transformer de Z-Image et
+    # son encodeur Qwen3 quantifiés (MIT, llama.cpp). Extra `neural` seulement : l'image Docker
+    # de production ne l'installe pas.
+    "diffusers>=0.40",
+    "gguf>=0.10",
     "accelerate>=0.30",
 ]
 # Comptes, sessions et droits (note 17, B1) : chargés seulement avec OPENPLAN_DATABASE_URL ;
@@ -145,6 +149,7 @@ addopts = "-q --cov=openplan --cov-report=term-missing"
 markers = [
   "blender: nécessite le binaire Blender (ignoré s'il est absent)",
   "slow: test long (modèles, rendu)",
+  "gpu: calcul sur la carte graphique (KAN-88) ; seulement avec OPENPLAN_GPU_TEST=1, sur un créneau accordé par le PO",
 ]
 
 [tool.coverage.run]
@@ -200,6 +205,8 @@ source_modules = [
   "openplan.pipeline",
   "openplan.api",
   "openplan.adapters.neural.depth_anything",
+  "openplan.adapters.neural.zimage",
+  "openplan.adapters.neural.zimage_worker",
   "openplan.adapters.registry",
   "openplan.adapters.remote",
 ]

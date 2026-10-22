@@ -38,6 +38,7 @@ Le noyau Python appelle Blender en **sous-processus** avec un fichier JSON comme
 | pdfminer.six, pypdfium2 (dépendances de pdfplumber) | 2026.01 / 5.13 | MIT / BSD-3-Clause ou Apache-2.0 (au choix) |
 | fonttools, pyparsing (dépendances d'ezdxf) | 4.66 / 3.3 | MIT / MIT |
 | diffusers, accelerate (extra `neural`, image d'inspiration) | 0.40 / 1.15 | Apache-2.0 / Apache-2.0 |
+| gguf (extra `neural`, KAN-88 : lecture des poids quantifiés de Z-Image et de Qwen3) | 0.19 | MIT (projet llama.cpp) |
 
 ## Dépendances Python de développement
 
@@ -86,6 +87,17 @@ télécharge lui-même par `openplan models pull <id> --accept-license` après a
 licence, et l'acceptation est consignée dans le dossier des poids (`LICENSE_ACCEPTED`). Toute
 image produite est de source `generated`, reste sur la machine et n'est pas filtrée (le filtre
 de sécurité du dépôt n'est pas téléchargé).
+
+### Poids sous Apache-2.0 : rendu local Z-Image (KAN-88, 22 octobre 2026)
+
+Quatre poids, tous **Apache-2.0** (fiches relues à l'essai KAN-84, révisions figées au
+registre, empreintes sha256 vérifiées) : `Tongyi-MAI/Z-Image-Turbo` (VAE, configurations),
+`unsloth/Z-Image-Turbo-GGUF` (transformer Q4_K_M), `alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1`
+(ControlNet complet) et `Qwen/Qwen3-4B-GGUF` (encodeur de texte). Jamais livrés avec PlanDesign :
+`openplan models pull <id>` les télécharge, ou `--from <dossier>` reprend une copie déjà sur la
+machine. La configuration du ControlNet (15 couches de contrôle) vient de VideoX-Fun
+(`z_image_control_2.1.yaml`, Apache-2.0), recopiée dans `openplan/adapters/neural/zimage_worker.py`.
+Toute image produite est de source `generated` et reste sur la machine.
 
 ## Assets (textures, mobilier, polices)
 

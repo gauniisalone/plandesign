@@ -20,6 +20,7 @@ from openplan.api.deps import (
     SettingsDep,
     StoreDep,
     get_image_finisher,
+    ridge_view_wanted,
 )
 from openplan.api.files import served_file
 from openplan.api.guards import visible_ids
@@ -156,12 +157,19 @@ class AutoViewsResult(EditResult):
 
 @router.post("/projects/{project_id}/levels/{level_id}/views/auto")
 def auto_views(
-    level_id: UUID, body: AutoViewsBody, project: ProjectDep, store: StoreDep, actor: ActorDep
+    level_id: UUID,
+    body: AutoViewsBody,
+    project: ProjectDep,
+    store: StoreDep,
+    actor: ActorDep,
+    request: Request,
 ) -> AutoViewsResult:
     """V1 : les trois vues automatiques (ensemble depuis l'arrivée, zone, détail), posées en un
     pas d'historique annulable ; les vues d'avant sont remplacées sauf celles modifiées à la
     main. 409 sans pièce fermée."""
-    after, views = apply_auto_views(project, level_id, actor=actor, aspect=body.aspect)
+    after, views = apply_auto_views(
+        project, level_id, actor=actor, aspect=body.aspect, ridge=ridge_view_wanted(request)
+    )
     report = validate_invariants(after)
     if not report.valid:
         raise InvalidEditError(report)
@@ -246,6 +254,7 @@ def autopilot(
                 else None
             ),
             taken_names=taken,
+            ridge_view=gpu and finish and ridge_view_wanted(request),
         )
         # Journal V2 : ce que le chemin a posé (identifiants), pour rattacher ensuite ce que
         # l'utilisateur en garde, corrige ou annule.

@@ -132,6 +132,10 @@ class ViewPlan:
     pitch: float
     focal_px: float
     note: str
+    aspect: str | None = None
+    """Format propre à cette vue (la vue du faîtage est en portrait) ; None : celui choisi."""
+    axis: str | None = None
+    """`ridge` pour la vue dans l'axe du faîtage (KAN-88), gardée à part des autres."""
 
 
 class AutoViews(StrictModel):
@@ -1331,14 +1335,128 @@ def _programme_views(
     return out, skipped
 
 
+# ------------------------------------------------------------------ axe du faîtage (KAN-88)
+AXIS_KEY = "axis"
+RIDGE = "ridge"
+RIDGE_EYE_M = 1.6
+RIDGE_DEPTH_M = 6.8
+"""Distance au pignon regardé : celle de la caméra retenue à l'essai KAN-84b (plus loin, les
+meubles devenaient minuscules)."""
+RIDGE_ASPECT = "4:5"
+RIDGE_SLIDE_M = 2.0
+RIDGE_OPPOSITE_COS = -0.95
+"""Deux pentes dont les sens de montée sont opposés (à ~18° près) se rejoignent au faîtage."""
+
+
+def ridge_line(roofs: list[DerivedRoof]) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Un point du faîtage et sa direction (unitaire), en plan, s'il y a deux pentes
+    opposées ; None sinon (appentis, toit plat)."""
+    for i, a in enumerate(roofs):
+        for b in roofs[i + 1 :]:
+            if a.inward.x * b.inward.x + a.inward.y * b.inward.y > RIDGE_OPPOSITE_COS:
+                continue
+
+            def top(r: DerivedRoof) -> tuple[float, float]:
+                mx = (r.eave[0].x + r.eave[1].x) / 2.0
+                my = (r.eave[0].y + r.eave[1].y) / 2.0
+                return mx + r.inward.x * r.run_m, my + r.inward.y * r.run_m
+
+            (ax, ay), (bx, by) = top(a), top(b)
+            dx, dy = a.eave[1].x - a.eave[0].x, a.eave[1].y - a.eave[0].y
+            n = math.hypot(dx, dy)
+            if n < 1e-9:
+                continue
+            return ((ax + bx) / 2.0, (ay + by) / 2.0), (dx / n, dy / n)
+    return None
+
+
+def _furniture_seen(room: _Room, x: float, y: float, yaw: float, half: float) -> int:
+    seen = 0
+    for f in room.furniture:
+        fx, fy = f.transform.position.x, f.transform.position.y
+        gap = math.atan2(fy - y, fx - x) - yaw
+        if abs(math.atan2(math.sin(gap), math.cos(gap))) <= half and room.sees((x, y), (fx, fy)):
+            seen += 1
+    return seen
+
+
+def _ridge_view(room: _Room) -> ViewPlan | None:
+    """Vue des combles dans l'axe du faîtage (KAN-84b) : à 1,60 m, sous le faîtage, à 6,8 m
+    du pignon regardé (moins si la pièce est plus courte), en portrait ; des deux sens, celui
+    qui voit le plus de meubles. None sans faîtage ou sans place libre sur l'axe."""
+    line = ridge_line(room.roofs)
+    if line is None:
+        return None
+    (px, py), (dx, dy) = line
+    axis = LineString([(px - 40.0 * dx, py - 40.0 * dy), (px + 40.0 * dx, py + 40.0 * dy)])
+    cut = axis.intersection(room.free)
+    parts = [g for g in getattr(cut, "geoms", [cut]) if isinstance(g, LineString) and g.length > 0]
+    if not parts:
+        return None
+    part = min(parts, key=lambda g: g.distance(Point(px, py)))
+    a, b = part.coords[0], part.coords[-1]
+    half = math.atan(SIZES[RIDGE_ASPECT][0] / 2.0 / ARCHITECT_FOCAL_PX)
+    best: tuple[tuple[int, float], ViewPlan] | None = None
+    for (fx, fy), (nx, ny) in ((a, b), (b, a)):
+        length = math.hypot(nx - fx, ny - fy)
+        ux, uy = (nx - fx) / length, (ny - fy) / length
+        want = min(RIDGE_DEPTH_M, length - WALL_MARGIN_M)
+        steps = [0.1 * k * s for k in range(int(RIDGE_SLIDE_M * 10) + 1) for s in (1, -1)]
+        for step in steps:
+            t = want + step
+            if not 1.0 <= t <= length - WALL_MARGIN_M:
+                continue
+            x, y = fx + ux * t, fy + uy * t
+            z = room.height_at(x, y, RIDGE_EYE_M)
+            if z is None:
+                continue
+            yaw = math.atan2(fy - y, fx - x)
+            score = (_furniture_seen(room, x, y, yaw, half), t)
+            plan = ViewPlan(
+                role="overall",
+                name="Vue dans l'axe du faîtage",
+                x=x,
+                y=y,
+                z=z,
+                yaw=yaw,
+                pitch=0.0,
+                focal_px=ARCHITECT_FOCAL_PX,
+                note=f"dans l'axe du faîtage, vers le pignon, œil à {metres(z)}, en portrait",
+                aspect=RIDGE_ASPECT,
+                axis=RIDGE,
+            )
+            if best is None or score > best[0]:
+                best = (score, plan)
+            break
+    return best[1] if best is not None else None
+
+
+def _with_ridge(
+    room: _Room, views: list[ViewPlan], skipped: list[str]
+) -> tuple[list[ViewPlan], list[str]]:
+    """Ajoute la vue du faîtage juste après la vue d'ensemble ; une vue d'ensemble presque
+    identique (même axe) lui laisse la place."""
+    if not room.roofs:
+        return views, skipped
+    ridge = _ridge_view(room)
+    if ridge is None:
+        return views, [*skipped, "vue du faîtage : pas de faîtage à deux pentes, ou pas de place"]
+    kept = [v for v in views if v.role != "overall" or distinct(v, ridge)]
+    at = next((i + 1 for i, v in enumerate(kept) if v.role == "overall"), 0)
+    return [*kept[:at], ridge, *kept[at:]], skipped
+
+
 def plan_views(
     project: Project,
     level_id: UUID,
     wanted: ViewsIntent | None = None,
     aspect: str | None = None,
+    *,
+    ridge: bool = False,
 ) -> tuple[list[ViewPlan], list[str]]:
     """Les vues automatiques possibles dans la pièce, et la raison de chaque vue manquée ;
-    `aspect` (sinon celui de `wanted`) règle la largeur du cadre à remplir."""
+    `aspect` (sinon celui de `wanted`) règle la largeur du cadre à remplir. `ridge` (KAN-88,
+    finition Z-Image) : sous des combles, la vue dans l'axe du faîtage s'ajoute."""
     wanted = wanted or ViewsIntent()
     aspect = aspect or wanted.aspect
     level = project.levels[level_id]
@@ -1347,10 +1465,14 @@ def plan_views(
         views, skipped = _programme_views(project, level, aspect)
         if main is None:
             return views, skipped
-        return _ensure_distinct(_room(level, main), views, skipped, aspect, wanted)
-    room = _room(level)
-    views, skipped = _single_room_views(project, level, room, wanted, aspect)
-    return _ensure_distinct(room, views, skipped, aspect, wanted)
+        room = _room(level, main)
+    else:
+        room = _room(level)
+        views, skipped = _single_room_views(project, level, room, wanted, aspect)
+    views, skipped = _ensure_distinct(room, views, skipped, aspect, wanted)
+    if ridge and wanted.overall:
+        return _with_ridge(room, views, skipped)
+    return views, skipped
 
 
 def _single_room_views(
@@ -1375,11 +1497,16 @@ def _single_room_views(
 
 
 def apply_auto_views(
-    project: Project, level_id: UUID, *, actor: str, aspect: str | None = None
+    project: Project,
+    level_id: UUID,
+    *,
+    actor: str,
+    aspect: str | None = None,
+    ridge: bool = False,
 ) -> tuple[Project, AutoViews]:
     """Pose les vues automatiques (un seul pas d'historique, annulable). Les vues automatiques
     d'avant sont remplacées, sauf celles modifiées à la main ; `aspect` (4:3 ou 4:5) est
-    d'abord écrit dans l'intention de la pièce."""
+    d'abord écrit dans l'intention de la pièce. `ridge` : voir `plan_views`."""
     level = project.levels.get(level_id)
     if level is None:
         msg = f"niveau inconnu : {level_id}"
@@ -1398,15 +1525,16 @@ def apply_auto_views(
     for e in level.elements.values():
         if isinstance(e, Camera) and e.metadata.get(AUTO_KEY) in ROLES:
             if e.source is Source.USER_DEFINED:
-                kept.append(str(e.metadata[AUTO_KEY]))
+                kept.append(str(e.metadata.get(AXIS_KEY) or e.metadata[AUTO_KEY]))
             else:
                 del elements[e.id]
-    plans, skipped = plan_views(project, level_id, intent.views, chosen)
+    plans, skipped = plan_views(project, level_id, intent.views, chosen, ridge=ridge)
     run_id = uuid4()
     added: list[UUID] = []
     for plan in plans:
-        if plan.role in kept:
+        if (plan.axis or plan.role) in kept:
             continue
+        axis = {AXIS_KEY: plan.axis} if plan.axis is not None else {}
         camera = Camera(
             name=plan.name,
             position=Point3(x=round(plan.x, 3), y=round(plan.y, 3), z=round(plan.z, 3)),
@@ -1416,7 +1544,12 @@ def apply_auto_views(
             source=Source.GENERATED,
             confidence=0.8,
             provenance=Provenance(step=STEP, run_id=run_id),
-            metadata={AUTO_KEY: plan.role, ASPECT_KEY: chosen, "note": plan.note},
+            metadata={
+                AUTO_KEY: plan.role,
+                ASPECT_KEY: plan.aspect or chosen,
+                "note": plan.note,
+                **axis,
+            },
         )
         elements[camera.id] = camera
         added.append(camera.id)
@@ -1425,11 +1558,16 @@ def apply_auto_views(
     committed = history.commit(
         project, after, actor=actor, label=f"Vues automatiques ({len(added)})"
     )
-    names = {"overall": "vue d'ensemble", "zone": "vue de zone", "detail": "détail"}
+    names = {
+        "overall": "vue d'ensemble",
+        "zone": "vue de zone",
+        "detail": "détail",
+        RIDGE: "vue du faîtage",
+    }
     return committed, AutoViews(
         added=added,
-        kept=[f"{names[k]} : modifiée à la main, gardée" for k in kept],
+        kept=[f"{names.get(k, k)} : modifiée à la main, gardée" for k in kept],
         skipped=skipped,
         aspect=chosen,
-        notes=[f"{p.name} : {p.note}" for p in plans if p.role not in kept],
+        notes=[f"{p.name} : {p.note}" for p in plans if (p.axis or p.role) not in kept],
     )

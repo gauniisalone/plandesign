@@ -10,6 +10,8 @@ Le dossier des poids (`OPENPLAN_MODELS_DIR`, défaut `models/weights`) est ignor
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,6 +80,7 @@ def pull(
     allow_patterns: list[str] | None = None,
     license_name: str | None = None,
     accept_license: bool = False,
+    files: dict[str, str] | None = None,
 ) -> Path:
     """Installe les poids d'un modèle du registre dans son dossier via `downloader`
     (`adapters.neural.download.hf_download` en pratique). Action explicite, jamais appelée
@@ -95,9 +98,59 @@ def pull(
     if not (target / sentinel).is_file():
         msg = f"téléchargement incomplet : {sentinel} absent dans {target}"
         raise AdapterUnavailableError(msg)
+    if files:
+        bad = mismatched(target, files)
+        if bad:
+            msg = (
+                f"empreinte sha256 fausse ou fichier absent après téléchargement : {', '.join(bad)}"
+            )
+            raise AdapterUnavailableError(msg)
     if license_name:
         (target / LICENSE_MARKER).write_text(
             f"{license_name}\naccepted_at: {datetime.now(UTC).isoformat()}\nrepo: {repo_id}\n",
             encoding="utf-8",
         )
+    return target
+
+
+def sha256_of(path: Path, chunk: int = 1 << 24) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        while block := fh.read(chunk):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def mismatched(folder: Path, files: dict[str, str]) -> list[str]:
+    """Fichiers attendus absents de `folder` ou dont l'empreinte sha256 diffère."""
+    return [
+        name
+        for name, digest in files.items()
+        if not (folder / name).is_file() or sha256_of(folder / name) != digest
+    ]
+
+
+def link_from(model_id: str, root: Path, source: Path, files: dict[str, str]) -> Path:
+    """KAN-88 : reprend des poids déjà présents sur la machine au lieu de les retélécharger.
+    Toutes les empreintes sha256 de `source` sont vérifiées d'abord (refus sinon, rien n'est
+    lié) ; chaque fichier est ensuite lié en dur (même disque : aucune place en plus), sinon
+    par lien symbolique. Renvoie le dossier du modèle."""
+    bad = mismatched(source, files)
+    if bad:
+        msg = f"{source} : empreinte sha256 fausse ou fichier absent : {', '.join(bad)}"
+        raise AdapterUnavailableError(msg)
+    target = weights_dir(model_id, root)
+    for name in files:
+        src, dst = source / name, target / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists() or dst.is_symlink():
+            if dst.resolve() == src.resolve() or (
+                dst.is_file() and dst.stat().st_ino == src.stat().st_ino
+            ):
+                continue
+            dst.unlink()
+        try:
+            os.link(src, dst)
+        except OSError:
+            dst.symlink_to(src.resolve())
     return target

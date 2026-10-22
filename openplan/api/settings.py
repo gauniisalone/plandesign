@@ -60,6 +60,9 @@ class Settings:
     device: str = "auto"
     """`auto` : cuda dès que torch voit un GPU, sinon cpu (`adapters.registry.resolve_device`)."""
     models_dir: Path = Path("./models/weights")
+    finish_engine: str = "auto"
+    """OPENPLAN_FINISH_ENGINE (KAN-88) : `auto` (Z-Image-Turbo quand ses poids sont installés et
+    qu'une carte CUDA est là, sinon SD 1.5) ou `sd15` (force la chaîne d'avant)."""
     materials_dir: Path = Path("./models/materials")
     """Matières de rendu téléchargées à la demande (D2), hors du dépôt."""
     ai: AiConfig = field(default_factory=AiConfig)
@@ -147,6 +150,7 @@ class Settings:
             blender_bin=merged.get("OPENPLAN_BLENDER_BIN", "blender"),
             device=merged.get("OPENPLAN_DEVICE") or "auto",
             models_dir=Path(merged.get("OPENPLAN_MODELS_DIR", "./models/weights")),
+            finish_engine=(merged.get("OPENPLAN_FINISH_ENGINE") or "auto").strip().lower(),
             materials_dir=Path(merged.get("OPENPLAN_MATERIALS_DIR", "./models/materials")),
             ai=AiConfig.from_env(merged),
             api_token=merged.get("OPENPLAN_API_TOKEN") or None,

@@ -86,6 +86,12 @@ def _add_models_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         action="store_true",
         help="accepte la licence des poids (OpenRAIL-M…) ; exigé pour certains modèles",
     )
+    pull.add_argument(
+        "--from",
+        dest="source",
+        type=Path,
+        help="dossier où ces poids sont déjà : repris par lien si les sha256 collent",
+    )
     web = models_sub.add_parser(
         "export-web-depth",
         help="KAN-79 : convertit le modèle de profondeur installé en ONNX fp16 pour le navigateur",
@@ -529,9 +535,12 @@ def _export_web_depth(models_dir: Path) -> int:
     return 0
 
 
-def _models(args: argparse.Namespace) -> int:  # noqa: PLR0911
+def _models(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912
+    from functools import partial
+
     from openplan.adapters.neural import weights
     from openplan.adapters.neural.download import hf_download
+    from openplan.adapters.protocols import AdapterUnavailableError
     from openplan.adapters.registry import load_registry, registry_entry
 
     models_dir: Path = (
@@ -570,16 +579,30 @@ def _models(args: argparse.Namespace) -> int:  # noqa: PLR0911
         print(f"  {entry.notes}")
         print(f"  puis : uv run openplan models pull {entry.id} --accept-license")
         return 3
+    if args.source is not None:
+        # KAN-88 : copie déjà sur la machine, reprise par lien après vérification sha256.
+        if not entry.files:
+            print(f"{entry.id} : pas d'empreintes au registre, reprise refusée (--from)")
+            return 2
+        try:
+            target = weights.link_from(entry.id, models_dir, args.source, entry.files)
+        except AdapterUnavailableError as exc:
+            print(f"reprise refusée : {exc}")
+            return 1
+        print(f"repris sans téléchargement ({len(entry.files)} fichiers, sha256 vérifiés)")
+        print(target)
+        return 0
     print(f"téléchargement de {entry.hf_repo} ({size}, {entry.license}) → {models_dir}")
     target = weights.pull(
         entry.id,
         entry.hf_repo,
         models_dir,
-        downloader=hf_download,
+        downloader=partial(hf_download, revision=entry.revision),
         sentinel=entry.sentinel,
-        allow_patterns=entry.allow_patterns,
+        allow_patterns=list(entry.files) if entry.files else entry.allow_patterns,
         license_name=entry.license if entry.requires_license_acceptance else None,
         accept_license=args.accept_license,
+        files=entry.files,
     )
     print(target)
     return 0
