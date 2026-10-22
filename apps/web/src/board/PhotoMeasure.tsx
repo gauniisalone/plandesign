@@ -26,6 +26,7 @@ import {
   type Point,
   type PhotoScaleBasis,
 } from "../state/photoReference";
+import { RenderFromPhotoButton } from "./RealisticRenders";
 
 /** KAN-66 (maquette validée par augus le 20 oct.) : la photo en grand dans un calque ; deux
  *  clics sur une longueur connue (loupe ×4 qui suit le curseur), sa longueur et un libellé
@@ -483,6 +484,12 @@ export function PhotoMeasure({
         <div className="pm-top">
           <span className="pm-step">{step[0]}</span>
           <span className="pm-hint">{step[1]}</span>
+          {/* KAN-91 (D5) : rendre le point de vue exact de cette photo. */}
+          <RenderFromPhotoButton
+            project={project}
+            imageId={imageId}
+            readOnly={readOnly}
+          />
         </div>
         <div className="pm-photo-wrap">
           {src ? (

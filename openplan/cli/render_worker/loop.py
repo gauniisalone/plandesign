@@ -33,7 +33,7 @@ from openplan.cli.render_worker.client import (
     WorkerClient,
 )
 from openplan.cli.render_worker.engine import EngineFailedError
-from openplan.cli.render_worker.sandbox import BAKE, CAMERA, OUT, PROJECT, Sandbox
+from openplan.cli.render_worker.sandbox import BAKE, CAMERA, OUT, PROJECT, SEED, Sandbox
 from openplan.schemas.render_queue import (
     MAX_IMAGE_BYTES,
     MAX_IMAGE_SIDE,
@@ -163,6 +163,8 @@ class Worker:
         try:
             for name, target in (("project", PROJECT), ("bake", BAKE), ("camera", CAMERA)):
                 self.client.fetch(job, name, work / target)  # type: ignore[arg-type]
+            if job.seed is not None:  # KAN-91 : variante, autre tirage
+                (work / SEED).write_text(str(job.seed), encoding="utf-8")
             outcome = self.sandbox.run(work, self.engine)
             image = (work / OUT).read_bytes()
             if len(image) > MAX_IMAGE_BYTES or max(outcome.width, outcome.height) > MAX_IMAGE_SIDE:

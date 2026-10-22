@@ -8758,3 +8758,390 @@ button.link,
 .realistic-message {
   margin: 0;
 }
+
+/* ---- KAN-91 (lot L6) : galerie du cadre Rendus et visionneuse plein écran ----
+   Classes rgal-* (galerie) et rview-* (visionneuse), noms libres vérifiés par grep. Jetons de
+   KAN-77 seulement. La galerie a une taille fixe : quatre cases 4:3 au plus, le cadre ne
+   grandit jamais tout seul. */
+/* Le menu s'ouvre dans le cadre, sous le bouton (le cadre coupe ce qui déborde). */
+.rgal-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-1, 4px);
+}
+.rgal-render {
+  font-size: inherit;
+}
+.rgal-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 16em;
+  padding: var(--s-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-lg);
+}
+.rgal-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: inherit;
+}
+.rgal-menu small {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.rgal-hint {
+  margin: 0;
+  color: var(--muted);
+}
+.rgal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rgal-cell {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--field);
+}
+.rgal-unlinked .rgal-cell {
+  opacity: 0.5;
+}
+.rgal-running {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  text-align: center;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--field) 0 10px,
+    color-mix(in oklab, var(--field) 70%, var(--line)) 10px 12px
+  );
+}
+.rgal-state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rgal-state span {
+  color: var(--muted);
+}
+.rgal-bar-track {
+  position: relative;
+  width: 70%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--line);
+}
+.rgal-bar-track::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--rgal-share, 0) * 100%);
+  background: var(--ok);
+  transition: width 1s linear;
+}
+.rgal-open {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+.rgal-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rgal-chip {
+  position: absolute;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
+  color: var(--text);
+  font-size: 0.85em;
+}
+.rgal-time {
+  left: var(--s-2);
+  bottom: var(--s-2);
+}
+.rgal-react {
+  right: var(--s-2);
+  bottom: var(--s-2);
+}
+.rgal-cover {
+  left: var(--s-2);
+  top: var(--s-2);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.rgal-more {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-2);
+  background: rgb(42 36 32 / 0.55);
+  color: #f6f0e5;
+  font-weight: 600;
+  text-align: center;
+}
+.rgal-from-photo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+.rview {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+.rview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.rview-meta,
+.rview-keys {
+  color: var(--muted);
+}
+.rview-keys {
+  margin-left: auto;
+}
+.rview-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 300px;
+  align-items: center;
+  gap: var(--s-3);
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-3) 0 var(--s-3) var(--s-3);
+}
+.rview-stage {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: var(--field);
+  box-shadow: var(--shadow-lg);
+}
+.rview-before,
+.rview-after {
+  position: absolute;
+  inset: 0;
+}
+.rview-after {
+  clip-path: inset(0 0 0 var(--rview-cut, 50%));
+}
+.rview-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.rview-3d {
+  pointer-events: none;
+}
+.rview-wait {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.rview-tag {
+  position: absolute;
+  top: var(--s-2);
+  padding: 1px 10px;
+  border-radius: var(--r-pill);
+  background: rgb(42 36 32 / 0.7);
+  color: #f6f0e5;
+  font-size: 0.85em;
+}
+.rview-tag-before {
+  left: var(--s-2);
+}
+.rview-tag-after {
+  right: var(--s-2);
+}
+.rview-handle {
+  position: absolute;
+  top: 50%;
+  left: var(--rview-cut, 50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+.rview-handle::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  width: 2px;
+  height: 200vh;
+  background: var(--surface);
+  z-index: -1;
+}
+.rview-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+.rview-range:focus-visible + .rview-note,
+.rview-stage:focus-within .rview-handle {
+  outline: 2px solid var(--primary);
+}
+.rview-note {
+  position: absolute;
+  left: 50%;
+  bottom: var(--s-3);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: calc(100% - 2 * var(--s-3));
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.rview-note-ok {
+  color: var(--ok);
+}
+.rview-note-warn {
+  border-color: var(--warn);
+}
+.rview-nav {
+  font-size: 1.4em;
+}
+.rview-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-self: stretch;
+  overflow-y: auto;
+  padding: 0 var(--s-4);
+  border-left: 1px solid var(--line);
+}
+.rview-h {
+  margin: var(--s-2) 0 0;
+  color: var(--muted);
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rview-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.rview-seg button {
+  border-radius: 0;
+}
+.rview-seg button:first-child {
+  border-radius: var(--r-control) 0 0 var(--r-control);
+}
+.rview-seg button:last-child {
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+}
+.rview-side button[aria-pressed="true"] {
+  background: var(--muted-bg);
+  border-color: var(--line-strong);
+}
+.rview-download {
+  display: block;
+  padding: 6px 12px;
+  border-radius: var(--r-control);
+  background: var(--primary);
+  color: var(--on-primary);
+  text-align: center;
+  text-decoration: none;
+}
+.rview-download:hover {
+  background: var(--primary-hover);
+}
+.rview-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1, 4px);
+}
+.rview-reaction {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+}
+.rview-variants {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-1, 4px);
+}
+.rview-variant {
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+}
+.rview-variant img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rview-side .rview-variant[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+}
+.rview-origin {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+}
+.rview-error {
+  margin: 0;
+  color: var(--danger);
+}
+@media (max-width: 900px) {
+  .rview-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .rview-stage {
+    height: 60vh;
+  }
+  .rview-nav {
+    display: none;
+  }
+}

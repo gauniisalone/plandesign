@@ -15,6 +15,7 @@ compte, ni projet, ni identifiant de demande.
 from __future__ import annotations
 
 import json
+import statistics
 import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -29,6 +30,8 @@ from openplan.api.accounts.models import RenderRequest, RenderWorker
 from openplan.api.realistic_config import RealisticConfig
 from openplan.schemas.render_queue import (
     FAILURE_TEXT,
+    MAX_SEED,
+    TYPICAL_SECONDS,
     RealisticRequest,
     WorkerJob,
     WorkerResult,
@@ -44,6 +47,10 @@ depuis 60 s, il est « hors ligne » (sauf pendant un rendu pris : « en cours �
 QUOTA_WINDOW = timedelta(hours=24)
 WORKER_NAME = "poste"
 JOURNAL = "renders.jsonl"
+JOURNAL_TAIL = 32 * 1024
+"""KAN-91 : seule la fin du journal est lue pour la durée typique."""
+TYPICAL_SAMPLE = 20
+TYPICAL_MIN = 3
 
 
 class QueueError(Exception):
@@ -177,7 +184,14 @@ class RenderQueue:
             now = self.clock()
             with self.session() as db, db.begin():
                 candidate = db.execute(
-                    select(RenderRequest.id, RenderRequest.created_at)
+                    select(
+                        RenderRequest.id,
+                        RenderRequest.created_at,
+                        RenderRequest.user_id,
+                        RenderRequest.project_id,
+                        RenderRequest.level_id,
+                        RenderRequest.camera_id,
+                    )
                     .where(
                         RenderRequest.state == "pending",
                         RenderRequest.expires_at > now,
@@ -200,8 +214,23 @@ class RenderQueue:
                     )
                 )
                 if getattr(done, "rowcount", 0) == 1:
+                    earlier = db.scalar(
+                        select(func.count())
+                        .select_from(RenderRequest)
+                        .where(
+                            RenderRequest.user_id == candidate.user_id,
+                            RenderRequest.project_id == candidate.project_id,
+                            RenderRequest.level_id == candidate.level_id,
+                            RenderRequest.camera_id == candidate.camera_id,
+                            RenderRequest.state == "done",
+                            RenderRequest.created_at < candidate.created_at,
+                        )
+                    )
                     return WorkerJob(
-                        request_id=candidate.id, lease=lease, created_at=aware(candidate.created_at)
+                        request_id=candidate.id,
+                        lease=lease,
+                        created_at=aware(candidate.created_at),
+                        seed=variant_seed(candidate.id) if earlier else None,
                     )
         return None
 
@@ -288,6 +317,35 @@ class RenderQueue:
 
     # --- journal -----------------------------------------------------------------------
 
+    def typical_seconds(self) -> float:
+        """KAN-91 : la médiane des `TYPICAL_SAMPLE` derniers rendus faits du journal (au moins
+        `TYPICAL_MIN`), sinon la durée annoncée par défaut (~2 min)."""
+        if self.journal is None or not self.journal.is_file():
+            return TYPICAL_SECONDS
+        try:
+            with self.journal.open("rb") as handle:
+                handle.seek(0, 2)
+                size = handle.tell()
+                handle.seek(max(0, size - JOURNAL_TAIL))
+                tail = handle.read().decode("utf-8", errors="ignore")
+        except OSError:
+            return TYPICAL_SECONDS
+        seconds: list[float] = []
+        for line in tail.splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue  # première ligne coupée par la lecture de la fin
+            if not isinstance(entry, dict):
+                continue
+            value = entry.get("seconds")
+            if entry.get("result") == "done" and isinstance(value, int | float) and value > 0:
+                seconds.append(float(value))
+        recent = seconds[-TYPICAL_SAMPLE:]
+        if len(recent) < TYPICAL_MIN:
+            return TYPICAL_SECONDS
+        return round(statistics.median(recent), 1)
+
     def _log(self, result: str, row: RenderRequest) -> None:
         if self.journal is None:
             return
@@ -308,7 +366,15 @@ class RenderQueue:
                 handle.write(line)
 
 
-def public_request(row: RenderRequest, has_image: bool) -> RealisticRequest:
+def variant_seed(request_id: UUID) -> int:
+    """KAN-91 : le tirage d'une variante, tiré de l'identifiant de la demande (stable d'une
+    reprise à l'autre, différent d'une variante à l'autre)."""
+    return int.from_bytes(request_id.bytes[:4], "big") & MAX_SEED
+
+
+def public_request(
+    row: RenderRequest, has_image: bool, photo_id: UUID | None = None
+) -> RealisticRequest:
     return RealisticRequest(
         id=row.id,
         level_id=row.level_id,
@@ -322,4 +388,6 @@ def public_request(row: RenderRequest, has_image: bool) -> RealisticRequest:
         height=row.height,
         error=FAILURE_TEXT.get(row.error or "") if row.state == "failed" else None,
         image=has_image and row.state == "done",
+        taken_at=None if row.taken_at is None else aware(row.taken_at),
+        photo_id=photo_id,
     )

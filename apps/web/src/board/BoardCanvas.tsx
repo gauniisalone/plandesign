@@ -1856,6 +1856,8 @@ export function BoardCanvas(props: Props) {
                 project={project}
                 levelId={frameLevel(item)}
                 readOnly={readOnly}
+                frameId={item.id}
+                title={item.text}
               />
             ) : missingHint(item.role ?? "", caps) ? (
               <span

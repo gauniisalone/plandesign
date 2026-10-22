@@ -104,21 +104,23 @@ test("rendu réaliste : demande, poste simulé, image affichée", async ({
   await gotoApp(page, `/#/projects/${id}/board`);
   const board = page.getByRole("region", { name: "Espace de travail" });
   const frame = board.getByRole("region", { name: "Rendus réalistes" });
-  await expect(frame.getByText("Vue fenêtre")).toBeVisible({ timeout: 30_000 });
+  // KAN-91 : le menu « Rendre ▾ » liste les vues du plan.
+  const menu = frame.getByRole("button", { name: "Rendre ▾" });
+  await expect(menu).toBeEnabled({ timeout: 30_000 });
   await expect(
     board.getByText("Rendus réalistes : bientôt en ligne"),
   ).toHaveCount(0);
 
   // Demande : poste jamais vu, donc hors ligne ; la demande attend son retour.
-  await frame.getByRole("button", { name: "Rendre", exact: true }).click();
+  await menu.click();
+  await frame
+    .getByRole("menuitem", { name: /Rendre la vue « Vue fenêtre »/ })
+    .click();
   await expect(
     frame.getByText(
       "Poste de rendu hors ligne : le rendu sera fait à son retour",
     ),
   ).toBeVisible();
-  await expect(
-    frame.getByRole("button", { name: "Rendre", exact: true }),
-  ).toBeDisabled();
 
   // Le poste simulé : ni cookie ni origine, son jeton seulement, sa propre adresse.
   const worker = await playwrightRequest.newContext({
@@ -142,40 +144,34 @@ test("rendu réaliste : demande, poste simulé, image affichée", async ({
     expect(file.status(), name).toBe(200);
     expect(file.headers()["content-type"]).toContain("application/json");
   }
-  await expect(frame.getByText("En cours", { exact: true })).toBeVisible({
+  await expect(frame.getByText("Rendu en cours", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
 
   const png = fs.readFileSync(IMAGE);
   const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
-  const done = await worker.post(
-    `/api/worker/jobs/${job.request_id}/result`,
-    {
-      headers: leased,
-      multipart: {
-        meta: JSON.stringify({
-          seconds: 41.6,
-          vram_peak_mib: 4800,
-          width,
-          height,
-          engine: "fake",
-        }),
-        image: { name: "render.png", mimeType: "image/png", buffer: png },
-      },
+  const done = await worker.post(`/api/worker/jobs/${job.request_id}/result`, {
+    headers: leased,
+    multipart: {
+      meta: JSON.stringify({
+        seconds: 41.6,
+        vram_peak_mib: 4800,
+        width,
+        height,
+        engine: "fake",
+      }),
+      image: { name: "render.png", mimeType: "image/png", buffer: png },
     },
-  );
+  });
   expect(done.status()).toBe(200);
   await worker.dispose();
 
-  const image = frame.locator("img.realistic-image");
+  const image = frame.locator("img.rgal-img");
   await expect(image).toBeVisible({ timeout: 15_000 });
   await expect
     .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBe(width);
-  await expect(frame.getByText("Fait en 42 s")).toBeVisible();
-  await expect(
-    frame.getByRole("button", { name: "Rendre", exact: true }),
-  ).toBeEnabled();
+  await expect(menu).toBeEnabled();
   expect(failures).toEqual([]);
 });
 
@@ -194,7 +190,7 @@ test("rendu réaliste : un autre compte n'a ni le bouton ni l'API", async ({
     board.getByRole("region", { name: "Rendus réalistes" }),
   ).toHaveCount(0);
   await expect(
-    board.getByRole("button", { name: "Rendre", exact: true }),
+    board.getByRole("button", { name: "Rendre ▾", exact: true }),
   ).toHaveCount(0);
   const origin = { Origin: new URL(page.url()).origin };
   const ask = await page.request.post(

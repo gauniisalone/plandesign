@@ -213,6 +213,14 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("GET", P + "/realistic"): V,
     ("GET", P + "/realistic/{request_id}/image"): V,
     ("POST", L + "/realistic"): E,
+    # KAN-91 : rendre depuis la photo (D5), variante, couverture du projet, réactions ; même
+    # liste blanche en plus du rôle.
+    ("POST", L + "/realistic/from-photo"): E,
+    ("POST", P + "/realistic/{request_id}/variant"): E,
+    ("PUT", P + "/realistic/{request_id}/cover"): E,
+    ("DELETE", P + "/realistic/cover"): E,
+    ("PUT", P + "/realistic/{request_id}/reactions/{key}"): C,
+    ("DELETE", P + "/realistic/{request_id}/reactions/{key}"): C,
 }
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {

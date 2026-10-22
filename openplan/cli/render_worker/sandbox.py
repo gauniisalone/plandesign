@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 import openplan
 from openplan.cli.render_worker.engine import EngineFailedError, RenderOutcome, render
+from openplan.schemas.render_queue import MAX_SEED
 
 PROJECT, BAKE, CAMERA, OUT, RESULT = (
     "project.json",
@@ -34,6 +35,8 @@ PROJECT, BAKE, CAMERA, OUT, RESULT = (
     "render.png",
     "result.json",
 )
+SEED = "seed.txt"
+"""KAN-91 : tirage d'une variante (entier écrit par le poste), absent pour un premier rendu."""
 TIMEOUT_S = 20 * 60
 """Le moteur a sa propre garde (15 min) ; au-delà de 20 min, le poste tue le calcul."""
 Mode = Literal["unshare", "socket"]
@@ -150,11 +153,27 @@ def read_result(job_dir: Path, code: int | None) -> RenderOutcome:
     return RenderOutcome(**data["outcome"])
 
 
+def read_seed(job_dir: Path) -> int | None:
+    """Le tirage écrit par le poste (un entier positif), sinon None (tirage par défaut)."""
+    try:
+        text = (job_dir / SEED).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return int(text) if text.isdigit() and int(text) <= MAX_SEED else None
+
+
 def child(job_dir: Path, engine: str) -> int:
     block_network()
     out = job_dir / RESULT
     try:
-        outcome = render(engine, job_dir / PROJECT, job_dir / BAKE, job_dir / CAMERA, job_dir / OUT)
+        outcome = render(
+            engine,
+            job_dir / PROJECT,
+            job_dir / BAKE,
+            job_dir / CAMERA,
+            job_dir / OUT,
+            seed=read_seed(job_dir),
+        )
     except EngineFailedError as exc:
         out.write_text(json.dumps({"ok": False, "reason": exc.reason}), encoding="utf-8")
         return 1

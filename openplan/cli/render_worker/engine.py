@@ -78,15 +78,19 @@ def fake_render(camera_path: Path, out_png: Path) -> RenderOutcome:
     )
 
 
-def zimage_render(project: Path, bake: Path, camera: Path, out_png: Path) -> RenderOutcome:
+def zimage_render(
+    project: Path, bake: Path, camera: Path, out_png: Path, seed: int | None = None
+) -> RenderOutcome:
     try:
         module = importlib.import_module(ZIMAGE_MODULE)
     except ImportError as exc:
         raise EngineFailedError("unavailable") from exc
     unavailable = getattr(module, "ZImageUnavailable", ())
     vram = getattr(module, "ZImageVramGuard", ())
+    # KAN-91 : une variante passe son tirage ; sinon, celui par défaut du moteur (KAN-88).
+    extra = {} if seed is None else {"seed": seed}
     try:
-        result = module.render_scene(bake, camera, out_png, project_path=project)
+        result = module.render_scene(bake, camera, out_png, project_path=project, **extra)
     except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
         raise EngineFailedError("vram") from exc
     except unavailable as exc:
@@ -104,9 +108,17 @@ def zimage_render(project: Path, bake: Path, camera: Path, out_png: Path) -> Ren
     )
 
 
-def render(engine: str, project: Path, bake: Path, camera: Path, out_png: Path) -> RenderOutcome:
+def render(
+    engine: str,
+    project: Path,
+    bake: Path,
+    camera: Path,
+    out_png: Path,
+    *,
+    seed: int | None = None,
+) -> RenderOutcome:
     if engine == "fake":
         return fake_render(camera, out_png)
     if engine == "zimage":
-        return zimage_render(project, bake, camera, out_png)
+        return zimage_render(project, bake, camera, out_png, seed)
     raise EngineFailedError("unavailable")

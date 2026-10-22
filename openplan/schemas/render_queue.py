@@ -33,6 +33,9 @@ JSON_FILES: dict[str, int] = {
     "camera": MAX_CAMERA_BYTES,
 }
 """Fichiers qu'un poste peut télécharger pour une demande, et leur plafond (octets)."""
+MAX_SEED = 2**31 - 1
+TYPICAL_SECONDS = 120.0
+"""KAN-91 : durée annoncée d'un rendu tant que le journal n'en a pas assez (« ~2 min »)."""
 
 
 class WorkerJob(StrictModel):
@@ -42,6 +45,9 @@ class WorkerJob(StrictModel):
     request_id: UUID
     lease: UUID
     created_at: datetime
+    seed: int | None = Field(default=None, ge=0, le=MAX_SEED)
+    """KAN-91 : tirage d'une variante (même vue, autre tirage) ; absent du message pour un
+    premier rendu, qui garde le tirage par défaut du moteur."""
 
 
 class WorkerClaim(StrictModel):
@@ -85,10 +91,39 @@ class RealisticRequest(StrictModel):
     error: str | None = None
     """Phrase en français pour un échec ; jamais un détail technique."""
     image: bool = False
+    taken_at: datetime | None = None
+    """KAN-91 : début du calcul (barre d'avancement de la galerie)."""
+    photo_id: UUID | None = None
+    """KAN-91 (D5) : la photo dont la caméra estimée est la vue de ce rendu ; None pour un
+    point de vue libre. L'avant/après avec cette photo est alors fidèle."""
 
 
 class RealisticCreate(StrictModel):
     camera_id: UUID
+
+
+class RealisticFromPhoto(StrictModel):
+    """KAN-91 (D5) : rendre le point de vue exact d'une photo réelle (sa caméra estimée)."""
+
+    image_id: UUID
+
+
+class RealisticCover(StrictModel):
+    """KAN-91 : le rendu choisi comme couverture du projet (None : choix automatique)."""
+
+    cover_id: UUID | None = None
+
+
+class RealisticReaction(StrictModel):
+    """KAN-91 : une pastille de réaction (KAN-78) sur un rendu réaliste."""
+
+    item_id: UUID
+    """L'identifiant du rendu (de la demande)."""
+    key: str
+    emoji: str
+    count: int
+    mine: bool
+    names: list[str]
 
 
 class RealisticStatus(StrictModel):
@@ -104,6 +139,11 @@ class RealisticStatus(StrictModel):
 class RealisticList(StrictModel):
     status: RealisticStatus
     requests: list[RealisticRequest]
+    typical_seconds: float = TYPICAL_SECONDS
+    """KAN-91 : médiane des derniers rendus faits (journal du poste), sinon ~2 min."""
+    cover_id: UUID | None = None
+    """KAN-91 : le rendu choisi comme couverture du projet (liste « Mes projets »)."""
+    reactions: list[RealisticReaction] = Field(default_factory=list)
 
 
 FAILURE_TEXT: dict[str, str] = {

@@ -333,14 +333,35 @@ export interface RealisticRequest {
   height: number | null;
   error: string | null;
   image: boolean;
+  /** KAN-91 : début du calcul (barre d'avancement). */
+  taken_at?: string | null;
+  /** KAN-91 (D5) : la photo dont la caméra estimée est la vue du rendu ; null : vue libre. */
+  photo_id?: string | null;
+}
+
+/** KAN-91 : une pastille de réaction (KAN-78) sur un rendu réaliste. */
+export interface RealisticReaction {
+  item_id: string;
+  key: ReactionKey;
+  emoji: string;
+  count: number;
+  mine: boolean;
+  names: string[];
+}
+
+export interface RealisticListing {
+  status: RealisticStatus;
+  requests: RealisticRequest[];
+  /** Médiane des derniers rendus faits (s), sinon 120. */
+  typical_seconds?: number;
+  cover_id?: string | null;
+  reactions?: RealisticReaction[];
 }
 
 export const realisticApi = {
   status: () => request<RealisticStatus>("/realistic/status"),
   list: (pid: string) =>
-    request<{ status: RealisticStatus; requests: RealisticRequest[] }>(
-      `/projects/${pid}/realistic`,
-    ),
+    request<RealisticListing>(`/projects/${pid}/realistic`),
   ask: (pid: string, levelId: string, cameraId: string) =>
     request<RealisticRequest>(
       `/projects/${pid}/levels/${levelId}/realistic`,
@@ -348,6 +369,32 @@ export const realisticApi = {
     ),
   imageUrl: (pid: string, requestId: string) =>
     `${BASE}/projects/${pid}/realistic/${requestId}/image`,
+  /** KAN-91 (D5) : le point de vue exact de la photo (sa caméra estimée). */
+  fromPhoto: (pid: string, levelId: string, imageId: string) =>
+    request<RealisticRequest>(
+      `/projects/${pid}/levels/${levelId}/realistic/from-photo`,
+      json({ image_id: imageId }),
+    ),
+  /** KAN-91 : même vue, autre tirage. */
+  variant: (pid: string, requestId: string) =>
+    request<RealisticRequest>(
+      `/projects/${pid}/realistic/${requestId}/variant`,
+      { method: "POST" },
+    ),
+  setCover: (pid: string, requestId: string) =>
+    request<{ cover_id: string | null }>(
+      `/projects/${pid}/realistic/${requestId}/cover`,
+      { method: "PUT" },
+    ),
+  clearCover: (pid: string) =>
+    request<{ cover_id: string | null }>(`/projects/${pid}/realistic/cover`, {
+      method: "DELETE",
+    }),
+  react: (pid: string, requestId: string, key: ReactionKey, on: boolean) =>
+    request<RealisticReaction[]>(
+      `/projects/${pid}/realistic/${requestId}/reactions/${key}`,
+      { method: on ? "PUT" : "DELETE" },
+    ),
 };
 
 /** Connexion par code (B1b2) et rôle par projet (B1d). */

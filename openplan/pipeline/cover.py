@@ -16,6 +16,10 @@ from openplan.schemas.elements import Wall
 from openplan.schemas.scene import Project
 
 COVER_DIR = "cover"
+CHOSEN_COVER = Path("realistic") / "cover.webp"
+"""KAN-91 : le rendu réaliste choisi comme couverture du projet (« Définir comme couverture »),
+réduit en WebP à côté des rendus du poste. Il passe avant tout le reste ; c'est un fichier, pas
+un champ du projet : une version plus ancienne de l'application l'ignore simplement."""
 COVER_WIDTH = 480
 COVER_QUALITY = 80
 _ORDER = ("finished", "blender", "inspiration", "catalogue")
@@ -109,7 +113,11 @@ def project_cover(
     photo_thumbnail: Path,
     theme: SvgTheme = "light",
 ) -> Cover:
-    """La vignette du projet, dans l'ordre de préférence du PO."""
+    """La vignette du projet, dans l'ordre de préférence du PO (KAN-91 : le rendu réaliste
+    choisi comme couverture d'abord)."""
+    chosen = project_dir / CHOSEN_COVER
+    if chosen.is_file():
+        return Cover(kind="render", media_type="image/webp", path=chosen)
     picked = _pick_render(project, runs_dir)
     if picked is not None:
         path = _render_cover(project_dir, runs_dir, *picked)
