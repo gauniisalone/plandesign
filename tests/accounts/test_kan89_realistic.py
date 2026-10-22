@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import secrets
@@ -27,6 +28,7 @@ from openplan.api.accounts.render_queue import (
 from openplan.api.accounts.repo import AccountsRepo
 from openplan.api.accounts.service import AccountService
 from openplan.api.guards import GLOBAL_ROUTES, PROJECT_ROUTES
+from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.realistic_config import RealisticConfig, parse_accounts, parse_hashes
 from openplan.api.worker_auth import token_hash
 from openplan.scene.ops import AddCamera, apply_op
@@ -45,7 +47,6 @@ P = "/api/projects/{project_id}"
 L = P + "/levels/{level_id}"
 USER_ROUTES = {("GET", P + "/realistic"), ("GET", P + "/realistic/{request_id}/image")}
 WORKER_ROUTES = {
-    ("POST", "/api/worker/heartbeat"),
     ("POST", "/api/worker/claim"),
     ("GET", "/api/worker/jobs/{request_id}/files/{name}"),
     ("POST", "/api/worker/jobs/{request_id}/result"),
@@ -60,7 +61,15 @@ def png(width: int = 64, height: int = 48) -> bytes:
 
 
 class World:
-    def __init__(self, tmp_path: Path, url: str, **realistic: object) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        url: str,
+        *,
+        limited: bool = False,
+        site_origin: str | None = None,
+        **realistic: object,
+    ) -> None:
         repo = AccountsRepo(make_engine(url))
         self.augus_id = repo.create_user(AUGUS).id
         repo.engine.dispose()
@@ -69,7 +78,19 @@ class World:
             worker_token_sha256=(token_hash(TOKEN),),
             **realistic,  # type: ignore[arg-type]
         )
-        client, service, mailer = accounts_client(tmp_path, url, signup="open", realistic=config)
+        # Comme la production : ni Blender ni GPU ; bake et caméra viennent du pipeline Python.
+        client, service, mailer = accounts_client(
+            tmp_path,
+            url,
+            signup="open",
+            realistic=config,
+            blender_bin="/nonexistent/blender",
+            site_origin=site_origin,
+        )
+        if limited is False:  # les limites de débit ont leur propre test
+            gate = client.app.state.worker_gate  # type: ignore[attr-defined]
+            gate.limiter = SlidingWindowLimiter(1000, 5.0)
+            gate.failures = SlidingWindowLimiter(1000, 600.0)
         self.client: TestClient = client
         self.service: AccountService = service
         self.mailer: FakeMailer = mailer
@@ -138,13 +159,13 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     listing = world.client.get(f"/api/projects/{world.project_id}/realistic").json()
     assert [r["state"] for r in listing["requests"]] == ["pending"]
     assert listing["status"]["worker"] == "offline"
-    # Battement : le poste est en ligne.
-    beat = world.worker.post("/api/worker/heartbeat", json={"state": "idle"}, headers=WORKER)
-    assert beat.status_code == 200 and beat.json()["poll_s"] >= 5
+    # Un appel « en pause » vaut battement sans rien prendre : le poste est là.
+    paused = world.worker.post("/api/worker/claim", json={"state": "paused"}, headers=WORKER)
+    assert paused.status_code == 204
     status = world.client.get("/api/realistic/status").json()
-    assert status == {"allowed": True, "worker": "online", "quota": 20, "used_today": 1}
-    # Prise : la demande, puis rien.
-    job = world.worker.post("/api/worker/claim", headers=WORKER)
+    assert status == {"allowed": True, "worker": "paused", "quota": 20, "used_today": 1}
+    # Prise : la demande, puis rien ; pendant le rendu, le poste est « en cours ».
+    job = world.worker.post("/api/worker/claim", json={"state": "idle"}, headers=WORKER)
     assert job.status_code == 200, job.text
     assert set(job.json()) == {"request_id", "lease", "created_at"}
     rid, lease = job.json()["request_id"], job.json()["lease"]
@@ -159,13 +180,15 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
         world.worker.get(f"{files}/camera", headers=leased).content
     )
     assert camera.width_px > 0
-    assert world.worker.get(f"{files}/autre", headers=leased).status_code == 422
+    # Un autre nom n'est pas un chemin du poste : contrôle de session, donc 401.
+    assert world.worker.get(f"{files}/autre", headers=leased).status_code == 401
     wrong = {**WORKER, "X-Render-Lease": str(uuid4())}
     assert world.worker.get(f"{files}/bake", headers=wrong).status_code == 404
     assert world.worker.get(f"{files}/bake", headers=WORKER).status_code == 404
-    # En cours, côté interface.
+    # En cours, côté interface ; le poste ne rappelle pas pendant le calcul : « en cours ».
     listing = world.client.get(f"/api/projects/{world.project_id}/realistic").json()
     assert listing["requests"][0]["state"] == "taken"
+    assert listing["status"]["worker"] == "busy"
     # Dépôt : un PNG à la taille annoncée seulement.
     meta = WorkerResult(seconds=42.5, vram_peak_mib=4800, width=64, height=48, engine="fake")
     result = f"/api/worker/jobs/{rid}/result"
@@ -211,6 +234,14 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     assert entry["result"] == "done" and entry["seconds"] == 42.5
     for secret in (rid, str(world.project_id), str(world.augus_id), AUGUS, TOKEN):
         assert secret not in text
+    # Rétention : un rendu fait reste une image du projet (dossier du projet, compté dans sa
+    # place), jamais purgé par l'expiration, qui ne vise que les demandes en attente.
+    store = world.client.app.state.store  # type: ignore[attr-defined]
+    kept = store.project_dir(world.project_id) / "realistic" / f"{rid}.png"
+    queue: RenderQueue = world.client.app.state.render_queue  # type: ignore[attr-defined]
+    queue.clock = lambda: datetime.now(UTC) + timedelta(days=60)
+    queue.sweep()
+    assert kept.is_file() and queue.get(UUID(rid)).state == "done"  # type: ignore[union-attr]
     world.close()
 
 
@@ -281,7 +312,6 @@ def test_new_routes_are_guarded_and_refuse_without_session_or_token(world: World
         # Le jeton du poste n'ouvre pas les routes des personnes.
         assert anonymous.request(method, url, headers=WORKER).status_code == 401, url
     for method, url in (
-        ("POST", "/api/worker/heartbeat"),
         ("POST", "/api/worker/claim"),
         ("GET", f"/api/worker/jobs/{rid}/files/bake"),
         ("POST", f"/api/worker/jobs/{rid}/result"),
@@ -301,10 +331,162 @@ def test_new_routes_are_guarded_and_refuse_without_session_or_token(world: World
     world.close()
 
 
-def test_worker_api_closed_without_configured_hash(tmp_path: Path, migrated_url: str) -> None:
-    client, service, _ = accounts_client(tmp_path, migrated_url)
+def _asgi(
+    app: object, method: str, path: str, raw_path: bytes, headers: dict[str, str]
+) -> tuple[int, dict[str, str], bool]:
+    """Appel direct de l'application (chemin brut au choix) ; dit si le corps a été lu."""
+    read = False
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        nonlocal read
+        read = True
+        body = b"" if headers.get("Content-Length", "0") == "0" else b"0123456789"
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": "https",
+        "server": ("app.example.org", 443),
+        "client": ("198.51.100.7", 1234),
+        "root_path": "",
+        "path": path,
+        "raw_path": raw_path,
+        "query_string": b"",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+    }
+    asyncio.run(app(scope, receive, send))  # type: ignore[operator]
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    out = {k.decode(): v.decode() for k, v in start["headers"]}  # type: ignore[attr-defined]
+    return int(start["status"]), out, read  # type: ignore[call-overload]
+
+
+def test_worker_bypass_is_exact_and_refuses_before_reading_the_body(world: World) -> None:
+    app = world.client.app
+    rid = uuid4()
+    # Le chemin exact, avec le jeton : il passe (file vide).
+    empty = {**WORKER, "Content-Length": "0"}
+    assert _asgi(app, "POST", "/api/worker/claim", b"/api/worker/claim", empty)[0] == 204
+    # Tout chemin voisin, encodé ou normalisable autrement, reste soumis à la session : 401,
+    # même avec le bon jeton.
+    for path, raw in (
+        ("/api/worker-x/claim", b"/api/worker-x/claim"),
+        ("/api/worker/claim/", b"/api/worker/claim/"),
+        ("/api/worker//claim", b"/api/worker//claim"),
+        ("/api/worker/claim", b"/api/worker%2Fclaim"),
+        ("/api/worker/claim", b"/api/worker/cl%61im"),
+        ("/api/worker/../projects", b"/api/worker/../projects"),
+        (
+            "/api/worker/jobs/../../projects/files/bake",
+            b"/api/worker/jobs/../../projects/files/bake",
+        ),
+        (
+            f"/api/worker/jobs/{str(rid).upper()}/fail",
+            f"/api/worker/jobs/{str(rid).upper()}/fail".encode(),
+        ),
+    ):
+        status, _headers, _read = _asgi(app, "POST", path, raw, {**WORKER, "Content-Length": "10"})
+        # Session : POST sans l'origine de l'application → 403, sinon sans session → 401.
+        assert status in (401, 403), raw
+        with_origin = {**WORKER, "Content-Length": "10", "Origin": ORIGIN}
+        assert _asgi(app, "POST", path, raw, with_origin)[0] == 401, raw
+    # Jeton absent ou faux : 401 avant toute lecture du corps.
+    url = f"/api/worker/jobs/{rid}/result"
+    for headers in ({}, {"Authorization": "Bearer " + secrets.token_urlsafe(32)}):
+        status, _h, read = _asgi(
+            app, "POST", url, url.encode(), {**headers, "Content-Length": "10"}
+        )
+        assert (status, read) == (401, False)
+    # Trop gros, ou sans longueur : refusé avant lecture aussi.
+    huge = {**WORKER, "Content-Length": str(64 * 1024 * 1024)}
+    assert _asgi(app, "POST", url, url.encode(), huge)[::2] == (413, False)
+    assert _asgi(app, "POST", url, url.encode(), WORKER)[::2] == (411, False)
+    world.close()
+
+
+def test_worker_routes_have_no_cors(tmp_path: Path, migrated_url: str) -> None:
+    site = "https://site.example.org"
+    world = World(tmp_path, migrated_url, site_origin=site)
+    for method in ("OPTIONS", "POST"):
+        for headers in ({}, WORKER):
+            done = world.worker.request(
+                method,
+                "/api/worker/claim",
+                headers={**headers, "Origin": site, "Access-Control-Request-Method": "POST"},
+            )
+            assert "access-control-allow-origin" not in done.headers, (method, headers)
+            assert "access-control-allow-credentials" not in done.headers
+    world.close()
+
+
+def test_worker_rate_limits(tmp_path: Path, migrated_url: str) -> None:
+    """Par jeton : une prise par 5 s au plus. Par adresse IP : 10 jetons refusés en 10 min,
+    puis 429 (ces routes sortent de fail2ban : l'application protège)."""
+    world = World(tmp_path, migrated_url, limited=True)
+    now = [100.0]
+    gate = world.client.app.state.worker_gate  # type: ignore[attr-defined]
+    gate.limiter.clock = gate.failures.clock = lambda: now[0]
+    claim = "/api/worker/claim"
+    assert world.worker.post(claim, headers=WORKER).status_code == 204
+    again = world.worker.post(claim, headers=WORKER)
+    assert again.status_code == 429 and again.headers["retry-after"] == "5"
+    now[0] += 4.9
+    assert world.worker.post(claim, headers=WORKER).status_code == 429
+    now[0] += 0.2
+    assert world.worker.post(claim, headers=WORKER).status_code == 204
+    # Les autres routes du poste ne sont pas comptées (elles suivent une prise).
+    rid = uuid4()
+    files = f"/api/worker/jobs/{rid}/files/bake"
+    assert world.worker.get(files, headers=WORKER).status_code == 404
+    assert world.worker.get(files, headers=WORKER).status_code == 404
+    # Jetons faux depuis une adresse : 401 dix fois, puis 429 ; le bon jeton passe toujours.
+    bad = {"Authorization": "Bearer " + secrets.token_urlsafe(32)}
+    codes = [world.worker.get(files, headers=bad).status_code for _ in range(12)]
+    assert codes == [401] * 10 + [429] * 2
+    assert world.worker.get(files, headers=WORKER).status_code == 404
+    now[0] += 601
+    assert world.worker.get(files, headers=bad).status_code == 401
+    world.close()
+
+
+def test_app_starts_without_any_render_variable(
+    tmp_path: Path, migrated_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exigence de l'Infra : sans les 4 variables (ou mal formées), l'application démarre et le
+    rendu est désactivé : API du poste en 401, refus pour tous, cadre « bientôt en ligne »."""
+    from openplan.api.settings import Settings
+
+    for name in (
+        "OPENPLAN_RENDER_ACCOUNTS",
+        "OPENPLAN_WORKER_TOKEN_SHA256",
+        "OPENPLAN_RENDER_EXPIRE_H",
+        "OPENPLAN_RENDER_DAILY_QUOTA",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert Settings.from_env({}, dotenv=None).realistic == RealisticConfig()
+    broken = Settings.from_env(
+        {
+            "OPENPLAN_RENDER_ACCOUNTS": "pas-un-uuid",
+            "OPENPLAN_WORKER_TOKEN_SHA256": TOKEN,
+            "OPENPLAN_RENDER_EXPIRE_H": "jamais",
+            "OPENPLAN_RENDER_DAILY_QUOTA": "-3",
+        },
+        dotenv=None,
+    )
+    assert broken.realistic == RealisticConfig() and not broken.realistic.enabled
+    client, service, mailer = accounts_client(tmp_path, migrated_url, signup="open")
+    sign_in(client, mailer, AUGUS)
     worker = TestClient(client.app, base_url=ORIGIN)
     assert worker.post("/api/worker/claim", headers=WORKER).status_code == 401
+    assert client.get("/api/realistic/status").json()["allowed"] is False
+    created = client.post("/api/projects", json={"name": "P"}).json()
+    assert client.get(f"/api/projects/{created['id']}/realistic").status_code == 403
     service.engine.dispose()
 
 

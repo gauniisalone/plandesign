@@ -180,6 +180,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_diagnostic_parsers(sub)
     _add_accounts_parser(sub)
     _add_downgrade_parser(sub)
+    from openplan.cli.render_worker import cli as render_worker  # KAN-89 : poste de rendu
+
+    render_worker.add_parser(sub)
     return parser
 
 
@@ -378,6 +381,10 @@ def main(argv: list[str] | None = None) -> int:
         "accounts": _accounts,
         "downgrade": _downgrade,
     }
+    if args.command == "worker":  # KAN-89 : poste de rendu
+        from openplan.cli.render_worker import cli as render_worker
+
+        return render_worker.command(args)
     return commands[args.command](args)
 
 

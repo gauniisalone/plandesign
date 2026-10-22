@@ -38,8 +38,9 @@ from openplan.schemas.render_queue import (
 TAKE_TTL = timedelta(minutes=30)
 """Une prise sans dépôt ni échec après ce délai est reprise par la file (poste tombé)."""
 MAX_ATTEMPTS = 3
-ONLINE_WITHIN = timedelta(seconds=90)
-"""Le poste bat toutes les 30 s ; sans battement depuis 90 s, il est « hors ligne »."""
+ONLINE_WITHIN = timedelta(seconds=60)
+"""Le poste appelle `claim` (qui vaut battement de cœur) toutes les 10 à 15 s ; sans appel
+depuis 60 s, il est « hors ligne » (sauf pendant un rendu pris : « en cours »)."""
 QUOTA_WINDOW = timedelta(hours=24)
 WORKER_NAME = "poste"
 JOURNAL = "renders.jsonl"
@@ -267,10 +268,19 @@ class RenderQueue:
                 row.last_seen_at, row.state = now, state
 
     def worker_status(self) -> str:
-        """`online`, `busy`, `paused` ou `offline` (pas de battement depuis ONLINE_WITHIN)."""
+        """`online`, `busy`, `paused` ou `offline` (pas d'appel depuis ONLINE_WITHIN). Un rendu
+        pris depuis moins de TAKE_TTL dit `busy` : le poste ne rappelle pas pendant le calcul."""
+        now = self.clock()
         with self.session() as db:
             row = db.get(RenderWorker, WORKER_NAME)
-        if row is None or self.clock() - aware(row.last_seen_at) > ONLINE_WITHIN:
+            rendering = db.scalar(
+                select(func.count())
+                .select_from(RenderRequest)
+                .where(RenderRequest.state == "taken", RenderRequest.taken_at > now - TAKE_TTL)
+            )
+        if rendering:
+            return "busy"
+        if row is None or now - aware(row.last_seen_at) > ONLINE_WITHIN:
             return "offline"
         if row.state == "paused":
             return "paused"

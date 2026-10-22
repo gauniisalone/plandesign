@@ -12,14 +12,22 @@ aussi, où il ne sert à rien.
 - OPENPLAN_RENDER_EXPIRE_H : une demande non prise après ce délai expire (24 h par défaut).
 - OPENPLAN_RENDER_DAILY_QUOTA : demandes par compte sur 24 h glissantes (20 par défaut ;
   0 = aucune).
+
+Exigence de l'Infra : ces variables n'empêchent JAMAIS l'application de démarrer. Absentes,
+le rendu est désactivé (personne n'est autorisé, l'API du poste répond 401). Mal formées
+(retour arrière, MEP dans le désordre) : la variable fautive est ignorée avec un
+avertissement au journal (sans sa valeur), ce qui désactive le rendu ou rend le défaut.
 """
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from uuid import UUID
+
+log = logging.getLogger("openplan.realistic")
 
 DEFAULT_EXPIRE_H = 24.0
 DEFAULT_DAILY_QUOTA = 20
@@ -36,14 +44,32 @@ class RealisticConfig:
     def allows(self, user_id: UUID) -> bool:
         return user_id in self.accounts
 
+    @property
+    def enabled(self) -> bool:
+        """Au moins un compte autorisé et une empreinte de jeton : le rendu est possible."""
+        return bool(self.accounts) and bool(self.worker_token_sha256)
+
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> RealisticConfig:
+        """Ne lève jamais : une variable mal formée est ignorée (avertissement, sans valeur)."""
         return cls(
-            accounts=parse_accounts(env.get("OPENPLAN_RENDER_ACCOUNTS")),
-            worker_token_sha256=parse_hashes(env.get("OPENPLAN_WORKER_TOKEN_SHA256")),
-            expire_h=parse_hours(env.get("OPENPLAN_RENDER_EXPIRE_H")),
-            daily_quota=parse_quota(env.get("OPENPLAN_RENDER_DAILY_QUOTA")),
+            accounts=_lenient(parse_accounts, env, "OPENPLAN_RENDER_ACCOUNTS", frozenset()),
+            worker_token_sha256=_lenient(parse_hashes, env, "OPENPLAN_WORKER_TOKEN_SHA256", ()),
+            expire_h=_lenient(parse_hours, env, "OPENPLAN_RENDER_EXPIRE_H", DEFAULT_EXPIRE_H),
+            daily_quota=_lenient(
+                parse_quota, env, "OPENPLAN_RENDER_DAILY_QUOTA", DEFAULT_DAILY_QUOTA
+            ),
         )
+
+
+def _lenient[T](
+    parse: Callable[[str | None], T], env: Mapping[str, str], name: str, default: T
+) -> T:
+    try:
+        return parse(env.get(name))
+    except ValueError as exc:
+        log.warning("%s ignorée (rendus réalistes) : %s", name, exc)
+        return default
 
 
 def _chunks(text: str | None) -> list[str]:

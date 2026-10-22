@@ -267,7 +267,6 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # KAN-89 : ce que le cadre Rendus montre (autorisé ou non, poste en ligne, quota).
     ("GET", "/api/realistic/status"): "user",
     # KAN-89 : API du poste de rendu (jeton du poste, appels sortants du poste).
-    ("POST", "/api/worker/heartbeat"): "worker",
     ("POST", "/api/worker/claim"): "worker",
     ("GET", "/api/worker/jobs/{request_id}/files/{name}"): "worker",
     ("POST", "/api/worker/jobs/{request_id}/result"): "worker",

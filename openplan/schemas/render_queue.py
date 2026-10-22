@@ -23,8 +23,10 @@ FailureReason = Literal["unavailable", "vram", "timeout", "engine_error", "inval
 MAX_PROJECT_BYTES = 8 * 1024 * 1024
 MAX_BAKE_BYTES = 8 * 1024 * 1024
 MAX_CAMERA_BYTES = 64 * 1024
-MAX_IMAGE_BYTES = 20 * 1024 * 1024
-MAX_IMAGE_SIDE = 4096
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+"""Plafond d'un rendu déposé (PNG) ; l'intergiciel refuse un envoi plus gros avant de le lire."""
+MAX_IMAGE_SIDE = 2048
+"""Plus grand côté d'un rendu déposé (Z-Image rend en 1024 px de grand côté)."""
 JSON_FILES: dict[str, int] = {
     "project": MAX_PROJECT_BYTES,
     "bake": MAX_BAKE_BYTES,
@@ -42,15 +44,13 @@ class WorkerJob(StrictModel):
     created_at: datetime
 
 
-class WorkerHeartbeat(StrictModel):
-    state: WorkerState
+class WorkerClaim(StrictModel):
+    """L'appel périodique du poste (toutes les 10 à 15 s) : il vaut battement de cœur. `idle`
+    prend une demande s'il y en a ; `paused` ou `waiting` (le poste passe son tour) ne prend
+    rien et dit seulement que le poste est là."""
+
+    state: Literal["idle", "paused", "waiting"] = "idle"
     version: str = Field(default="", max_length=32, pattern=r"^[A-Za-z0-9_.+-]*$")
-
-
-class WorkerHeartbeatOut(StrictModel):
-    ok: bool = True
-    poll_s: int = Field(ge=5, le=600)
-    """Délai conseillé entre deux demandes de travail quand la file est vide."""
 
 
 class WorkerResult(StrictModel):

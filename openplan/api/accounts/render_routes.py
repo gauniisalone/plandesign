@@ -16,7 +16,17 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Body,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import ValidationError
 
 from openplan.api.access import AuthUser, accounts_of, signed_in_user
@@ -38,9 +48,8 @@ from openplan.schemas.render_queue import (
     RealisticList,
     RealisticRequest,
     RealisticStatus,
+    WorkerClaim,
     WorkerFailure,
-    WorkerHeartbeat,
-    WorkerHeartbeatOut,
     WorkerJob,
     WorkerResult,
 )
@@ -53,7 +62,6 @@ NOT_YET = "Rendus réalistes : bientôt en ligne"
 QUOTA_TEXT = "Vous avez atteint le nombre de rendus réalistes du jour : réessayez demain."
 LEASE_REFUSED = "demande inconnue, ou plus à ce poste"
 IMAGES_DIR = "realistic"
-POLL_S = 20
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -166,17 +174,16 @@ def realistic_image(project_id: UUID, request_id: UUID, request: Request) -> Res
 LeaseHeader = Annotated[UUID | None, Header(alias="X-Render-Lease")]
 
 
-@router.post("/api/worker/heartbeat")
-def worker_heartbeat(body: WorkerHeartbeat, request: Request) -> WorkerHeartbeatOut:
-    queue_of(request).beat(body.state)
-    return WorkerHeartbeatOut(poll_s=POLL_S)
-
-
 @router.post("/api/worker/claim", response_model=None)
-def worker_claim(request: Request) -> WorkerJob | Response:
-    """La plus ancienne demande en attente (atomique), ou 204 quand la file est vide."""
+def worker_claim(
+    request: Request, body: Annotated[WorkerClaim | None, Body()] = None
+) -> WorkerJob | Response:
+    """L'appel périodique du poste, qui vaut battement de cœur : la plus ancienne demande en
+    attente (prise atomique) si le poste est libre (corps absent = libre), sinon 204."""
+    state = "idle" if body is None else body.state
     queue = queue_of(request)
-    job = queue.claim()
+    queue.beat(state)
+    job = queue.claim() if state == "idle" else None
     if job is None:
         return Response(status_code=204)
     queue.beat("busy")
