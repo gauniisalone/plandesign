@@ -9171,3 +9171,213 @@ button.link,
     display: none;
   }
 }
+
+/* ---- KAN-91 L5 : guide de prise de photo (seulement par son lien) et alerte « gros plan » ----
+   Jetons de KAN-77 seulement ; noms vérifiés libres (photo-guide*, board-closeup, photo-closeup,
+   board-frame-guide, pg-*). */
+.board-frame-guide {
+  font-size: inherit;
+  padding: 0;
+  white-space: nowrap;
+}
+.board-frame-actions .board-frame-guide {
+  padding: 0.2em 0.3em;
+}
+.board-item.photo-closeup {
+  outline: 3px solid var(--warn);
+  outline-offset: 2px;
+}
+.board-closeup {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 10px 14px;
+  border-radius: var(--r-card);
+  background: var(--panel);
+  border: 1px solid var(--warn);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+}
+.board-closeup > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--warn);
+}
+.board-closeup > span {
+  flex: 1 1 260px;
+}
+.photo-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, black 35%, transparent);
+  padding: 16px;
+}
+.photo-guide {
+  width: min(960px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  box-sizing: border-box;
+  background: var(--panel);
+  color: var(--text);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.photo-guide h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.photo-guide-lead,
+.photo-guide-next {
+  margin: 0;
+  color: var(--muted);
+}
+.photo-guide-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.photo-guide-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 10px;
+  background: var(--bg);
+}
+.photo-guide-card svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-control);
+  background: var(--field);
+}
+.photo-guide-card h3 {
+  margin: 8px 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.photo-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.photo-guide-avoid {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.photo-guide-no {
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+}
+.photo-guide-no::before {
+  content: "✕ ";
+}
+.photo-guide-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.pg-wall {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+.pg-cone {
+  fill: var(--link);
+  opacity: 0.22;
+}
+.pg-cam {
+  fill: var(--link);
+}
+.pg-phone {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+.pg-screen {
+  fill: var(--bg);
+}
+.pg-zoom-on {
+  fill: var(--text);
+}
+.pg-zoom-on-text,
+.pg-zoom-off-text {
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+.pg-zoom-on-text {
+  fill: var(--bg);
+}
+.pg-zoom-off {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+.pg-zoom-off-text {
+  fill: var(--muted);
+}
+.pg-ground {
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+.pg-person-head {
+  fill: var(--muted);
+}
+.pg-person {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.pg-measure {
+  fill: none;
+  stroke: var(--link);
+  stroke-width: 1.5;
+}
+.pg-measure-text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--link);
+}
+.pg-side {
+  fill: var(--field);
+}
+.pg-back {
+  fill: var(--surface);
+}
+.pg-floor {
+  fill: color-mix(in oklab, var(--pd-olive) 35%, var(--field));
+}
+.pg-corner {
+  fill: none;
+  stroke: var(--measured);
+  stroke-width: 2.5;
+}
+@media (max-width: 900px) {
+  .photo-guide-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

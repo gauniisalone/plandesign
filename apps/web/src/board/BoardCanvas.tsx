@@ -34,6 +34,7 @@ import {
 } from "../importFiles";
 import { walls } from "../model";
 import {
+  IconAlert,
   IconComment,
   IconCursor,
   IconFrame,
@@ -61,6 +62,7 @@ import {
   resizedPostit,
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
+import { CLOSE_UP_TEXT, PHOTO_GUIDE_LINK, PhotoGuide } from "./PhotoGuide";
 import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
 import { overlapping } from "./wires";
@@ -197,6 +199,9 @@ interface Props {
   onAddSource: () => void;
   /** T7a : un plan (DXF, PDF, SVG) importé dans le cadre Photos : lu comme un plan. */
   onImportPlan?: (file: File) => void;
+  /** KAN-91 L5 : la dernière construction de plan a vu un gros plan (un détail, pas la pièce) :
+   *  l'alerte et le contour de la photo, jusqu'à « fermer » (une fois par construction). */
+  closeUp?: { runId: string; imageId: string } | null;
   /** T7d1 : chaque incrément cadre la vue sur le cadre Rendus (arrivée, chemin automatique). */
   focusRenders?: number;
   /** KAN-64 : les zones du panneau de droite où l'espace de travail range l'Assistant (ou
@@ -456,6 +461,13 @@ export function BoardCanvas(props: Props) {
     y: number;
   } | null>(null);
   const recompute = useRef<number | null>(null);
+  /** KAN-91 L5 : guide de prise de photo ouvert, pour ce cadre Photos (son « Importer des
+   *  photos ») ou sans cadre ; il ne s'ouvre que par son lien. */
+  const [guide, setGuide] = useState<{ frame: BoardItem | null } | null>(null);
+  /** KAN-91 L5 : construction dont l'alerte « gros plan » a été fermée. */
+  const [closeUpDone, setCloseUpDone] = useState<string | null>(null);
+  const closeUp =
+    props.closeUp && props.closeUp.runId !== closeUpDone ? props.closeUp : null;
   const dark = useDarkTheme();
   /** KAN-78 : l'élément survolé (son bouton « Réagir » sous lui). */
   const hover = useHoveredItem();
@@ -1960,6 +1972,16 @@ export function BoardCanvas(props: Props) {
                   >
                     <IconUpload aria-hidden="true" /> Importer
                   </button>
+                  {item.role === "photos" && (
+                    // KAN-91 L5 : le guide, à côté de « Importer », seulement sur demande.
+                    <button
+                      type="button"
+                      className="link board-frame-guide"
+                      onClick={() => setGuide({ frame: item })}
+                    >
+                      {PHOTO_GUIDE_LINK}
+                    </button>
+                  )}
                 </span>
               )}
             <span
@@ -2018,6 +2040,19 @@ export function BoardCanvas(props: Props) {
                         onClick={() => pickInto(item)}
                       >
                         <IconPlus />
+                      </button>
+                    )}
+                    {item.role === "photos" && (
+                      // KAN-91 L5 : cadre rempli, le guide à côté du « + » (nom court, le
+                      // libellé entier pour les lecteurs d'écran et dans l'infobulle).
+                      <button
+                        type="button"
+                        className="link board-frame-guide"
+                        aria-label={PHOTO_GUIDE_LINK}
+                        title={PHOTO_GUIDE_LINK}
+                        onClick={() => setGuide({ frame: item })}
+                      >
+                        Guide
                       </button>
                     )}
                     {item.role === "inspirations" && !readOnly && (
@@ -2412,7 +2447,7 @@ export function BoardCanvas(props: Props) {
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${closeUp && item.kind === "photo" && item.ref === closeUp.imageId ? " photo-closeup" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}`}
               style={{
                 left: item.x,
                 top: item.y,
@@ -2738,6 +2773,52 @@ export function BoardCanvas(props: Props) {
               fermer
             </button>
           </div>
+        )}
+        {closeUp && (
+          // KAN-91 L5 : après l'import, la photo montre un détail, pas la pièce.
+          <div className="board-closeup" role="alert">
+            <IconAlert aria-hidden="true" />
+            <span>{CLOSE_UP_TEXT}</span>
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                // Le cadre Photos de cette photo, sinon le premier cadre Photos.
+                const frames = items.filter(
+                  (i) => i.kind === "frame" && i.role === "photos",
+                );
+                setGuide({
+                  frame:
+                    frames.find((f) =>
+                      items.some(
+                        (p) => p.frame === f.id && p.ref === closeUp.imageId,
+                      ),
+                    ) ??
+                    frames[0] ??
+                    null,
+                });
+              }}
+            >
+              {PHOTO_GUIDE_LINK}
+            </button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => setCloseUpDone(closeUp.runId)}
+            >
+              fermer
+            </button>
+          </div>
+        )}
+        {guide && (
+          <PhotoGuide
+            onClose={() => setGuide(null)}
+            onImport={
+              guide.frame && !readOnly
+                ? () => pickInto(guide.frame as BoardItem)
+                : undefined
+            }
+          />
         )}
         {measureFor && project.images[measureFor.id] && (
           <PhotoMeasure

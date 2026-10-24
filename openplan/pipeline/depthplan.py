@@ -686,6 +686,18 @@ class DepthPlanRun(StrictModel):
     """Hauteur de prise de vue trouvée dans la profondeur (échelle du modèle), None sans sol."""
     walls_seen: int
     result: StepResult
+    reach: float | None = None
+    """KAN-91 : portée de la photo, `depth_reach` ; None sans sol."""
+
+
+def depth_reach(depth: NDArray[np.float32] | Float, camera_height_m: float) -> float | None:
+    """Portée de la photo (KAN-91) : 90ᵉ centile de la profondeur, en hauteurs de prise de vue
+    (sans unité : l'échelle du modèle s'annule). Une photo de la pièce voit loin (chambre 2,0,
+    combles 2,7, pièce en L 3,5) ; un gros plan sur un meuble, non (bureau 1,2)."""
+    valid = depth[np.isfinite(depth) & (depth > 0)]
+    if valid.size == 0 or camera_height_m <= 0:
+        return None
+    return float(np.percentile(valid, 90)) / camera_height_m
 
 
 def run_depthplan(
@@ -768,6 +780,7 @@ def run_depthplan(
         camera_height_m=observation.camera_height_m,
         walls_seen=len(observation.walls),
         result=result,
+        reach=depth_reach(depth, observation.camera_height_m),
     )
 
 

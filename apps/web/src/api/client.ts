@@ -1021,6 +1021,9 @@ export interface AutoPlanRun {
   /** KAN-31 : niveau de confiance (« fiable », « à vérifier », « approximatif ») et sa
    *  raison principale, au lieu d'un pourcentage ; null si rien n'a été estimé. */
   estimate_confidence?: EstimateConfidence | null;
+  /** KAN-91 L5 : la photo montre un détail (un meuble, un coin), pas la pièce ; l'espace de
+   *  travail l'annonce avec le guide de prise de photo. */
+  close_up?: boolean;
   project: Project;
   result: StepResult;
 }

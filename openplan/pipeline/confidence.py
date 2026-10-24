@@ -110,6 +110,18 @@ chambre vue de près, « 0,92 × 2,14 m ») : la photo montre sans doute un dét
 NARROW_ROOM_ERROR = 0.45
 """Erreur ajoutée à un plan plus étroit que MIN_ROOM_WIDTH_M : seule, elle dépasse CHECK_MAX
 (« approximatif »)."""
+CLOSE_UP_REACH = 1.5
+"""KAN-91 : portée (`depthplan.depth_reach`, 90ᵉ centile de la profondeur en hauteurs de prise
+de vue) sous laquelle la photo ne voit pas le fond de la pièce. Mesuré : bureau vu de près 1,17 ;
+chambre 2,05, combles 2,72, pièce en L Blender 3,48, scène de contrôle 4,45."""
+
+
+def close_up(narrow_room: bool, reach: float | None) -> bool:
+    """KAN-91 : alerte « gros plan » après l'import. Il faut les deux signes : un plan plus
+    étroit que MIN_ROOM_WIDTH_M (KAN-87) et une photo qui ne voit pas loin (ou pas de
+    profondeur pour le dire). Un vrai réduit photographié de loin voit loin ; une grande pièce
+    vue de près donne un plan large : ni l'un ni l'autre n'est un détail."""
+    return narrow_room and (reach is None or reach < CLOSE_UP_REACH)
 
 
 class Factor(StrictModel):

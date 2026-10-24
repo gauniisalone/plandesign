@@ -1460,6 +1460,14 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 );
               }}
               onPhotoDropped={actions.planFromPhoto}
+              closeUp={
+                state.lastAuto?.run.close_up
+                  ? {
+                      runId: state.lastAuto.run.run_id,
+                      imageId: state.lastAuto.run.image_id,
+                    }
+                  : null
+              }
               queued={queued}
               onCancelQueued={actions.cancelQueued}
               hasRenders={state.renders.length > 0}

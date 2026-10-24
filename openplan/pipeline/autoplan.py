@@ -44,7 +44,12 @@ from openplan.adapters.protocols import (
 )
 from openplan.pipeline.attic import AtticEstimate, Estimate, run_attic
 from openplan.pipeline.attic_scene import AtticGeometry, apply_attic
-from openplan.pipeline.confidence import EstimateConfidence, assess, assess_plan_image
+from openplan.pipeline.confidence import (
+    EstimateConfidence,
+    assess,
+    assess_plan_image,
+    close_up,
+)
 from openplan.pipeline.depthplan import run_depthplan
 from openplan.pipeline.detection import detect_and_propose
 from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, DetectionError
@@ -111,6 +116,10 @@ class AutoPlanRun(StrictModel):
     """KAN-31 : niveau affiché (« fiable », « à vérifier », « approximatif ») et sa raison
     principale, dérivés de facteurs chiffrés sur le banc (pipeline/confidence.py). None quand
     rien n'a été estimé (méthode « none ») ou quand la photo est posée sur un plan existant."""
+    close_up: bool = False
+    """KAN-91 : la photo montre un détail (un meuble, un coin), pas la pièce : plan plus étroit
+    que 2 m et photo qui ne voit pas loin (`confidence.close_up`). L'espace de travail l'annonce
+    après l'import, avec le guide de prise de photo."""
     project: Project
     result: StepResult
 
@@ -654,11 +663,13 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
     roof_windows: RoofWindowDetector | None = None,
     *,
     camera_height_entered: bool,
-) -> tuple[list[_Candidate], AtticEstimate | None, dict[str, float]]:
-    """Les plans candidats, l'estimation des combles, et (KAN-66) les mètres par unité du
-    modèle de profondeur de chaque méthode qui l'a utilisée ; la profondeur est gardée."""
+) -> tuple[list[_Candidate], AtticEstimate | None, dict[str, float], float | None]:
+    """Les plans candidats, l'estimation des combles, (KAN-66) les mètres par unité du
+    modèle de profondeur de chaque méthode qui l'a utilisée, et (KAN-91) la portée de la photo
+    (`depthplan.depth_reach`, None sans profondeur) ; la profondeur est gardée."""
     candidates: list[_Candidate] = []
     factors: dict[str, float] = {}
+    reach: float | None = None
     chain.say("Lecture de la photo…")
     try:
         lines = detect_and_propose(
@@ -680,7 +691,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
         chain.stage("lines", "Lignes de fuite", "failed", str(exc)[:160])
     if depth is None:
         chain.stage("depth", "Profondeur", "skipped", "poids absents")
-        return candidates, None, factors
+        return candidates, None, factors, None
     memo = _MemoDepth(depth)
     estimate: AtticEstimate | None = None
     chain.say("Estimation des distances…")
@@ -713,6 +724,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
             camera_height_entered=camera_height_entered,
             run_id=rid,
         )
+        reach = run.reach
         found = run.camera_height_m or 0.0
         factor = camera_height_m / found if found > 0 else 0.0
         trusted = SCALE_TRUST[0] <= factor <= SCALE_TRUST[1]
@@ -734,7 +746,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
                 factors.clear()
         except OSError:
             factors.clear()  # sans profondeur gardée, pas de mesure de référence possible
-    return candidates, estimate, factors
+    return candidates, estimate, factors, reach
 
 
 def _ceiling(project: Project, level_id: UUID, estimate: AtticEstimate | None) -> Project:
@@ -828,6 +840,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
     scores: dict[str, float] = {}
     confidence = 0.0
     trust: EstimateConfidence | None = None
+    detail = False
     artifacts: list[Artifact] = []
     assumptions: list[Assumption] = []
     after = project
@@ -877,7 +890,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             )
         )
         roof_detector = _roof_detector(openings)
-        candidates, estimate, factors = _photo_candidates(
+        candidates, estimate, factors, reach = _photo_candidates(
             chain,
             project,
             project_dir,
@@ -951,6 +964,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             # KAN-87 : un plan plus étroit qu'une pièce habitable (photo d'un détail, chambre
             # vue de près) est « approximatif », avec la raison et le geste qui l'améliore.
             too_narrow = narrow(room_size(after, level_id))
+            detail = close_up(too_narrow, reach)  # KAN-91 : alerte « gros plan »
             trust = assess(
                 "entered" if entered else "assumed",
                 camera_height_m=height if entered else None,
@@ -1013,6 +1027,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
         notices=said,
         low_confidence=method != "none" and confidence < LOW_CONFIDENCE,
         estimate_confidence=trust if method != "none" else None,
+        close_up=detail,
         project=after,
         result=StepResult(
             step=STEP,
