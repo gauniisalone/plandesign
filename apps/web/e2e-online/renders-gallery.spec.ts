@@ -201,15 +201,18 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
   const menuButton = frame.getByRole("button", { name: "Rendre ▾" });
   await expect(menuButton).toBeEnabled({ timeout: 30_000 });
 
-  // 1. Une vue du plan : la case « en cours » d'abord (poste hors ligne), puis l'image.
+  // 1. Une vue du plan : la case « en attente » d'abord (le poste simulé de realistic.spec.ts
+  // a pu appeler il y a moins d'une minute : en ligne ou hors ligne), puis l'image.
   await menuButton.click();
   await frame
     .getByRole("menuitem", { name: /Rendre la vue « Vue fenêtre »/ })
     .click();
   await expect(
-    frame.getByText(
-      "Poste de rendu hors ligne : le rendu sera fait à son retour",
-    ),
+    frame
+      .locator(".rgal-running")
+      .getByText(
+        /^(En attente|Poste de rendu hors ligne : le rendu sera fait à son retour)$/,
+      ),
   ).toBeVisible();
   await expect(frame.getByText("~2 min").first()).toBeVisible();
   await deliver(worker);
