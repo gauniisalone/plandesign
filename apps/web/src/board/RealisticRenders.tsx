@@ -8,7 +8,7 @@ import {
 } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { allCameras, isFreeCamera } from "../model";
-import { hasLinkedPlan, NO_PLAN_TEXT } from "./linkedPlan";
+import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
 import { RenderViewer } from "./RenderViewer";
 import {
   etaText,
@@ -86,13 +86,16 @@ export function RenderFromPhotoButton({
     allCameras(level).some((c) => c.image_id === imageId),
   )?.[0];
   if (!allowed || readOnly || !levelId) return null;
-  const linked = hasLinkedPlan(project, levelId);
+  const linked = hasLinkedPlan(project, levelId) && said !== NO_PLAN_TEXT;
   const ask = async () => {
     try {
       await realisticApi.fromPhoto(project.id, levelId, imageId);
       setSaid("Demandé : le rendu arrivera dans la galerie du cadre Rendus.");
     } catch (e) {
-      setSaid(e instanceof Error ? e.message : String(e));
+      // 409 du serveur (D2, lot L1) : bouton grisé, « Reliez un plan pour rendre ».
+      setSaid(
+        isNoPlan(e) ? NO_PLAN_TEXT : e instanceof Error ? e.message : String(e),
+      );
     }
   };
   return (
@@ -142,7 +145,10 @@ export function RealisticRenders({
   const photos = Object.keys(project.images).filter((id) =>
     cameras.some((c) => c.image_id === id),
   );
-  const linked = hasLinkedPlan(project, levelId, frameId);
+  /** D2 : la réponse du serveur prime (GET …/board/inputs/{frameId} du lot L1, ou un 409
+   *  « Reliez un plan pour rendre ») ; null : pas de réponse, repli `hasLinkedPlan`. */
+  const [serverLinked, setServerLinked] = useState<boolean | null>(null);
+  const linked = serverLinked ?? hasLinkedPlan(project, levelId, frameId);
 
   useEffect(() => {
     let alive = true;
@@ -153,6 +159,19 @@ export function RealisticRenders({
       alive = false;
     };
   }, []);
+
+  // Relu à chaque modification du projet (un lien posé ou coupé change la réponse).
+  const version = project.updated_at;
+  useEffect(() => {
+    if (!allowed || !frameId) return;
+    let alive = true;
+    void realisticApi.planLinked(project.id, frameId).then((can) => {
+      if (alive) setServerLinked(can);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [allowed, project.id, frameId, version]);
 
   const refresh = useCallback(async () => {
     try {
@@ -213,13 +232,21 @@ export function RealisticRenders({
     );
   }
 
+  /** Dans la visionneuse : un 409 « Reliez un plan » grise aussi les boutons, puis l'erreur
+   *  y est dite. */
+  const noPlan = (e: unknown): never => {
+    if (isNoPlan(e)) setServerLinked(false);
+    throw e;
+  };
   const run = async (job: () => Promise<unknown>) => {
     setMessage(null);
     setMenu(false);
     try {
       await job();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      // 409 « Reliez un plan pour rendre » : le bouton se grise avec la phrase (D2).
+      if (isNoPlan(e)) setServerLinked(false);
+      else setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       await refresh();
     }
@@ -452,12 +479,14 @@ export function RealisticRenders({
             await refresh();
           }}
           onVariant={async (id) => {
-            await realisticApi.variant(project.id, id);
+            await realisticApi.variant(project.id, id).catch(noPlan);
             await refresh();
             setViewing(null);
           }}
           onFromPhoto={async (imageId) => {
-            await realisticApi.fromPhoto(project.id, levelId, imageId);
+            await realisticApi
+              .fromPhoto(project.id, levelId, imageId)
+              .catch(noPlan);
             await refresh();
             setViewing(null);
           }}

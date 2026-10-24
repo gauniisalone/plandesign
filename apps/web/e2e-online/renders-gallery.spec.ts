@@ -23,19 +23,25 @@ const SIZE = [PNG.readUInt32BE(16), PNG.readUInt32BE(20)] as const;
 async function signIn(page: Page, email: string, ip: string): Promise<void> {
   await page.setExtraHTTPHeaders({ "X-Forwarded-For": ip });
   await gotoApp(page, "/");
+  // Le compte autorisé se connecte plusieurs fois dans la même base : le code d'une connexion
+  // précédente ne doit pas être relu à la place du nouveau.
+  const lastCode = async () => {
+    const r = await page.request.get(
+      `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
+    );
+    return r.ok() ? ((await r.json()) as { code: string }).code : "";
+  };
+  const before = await lastCode();
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";
   await expect
     .poll(async () => {
-      const r = await page.request.get(
-        `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
+      code = await lastCode();
+      return code !== before && /^\d{6}$/.test(code);
     })
-    .toMatch(/^\d{6}$/);
+    .toBe(true);
   await page.getByLabel("Code à 6 chiffres").fill(code);
   await page.getByRole("button", { name: "Se connecter" }).click();
   const skip = page.getByRole("button", { name: "Passer" });
@@ -383,4 +389,30 @@ test("pas de rendu sans plan relié : bouton inactif et phrase", async ({
     { data: { camera_id: camera }, headers: origin },
   );
   expect(refused.status()).toBe(409);
+
+  // Avec un plan, le repli dit « relié » ; la réponse du serveur, comme le 409 du lot L1
+  // (carte Rendus sans lien plan → rendus), prime : le bouton se grise avec la phrase. Même
+  // session (le nombre de codes par adresse est limité).
+  const linkedProject = await project(page);
+  await page.route(
+    /\/api\/projects\/[0-9a-f-]+\/levels\/[0-9a-f-]+\/realistic$/,
+    (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Reliez un plan pour rendre" }),
+          })
+        : route.continue(),
+  );
+  await gotoApp(page, `/#/projects/${linkedProject.id}/board`);
+  const menu = frame.getByRole("button", { name: "Rendre ▾" });
+  await expect(menu).toBeEnabled({ timeout: 30_000 });
+  await expect(frame.getByText("Reliez un plan pour rendre")).toHaveCount(0);
+  await menu.click();
+  await frame
+    .getByRole("menuitem", { name: /Rendre la vue « Vue fenêtre »/ })
+    .click();
+  await expect(frame.getByText("Reliez un plan pour rendre")).toBeVisible();
+  await expect(menu).toBeDisabled();
 });

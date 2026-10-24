@@ -390,6 +390,16 @@ export const realisticApi = {
     request<{ cover_id: string | null }>(`/projects/${pid}/realistic/cover`, {
       method: "DELETE",
     }),
+  /** KAN-91 (D2) : la carte Rendus a-t-elle un plan relié ? Lu sur GET …/board/inputs/{id} du
+   *  lot L1 (`can_render`). Route absente (base d'avant L1) ou carte inconnue : null, l'appelant
+   *  garde son repli. */
+  planLinked: (pid: string, frameId: string): Promise<boolean | null> =>
+    request<{ can_render?: boolean }>(
+      `/projects/${pid}/board/inputs/${frameId}`,
+    ).then(
+      (r) => (typeof r.can_render === "boolean" ? r.can_render : null),
+      () => null,
+    ),
   react: (pid: string, requestId: string, key: ReactionKey, on: boolean) =>
     request<RealisticReaction[]>(
       `/projects/${pid}/realistic/${requestId}/reactions/${key}`,
