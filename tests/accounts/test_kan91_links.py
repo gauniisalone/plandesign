@@ -13,6 +13,7 @@ import pytest
 
 from openplan.pipeline.board_links import NO_PLAN
 from tests.accounts.test_kan51_comments import _team
+from tests.accounts.test_kan52_bell import _png
 from tests.accounts.test_kan89_realistic import World
 
 
@@ -83,3 +84,29 @@ def test_no_realistic_render_without_a_linked_plan_d2(tmp_path: Path, migrated_u
     assert world.client.patch(url, json={"links_set": [link]}).status_code == 200
     assert world.ask()["state"] == "pending"
     world.close()
+
+
+def test_two_levels_each_photo_card_feeds_only_its_plan(tmp_path: Path, migrated_url: str) -> None:
+    """Le propriétaire ajoute un étage ; un éditeur importe une photo depuis l'étage : elle
+    entre dans « Photos de la pièce · Étage » et ne construit que l'étage, ce que le lecteur
+    relit."""
+    owner, m, pid, _ = _team(tmp_path, migrated_url)
+    made = owner.post(f"/api/projects/{pid}/levels", json={"name": "Étage", "kind": "storey"})
+    assert made.status_code in (200, 201), made.text
+    storey = made.json()["level_id"]
+    sent = m["editor"].post(
+        f"/api/projects/{pid}/images",
+        params={"level_id": storey},
+        files={"file": ("e.png", _png(), "image/png")},
+    )
+    assert sent.status_code == 201, sent.text
+    image = sent.json()["image"]["id"]
+    board = m["viewer"].get(f"/api/projects/{pid}/board").json()
+    cards = {i["ref"]: i for i in board["items"] if i["kind"] == "frame" and i["role"] == "photos"}
+    assert set(cards) == {None, storey} and cards[storey]["text"] == "Photos de la pièce · Étage"
+    photo = next(i for i in board["items"] if i.get("ref") == image)
+    assert photo["frame"] == cards[storey]["id"]
+    plans = {i["ref"]: i["id"] for i in board["items"] if i["kind"] == "plan"}
+    for ref, expected in ((storey, [image]), (next(r for r in plans if r != storey), [])):
+        inputs = m["viewer"].get(f"/api/projects/{pid}/board/inputs/{plans[ref]}").json()
+        assert inputs["photos"] == expected, ref

@@ -567,12 +567,14 @@ export const api = {
     ),
   blenderArtifactUrl: (pid: string, runId: string, name: string) =>
     `${BASE}/projects/${pid}/runs/${runId}/blender/${name}`,
-  uploadImage: (pid: string, file: File) => {
+  /** KAN-91 : `levelId`, le plan ouvert : la photo entre dans la carte Photos de ce plan. */
+  uploadImage: (pid: string, file: File, levelId?: string) => {
     const refused = tooBig(pid, file);
     if (refused) return Promise.reject(refused);
     const form = new FormData();
     form.append("file", file, file.name);
-    return request<ImageImportResult>(`/projects/${pid}/images`, {
+    const query = levelId ? `?level_id=${encodeURIComponent(levelId)}` : "";
+    return request<ImageImportResult>(`/projects/${pid}/images${query}`, {
       method: "POST",
       body: form,
     });

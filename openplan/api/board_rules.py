@@ -39,6 +39,44 @@ def board_now(project: Project, store: ProjectStore) -> Board:
     return board
 
 
+def photo_card(board: Board, project: Project, level_id: UUID) -> UUID | None:
+    """La carte Photos d'un plan : celle qui lui est reliée, sinon celle de son niveau."""
+    plan = bl.plan_item(board, level_id)
+    if plan is not None:
+        source = bl.generation_inputs(board, plan.id).photo_card
+        if source is not None:
+            return source
+    first = str(next(iter(project.levels))) if project.levels else None
+    levels = [first, *(str(lid) for lid in project.levels if str(lid) != first)] if first else []
+    return next(
+        (
+            i.id
+            for i in board.items
+            if bl.card_role(i) == "photos" and bl.card_level(i, levels) == str(level_id)
+        ),
+        None,
+    )
+
+
+def place_new_photo(project: Project, store: ProjectStore, level_id: UUID, image_id: UUID) -> None:
+    """KAN-91 : une photo importée pour le plan ouvert entre dans la carte Photos de ce plan
+    (sinon la synchronisation la range dans la carte du premier plan)."""
+    if level_id not in project.levels:
+        return
+    project_dir = store.project_dir(project.id)
+    with store.lock(project.id):
+        board, changed = b.sync_board(
+            b.load_board(project_dir),
+            project,
+            store.runs_dir(project.id),
+            b.list_media(project_dir),
+        )
+        card = photo_card(board, project, level_id)
+        placed = b.photo_into_card(board, str(image_id), card) if card is not None else board
+        if changed or placed is not board:
+            b.save_board(project_dir, placed)
+
+
 def require_plan_photo(
     project: Project, store: ProjectStore, level_id: UUID, image_id: UUID
 ) -> None:

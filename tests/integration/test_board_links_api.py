@@ -219,3 +219,57 @@ def test_an_old_tab_without_links_keeps_them(tmp_path: Path) -> None:
     assert out.status_code == 200, out.text
     assert len(out.json()["links"]) == 3
     assert UUID(out.json()["links"][0]["id"])
+
+
+def test_each_level_has_its_photo_card_and_feeds_only_its_plan(tmp_path: Path) -> None:
+    """KAN-91 : « Nouvel étage » pose sa carte « Photos de la pièce · Étage », reliée à son plan ;
+    une photo importée depuis l'étage entre dans sa carte et ne construit que l'étage."""
+    w = Local(tmp_path)
+    old = w.photo()
+    made = w.client.post(f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"})
+    assert made.status_code in (200, 201), made.text
+    storey = made.json()["level_id"]
+    board = w.board()
+    cards = {i["ref"]: i for i in board["items"] if i["kind"] == "frame" and i["role"] == "photos"}
+    assert set(cards) == {None, storey}
+    assert cards[storey]["text"] == "Photos de la pièce · Étage"
+    assert cards[None]["text"].startswith("Photos de la pièce · ")
+    plans = {i["ref"]: i["id"] for i in board["items"] if i["kind"] == "plan"}
+    feeds = {(k["source"], k["target"]) for k in board["links"] if k["kind"] == "feeds_plan"}
+    assert feeds == {
+        (cards[None]["id"], plans[str(w.level)]),
+        (cards[storey]["id"], plans[storey]),
+    }
+    # L'ancienne photo reste dans la carte du premier plan.
+    assert w.item(board, old)["frame"] == cards[None]["id"]
+
+    r = w.client.post(
+        f"/api/projects/{w.pid}/images",
+        params={"level_id": storey},
+        files={"file": ("e.png", _png(), "image/png")},
+    )
+    assert r.status_code == 201, r.text
+    upstairs = r.json()["image"]["id"]
+    board = w.board()
+    assert w.item(board, upstairs)["frame"] == cards[storey]["id"]
+    inputs = w.client.get(f"/api/projects/{w.pid}/board/inputs/{plans[storey]}").json()
+    assert inputs["photos"] == [upstairs]
+    ground = w.client.get(f"/api/projects/{w.pid}/board/inputs/{plans[str(w.level)]}").json()
+    assert ground["photos"] == [old]
+    # La photo de l'étage ne construit pas le rez-de-chaussée, et inversement.
+    refused = w.client.post(f"/api/projects/{w.pid}/levels/{w.level}/images/{upstairs}/autoplan")
+    assert refused.status_code == 409 and refused.json()["detail"] == NOT_A_MEMBER
+    refused = w.client.post(f"/api/projects/{w.pid}/levels/{storey}/images/{old}/autoplan")
+    assert refused.status_code == 409 and refused.json()["detail"] == NOT_A_MEMBER
+
+
+def test_a_second_photo_link_to_a_level_is_refused_409(tmp_path: Path) -> None:
+    w = Local(tmp_path)
+    storey = w.client.post(
+        f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"}
+    ).json()["level_id"]
+    board = w.board()
+    first = next(i for i in board["items"] if i.get("role") == "photos" and i["ref"] is None)
+    plan2 = next(i for i in board["items"] if i["kind"] == "plan" and i["ref"] == storey)
+    out = w.patch({"links_set": [_link(first["id"], plan2["id"])]})
+    assert out.status_code == 409, out.text

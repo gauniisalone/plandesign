@@ -62,12 +62,7 @@ import {
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
 import { RealisticRenders } from "./RealisticRenders";
-import {
-  WireBanner,
-  WireLayer,
-  WireToast,
-  type WireDrag,
-} from "./BoardLinks";
+import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
 import {
   accepts,
   cardRole,
@@ -451,6 +446,19 @@ export function BoardCanvas(props: Props) {
           h: NEW_PLAN_BOX.h,
         }
       : null;
+  // KAN-91 : « Nouvelle carte Photos », sous la colonne de gauche (les cartes à gauche des
+  // plans).
+  const planLeft = plans.length ? Math.min(...plans.map((i) => i.x)) : null;
+  const leftColumn = items.filter(
+    (i) => i.frame === null && planLeft !== null && i.x + i.w <= planLeft,
+  );
+  const newPhotosAt =
+    !readOnly && planLeft !== null && leftColumn.length
+      ? {
+          x: Math.min(...leftColumn.map((i) => i.x)),
+          y: Math.max(...leftColumn.map((i) => i.y + i.h)) + NEW_PLAN_GAP,
+        }
+      : null;
   const byRun = useMemo(
     () => new Map(renders.map((r) => [r.run_id, r])),
     [renders],
@@ -786,6 +794,32 @@ export function BoardCanvas(props: Props) {
     });
   };
 
+  /** KAN-91 : une carte Photos vide, sans lien (`ref` = son propre id : elle n'est la carte
+   *  d'aucun plan tant qu'on ne la relie pas). */
+  const addPhotosCard = () => {
+    if (!newPhotosAt) return;
+    const id = uid();
+    const card: BoardItem = {
+      id,
+      kind: "frame",
+      x: newPhotosAt.x,
+      y: newPhotosAt.y,
+      w: 624,
+      h: 374,
+      z: Math.min(0, ...items.map((i) => i.z)) - 1,
+      locked: false,
+      frame: null,
+      ref: id,
+      text: "Photos de la pièce",
+      role: "photos",
+    };
+    commit([...items, card]);
+    setSelected(new Set([id]));
+    setToast({
+      text: "Nouvelle carte Photos, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
+    });
+  };
+
   /** KAN-91 : la carte (plan, cadre Photos, Inspirations ou Rendus) sous un point. */
   const cardAt = (at: { x: number; y: number }, except: string) =>
     items
@@ -1098,12 +1132,15 @@ export function BoardCanvas(props: Props) {
       // KAN-91 (C1) : une photo ne construit le plan que déposée dans la carte Photos reliée
       // à ce plan ; posée librement, elle attend qu'on l'y glisse (et le dit).
       const level = props.activeLevelId ?? firstLevelId;
-      const feeds =
-        !!dropped &&
-        cardRole(dropped) === "photos" &&
-        plansFedBy(board, dropped.id).includes(level);
-      if (changed && firstPhoto && feeds)
+      const fed =
+        dropped && cardRole(dropped) === "photos"
+          ? plansFedBy(board, dropped.id)
+          : [];
+      if (changed && firstPhoto && fed.includes(level))
         props.onPhotoDropped(changed, firstPhoto);
+      else if (firstPhoto && fed.length && props.onPlanMembers)
+        // La carte d'un autre plan (l'étage) : c'est ce plan-là qui la lit.
+        for (const lid of fed) props.onPlanMembers(lid, [firstPhoto], []);
       else if (firstPhoto && cardRole(dropped) !== "photos")
         setToast({
           text: "Photo posée hors carte : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
@@ -2411,6 +2448,18 @@ export function BoardCanvas(props: Props) {
               title="Variante de ce plan, nouvel étage ou plan vide"
             >
               <IconPlus aria-hidden="true" /> Nouveau plan
+            </button>
+          )}
+          {newPhotosAt && (
+            <button
+              type="button"
+              className="board-new-plan board-new-photos"
+              style={{ left: newPhotosAt.x, top: newPhotosAt.y }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={addPhotosCard}
+              title="Une carte Photos vide, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent"
+            >
+              <IconPlus aria-hidden="true" /> Nouvelle carte Photos
             </button>
           )}
           {marquee && (

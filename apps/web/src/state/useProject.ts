@@ -744,7 +744,8 @@ export function useProject(projectId: string) {
         return;
       }
       void run(async () => {
-        const result = await api.uploadImage(project.id, file);
+        // KAN-91 : dans la carte Photos du plan ouvert (celle qui le construit).
+        const result = await api.uploadImage(project.id, file, levelId);
         setState((s) => ({
           ...s,
           imageWarnings: {

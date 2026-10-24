@@ -44,7 +44,11 @@ for pid in json.loads((d / "ids.json").read_text()):
     for suffix in ("", "/board", "/comments", "/activity"):
         out[pid[:8] + (suffix or "/")] = c.get(f"/api/projects/{pid}{suffix}").status_code
 out["cloche"] = c.get("/api/notifications").status_code
-print(json.dumps(out))
+cards = {}
+for pid in json.loads((d / "ids.json").read_text()):
+    items = c.get(f"/api/projects/{pid}/board").json()["items"]
+    cards[pid] = sum(1 for i in items if i["kind"] == "frame" and i.get("role") == "photos")
+print(json.dumps({"statuts": out, "cartes_photos": cards}))
 """
 
 
@@ -87,6 +91,9 @@ def _write_with_the_new_code(data: Path) -> list[str]:
     ids.append(pid)
     pid2 = client.post("/api/projects", json={"name": "Espace de travail"}).json()["id"]
     client.get(f"/api/projects/{pid2}/board")
+    # KAN-91 : un deuxième niveau, donc deux cartes Photos (celle de l'étage porte son id).
+    storey = {"name": "Étage", "kind": "storey"}
+    assert client.post(f"/api/projects/{pid2}/levels", json=storey).status_code in (200, 201)
     note = {"id": str(uuid4()), "kind": "note", "x": 0, "y": 0, "w": 200, "h": 200, "text": "a"}
     assert (
         client.patch(
@@ -143,5 +150,9 @@ def test_production_rereads_downgraded_projects_without_409_or_500(
         check=False,
     )
     assert seen.returncode == 0, seen.stderr[-2000:]
-    statuses = json.loads(seen.stdout.strip().splitlines()[-1])
+    seen_out = json.loads(seen.stdout.strip().splitlines()[-1])
+    statuses = seen_out["statuts"]
     assert all(code == 200 for code in statuses.values()), statuses
+    # Pour l'ancien code, les deux cartes Photos du projet à deux niveaux restent des cartes
+    # Photos (rôle « photos »), relues sans erreur.
+    assert sorted(seen_out["cartes_photos"].values()) == [1, 2], seen_out

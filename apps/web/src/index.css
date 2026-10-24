@@ -7884,6 +7884,10 @@ marker.wire-feeds,
 .board-item.board-offcard-item img {
   filter: saturate(0.35);
 }
+.board-new-photos {
+  /* KAN-91 : même allure que « + Nouveau plan », sous la colonne des cartes Photos. */
+  white-space: nowrap;
+}
 .board-offcard {
   position: absolute;
   left: 6px;

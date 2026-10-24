@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response, UploadFile
 
+from openplan.api.board_rules import place_new_photo
 from openplan.api.deps import ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.pipeline.ingestion import ImageNotFoundError, import_image, remove_image
@@ -28,13 +29,18 @@ class ImageQuality(StrictModel):
 
 
 @router.post("/projects/{project_id}/images", status_code=201)
-async def upload_image(file: UploadFile, project: ProjectDep, store: StoreDep) -> ImageImportResult:
-    """Copie l'image dans le projet (jamais ailleurs), EXIF retiré selon `privacy`."""
+async def upload_image(
+    file: UploadFile, project: ProjectDep, store: StoreDep, level_id: UUID | None = None
+) -> ImageImportResult:
+    """Copie l'image dans le projet (jamais ailleurs), EXIF retiré selon `privacy`. KAN-91 :
+    `level_id`, le plan ouvert : la photo entre dans la carte Photos de ce plan."""
     data = await file.read()
     after, ref, warnings = import_image(
         project, store.project_dir(project.id), data, original_name=file.filename or ""
     )
     store.save(after)
+    if level_id is not None:
+        place_new_photo(after, store, level_id, ref.id)
     return ImageImportResult(image=ref, warnings=warnings, project=after)
 
 

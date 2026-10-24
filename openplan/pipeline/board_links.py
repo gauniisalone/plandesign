@@ -196,20 +196,50 @@ def written_links(
     return alive, list(dict.fromkeys(cut))
 
 
-def auto_links(items: list[BoardItem], links: list[BoardLink], cut: list[str]) -> list[BoardLink]:
-    """Zéro geste (KAN-91) : la carte Photos est reliée à chaque plan qui n'en lit aucune, chaque
-    plan à sa carte Rendus si elle n'en rend aucun, la carte Inspirations à chaque carte Rendus.
-    Une paire coupée à la main n'est jamais recréée."""
+def card_level(card: BoardItem, levels: list[str]) -> str | None:
+    """Le plan (niveau) d'une carte Photos ou Rendus : `ref` s'il désigne un niveau ; la carte
+    sans `ref` est celle du premier plan ; une carte ajoutée à la main (`ref` = son id) n'en a
+    aucun."""
+    if card.ref is None:
+        return levels[0] if levels else None
+    return card.ref if card.ref in levels else None
+
+
+def auto_links(
+    items: list[BoardItem],
+    links: list[BoardLink],
+    cut: list[str],
+    first_level: str | None = None,
+) -> list[BoardLink]:
+    """Zéro geste (KAN-91) : chaque carte Photos est reliée au plan de son niveau, chaque plan à
+    sa carte Rendus si elle n'en rend aucun, la carte Inspirations à chaque carte Rendus. Une
+    paire coupée à la main n'est jamais recréée. Un lien automatique d'une carte Photos vers le
+    plan d'un autre niveau (avant les cartes par plan) s'en va : la photo d'un étage ne
+    construit pas le rez-de-chaussée (C1). `first_level` : le premier plan du projet (sinon le
+    premier plan posé)."""
     by_id = {i.id: i for i in items}
-    out = [k for k in links if k.source in by_id and k.target in by_id]
+    plans = [i for i in items if i.kind == "plan"]
+    levels = [p.ref for p in plans if p.ref]
+    if first_level is not None and first_level in levels:
+        levels = [first_level, *(lvl for lvl in levels if lvl != first_level)]
+    out = [
+        k
+        for k in links
+        if k.source in by_id
+        and k.target in by_id
+        and not (
+            k.kind == "feeds_plan"
+            and k.auto
+            and card_level(by_id[k.source], levels) != by_id[k.target].ref
+        )
+    ]
     pairs = {k.pair for k in out} | set(cut)
     fed = {k.target for k in out if k.kind == "feeds_plan"}
     viewed = {k.target for k in out if k.kind == "renders_view"}
     photos = [i for i in items if card_role(i) == "photos"]
     inspirations = [i for i in items if card_role(i) == "inspirations"]
-    plans = [i for i in items if i.kind == "plan"]
     renders = [i for i in items if card_role(i) == "renders"]
-    first_plan = plans[0].ref if plans else None
+    first_plan = levels[0] if levels else None
 
     def add(source: BoardItem, target: BoardItem, kind: LinkKind) -> None:
         link = BoardLink(source=source.id, target=target.id, kind=kind, auto=True)
@@ -217,11 +247,12 @@ def auto_links(items: list[BoardItem], links: list[BoardLink], cut: list[str]) -
             out.append(link)
             pairs.add(link.pair)
 
-    if photos:
-        for plan in plans:
-            if plan.id not in fed:
-                add(photos[0], plan, "feeds_plan")
-                fed.add(plan.id)
+    for card in photos:
+        level = card_level(card, levels)
+        own = next((p for p in plans if level is not None and p.ref == level), None)
+        if own is not None and own.id not in fed:
+            add(card, own, "feeds_plan")
+            fed.add(own.id)
     for frame in renders:
         level = frame.ref or first_plan
         rendered = next((p for p in plans if p.ref == level), None)

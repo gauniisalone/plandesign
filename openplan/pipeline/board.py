@@ -277,9 +277,25 @@ def _key(item: BoardItem) -> str:
     if item.kind == "frame" and item.role == "renders" and item.ref:
         # T7e : le cadre Rendus d'un plan autre que le premier.
         return f"frame:renders:{item.ref}"
+    if item.kind == "frame" and item.role == "photos" and item.ref:
+        # KAN-91 : la carte Photos d'un plan autre que le premier (ou une carte ajoutée à la
+        # main, `ref` = son propre id).
+        return f"frame:photos:{item.ref}"
     if item.kind == "frame" and item.role in FIXED_FRAMES:
         return f"frame:{item.role}"
     return f"{item.kind}:{item.ref}" if item.ref else ""
+
+
+def photos_title(project: Project, level_id: str) -> str:
+    """KAN-91 : « Photos de la pièce » pour un projet à un seul plan, « Photos de la pièce ·
+    nom » sinon (une carte Photos par plan, comme les cartes Rendus)."""
+    try:
+        level = project.levels.get(UUID(level_id))
+    except ValueError:
+        level = None
+    if len(project.levels) < 2 or level is None:
+        return FIXED_FRAMES["photos"]
+    return f"{FIXED_FRAMES['photos']} · {level.name}"
 
 
 def renders_title(project: Project, level_id: str) -> str:
@@ -409,7 +425,9 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     lids = {lid for lid, _ in have.plans}
     gone = {i.id for i in items if i.kind == "frame" and i.role == "renders" and i.ref}
     gone = {fid for fid in gone if next(i for i in items if i.id == fid).ref not in lids}
-    items = [i for i in items if i.id not in gone and i.frame not in gone]
+    items = _without_empty_photo_cards(
+        [i for i in items if i.id not in gone and i.frame not in gone], lids
+    )
 
     present = {_key(i) for i in items}
     added = _Adder(items)
@@ -436,6 +454,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
             added.renders_frame(lid, renders_title(project, lid), first=lid == first)
         else:
             added.retitle(lid, renders_title(project, lid), first=lid == first)
+    added.photo_cards(project, [lid for lid, _ in have.plans], present | dismissed)
     for photo in have.photos:
         if f"photo:{photo}" not in present | dismissed:
             added.into("photos", FIXED_FRAMES["photos"], "photo", photo, "")
@@ -476,9 +495,42 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
         ):
             added.move_into(item, "inspirations", FIXED_FRAMES["inspirations"])
     items = bl.with_membership(added.items)
-    links = bl.auto_links(items, list(current.links), list(current.cut_links))
+    links = bl.auto_links(items, list(current.links), list(current.cut_links), first)
     changed = fresh or items != list(current.items) or links != list(current.links)
     return current.model_copy(update={"items": items, "links": links}), changed
+
+
+def _without_empty_photo_cards(items: list[BoardItem], lids: set[str]) -> list[BoardItem]:
+    """KAN-91 : la carte Photos d'un plan disparu (annulé) s'en va si elle est vide ; avec des
+    photos, elle reste (sans lien), aucune photo ne change de carte en silence. Une carte
+    ajoutée à la main (`ref` = son propre id) n'est jamais celle d'un plan."""
+    filled = {i.frame for i in items if i.frame}
+    return [
+        i
+        for i in items
+        if not (
+            i.kind == "frame"
+            and i.role == "photos"
+            and i.ref
+            and i.ref != str(i.id)
+            and i.ref not in lids
+            and i.id not in filled
+        )
+    ]
+
+
+def photo_into_card(board: Board, image_id: str, card_id: UUID) -> Board:
+    """KAN-91 : une photo tout juste importée entre dans une carte Photos précise (celle du plan
+    ouvert), à sa prochaine case ; rien ne change si elle y est déjà ou si l'un manque."""
+    added = _Adder(list(board.items))
+    item = next((i for i in added.items if i.kind == "photo" and i.ref == image_id), None)
+    card = next((i for i in added.items if i.id == card_id), None)
+    if item is None or card is None or item.frame == card.id:
+        return board
+    x, y, _ = added._slot(card)
+    index = added.items.index(item)
+    added.items[index] = item.model_copy(update={"x": x, "y": y, "frame": card.id})
+    return board.model_copy(update={"items": bl.with_membership(added.items)})
 
 
 class _Adder:
@@ -555,8 +607,65 @@ class _Adder:
         frame = self.renders_frame(level_id, title, first=level_id == first)
         self.into("renders", title, "render", ref, text, item_role, frame=frame)
 
+    def photo_cards(self, project: Project, lids: list[str], known: set[str]) -> None:
+        """KAN-91 : une carte Photos par plan. Celle d'avant (sans `ref`) reste celle du premier
+        plan (le premier créé, comme la carte Rendus d'avant T7e) ; chaque autre plan reçoit la
+        sienne, vide, à gauche de sa rangée. Aucune photo ne change de carte."""
+        for index, lid in enumerate(lids):
+            if index == 0:
+                self.retitle_photos(None, photos_title(project, lid))
+            elif f"frame:photos:{lid}" not in known:
+                self.photos_frame(lid, photos_title(project, lid))
+            else:
+                self.retitle_photos(lid, photos_title(project, lid))
+
+    def photos_frame(self, level_id: str, title: str) -> BoardItem:
+        """KAN-91 : la carte Photos d'un plan autre que le premier : à gauche de sa rangée si la
+        place est libre, sinon sous la colonne de gauche."""
+        plan = next((i for i in self.items if i.kind == "plan" and i.ref == level_id), None)
+        top = max(plan.y if plan is not None else 0.0, self._left_bottom())
+        frame = BoardItem(
+            kind="frame",
+            x=0.0,
+            y=top,
+            w=FRAME_W,
+            h=PAD_TOP + PAD + CELL_H,
+            text=title,
+            role="photos",
+            ref=level_id,
+            z=-1,
+        )
+        self.items.append(frame)
+        return frame
+
+    def retitle_photos(self, level_id: str | None, title: str) -> None:
+        """Le titre suit le nom du plan, tant qu'il est celui que l'espace de travail a donné."""
+        found = next(
+            (
+                i
+                for i in self.items
+                if i.kind == "frame" and i.role == "photos" and i.ref == level_id
+            ),
+            None,
+        )
+        default = FIXED_FRAMES["photos"]
+        if found is None or found.text == title:
+            return
+        if found.text != default and not found.text.startswith(f"{default} · "):
+            return
+        self.items[self.items.index(found)] = found.model_copy(update={"text": title})
+
     def _frame(self, role: BoardRole, title: str) -> BoardItem:
-        found = next((i for i in self.items if i.kind == "frame" and i.role == role), None)
+        # KAN-91 : la carte Photos fixe est celle sans `ref` (celle du premier plan) ; une
+        # photo nouvelle y entre, jamais dans la carte d'un autre plan.
+        found = next(
+            (
+                i
+                for i in self.items
+                if i.kind == "frame" and i.role == role and (role != "photos" or i.ref is None)
+            ),
+            None,
+        )
         if found is not None:
             return found
         frame = BoardItem(

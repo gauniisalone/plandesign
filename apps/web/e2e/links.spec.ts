@@ -81,7 +81,8 @@ test("liens posés tout seuls : bandeau, survol, couper puis annuler, coupure ga
   test.setTimeout(180_000);
   const id = await boardWithPlan(page, "Cartes reliées");
   const board = page.getByRole("region", { name: "Espace de travail" });
-  const wire = (kind: string) => board.locator(`.board-wire[data-kind=${kind}]`);
+  const wire = (kind: string) =>
+    board.locator(`.board-wire[data-kind=${kind}]`);
   // Zéro geste : photos → plan, plan → rendus, inspirations → rendus, et le bandeau unique.
   await expect(wire("feeds_plan")).toHaveCount(1);
   await expect(wire("renders_view")).toHaveCount(1);
@@ -123,7 +124,9 @@ test("liens posés tout seuls : bandeau, survol, couper puis annuler, coupure ga
   await expect(wire("feeds_plan")).toHaveCount(1);
 
   // Suppr coupe le lien choisi ; la coupure tient à la relecture (le serveur la retient).
-  await wire("guides_style").locator(".board-wire-badge").dispatchEvent("pointerdown");
+  await wire("guides_style")
+    .locator(".board-wire-badge")
+    .dispatchEvent("pointerdown");
   await page.keyboard.press("Delete");
   await expect(wire("guides_style")).toHaveCount(0);
   await expect
@@ -131,7 +134,10 @@ test("liens posés tout seuls : bandeau, survol, couper puis annuler, coupure ga
       const b = (await (
         await page.request.get(`/api/projects/${id}/board`)
       ).json()) as { links: { kind: string }[]; cut_links: string[] };
-      return [b.links.some((l) => l.kind === "guides_style"), b.cut_links.length];
+      return [
+        b.links.some((l) => l.kind === "guides_style"),
+        b.cut_links.length,
+      ];
     })
     .toEqual([false, 1]);
   await page.reload();
@@ -146,7 +152,9 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   await boardWithPlan(page, "Cartes métier");
   const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");
-  const inspirations = board.locator(".board-item.kind-frame.role-inspirations");
+  const inspirations = board.locator(
+    ".board-item.kind-frame.role-inspirations",
+  );
   await dropInto(page, photos, "piece.png");
   await dropInto(page, inspirations, "chalet.png");
   const photo = board.locator(".board-item.kind-photo");
@@ -170,23 +178,20 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
     },
   );
   await expect(
-    page.getByText(/seule une photo réelle de la pièce entre dans la carte Photos/),
+    page.getByText(
+      /seule une photo réelle de la pièce entre dans la carte Photos/,
+    ),
   ).toBeVisible();
   await expect(inspiration).toHaveClass(/reference/);
 
   // La photo sortie de sa carte : phrase, bandeau avec « Annuler », pastille hors carte. Le
   // coin haut gauche de l'espace est vide (marge du cadrage d'ensemble).
   const view = (await board.boundingBox())!;
-  await dragTo(
-    page,
-    photo,
-    { x: view.x + 24, y: view.y + 24 },
-    async (p) => {
-      await expect(p.locator(".board-drop-hint")).toContainText(
-        "Relâcher hors carte : cette photo ne servira plus au Plan",
-      );
-    },
-  );
+  await dragTo(page, photo, { x: view.x + 24, y: view.y + 24 }, async (p) => {
+    await expect(p.locator(".board-drop-hint")).toContainText(
+      "Relâcher hors carte : cette photo ne servira plus au Plan",
+    );
+  });
   const toast = page.locator(".board-wire-toast");
   await expect(toast).toContainText("Hors carte : cette photo ne servira plus");
   // Le plan ne ment pas : la photo sortie retire sa caméra, pas les murs déjà construits.
@@ -199,4 +204,66 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   await shot(page, "kan91-5-hors-carte");
   await toast.getByRole("button", { name: "Annuler" }).click();
   await expect(photo.locator(".board-offcard")).toHaveCount(0);
+});
+
+test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'étage", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const id = await boardWithPlan(page, "Deux niveaux");
+  const board = page.getByRole("region", { name: "Espace de travail" });
+  const cards = board.locator(".board-item.kind-frame.role-photos");
+  await expect(cards).toHaveCount(1);
+  await board.getByRole("button", { name: "Nouveau plan" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
+  await dialog.getByLabel("Nom").fill("Étage");
+  await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
+  await dialog.getByRole("button", { name: "Créer" }).click();
+  await expectSpace(page, "plan");
+  await goSpace(page, "board");
+
+  // Sa carte apparaît, titrée du nom du niveau, reliée à son plan.
+  const upstairs = cards.filter({ hasText: "Photos de la pièce · Étage" });
+  await expect(cards).toHaveCount(2);
+  await expect(upstairs).toHaveCount(1);
+  await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
+    2,
+  );
+  await shot(page, "kan91-6-carte-etage");
+
+  // Une photo glissée dans la carte de l'étage n'alimente que l'étage.
+  await dropInto(page, upstairs, "etage.png");
+  await expect(board.locator(".board-item.kind-photo")).toHaveCount(1, {
+    timeout: 60_000,
+  });
+  type Item = { id: string; kind: string; ref: string | null; text: string };
+  const read = async () =>
+    (await (await page.request.get(`/api/projects/${id}/board`)).json()) as {
+      items: Item[];
+    };
+  const plans = (await read()).items.filter((i) => i.kind === "plan");
+  expect(plans).toHaveLength(2);
+  const photosOf = async (plan: Item) =>
+    (
+      (await (
+        await page.request.get(`/api/projects/${id}/board/inputs/${plan.id}`)
+      ).json()) as { photos: string[] }
+    ).photos.length;
+  await expect
+    .poll(async () =>
+      Promise.all(plans.map(async (p) => [p.text, await photosOf(p)])),
+    )
+    .toEqual(
+      expect.arrayContaining([
+        [expect.stringContaining("Étage"), 1],
+        [expect.not.stringContaining("Étage"), 0],
+      ]),
+    );
+
+  // « Nouvelle carte Photos » : une carte vide, sans lien.
+  await board.getByRole("button", { name: "Nouvelle carte Photos" }).click();
+  await expect(cards).toHaveCount(3);
+  await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
+    2,
+  );
 });

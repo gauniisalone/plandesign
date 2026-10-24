@@ -183,6 +183,48 @@ def test_board_has_one_row_per_plan_and_follows_undo(tmp_path: Path) -> None:
     assert renders2[other].frame == frames2[0].id and renders2[mine].frame == frames2[0].id
 
 
+def test_each_plan_gets_its_own_photo_card_and_photos_stay_put(tmp_path: Path) -> None:
+    """KAN-91 : une carte « Photos de la pièce · niveau » par plan, reliée à son plan ; la carte
+    d'avant reste celle du premier plan avec ses photos ; Ctrl+Z retire la carte vide."""
+    project = rect_room_project()
+    base = only_level(project)
+    runs = tmp_path / "runs"
+    board, _ = sync_board(None, project, runs)
+    first = next(i for i in board.items if i.kind == "frame" and i.role == "photos")
+    assert first.ref is None and first.text == "Photos de la pièce"
+    after, storey = add_plan(project, NewPlan(name="Étage", kind="storey"))
+    board2, changed = sync_board(board, after, runs)
+    assert changed
+    cards = {i.ref: i for i in board2.items if i.kind == "frame" and i.role == "photos"}
+    assert set(cards) == {None, str(storey)}
+    assert cards[None].id == first.id and cards[None].text == f"Photos de la pièce · {base.name}"
+    assert cards[str(storey)].text == "Photos de la pièce · Étage"
+    plans = {i.ref: i.id for i in board2.items if i.kind == "plan"}
+    feeds = {(k.source, k.target) for k in board2.links if k.kind == "feeds_plan"}
+    assert feeds == {
+        (first.id, plans[str(base.id)]),
+        (cards[str(storey)].id, plans[str(storey)]),
+    }
+    assert sync_board(board2, after, runs) == (board2, False), "stable au deuxième passage"
+    # Un titre renommé à la main n'est plus touché.
+    renamed = board2.model_copy(
+        update={
+            "items": [
+                i.model_copy(update={"text": "Étage, côté jardin"})
+                if i.ref == str(storey) and i.kind == "frame"
+                else i
+                for i in board2.items
+            ]
+        }
+    )
+    kept, _ = sync_board(renamed, after, runs)
+    assert any(i.text == "Étage, côté jardin" for i in kept.items)
+    # Ctrl+Z : le plan s'en va, sa carte vide aussi ; le titre de la première redevient court.
+    undone, _ = sync_board(board2, history.undo(after), runs)
+    left = [i for i in undone.items if i.kind == "frame" and i.role == "photos"]
+    assert [i.ref for i in left] == [None] and left[0].text == "Photos de la pièce"
+
+
 def test_014_project_loads_with_every_level_a_storey() -> None:
     data = rect_room_project().model_dump(mode="json")
     data["schema_version"] = "0.14.0"

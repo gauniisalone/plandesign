@@ -250,3 +250,53 @@ def test_automatic_links_tie_the_board_together_and_respect_cuts() -> None:
     again = bl.auto_links(s.items, [], [cut])
     assert "feeds_plan" not in {k.kind for k in again}, "une paire coupée n'est jamais recréée"
     assert bl.auto_links(s.items, links, []) == links, "rien de plus au deuxième passage"
+
+
+class TwoLevels:
+    """KAN-91 : une carte Photos par plan. La carte d'avant (sans `ref`) est celle du premier
+    plan ; celle de l'étage porte son id ; une carte ajoutée à la main porte son propre id."""
+
+    def __init__(self) -> None:
+        self.rdc, self.etage = str(uuid4()), str(uuid4())
+        self.photos = _frame("photos", text="Photos de la pièce · RDC")
+        self.photos2 = _frame("photos", ref=self.etage, text="Photos de la pièce · Étage")
+        hand = _frame("photos", text="Photos de la pièce")
+        self.hand = hand.model_copy(update={"ref": str(hand.id)})
+        self.plan, self.plan2 = _plan(self.rdc), _plan(self.etage, "Étage")
+        self.items = [self.photos, self.photos2, self.hand, self.plan, self.plan2]
+
+    def feeds(self, links: list[BoardLink]) -> set[tuple[object, object]]:
+        return {(k.source, k.target) for k in links if k.kind == "feeds_plan"}
+
+
+def test_each_photo_card_feeds_only_the_plan_of_its_level() -> None:
+    t = TwoLevels()
+    assert bl.card_level(t.photos, [t.rdc, t.etage]) == t.rdc
+    assert bl.card_level(t.photos2, [t.rdc, t.etage]) == t.etage
+    assert bl.card_level(t.hand, [t.rdc, t.etage]) is None
+    links = bl.auto_links(t.items, [], [], t.rdc)
+    assert t.feeds(links) == {(t.photos.id, t.plan.id), (t.photos2.id, t.plan2.id)}
+    # Le premier plan est celui du projet, même posé après l'autre sur l'espace de travail.
+    swapped = [t.photos, t.photos2, t.hand, t.plan2, t.plan]
+    assert t.feeds(bl.auto_links(swapped, [], [], t.rdc)) == t.feeds(links)
+
+
+def test_an_old_automatic_cross_level_link_leaves_a_hand_made_one_stays() -> None:
+    t = TwoLevels()
+    # Avant les cartes par plan, la seule carte Photos alimentait aussi l'étage.
+    old = BoardLink(source=t.photos.id, target=t.plan2.id, kind="feeds_plan", auto=True)
+    links = bl.auto_links(t.items, [old], [], t.rdc)
+    assert t.feeds(links) == {(t.photos.id, t.plan.id), (t.photos2.id, t.plan2.id)}
+    # Tiré à la main, il reste : au plus un lien photos → plan par plan, la carte de l'étage
+    # n'est pas reliée en plus.
+    mine = old.model_copy(update={"auto": False})
+    kept = bl.auto_links(t.items, [mine], [], t.rdc)
+    assert t.feeds(kept) == {(t.photos.id, t.plan.id), (t.photos.id, t.plan2.id)}
+
+
+def test_a_cut_level_pair_is_not_recreated_and_a_hand_card_stays_free() -> None:
+    t = TwoLevels()
+    cut = f"{t.photos2.id}>{t.plan2.id}"
+    links = bl.auto_links(t.items, [], [cut], t.rdc)
+    assert t.feeds(links) == {(t.photos.id, t.plan.id)}
+    assert not any(t.hand.id in (k.source, k.target) for k in links)
