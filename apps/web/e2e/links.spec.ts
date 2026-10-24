@@ -189,6 +189,10 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   );
   const toast = page.locator(".board-wire-toast");
   await expect(toast).toContainText("Hors carte : cette photo ne servira plus");
+  // Le plan ne ment pas : la photo sortie retire sa caméra, pas les murs déjà construits.
+  await expect(toast).toContainText(
+    "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.",
+  );
   await expect(photo.locator(".board-offcard")).toHaveText(
     "hors carte : non utilisée",
   );

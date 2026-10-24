@@ -147,6 +147,8 @@ const READ_ONLY_NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
  *  plan dont les photos ont changé. */
 const TOAST_MS = 6000;
 const DRAG_THRESHOLD_PX = 5;
+const WALLS_STAY =
+  "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.";
 /** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
 const NEW_PLAN_GAP = 32;
 const NEW_PLAN_BOX = { w: 180, h: 48 };
@@ -771,8 +773,10 @@ export function BoardCanvas(props: Props) {
         for (const [lid, p] of plans) go(lid, p.added, p.removed);
       }, TOAST_MS);
     }
+    // Le plan ne ment pas (décision du PO) : une photo sortie retire sa caméra, pas les murs.
+    const left = [...plans.values()].some((p) => p.removed.length > 0);
     setToast({
-      text: `${text ?? "Cartes modifiées"}${plans.size ? " · le plan se recalculera" : ""}`,
+      text: `${text ?? "Cartes modifiées"}${plans.size ? " · le plan se recalculera" : ""}${left ? `. ${WALLS_STAY}` : ""}`,
       undo: () => {
         if (recompute.current !== null) window.clearTimeout(recompute.current);
         recompute.current = null;
