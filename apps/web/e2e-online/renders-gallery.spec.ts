@@ -365,7 +365,18 @@ test("pas de rendu sans plan relié : bouton inactif et phrase", async ({
 }) => {
   test.setTimeout(90_000);
   await signIn(page, RENDER_ACCOUNT.email, "198.51.100.233");
-  const { id, level } = await project(page, { walls: false });
+  // KAN-91 (D2, lot L1) : c'est le lien plan → rendus qui compte, plus les murs ; on le coupe.
+  const { id, level } = await project(page);
+  const origin = { Origin: new URL(page.url()).origin };
+  const board = (await (
+    await page.request.get(`/api/projects/${id}/board`)
+  ).json()) as { links: { id: string; kind: string }[] };
+  const view = board.links.find((k) => k.kind === "renders_view")!;
+  const cut = await page.request.patch(`/api/projects/${id}/board/items`, {
+    data: { links_delete: [view.id] },
+    headers: origin,
+  });
+  expect(cut.status()).toBe(200);
   await gotoApp(page, `/#/projects/${id}/board`);
   const frame = page
     .getByRole("region", { name: "Espace de travail" })
@@ -375,7 +386,6 @@ test("pas de rendu sans plan relié : bouton inactif et phrase", async ({
   });
   await expect(frame.getByRole("button", { name: "Rendre ▾" })).toBeDisabled();
   // Le serveur refuse aussi (409), même appelé directement.
-  const origin = { Origin: new URL(page.url()).origin };
   const listed = (await (
     await page.request.get(`/api/projects/${id}`)
   ).json()) as {
