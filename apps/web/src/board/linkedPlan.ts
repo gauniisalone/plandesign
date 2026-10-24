@@ -4,9 +4,8 @@
  *  INTÉGRATION avec le lot L1 (liens de l'espace de travail, Features, d680e6b) : la réponse du
  *  serveur prime. RealisticRenders lit GET …/board/inputs/{frameId} (`can_render`, route de L1,
  *  `realisticApi.planLinked`) et un 409 « Reliez un plan pour rendre » grise le bouton. Tant
- *  que la route n'existe pas (base a1c630f), ou si elle ne répond pas, ce repli s'applique :
- *  le plan du projet existe (le niveau du cadre a au moins un mur). Le serveur applique le même
- *  repli (`linked_plan` de render_routes.py, 409), que L1 remplace par `render_inputs`. */
+ *  que la route ne répond pas, ce repli s'applique : le plan du projet existe (le niveau du
+ *  cadre a au moins un mur). Le serveur, lui, vérifie le lien (`render_inputs`, 409). */
 
 import { ApiError } from "../api/client";
 import type { Project } from "../api/types.gen";
