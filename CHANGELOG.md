@@ -7,6 +7,18 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 25 octobre 2026 (KAN-95, temps P2 : pièces droites et plusieurs photos)
+
+- Pièce droite : quand la carte Photos reliée au plan compte plusieurs photos, le plan vient
+  de la meilleure (celle qui voit le plus de murs) ; une photo prise de près (gros plan) ne
+  compte jamais et c'est dit. La phrase dit si les photos se recoupent (« les autres photos
+  voient les mêmes murs ») ou non (« Ces photos ne voient pas de murs en commun : le plan vient
+  de la photo N ; ajoutez une photo qui recoupe les autres. »). La réunion des murs de photos
+  recalées reste désactivée : sans gain mesuré sur les scènes d'essai (rapport KAN-95).
+- Combles : une photo prise de près est écartée du recoupement. Une poutre sous le faîtage ne
+  fait plus prendre la poutre pour le faîtage.
+- Route `POST /api/projects/{id}/levels/{level}/photo-fusion` (relance, selon la pièce).
+
 ### 25 octobre 2026 (KAN-95, temps P1 : combles recoupés sur plusieurs photos)
 
 - Combles : quand la carte Photos reliée au plan compte au moins deux photos, elles sont

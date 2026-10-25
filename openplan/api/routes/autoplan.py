@@ -163,13 +163,15 @@ def autoplan(
         # Une image ajoutée pendant le calcul reste dans le projet.
         after = run.project.model_copy(update={"images": {**run.project.images, **latest.images}})
         store.save(after)
-        # KAN-95 : combles et au moins deux photos dans la carte reliée : recoupement.
+        # KAN-95 : au moins deux photos dans la carte reliée : recoupement (combles, ou pièce
+        # droite estimée depuis une photo).
         try:
             fused = fuse_members(store, project_id, level_id, depth, progress)
         except DetectionError:
             fused = None  # le plan de cette photo reste enregistré ; recoupement à relancer
-        if fused is not None and fused.applied:
-            after = fused.project
+        if fused is not None:  # appliqué ou non, ce qu'il en est est dit
+            if fused.applied:
+                after = fused.project
             run = run.model_copy(update={"notices": [*run.notices, *fused.notices]})
         progress("Plan prêt")
         return AutoPlanResult(run=run.model_copy(update={"project": after}), report=report)

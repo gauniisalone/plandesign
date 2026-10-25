@@ -186,9 +186,11 @@ def observe_room(
     principal_point: tuple[float, float],
     *,
     seed: int = 0,
+    stride: int = STRIDE,
 ) -> tuple[RoomObservation | None, list[FittedPlane]]:
-    """Sol, repère et murs vus dans une carte de profondeur ; None sans sol."""
-    points, pixels = backproject(depth, focal_px, principal_point, stride=STRIDE)
+    """Sol, repère et murs vus dans une carte de profondeur ; None sans sol. `stride` (KAN-95) :
+    un pixel sur `stride`, plus petit pour une profondeur gardée réduite."""
+    points, pixels = backproject(depth, focal_px, principal_point, stride=stride)
     h, w = depth.shape
     planes = fit_planes(points, pixels, (w, h), seed=seed)
     floor_idx = find_floor(planes)
