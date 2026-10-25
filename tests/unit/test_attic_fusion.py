@@ -13,12 +13,8 @@ from uuid import UUID
 import numpy as np
 import pytest
 
-from openplan.pipeline.attic import (
-    analyse_attic,
-    robust_center,
-    voted_pitch,
-    weighted_median,
-)
+from openplan.geom.robust import robust_center, weighted_median
+from openplan.pipeline.attic import analyse_attic, voted_pitch
 from openplan.pipeline.attic_fusion import FusionRun, concordance, fuse_attic
 from openplan.pipeline.confidence import ATTIC_SINGLE_ERROR, assess
 from openplan.pipeline.reference import (
@@ -161,6 +157,21 @@ def test_c_an_aberrant_photo_is_rejected(tmp_path: Path) -> None:
     assert f.ridge_height.value == pytest.approx(ATTIC.ridge, rel=0.05)
     assert f.width.value == pytest.approx(ATTIC.width, rel=0.08)
     assert f.used == 3 and f.spread is not None and f.spread <= 0.10
+
+
+def test_p2d_a_close_up_photo_never_pulls_the_room_down(tmp_path: Path) -> None:
+    """P2d (L5) : une photo prise à 0,5 m du pignon ne voit pas le fond de la pièce : écartée,
+    avec sa raison ; le résultat reste celui des trois autres photos."""
+    close = (7.0, 0.0, 1.5, 0.0, -45.0)  # à 1 m du pignon, regard vers le pied du mur
+    _project, ids, run = _fused(tmp_path, [*THREE, close])
+    f = run.fusion
+    assert run.applied and f is not None
+    bad = next(c for c in f.photos if c.image_id == ids[3])
+    assert bad.close_up and not bad.kept and "gros plan" in bad.reason
+    assert f.ridge_height.value == pytest.approx(ATTIC.ridge, rel=0.05)
+    assert f.width.value == pytest.approx(ATTIC.width, rel=0.08)
+    assert f.used == 3
+    assert any("gros plan" in n for n in run.notices)
 
 
 def _with_reference(
