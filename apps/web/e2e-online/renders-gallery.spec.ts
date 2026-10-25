@@ -342,6 +342,37 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
   };
   expect(bell.items.some((i) => i.type === "render.done" && i.mine)).toBe(true);
 
+  // 7 bis. Connexion lente (MEP 14, 25 oct.) : une miniature qui ne charge pas se recharge
+  // seule, puis laisse une case grise « Image non chargée · Réessayer » (plus le texte de
+  // remplacement brut) ; le réseau revenu, « Réessayer » la charge. Délais raccourcis.
+  await page.addInitScript(`window.__planDesignNet = { imageRetryMs: 300 };`);
+  let tries = 0;
+  const failing = async (route: import("@playwright/test").Route) => {
+    tries += 1;
+    await route.abort("connectionreset");
+  };
+  await page.route(/\/realistic\/[0-9a-f-]+\/image/, failing);
+  await page.reload();
+  const failedTiles = gallery.locator(".img-failed");
+  await expect(failedTiles.first()).toHaveText(
+    "Image non chargée · Réessayer",
+    { timeout: 30_000 },
+  );
+  expect(tries).toBeGreaterThanOrEqual(4);
+  await page.unroute(/\/realistic\/[0-9a-f-]+\/image/, failing);
+  await gallery
+    .getByRole("button", { name: /Image non chargée : réessayer/ })
+    .first()
+    .click();
+  await expect
+    .poll(() =>
+      gallery
+        .locator("img.rgal-img")
+        .first()
+        .evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+
   // 8. « Mes projets » : la carte du projet montre la couverture (le rendu, plus le plan).
   await gotoApp(page, "/");
   const card = page.getByRole("button", { name: `Ouvrir « ${name} »` });
