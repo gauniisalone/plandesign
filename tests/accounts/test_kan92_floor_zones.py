@@ -1,7 +1,7 @@
-"""KAN-92 avec les comptes : un éditeur dessine une zone de sol et l'élève, tire un mur ; le
-propriétaire et le lecteur relisent le même projet (collaboration : l'avis « projet changé »
-fait relire ce que le serveur garde) ; lecteur et commentateur ne peuvent rien en changer ;
-Ctrl+Z d'un autre membre annule le dernier geste."""
+"""KAN-92 avec les comptes : un éditeur (qui tient le bail du plan, B2d) dessine une zone de sol
+et l'élève, tire un mur ; le propriétaire et le lecteur relisent le même projet (collaboration :
+l'avis « projet changé » fait relire ce que le serveur garde) ; lecteur et commentateur ne
+peuvent rien en changer ; Ctrl+Z annule le dernier geste, un pas, et tous le relisent."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _many_sign_ins(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _room(owner: Any, pid: str) -> str:
-    """Une pièce de 4 × 3 m tracée par le propriétaire ; renvoie l'id du niveau."""
+    """Une pièce de 4 × 3 m tracée par ce membre ; renvoie l'id du niveau."""
     level = next(iter(owner.get(f"/api/projects/{pid}").json()["levels"]))
     ops = f"/api/projects/{pid}/levels/{level}/ops"
     corners = [(0, 0), (4, 0), (4, 3), (0, 3)]
@@ -42,7 +42,7 @@ def test_an_editor_raises_a_zone_and_pulls_a_wall_everyone_reads_it(
     tmp_path: Path, migrated_url: str
 ) -> None:
     owner, m, pid, _ = _team(tmp_path, migrated_url)
-    level = _room(owner, pid)
+    level = _room(m["editor"], pid)  # l'éditeur prend le bail du plan (B2d) dès le tracé
     ops = f"/api/projects/{pid}/levels/{level}/ops"
     square = [{"x": 1, "y": 1}, {"x": 2, "y": 1}, {"x": 2, "y": 2}, {"x": 1, "y": 2}]
     for role in ("viewer", "commenter"):
@@ -67,7 +67,7 @@ def test_an_editor_raises_a_zone_and_pulls_a_wall_everyone_reads_it(
     for who in (owner, m["viewer"]):
         assert _of(who, pid, level, "floor_zone")[0]["elevation"] == 0.2
         assert any(w["thickness"] == 0.3 for w in _of(who, pid, level, "wall"))
-    # Ctrl+Z du propriétaire : le dernier geste (le mur), un pas.
-    assert owner.post(f"/api/projects/{pid}/undo").status_code == 200
+    # Ctrl+Z : le dernier geste (le mur), un pas ; le lecteur relit la zone toujours élevée.
+    assert m["editor"].post(f"/api/projects/{pid}/undo").status_code == 200
     assert not any(w["thickness"] == 0.3 for w in _of(m["viewer"], pid, level, "wall"))
     assert _of(m["viewer"], pid, level, "floor_zone")[0]["elevation"] == 0.2
