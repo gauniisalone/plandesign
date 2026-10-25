@@ -139,6 +139,16 @@ async function estimated(
 test("KAN-66 réel : photo estimée, mesure posée, plan recalé, mesure retirée", async ({
   page,
 }) => {
+  // Comme slice.spec:694 : sans les poids de profondeur, ce contrôle réel n'a pas lieu d'être.
+  const models = (await (await page.request.get("/api/models")).json()) as {
+    entry: { id: string };
+    installed: boolean;
+  }[];
+  const depth = models.find((m) => m.entry.id.startsWith("depth_anything"));
+  test.skip(
+    !depth?.installed,
+    "poids de profondeur absents (openplan models pull)",
+  );
   test.setTimeout(420_000);
   mkdirSync(SHOTS, { recursive: true });
   const { id, levelId } = await estimated(page);
