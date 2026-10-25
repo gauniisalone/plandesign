@@ -9,8 +9,10 @@ test_autoplan, puis une 2ᵉ photo."""
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 from openplan.pipeline import attic_scene, depthplan
+from openplan.pipeline.attic_fusion import fuse_attic
 from openplan.pipeline.autoplan import run_autoplan
 from openplan.pipeline.depthplan import observe_room, propose_floorplan_from_depth
 from openplan.pipeline.detection import detect_and_propose
@@ -19,6 +21,7 @@ from openplan.pipeline.multiview import NOT_FROM_LINES, POSED_ONLY, confrontable
 from openplan.schemas import Camera, Wall
 from openplan.schemas.elements import RoofPlane
 from openplan.schemas.scene import Project
+from tests.attic_scenes import AXIAL_A, AXIAL_B, OBLIQUE, Attic, camera, project_with_photos
 from tests.factories import only_level
 from tests.synthetic_depth import box_faces, render_depth
 from tests.unit.test_autoplan import FIXTURE, AtticDepth, _photo, needs_fixture
@@ -121,6 +124,41 @@ def test_a_second_photo_on_a_depth_plan_gets_its_camera(tmp_path: Path) -> None:
     assert _plan(run.project) == before
     assert _cameras(run.project) == 2
     assert POSED_ONLY in run.floorplan.warnings
+
+
+def _cameras_by_photo(project: Project) -> dict[UUID, int]:
+    counts: dict[UUID, int] = {}
+    for e in only_level(project).elements.values():
+        if isinstance(e, Camera) and e.image_id is not None:
+            counts[e.image_id] = counts.get(e.image_id, 0) + 1
+    return counts
+
+
+def test_multiview_and_the_attic_fusion_do_not_step_on_each_other(tmp_path: Path) -> None:
+    """KAN-95 et multiview ensemble : combles recoupés sur deux photos, puis une 3ᵉ photo
+    ajoutée (multiview) : sa caméra est posée, le plan recoupé ne bouge pas ; puis le recoupement
+    sur les trois photos : une seule caméra par photo (celle posée par multiview est reprise, pas
+    doublée), et le plan recoupé reste hors de portée de multiview."""
+    project, level, ids = project_with_photos(
+        tmp_path, Attic(), [camera(*c) for c in (AXIAL_A, OBLIQUE, AXIAL_B)]
+    )
+    first = fuse_attic(project, tmp_path, level, ids[:2])
+    assert first.applied
+    fused = first.project
+    assert not confrontable(fused.levels[level])
+    before = _plan(fused)
+    assert _cameras_by_photo(fused) == {ids[0]: 1, ids[1]: 1}
+
+    added = detect_and_propose(fused, tmp_path, level, ids[2], tmp_path / "runs")
+    assert _plan(added.project) == before
+    assert _roofs(added.project) == _roofs(fused)
+    assert _cameras_by_photo(added.project) == {ids[0]: 1, ids[1]: 1, ids[2]: 1}
+    assert POSED_ONLY in added.floorplan.warnings
+
+    again = fuse_attic(added.project, tmp_path, level, ids)
+    assert again.applied
+    assert _cameras_by_photo(again.project) == {ids[0]: 1, ids[1]: 1, ids[2]: 1}
+    assert not confrontable(again.project.levels[level])
 
 
 @needs_fixture
