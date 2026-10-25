@@ -1,8 +1,10 @@
 """Essai multiphoto du grenier (25 oct.) : la confrontation d'une photo de plus (2.5,
 `multiview.add_view`) ne lit que les arêtes sol-mur d'une pièce droite. Sur un plan de combles,
 elle déplaçait un mur supposé sur deux arêtes de lignes (largeur de 7,04 m ramenée à 0,33 m).
-Un plan des combles ou de la profondeur n'est plus touché ; un plan par lignes, si. Cas
-synthétique : les combles 6 × 5 m de test_autoplan, puis une 2ᵉ photo."""
+Sur un plan des combles ou de la profondeur, la photo reçoit toujours sa caméra (décision
+produit : cône de vision, « Rendre depuis la photo ») mais ni murs ni pentes ne bougent ; un
+plan par lignes est confronté comme avant. Cas synthétique : les combles 6 × 5 m de
+test_autoplan, puis une 2ᵉ photo."""
 
 from __future__ import annotations
 
@@ -10,13 +12,17 @@ from pathlib import Path
 
 from openplan.pipeline import attic_scene, depthplan
 from openplan.pipeline.autoplan import run_autoplan
+from openplan.pipeline.depthplan import observe_room, propose_floorplan_from_depth
 from openplan.pipeline.detection import detect_and_propose
 from openplan.pipeline.ingestion import import_image
-from openplan.pipeline.multiview import NOT_CONFRONTED, NOT_FROM_LINES, confrontable
-from openplan.schemas import Wall
+from openplan.pipeline.multiview import NOT_FROM_LINES, POSED_ONLY, confrontable
+from openplan.schemas import Camera, Wall
+from openplan.schemas.elements import RoofPlane
 from openplan.schemas.scene import Project
 from tests.factories import only_level
+from tests.synthetic_depth import box_faces, render_depth
 from tests.unit.test_autoplan import FIXTURE, AtticDepth, _photo, needs_fixture
+from tests.unit.test_depthplan import CAMERA
 
 
 def _plan(project: Project) -> list[tuple[float, float]]:
@@ -31,6 +37,23 @@ def _plan(project: Project) -> list[tuple[float, float]]:
     return sorted(
         (round(level.vertices[v].position.x, 6), round(level.vertices[v].position.y, 6))
         for v in ids
+    )
+
+
+def _cameras(project: Project) -> int:
+    """Caméras de photos (une par photo posée sur le plan)."""
+    return sum(
+        1
+        for e in only_level(project).elements.values()
+        if isinstance(e, Camera) and e.image_id is not None
+    )
+
+
+def _roofs(project: Project) -> list[str]:
+    return sorted(
+        e.model_dump_json(exclude={"id"})
+        for e in only_level(project).elements.values()
+        if isinstance(e, RoofPlane)
     )
 
 
@@ -56,21 +79,48 @@ def test_a_second_photo_leaves_the_attic_plan_alone(tmp_path: Path) -> None:
     before = _plan(attic.project)
     assert len(before) == 4
 
-    # 2ᵉ photo : gardée, mais le plan des combles ne bouge pas.
+    assert _cameras(attic.project) == 1
+
+    # 2ᵉ photo : elle reçoit sa caméra (décision produit), le plan des combles ne bouge pas.
     project2, ref2, _ = import_image(
         attic.project, tmp_path, FIXTURE.read_bytes(), original_name="p2.png"
     )
     again = run_autoplan(project2, tmp_path, level.id, ref2.id, tmp_path / "runs")
     assert _plan(again.project) == before
-    assert ref2.id in again.project.images
+    assert _cameras(again.project) == 2
     view = next(s for s in again.stages if s.key == "view")
-    assert view.status == "skipped"
-    assert NOT_CONFRONTED in again.notices
+    assert view.status == "done" and view.detail == "caméra posée, plan inchangé"
+    assert POSED_ONLY in again.notices
+    # Les pans de toit non plus.
+    assert _roofs(again.project) == _roofs(attic.project)
 
-    # Même par la route de détection (add_view appelé directement) : rien ne bouge.
+    # Même par la route de détection (add_view appelé directement).
     run = detect_and_propose(project2, tmp_path, level.id, ref2.id, tmp_path / "runs")
     assert _plan(run.project) == before
-    assert NOT_CONFRONTED in run.floorplan.warnings
+    assert _cameras(run.project) == 2
+    assert POSED_ONLY in run.floorplan.warnings
+
+
+@needs_fixture
+def test_a_second_photo_on_a_depth_plan_gets_its_camera(tmp_path: Path) -> None:
+    """Le cas de slice.spec avec les poids installés : plan tiré de la profondeur, puis une
+    2ᵉ photo ; elle doit recevoir sa caméra (2 caméras), sans toucher aux murs."""
+    project, level = _photo(tmp_path)
+    first = next(iter(project.images))
+    depth = render_depth(box_faces(4.0, 3.0, 2.5), CAMERA, noise=0.01, seed=1)
+    obs, _ = observe_room(depth, CAMERA.focal_px, CAMERA.principal_point)
+    assert obs is not None
+    planned, _ = propose_floorplan_from_depth(project, level.id, obs, image_id=first)
+    assert not confrontable(only_level(planned))
+    before = _plan(planned)
+    assert _cameras(planned) == 1
+    project2, ref2, _ = import_image(
+        planned, tmp_path, FIXTURE.read_bytes(), original_name="p2.png"
+    )
+    run = detect_and_propose(project2, tmp_path, level.id, ref2.id, tmp_path / "runs")
+    assert _plan(run.project) == before
+    assert _cameras(run.project) == 2
+    assert POSED_ONLY in run.floorplan.warnings
 
 
 @needs_fixture
@@ -86,4 +136,4 @@ def test_a_plan_from_lines_is_still_confronted(tmp_path: Path) -> None:
     again = run_autoplan(project2, tmp_path, level.id, ref2.id, tmp_path / "runs")
     view = next(s for s in again.stages if s.key == "view")
     assert view.status == "done" and again.method == "view"
-    assert NOT_CONFRONTED not in again.notices
+    assert POSED_ONLY not in again.notices

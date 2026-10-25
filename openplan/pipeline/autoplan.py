@@ -54,7 +54,7 @@ from openplan.pipeline.depthplan import run_depthplan
 from openplan.pipeline.detection import detect_and_propose
 from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, DetectionError
 from openplan.pipeline.ingestion import ImageNotFoundError, load_image
-from openplan.pipeline.multiview import NOT_CONFRONTED, confrontable
+from openplan.pipeline.multiview import POSED_ONLY, confrontable
 from openplan.pipeline.openings import run_openings
 from openplan.pipeline.plan_import import PlanApplyBody, apply_segments, preview_image
 from openplan.pipeline.reference import camera_basis, narrow, room_size, save_depth, with_basis
@@ -861,19 +861,11 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 impact="high",
             )
         )
-    elif _walls(project, level_id) and not confrontable(project.levels[level_id]):
-        # Essai multiphoto du grenier (25 oct.) : la confrontation par lignes ramenait la
-        # largeur des combles de 7,04 m à 0,33 m. Le plan des combles ou de la profondeur
-        # n'est plus touché ; la photo reste dans le projet.
-        chain.stage(
-            "view",
-            "Photo confrontée au plan",
-            "skipped",
-            "plan des combles ou de la profondeur : non confronté",
-        )
-        said.append(NOT_CONFRONTED)
     elif _walls(project, level_id):
         chain.say("Comparaison de la photo avec le plan…")
+        # Essai multiphoto du grenier (25 oct.) : sur un plan des combles ou de la
+        # profondeur, la photo reçoit sa caméra mais ne retouche ni murs ni pentes.
+        frozen = not confrontable(project.levels[level_id])
         try:
             view = detect_and_propose(
                 project,
@@ -886,7 +878,13 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             )
             if _valid(view.project):
                 after, method, confidence = view.project, "view", view.floorplan.confidence
-                chain.stage("view", "Photo confrontée au plan", "done")
+                if frozen:
+                    chain.stage(
+                        "view", "Photo confrontée au plan", "done", "caméra posée, plan inchangé"
+                    )
+                    said.append(POSED_ONLY)
+                else:
+                    chain.stage("view", "Photo confrontée au plan", "done")
             else:
                 chain.stage("view", "Photo confrontée au plan", "failed", "plan incohérent")
         except (DetectionError, ValueError) as exc:

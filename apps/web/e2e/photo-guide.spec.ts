@@ -55,6 +55,13 @@ test("KAN-91 L5 : le guide de prise de photo s'ouvre par son lien, jamais seul",
   ])
     await expect(guide.getByRole("heading", { name: title })).toBeVisible();
   await expect(guide.getByText("depuis l'angle opposé")).toBeVisible();
+  // Consigne du PO (25 oct.), mot pour mot : recouper plusieurs photos.
+  await expect(
+    guide.getByText(
+      "Prenez chaque photo dos à un mur, en montrant le mur d'en face en entier, d'un coin à l'autre. Deux photos qui se suivent doivent montrer au moins un même coin et ses deux murs : c'est ce qui permet de les recouper. Évitez les gros plans, chaque photo doit voir le fond de la pièce.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "kan91_guide.png") });
   await page.keyboard.press("Escape");
   await expect(guide).toHaveCount(0);

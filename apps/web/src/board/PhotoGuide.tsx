@@ -102,6 +102,10 @@ const GESTURES: { key: string; title: string; text: string; art: ReactNode }[] =
     },
   ];
 
+/** Plusieurs photos d'une pièce (25 oct.) : ce qui permet de les recouper. */
+export const SERIES_RULE =
+  "Prenez chaque photo dos à un mur, en montrant le mur d'en face en entier, d'un coin à l'autre. Deux photos qui se suivent doivent montrer au moins un même coin et ses deux murs : c'est ce qui permet de les recouper. Évitez les gros plans, chaque photo doit voir le fond de la pièce.";
+
 const AVOID = [
   "gros plan d'un meuble",
   "photo floue ou de nuit",
@@ -156,6 +160,8 @@ export function PhotoGuide({
         <p className="photo-guide-next">
           Puis une deuxième photo, prise depuis l'angle opposé.
         </p>
+        {/* Consigne du PO (25 oct.), mot pour mot : ce qui permet de recouper les photos. */}
+        <p className="photo-guide-next">{SERIES_RULE}</p>
         <p className="photo-guide-avoid">
           <span>À éviter :</span>
           {AVOID.map((a) => (

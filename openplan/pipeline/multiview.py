@@ -21,10 +21,12 @@ seule ne distingue pas ces deux lectures. Une fois les quatre murs estimés, ou 
 l'utilisateur fixe l'orientation (« Tourner la vue », `rotate_view`), la contradiction est
 signalée.
 
-Seulement pour un plan tiré des lignes d'une pièce droite (`confrontable`) : la confrontation ne
-lit que des arêtes sol-mur, ni les pentes, ni le faîtage, ni la profondeur. Sur un plan de combles
-ou tiré de la profondeur, elle déplaçait un mur supposé sur deux arêtes de lignes (essai
-multiphoto du grenier, 25 oct. : largeur de 7,04 m ramenée à 0,33 m) ; ce plan n'est plus touché.
+Murs retouchés seulement sur un plan tiré des lignes d'une pièce droite (`confrontable`) : la
+confrontation ne lit que des arêtes sol-mur, ni les pentes, ni le faîtage, ni la profondeur. Sur
+un plan de combles ou tiré de la profondeur, elle déplaçait un mur supposé sur deux arêtes de
+lignes (essai multiphoto du grenier, 25 oct. : largeur de 7,04 m ramenée à 0,33 m). Là, la photo
+reçoit toujours sa caméra (cône de vision, « Rendre depuis la photo »), mais ni les murs ni les
+pentes ne bougent.
 """
 
 from __future__ import annotations
@@ -54,7 +56,7 @@ from openplan.schemas.common import (
     Uncertainty,
     source_rank,
 )
-from openplan.schemas.elements import Camera, Vertex, Wall
+from openplan.schemas.elements import Camera, Element, Vertex, Wall
 from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.results import Assumption, StepResult
 from openplan.schemas.scene import Level, Project
@@ -74,9 +76,9 @@ ROTATE_STEP = "floorplan.rotate_view"
 NOT_FROM_LINES = frozenset({"attic.apply", "floorplan.depth"})
 """Étapes qui posent un plan que la confrontation par lignes ne sait pas lire : combles
 (`attic_scene.STEP`) et profondeur (`depthplan.STEP`) ; vérifié par les tests."""
-NOT_CONFRONTED = (
-    "Plan des combles ou tiré de la profondeur : la photo est gardée, mais n'est pas confrontée "
-    "au plan (cette confrontation ne lit que les lignes d'une pièce droite)."
+POSED_ONLY = (
+    "Photo ajoutée : sa caméra est posée ; le plan des combles ou tiré de la profondeur n'est "
+    "pas modifié par cette photo."
 )
 ORIENTATION_KEY = "orientation_quarter_turns"
 
@@ -476,15 +478,10 @@ def add_view(
         msg = f"image inconnue : {image_id}"
         raise DetectionError(msg)
     model_ids = [analysis.camera.model_id]
-    if not confrontable(level):
-        return project, StepResult(
-            step=STEP,
-            confidence=0.0,
-            warnings=[NOT_CONFRONTED],
-            duration_s=time.perf_counter() - started,
-            model_ids=model_ids,
-        )
-    if not analysis.floor_edges:
+    # Plan des combles ou de la profondeur : la photo reçoit sa caméra (cône de vision,
+    # « Rendre depuis la photo »), mais aucun mur ni aucune pente n'est retouché.
+    frozen = not confrontable(level)
+    if not analysis.floor_edges and not frozen:
         return project, StepResult(
             step=STEP,
             confidence=0.0,
@@ -492,6 +489,8 @@ def add_view(
             duration_s=time.perf_counter() - started,
             model_ids=model_ids,
         )
+    if frozen and not analysis.floor_edges:
+        return _pose_only(project, level, analysis, image_id, camera_height_m, run_id, started)
     model_ids.append(MODEL_ID)
     h = camera_height_m
     # Les arêtes « y » (parallèles à Y) donnent la coordonnée X des murs, et inversement.
@@ -516,6 +515,68 @@ def add_view(
     provenance = Provenance(image_ids=[image_id], step=STEP, model=MODEL_ID, run_id=run_id)
     vertices = dict(level.vertices)
     elements = dict(level.elements)
+    # Combles ou profondeur : les murs ne bougent jamais.
+    confirmed = [] if frozen else _move_walls(level, placement, provenance, vertices, elements)
+    index = 1 + sum(
+        1 for e in level.elements.values() if isinstance(e, Camera) and e.image_id is not None
+    )
+    yaw_hint = analysis.camera.yaw_hint
+    if yaw_hint is None:
+        assumptions.append(
+            Assumption(
+                text="Lacet de la photo inconnu : caméra orientée selon l'axe X.", impact="low"
+            )
+        )
+    yaw = (yaw_hint or 0.0) + placement.quarter_turns * math.pi / 2.0
+    yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+    camera = Camera(
+        name=f"Photo {index}",
+        position=Point3(x=placement.fits["x"].position, y=placement.fits["y"].position, z=h),
+        yaw=yaw,
+        pitch=analysis.camera.pitch,
+        roll=analysis.camera.roll,
+        focal_px=analysis.camera.focal_px,
+        image_id=image_id,
+        source=Source.ESTIMATED,
+        confidence=analysis.camera.confidence,
+        provenance=provenance,
+        metadata=_metadata(placement, h, ambiguous, compared=not frozen),
+    )
+    elements[camera.id] = camera
+    new_level = level.model_copy(update={"vertices": vertices, "elements": elements})
+    after = project.model_copy(update={"levels": {**project.levels, level_id: new_level}})
+    label = (
+        f"Poser la caméra de la photo {index}"
+        if frozen
+        else f"Confronter la photo {index} à la scène"
+    )
+    after = history.commit(project, after, actor=ACTOR, label=label, run_id=run_id)
+    warnings = list(analysis.warnings)
+    if frozen:
+        warnings.append(POSED_ONLY)
+    warnings.extend(v.message for v in check_views(after) if camera.id in v.element_ids)
+    if confirmed:
+        warnings.append(f"Murs confirmés par cette photo : {', '.join(confirmed)}.")
+    return after, StepResult(
+        step=STEP,
+        patch=after.history[-1].patch,
+        confidence=analysis.camera.confidence,
+        assumptions=assumptions,
+        warnings=warnings,
+        duration_s=time.perf_counter() - started,
+        model_ids=model_ids,
+    )
+
+
+def _move_walls(
+    level: Level,
+    placement: Placement,
+    provenance: Provenance,
+    vertices: dict[UUID, Vertex],
+    elements: dict[UUID, Element],
+) -> list[str]:
+    """Déplace les murs inférés que cette photo voit (dans `vertices` et `elements`) ; rend
+    les noms des murs confirmés."""
     box = walls_box(level)
     assert box is not None
     bounds = {"x": (box[0], box[2]), "y": (box[1], box[3])}
@@ -544,53 +605,73 @@ def add_view(
                 }
             )
             confirmed.append(wall.name or str(wall.id))
+    return confirmed
+
+
+def _pose_only(
+    project: Project,
+    level: Level,
+    analysis: BoxAnalysis,
+    image_id: UUID,
+    h: float,
+    run_id: UUID | None,
+    started: float,
+) -> tuple[Project, StepResult]:
+    """Plan des combles ou de la profondeur, photo sans arête sol-mur : la caméra est posée au
+    centre du plan (position supposée), orientée par le lacet de la photo ; rien d'autre ne
+    change."""
+    box = walls_box(level)
+    assert box is not None
     index = 1 + sum(
         1 for e in level.elements.values() if isinstance(e, Camera) and e.image_id is not None
     )
-    yaw_hint = analysis.camera.yaw_hint
-    if yaw_hint is None:
-        assumptions.append(
-            Assumption(
-                text="Lacet de la photo inconnu : caméra orientée selon l'axe X.", impact="low"
-            )
-        )
-    yaw = (yaw_hint or 0.0) + placement.quarter_turns * math.pi / 2.0
-    yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+    provenance = Provenance(image_ids=[image_id], step=STEP, model=MODEL_ID, run_id=run_id)
     camera = Camera(
         name=f"Photo {index}",
-        position=Point3(x=placement.fits["x"].position, y=placement.fits["y"].position, z=h),
-        yaw=yaw,
+        position=Point3(x=(box[0] + box[2]) / 2, y=(box[1] + box[3]) / 2, z=h),
+        yaw=analysis.camera.yaw_hint or 0.0,
         pitch=analysis.camera.pitch,
         roll=analysis.camera.roll,
         focal_px=analysis.camera.focal_px,
         image_id=image_id,
-        source=Source.ESTIMATED,
-        confidence=analysis.camera.confidence,
+        source=Source.INFERRED,
+        confidence=min(0.2, analysis.camera.confidence),
         provenance=provenance,
-        metadata=_metadata(placement, h, ambiguous),
+        metadata={"camera_height_m": h},
     )
-    elements[camera.id] = camera
-    new_level = level.model_copy(update={"vertices": vertices, "elements": elements})
-    after = project.model_copy(update={"levels": {**project.levels, level_id: new_level}})
+    new_level = level.model_copy(update={"elements": {**level.elements, camera.id: camera}})
+    after = project.model_copy(update={"levels": {**project.levels, level.id: new_level}})
     after = history.commit(
-        project, after, actor=ACTOR, label=f"Confronter la photo {index} à la scène", run_id=run_id
+        project, after, actor=ACTOR, label=f"Poser la caméra de la photo {index}", run_id=run_id
     )
-    warnings = list(analysis.warnings)
-    warnings.extend(v.message for v in check_views(after) if camera.id in v.element_ids)
-    if confirmed:
-        warnings.append(f"Murs confirmés par cette photo : {', '.join(confirmed)}.")
     return after, StepResult(
         step=STEP,
         patch=after.history[-1].patch,
-        confidence=analysis.camera.confidence,
-        assumptions=assumptions,
-        warnings=warnings,
+        confidence=camera.confidence,
+        assumptions=[
+            Assumption(
+                text="Aucune arête sol-mur sur cette photo : caméra supposée au centre du plan, "
+                "à déplacer si besoin.",
+                impact="medium",
+            )
+        ],
+        warnings=[*analysis.warnings, POSED_ONLY],
         duration_s=time.perf_counter() - started,
-        model_ids=model_ids,
+        model_ids=[analysis.camera.model_id, MODEL_ID],
     )
 
 
-def _metadata(placement: Placement, h: float, ambiguous: bool) -> dict[str, JsonValue]:
+def _metadata(
+    placement: Placement, h: float, ambiguous: bool, *, compared: bool = True
+) -> dict[str, JsonValue]:
+    """`compared` faux (combles, profondeur) : sans les distances observées, la vue n'est pas
+    confrontée aux murs (`check_views` n'a rien à comparer)."""
+    if not compared:
+        return {
+            "camera_height_m": h,
+            ORIENTATION_KEY: placement.quarter_turns,
+            AMBIGUOUS_KEY: ambiguous,
+        }
     extents: dict[str, JsonValue] = {}
     distances: dict[str, JsonValue] = {}
     for axis, obs in placement.observations.items():
