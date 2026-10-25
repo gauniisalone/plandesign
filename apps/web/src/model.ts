@@ -6,6 +6,7 @@ import type {
   DerivedRoof,
   RoofWindow,
   Camera,
+  FloorZone,
   Furniture,
   Level,
   Opening,
@@ -204,6 +205,22 @@ export const LEVEL_DEFAULT_NAMES: Record<string, string> = {
 };
 
 /** Cage d'escalier (S1) : son symbole en plan vient du serveur (`derived.stairs`). */
+/** KAN-92 : zone de sol surélevée (estrade, marche), 4 coins, de 0 à 1,20 m. */
+export function isFloorZone(e: Element | undefined): e is FloorZone {
+  return e?.type === "floor_zone";
+}
+
+export function floorZones(level: Level): FloorZone[] {
+  return Object.values(level.elements).filter(isFloorZone);
+}
+
+/** La hauteur d'une zone telle qu'écrite sur le plan : « +20 cm » (comme les exports). */
+export function zoneLabel(zone: FloorZone): string {
+  return zone.elevation > 0
+    ? `+${Math.round(zone.elevation * 100)} cm`
+    : "zone de sol";
+}
+
 export function isStairs(e: Element | undefined): e is Stairs {
   return e?.type === "stairs";
 }

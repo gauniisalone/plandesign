@@ -21,10 +21,12 @@ import {
 } from "../api/client";
 import {
   allCameras,
+  floorZones,
   formatLength,
   furnitureCorners,
   furnitureItems,
   isCamera,
+  isFloorZone,
   isFurniture,
   isExcludedView,
   isOpening,
@@ -36,8 +38,10 @@ import {
   roofWindowCorners,
   roofWindows,
   walls,
+  zoneLabel,
   type Selection,
 } from "../model";
+import { movedCorner, snapZoneCorner, zoneCenter } from "./zoneSnap";
 import {
   distance,
   fitView,
@@ -310,6 +314,14 @@ type Drag =
       depth: number;
     }
   | { kind: "stairsWidth"; id: string; side: number; width: number }
+  | {
+      /** KAN-92 : un coin d'une zone de sol, accroché aux angles et faces intérieures. */
+      kind: "zoneCorner";
+      id: string;
+      index: number;
+      current: Point2;
+      label: "angle" | "mur" | null;
+    }
   | {
       kind: "openingEdge";
       id: string;
@@ -891,6 +903,20 @@ export function PlanCanvas({
         void flipDoor(flipped, "cycle");
         return;
       }
+      // KAN-92 : coin d'une zone de sol (poignée visible quand elle est choisie).
+      const [zoneId, cornerAt] = (data["zoneCorner"] ?? "").split(":");
+      const zone = zoneId ? level.elements[zoneId] : undefined;
+      if (zoneId && isFloorZone(zone)) {
+        const index = Number(cornerAt);
+        setDrag({
+          kind: "zoneCorner",
+          id: zoneId,
+          index,
+          current: zone.polygon[index]!,
+          label: null,
+        });
+        return;
+      }
       const vid = vertexAt(x, y);
       if (vid) {
         onSelect({ kind: "vertex", id: vid });
@@ -1251,10 +1277,35 @@ export function PlanCanvas({
       const s = snapAt(x, y, neighbourOf(drag.id), e.shiftKey, drag.id);
       setSnap(s);
       setDrag({ ...drag, current: s.point });
+    } else if (drag.kind === "zoneCorner") {
+      const inner = Object.values(derived?.rooms ?? {}).map((r) => r.polygon);
+      const s = snapZoneCorner(
+        toWorld(view, x, y),
+        inner,
+        VERTEX_SNAP_PX / view.scale,
+        e.altKey,
+      );
+      setDrag({ ...drag, current: s.point, label: s.label });
     }
   };
 
   const onMouseUp = async () => {
+    if (drag?.kind === "zoneCorner") {
+      // Un seul pas d'historique ; hors de la pièce ou côtés croisés : le serveur dit pourquoi.
+      const zone = level.elements[drag.id];
+      if (
+        isFloorZone(zone) &&
+        distance(drag.current, zone.polygon[drag.index]!) > 1e-6
+      ) {
+        onOp({
+          op: "update_element",
+          element_id: drag.id,
+          fields: {
+            polygon: movedCorner(zone.polygon, drag.index, drag.current),
+          },
+        });
+      }
+    }
     if (drag?.kind === "resize") {
       const f = level.elements[drag.id];
       const changed =
@@ -1779,6 +1830,18 @@ export function PlanCanvas({
       height: 28,
     });
   }
+  // KAN-92 : la hauteur d'une zone de sol évite le nom de la pièce (souvent au même centre).
+  for (const zone of floorZones(level)) {
+    const c = S(zoneCenter(zone.polygon));
+    requests.push({
+      key: `zone-${zone.id}`,
+      x: c.x,
+      y: c.y,
+      width: textWidth(zoneLabel(zone), 7),
+      height: 14,
+      maxSteps: 4,
+    });
+  }
   for (const f of furnitureItems(level)) {
     const c = S(shownTransform(f).position);
     requests.push({
@@ -1857,6 +1920,16 @@ export function PlanCanvas({
         >
           <path d={`M ${gridPx} 0 L 0 0 0 ${gridPx}`} className="grid-line" />
         </pattern>
+        {/* KAN-92 : hachure des zones de sol (diagonale, à pas fixe à l'écran). */}
+        <pattern
+          id="zone-hatch"
+          width={8}
+          height={8}
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <line x1={0} y1={0} x2={0} y2={8} className="plan-zone-hatch" />
+        </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#grid)" data-element="" />
 
@@ -1908,6 +1981,62 @@ export function PlanCanvas({
             >
               {areaText(d)}
             </text>
+          </g>
+        );
+      })}
+
+      {/* KAN-92 : zones de sol (hachure, hauteur) ; choisie : ses 4 coins se déplacent. */}
+      {floorZones(level).map((zone) => {
+        const dragged =
+          drag?.kind === "zoneCorner" && drag.id === zone.id ? drag : null;
+        const polygon = dragged
+          ? movedCorner(zone.polygon, dragged.index, dragged.current)
+          : zone.polygon;
+        const selected =
+          selection.kind === "element" && selection.id === zone.id;
+        const raw = S(zoneCenter(polygon));
+        const c = dragged ? raw : at(`zone-${zone.id}`, raw.x, raw.y);
+        return (
+          <g
+            key={zone.id}
+            className={`plan-zone${selected ? " selected" : ""}`}
+          >
+            <polygon
+              className="plan-zone-area"
+              points={pts(polygon)}
+              data-element={zone.id}
+            />
+            <text
+              className="plan-zone-label"
+              x={c.x}
+              y={c.y}
+              data-element={zone.id}
+            >
+              {zoneLabel(zone)}
+            </text>
+            {selected &&
+              polygon.map((p, i) => {
+                const q = S(p);
+                return (
+                  <circle
+                    key={i}
+                    className="plan-zone-corner"
+                    cx={q.x}
+                    cy={q.y}
+                    r={6}
+                    data-zone-corner={`${zone.id}:${i}`}
+                  />
+                );
+              })}
+            {dragged?.label && (
+              <text
+                className="plan-zone-snap"
+                x={S(dragged.current).x + 10}
+                y={S(dragged.current).y - 10}
+              >
+                {dragged.label}
+              </text>
+            )}
           </g>
         );
       })}

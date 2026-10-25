@@ -102,6 +102,15 @@ export interface AddCamera {
   focal_px?: number | null;
 }
 
+/** KAN-92 : une zone de sol (4 coins dans l'ordre), dans une pièce ; Pousser/Tirer l'élève
+ *  ensuite (`update_element`, champ `elevation`, 0 à 1,20 m). */
+export interface AddFloorZone {
+  op: "add_floor_zone";
+  polygon: [Point2, Point2, Point2, Point2];
+  elevation?: number;
+  name?: string | null;
+}
+
 export interface UpdateElement {
   op: "update_element";
   element_id: string;
@@ -151,6 +160,7 @@ export type Op =
   | AddFurniture
   | ReplaceFurniture
   | AddCamera
+  | AddFloorZone
   | UpdateElement
   | SetIntent
   | UpdateVertex

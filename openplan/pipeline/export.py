@@ -77,9 +77,9 @@ _STYLE = """
 .stairs-cut { fill: none; stroke: #222; stroke-width: 0.9; }
 .stairs-railing { fill: none; stroke: #222; stroke-width: 2.4; }
 .stairs-label { font: 10px sans-serif; fill: #222; text-anchor: middle; }
-.floor-zone { fill: #8a5cc7; fill-opacity: 0.08; stroke: #73528c; stroke-width: 1.2; }
-.floor-zone-hatch { fill: none; stroke: #73528c; stroke-width: 0.5; stroke-opacity: 0.6; }
-.floor-zone-label { font: bold 11px sans-serif; fill: #5c3f73; text-anchor: middle; }
+.floor-zone { fill: #3e5a7e; fill-opacity: 0.08; stroke: #3e5a7e; stroke-width: 1.2; }
+.floor-zone-hatch { fill: none; stroke: #3e5a7e; stroke-width: 0.5; stroke-opacity: 0.6; }
+.floor-zone-label { font: bold 11px sans-serif; fill: #2f4560; text-anchor: middle; }
 """
 _DARK_STYLE = """
 .wall { fill: #c9ccd6; stroke: #e6e8ef; }
@@ -102,8 +102,8 @@ _DARK_STYLE = """
 .stairs-tread { stroke: #a3a7b3; }
 .stairs-walk, .stairs-cut, .stairs-railing { stroke: #d0d3dc; }
 .stairs-label { fill: #e6e8ef; }
-.floor-zone, .floor-zone-hatch { stroke: #c4a3e6; }
-.floor-zone-label { fill: #d9c2f0; }
+.floor-zone, .floor-zone-hatch { stroke: #9fb3ce; }
+.floor-zone-label { fill: #c9d6e6; }
 """
 """Thème sombre (C1) : les couleurs de l'éditeur de plan en sombre, pour la vignette du plan
 sur le tableau ; jamais pour un export à imprimer."""
@@ -659,7 +659,7 @@ class _PdfPlan:
         """KAN-92 : zones de sol, contour, hachure et hauteur (« +20 cm »)."""
         c = self.c
         for zone in floor_zones(level):
-            c.setStrokeColorRGB(0.45, 0.32, 0.55)
+            c.setStrokeColorRGB(0.24, 0.35, 0.49)
             c.setLineWidth(0.6)
             self.polygon(zone.polygon, fill=False, stroke=True)
             c.setLineWidth(0.25)
@@ -667,7 +667,7 @@ class _PdfPlan:
                 self.path([a, b], closed=False)
             center = zone_center(zone)
             c.setFont("Helvetica", 7)
-            c.setFillColorRGB(0.45, 0.32, 0.55)
+            c.setFillColorRGB(0.24, 0.35, 0.49)
             c.drawCentredString(self.sx(center.x), self.sy(center.y), zone_label(zone))
         c.setLineWidth(0.5)
 

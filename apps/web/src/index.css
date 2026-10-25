@@ -1780,6 +1780,46 @@ button.cta:hover:not(:disabled) {
   stroke: none;
 }
 
+/* KAN-92 : zone de sol surélevée, hachurée, sa hauteur écrite ; choisie, ses coins se
+   déplacent (noms vérifiés libres : plan-zone*). */
+.plan .plan-zone-area {
+  fill: url(#zone-hatch);
+  stroke: var(--pd-volet-encre);
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+.plan .plan-zone-hatch {
+  stroke: var(--pd-volet-encre);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+}
+.plan .plan-zone.selected .plan-zone-area {
+  stroke-width: 2.5;
+  stroke-dasharray: 6 3;
+}
+.plan .plan-zone-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: var(--pd-volet-encre);
+  paint-order: stroke;
+  stroke: var(--plan-room);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+.plan .plan-zone-corner {
+  fill: var(--panel, #fff);
+  stroke: var(--pd-volet-encre);
+  stroke-width: 2;
+  cursor: move;
+}
+.plan .plan-zone-snap {
+  font-size: 11px;
+  fill: var(--pd-volet-encre);
+  pointer-events: none;
+}
+
 .plan .roof-usable {
   fill: none;
   stroke: #b86e12;
