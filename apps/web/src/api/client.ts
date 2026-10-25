@@ -2356,6 +2356,8 @@ export interface MediaRef {
   kind?: "image" | "video" | "pdf" | "file";
   /** Vignette rendue sur la machine (première page d'un PDF). */
   thumb?: string | null;
+  /** Envoyé par l'espace de travail, qui pose lui-même sa carte (25 oct.). */
+  placed?: boolean;
 }
 
 /** KAN-51 : un point de l'espace de travail ; sur un élément, `at` est relatif à son coin et
@@ -2581,7 +2583,9 @@ export const boardApi = {
     if (refused) return Promise.reject(refused);
     const body = new FormData();
     body.append("file", file);
-    return request<MediaRef>(`/projects/${pid}/media`, {
+    // L'espace de travail pose lui-même la carte du fichier : la synchronisation ne doit pas
+    // en faire une copie dans « Fichiers » entre l'envoi et l'écriture de la carte (25 oct.).
+    return request<MediaRef>(`/projects/${pid}/media?placed=true`, {
       method: "POST",
       body,
     });

@@ -268,13 +268,19 @@ def media_list(project: ProjectDep, store: StoreDep) -> list[MediaRef]:
 
 
 @router.post("/projects/{project_id}/media", status_code=201)
-async def media_upload(file: UploadFile, project: ProjectDep, store: StoreDep) -> MediaRef:
+async def media_upload(
+    file: UploadFile, project: ProjectDep, store: StoreDep, placed: bool = False
+) -> MediaRef:
     """Joint un fichier au projet, gardé sur cette machine : une vidéo (mp4, webm) jusqu'à
-    200 Mo, tout autre fichier jusqu'à 50 Mo ; un PDF reçoit la vignette de sa première page."""
+    200 Mo, tout autre fichier jusqu'à 50 Mo ; un PDF reçoit la vignette de sa première page.
+    `placed` : l'espace de travail pose lui-même sa carte (la synchronisation n'en fait pas
+    de copie dans « Fichiers »)."""
     data = await file.read(b.MAX_VIDEO_BYTES + 1)
     try:
         with store.lock(project.id):
-            return b.add_media(store.project_dir(project.id), data, file.filename or "fichier")
+            return b.add_media(
+                store.project_dir(project.id), data, file.filename or "fichier", placed=placed
+            )
     except MediaError as exc:
         too_big = len(data) > b.max_bytes(b.media_kind_of(b.media_type_of(data[:64])))
         raise HTTPException(status_code=413 if too_big else 400, detail=str(exc)) from exc

@@ -194,3 +194,8 @@ class MediaRef(StrictModel):
     PDF, ou autre fichier."""
     thumb: str | None = None
     """Vignette rendue sur la machine (première page d'un PDF), si elle a pu l'être."""
+    placed: bool = False
+    """Envoyé par l'espace de travail, qui pose lui-même sa carte (dans Inspirations, ou là où
+    le fichier a été déposé) : la synchronisation ne le range jamais dans « Fichiers ». Sans
+    cela, une lecture du tableau entre l'envoi et l'écriture de la carte en faisait une copie
+    dans un cadre « Fichiers » créé exprès (25 oct.). Faux : joint par l'API (C1)."""

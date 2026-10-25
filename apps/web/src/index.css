@@ -9470,3 +9470,15 @@ button.link,
 .live-banner.live-unstable button {
   flex: none;
 }
+
+/* ---- Consigne d'une carte vide au-dessus d'« Importer » (25 oct.) ----
+   Sur deux lignes (carte étroite, Inspirations), la consigne centrée sur tout le cadre passait
+   sous la rangée « Importer ». Elle s'ancre maintenant par le bas, juste au-dessus de la
+   rangée, et grandit vers le haut : sa boîte prend la hauteur de son texte (aucune hauteur
+   bornée, frames-fit.spec : rien de coupé à 150 %). */
+.board-item.kind-frame:has(.board-frame-import-row) .board-frame-hint {
+  top: auto;
+  bottom: calc(50% - 2.2em);
+  padding-top: 0;
+  padding-bottom: 0.4em;
+}

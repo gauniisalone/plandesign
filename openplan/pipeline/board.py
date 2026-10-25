@@ -391,6 +391,43 @@ def board_kind(media: MediaRef) -> str:
     return {"video": "video", "pdf": "pdf"}.get(media.kind, "file")
 
 
+MEDIA_KINDS = ("file", "video", "pdf")
+
+
+def _without_stray_files(items: list[BoardItem]) -> list[BoardItem]:
+    """Réparation (25 oct.) de ce que la course entre l'envoi d'un fichier et l'écriture de sa
+    carte a laissé : la copie rangée dans un cadre « Fichiers » d'un fichier posé ailleurs (dans
+    Inspirations, sur l'espace), puis tout cadre « Fichiers » resté vide."""
+    files_frames = {i.id for i in items if i.kind == "frame" and i.role == "files"}
+    if not files_frames:
+        return items
+    elsewhere = {
+        i.ref for i in items if i.kind in MEDIA_KINDS and i.frame not in files_frames and i.ref
+    }
+    kept = [
+        i
+        for i in items
+        if not (i.kind in MEDIA_KINDS and i.frame in files_frames and i.ref in elsewhere)
+    ]
+    filled = {i.frame for i in kept if i.frame in files_frames}
+    return [i for i in kept if not (i.id in files_frames and i.id not in filled)]
+
+
+def _join_files(
+    added: _Adder, joined: list[tuple[str, str, str]], media: list[MediaRef], dismissed: set[str]
+) -> None:
+    """Les fichiers joints par l'API (C1) entrent dans « Fichiers ». Un fichier posé sur le
+    tableau à la main garde sa place et sa sorte d'élément ; un fichier envoyé par l'espace de
+    travail (`placed`) n'y entre jamais : sa carte arrive par l'écriture du tableau qui suit
+    l'envoi (25 oct. : course entre les deux)."""
+    placed_media = {i.ref for i in added.items if i.kind in MEDIA_KINDS}
+    by_client = {str(m.id) for m in media if m.placed}
+    for kind, mid, name in joined:
+        if mid in placed_media or mid in by_client or f"{kind}:{mid}" in dismissed:
+            continue
+        added.into("files", "Fichiers", kind, mid, name)
+
+
 def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     board: Board | None, project: Project, runs_dir: Path, media: list[MediaRef] | None = None
 ) -> tuple[Board, bool]:
@@ -431,6 +468,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     items = _without_gone_photo_cards(
         [i for i in items if i.id not in gone and i.frame not in gone], lids
     )
+    items = _without_stray_files(items)
 
     present = {_key(i) for i in items}
     added = _Adder(items)
@@ -475,11 +513,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
                 "inspiration, sans plan",
                 "inspiration",
             )
-    # Un fichier joint posé sur le tableau à la main garde sa place et sa sorte d'élément.
-    placed_media = {i.ref for i in added.items if i.kind in ("file", "video", "pdf")}
-    for kind, mid, name in joined:
-        if mid not in placed_media and f"{kind}:{mid}" not in dismissed:
-            added.into("files", "Fichiers", kind, mid, name)
+    _join_files(added, joined, media or [], dismissed)
     # Rendus contextualisés (A1) : dans le cadre Moodboard, avec leur variante.
     for ref, title in have.contextual:
         if f"contextual:{ref}" not in present | dismissed:
@@ -885,7 +919,7 @@ def _pdf_thumb(pdf: Path, out: Path) -> bool:
         return False
 
 
-def add_media(project_dir: Path, data: bytes, name: str) -> MediaRef:
+def add_media(project_dir: Path, data: bytes, name: str, *, placed: bool = False) -> MediaRef:
     if not data:
         msg = "fichier vide"
         raise MediaError(msg)
@@ -901,7 +935,9 @@ def add_media(project_dir: Path, data: bytes, name: str) -> MediaRef:
     safe = _safe_name(name)
     suffix = Path(safe).suffix.lower()
     suffix = suffix if re.fullmatch(r"\.[a-z0-9]{1,10}", suffix) else ""
-    ref = MediaRef(name=safe, media_type=media_type, size=len(data), path="", kind=kind)
+    ref = MediaRef(
+        name=safe, media_type=media_type, size=len(data), path="", kind=kind, placed=placed
+    )
     relative = f"{MEDIA_DIR}/{ref.id}{suffix}"
     ref = ref.model_copy(update={"path": relative})
     target = project_dir / relative
