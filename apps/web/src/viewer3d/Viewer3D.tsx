@@ -11,6 +11,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Point3 } from "../api/types.gen";
 import type { Selection } from "../model";
 import { isDark, onThemeChange } from "../theme";
+import { attachGestures, type Cote, type GestureInputs } from "./gestures3d";
 import type { SectionAxis } from "./view3d";
 
 /** Pose d'un point de vue dans le repère du plan (Z vers le haut, lacet depuis +X). */
@@ -69,6 +70,9 @@ interface Props {
   cutawayWalls?: readonly string[] | null;
   /** Rayons X (E3) : tout semi-transparent. */
   xray?: boolean;
+  /** KAN-92 : Pousser/Tirer ou Zone de sol, et ce qu'il leur faut (éléments du niveau, hauteur,
+   *  pièces) ; sans outil, un clic choisit comme avant. */
+  gestures?: GestureInputs;
   ref?: Ref<Viewer3DHandle>;
 }
 
@@ -131,8 +135,13 @@ export function Viewer3D({
   preset = null,
   cutawayWalls = null,
   xray = false,
+  gestures,
   ref,
 }: Props) {
+  const gesturesRef = useRef<GestureInputs | undefined>(gestures);
+  gesturesRef.current = gestures;
+  const gestureApi = useRef<ReturnType<typeof attachGestures> | null>(null);
+  const [cote, setCote] = useState<Cote | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Group | null>(null);
   const hiddenRef = useRef(hiddenIds);
@@ -351,6 +360,7 @@ export function Viewer3D({
       downAt = { x: e.clientX, y: e.clientY };
     };
     const onUp = (e: PointerEvent) => {
+      if (gesturesRef.current?.tool) return; // KAN-92 : l'outil 3D garde le clic
       if (
         !downAt ||
         Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 4 ||
@@ -375,6 +385,43 @@ export function Viewer3D({
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
+    const tools = attachGestures({
+      canvas: renderer.domElement,
+      camera,
+      controls,
+      scene,
+      root: () => sceneRef.current,
+      inputs: () =>
+        gesturesRef.current ?? {
+          tool: null,
+          elements: {},
+          ceiling: 2.5,
+          floorZ: 0,
+          rooms: [],
+          onOp: () => undefined,
+        },
+      setCote,
+    });
+    gestureApi.current = tools;
+    // e2e (KAN-92) : avec `__planDesign3dProbe` posé par le test, un point du plan → l'écran,
+    // pour cliquer une face ou le sol. Absent en production.
+    const probe = window as {
+      __planDesign3dProbe?: boolean;
+      __planDesign3d?: {
+        toScreen: (x: number, y: number, z: number) => { x: number; y: number };
+      };
+    };
+    if (probe.__planDesign3dProbe)
+      probe.__planDesign3d = {
+        toScreen: (x, y, z) => {
+          const v = new THREE.Vector3(x, z, -y).project(camera);
+          const r = renderer.domElement.getBoundingClientRect();
+          return {
+            x: r.left + ((v.x + 1) / 2) * r.width,
+            y: r.top + ((1 - v.y) / 2) * r.height,
+          };
+        },
+      };
 
     const resize = new ResizeObserver(() => {
       renderer.setSize(mount.clientWidth, mount.clientHeight);
@@ -414,6 +461,8 @@ export function Viewer3D({
       stopTheme();
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
+      tools.dispose();
+      gestureApi.current = null;
       controls.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -427,6 +476,12 @@ export function Viewer3D({
   useEffect(() => {
     if (sceneRef.current) applySelection(sceneRef.current, selectedId);
   }, [selectedId]);
+
+  // KAN-92 : changer d'outil abandonne le geste en cours et la surbrillance.
+  const tool3d = gestures?.tool ?? null;
+  useEffect(() => {
+    gestureApi.current?.reset();
+  }, [tool3d]);
 
   useEffect(() => {
     if (sceneRef.current) applyVisibility(sceneRef.current, hiddenIds);
@@ -485,7 +540,21 @@ export function Viewer3D({
       data-preset={preset?.kind ?? "iso"}
       data-xray={xray ? "on" : "off"}
       data-cutaway={cutawayWalls ? String(cutCount) : "off"}
-    />
+      data-tool={tool3d ?? "none"}
+    >
+      {cote && (
+        // KAN-92 : la cote qui suit la souris pendant Pousser/Tirer (ou le coin de zone).
+        <div
+          className={`viewer3d-cote${cote.warn ? " warn" : ""}`}
+          role="status"
+          aria-live="polite"
+          style={{ left: cote.x + 14, top: cote.y + 14 }}
+        >
+          <strong>{cote.text}</strong>
+          {cote.note && <span>{cote.note}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 

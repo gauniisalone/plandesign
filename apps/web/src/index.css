@@ -1328,6 +1328,31 @@ button.cta:hover:not(:disabled) {
 .viewer3d {
   width: 100%;
   height: 100%;
+  position: relative;
+}
+
+/* KAN-92 : la cote de Pousser/Tirer (ou du coin de zone), près du curseur. */
+.viewer3d-cote {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px;
+  border-radius: var(--r-control);
+  background: var(--panel);
+  border: 1px solid var(--line-strong, var(--border));
+  box-shadow: var(--shadow-sm);
+  font-size: 0.85rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.viewer3d-cote span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.viewer3d-cote.warn span {
+  color: var(--warn);
 }
 
 .pill {

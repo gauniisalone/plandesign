@@ -80,7 +80,16 @@ import {
   type LabelRequest,
 } from "./labels";
 
-export type Tool = "select" | "pan" | "wall" | "door" | "window" | "scale";
+export type Tool =
+  | "select"
+  | "pan"
+  | "wall"
+  | "door"
+  | "window"
+  | "scale"
+  /** KAN-92 : outils de la vue 3D ; le plan 2D se comporte alors comme « Sélection ». */
+  | "pushpull"
+  | "floorzone";
 
 /** Fond de photo : image du projet posée dans le plan (coin bas-gauche en (tx, ty), mètres). */
 export interface Background {

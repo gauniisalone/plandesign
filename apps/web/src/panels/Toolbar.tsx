@@ -17,12 +17,14 @@ import {
   IconDoor,
   IconDownload,
   IconFit,
+  IconFloorZone,
   IconGear,
   IconHand,
   IconMaterials,
   IconMinus,
   IconPanel,
   IconPlus,
+  IconPushPull,
   IconRedo,
   IconRoofOff,
   IconRoom,
@@ -425,8 +427,8 @@ export function ToolPalette({
         {toolButton("wall", "Mur", "W", IconWall)}
         <IconButton
           label="Détecter les pièces"
-          shortcut="P"
-          more="une pièce par contour fermé de murs"
+          shortcut={viewMode === "2d" ? "P" : undefined}
+          more="une pièce par contour fermé de murs (touche P dans le plan 2D seul)"
           Icon={IconRoom}
           disabled={busy || !drawing}
           onClick={onDetectRooms}
@@ -440,6 +442,25 @@ export function ToolPalette({
           Icon={IconStairs}
           disabled={!drawing}
           onClick={onStairs}
+        />
+        {/* KAN-92 : outils de la vue 3D (actifs quand la 3D est affichée). */}
+        <IconButton
+          label="Pousser/Tirer"
+          shortcut={viewMode === "2d" ? undefined : "P"}
+          more="dans la vue 3D : tirer le côté d'un mur (épaisseur), son dessus (hauteur) ou une zone de sol ; glisser, ou cliquer puis taper une valeur"
+          Icon={IconPushPull}
+          active={tool === "pushpull"}
+          disabled={viewMode === "2d" || !!locked}
+          onClick={() => onTool("pushpull")}
+        />
+        <IconButton
+          label="Zone de sol"
+          shortcut={viewMode === "2d" ? undefined : "Z"}
+          more="dans la vue 3D : 4 clics sur le sol (estrade, marche), puis Pousser/Tirer l'élève"
+          Icon={IconFloorZone}
+          active={tool === "floorzone"}
+          disabled={viewMode === "2d" || !!locked}
+          onClick={() => onTool("floorzone")}
         />
         {hasBackground &&
           toolButton(

@@ -123,6 +123,11 @@ const KEY_TOOLS: Record<string, Tool> = {
   f: "window",
 };
 
+/** KAN-92 : les outils qui agissent dans la vue 3D (Pousser/Tirer, Zone de sol). */
+function is3dTool(tool: Tool): tool is "pushpull" | "floorzone" {
+  return tool === "pushpull" || tool === "floorzone";
+}
+
 const KEY_PRESETS: Record<string, CameraPreset> = {
   "1": "top",
   "2": "front",
@@ -220,6 +225,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   }, [account, role, projectId, projectStamp]);
   const [tool, setTool] = useState<Tool>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  // KAN-92 : plus de 3D affichée, plus d'outil 3D.
+  useEffect(() => {
+    if (viewMode === "2d" && is3dTool(tool)) setTool("select");
+  }, [viewMode, tool]);
   const [step, setStep] = useState<Step>(initialStep ?? "edit");
   const autoStepped = useRef(initialStep !== undefined);
   /** L'espace d'arrivée est choisi (rendus chargés) : jusque-là, l'atelier se dit en
@@ -1011,6 +1020,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
       else return false;
       return true;
     }
+    // KAN-92 : 3D affichée, P = Pousser/Tirer et Z = Zone de sol ; plan 2D seul, P reste
+    // « Détecter les pièces » (plus bas).
+    if (
+      (letter === "p" || letter === "z") &&
+      viewMode !== "2d" &&
+      !planLocked
+    ) {
+      setTool(letter === "p" ? "pushpull" : "floorzone");
+      setMeasure(null);
+      return true;
+    }
     const t = KEY_TOOLS[letter];
     if (t) {
       setTool(t);
@@ -1292,7 +1312,11 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   level={level}
                   derived={state.derived}
                   units={state.project.units_display}
-                  tool={planLocked && tool !== "pan" ? "select" : tool}
+                  tool={
+                    (planLocked && tool !== "pan") || is3dTool(tool)
+                      ? "select"
+                      : tool
+                  }
                   selection={state.selection}
                   background={background}
                   imageWidths={Object.fromEntries(
@@ -1352,6 +1376,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                   }
                   cutawayWalls={view3d.dollhouse ? wallIds : null}
                   xray={view3d.xray}
+                  gestures={{
+                    tool: !planLocked && is3dTool(tool) ? tool : null,
+                    elements: level.elements,
+                    ceiling: level.height,
+                    floorZ: level.elevation,
+                    rooms: Object.values(state.derived?.rooms ?? {}).map(
+                      (r) => r.polygon,
+                    ),
+                    onOp: actions.apply,
+                  }}
                 />
               </div>
             )}
@@ -1703,7 +1737,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
             />
           )}
-          {step === "edit" && show2d && !readOnly && (
+          {/* KAN-92 : la colonne d'outils reste en 3D seule (Pousser/Tirer, Zone de sol, Annuler) ;
+              ses outils de dessin 2D y sont grisés. */}
+          {step === "edit" && !readOnly && (
             <ToolPalette
               project={state.project}
               tool={tool}

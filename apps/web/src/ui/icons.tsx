@@ -298,6 +298,23 @@ export const IconRoom = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-92 : Pousser/Tirer (une face et sa flèche). */
+export const IconPushPull = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 14l4-3h12l-4 3z" />
+    <path d="M4 14v6h12v-6M16 20l4-3v-6" />
+    <path d="M12 9V3M9.5 5.5 12 3l2.5 2.5" />
+  </Svg>
+);
+
+/** KAN-92 : zone de sol (un quadrilatère posé, hachuré). */
+export const IconFloorZone = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 17l5-9h13l-5 9z" />
+    <path d="M7 15l4-5M11 15l4-5M15 15l3-5" />
+  </Svg>
+);
+
 export const IconStairs = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 20h4v-4h4v-4h4V8h4V4" />
