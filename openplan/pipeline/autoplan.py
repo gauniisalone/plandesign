@@ -972,6 +972,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
                 floor_out_of_view=inputs.floor_out_of_view,
                 eave_unseen=inputs.eave_unseen,
                 narrow_room=too_narrow,
+                attic_single=method == "attic",  # KAN-95 : forme lue sur cette seule photo
             )
             if method != "attic":
                 after = _ceiling(after, level_id, estimate)
@@ -982,7 +983,13 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             # (facteur None), la photo est à réestimer avant de pouvoir y mesurer.
             factor = factors.get(method) or factors.get("depth") or factors.get("attic")
             basis = camera_basis(
-                image_id, factor, height, entered=entered, inputs=inputs, narrow_room=too_narrow
+                image_id,
+                factor,
+                height,
+                entered=entered,
+                inputs=inputs,
+                narrow_room=too_narrow,
+                attic_single=method == "attic",
             )
             after = with_basis(after, level_id, basis)
         else:

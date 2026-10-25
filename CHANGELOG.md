@@ -7,6 +7,26 @@ décisions dans `docs/architecture/`. Le numéro de version est celui de `pyproj
 
 ## 0.1.0.dev0 (en cours) — 23 → 28 septembre 2026
 
+### 25 octobre 2026 (KAN-95, temps P1 : combles recoupés sur plusieurs photos)
+
+- Combles : quand la carte Photos reliée au plan compte au moins deux photos, elles sont
+  recoupées après l'analyse de chacune. La pente commune est votée par tous les versants vus
+  sur toutes les photos ; le faîtage est lu sur le profil en travers de chaque photo, une photo
+  qui s'écarte trop est écartée. Le plan dit « N photos concordent à ±X % », et le survol de
+  cette phrase dit ce que chaque photo apporte (faîtage, pente, ou pourquoi elle est écartée).
+  Un plan retouché à la main n'est jamais remplacé ; des photos qui se contredisent (au-delà
+  de ±50 %) non plus, et c'est dit. La longueur reste déduite (photos opposées sans recouvrement).
+- Une mesure de référence posée sur une seule des photos recoupées vaut pour toutes : le plan
+  entier est recalé, la retirer le ramène à l'échelle d'avant.
+- Une photo seule de combles lit désormais le faîtage sur le profil en travers (enveloppe haute
+  en « Λ ») au lieu de l'intersection de deux plans, qui amplifiait leur erreur (grenier mesuré :
+  faîtage +17 % à +530 % avant, −9 % à +15 % après, hauteur supposée 1,50 m).
+- Confiance : « combles lus sur une seule photo » (15 %) et « combles recoupés » (la
+  concordance) rejoignent les facteurs ; l'erreur annoncée couvre l'erreur mesurée.
+- Route `POST /api/projects/{id}/levels/{level}/attic-fusion` (relance du recoupement). Format
+  inchangé (0.18.0) : la contribution de chaque photo est gardée dans les métadonnées de sa
+  caméra.
+
 ### 23 octobre 2026 (KAN-91, lots L1 et L1b : l'espace de travail en cartes reliées)
 
 - Des liens relient les cartes : carte Photos → plan (ses photos le construisent), plan →

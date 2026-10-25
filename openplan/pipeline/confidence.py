@@ -57,6 +57,13 @@ s'affichent « à vérifier », l'inversion ne se voit pas à l'écran.
   largeur est prise au sol (6,96 m au lieu de 5,00 m, +39 %) → 40 %. L'égout vu, lui, est à
   5 % sur le contrôle (1,05 m pour 1,00) : ce chiffre mesure un égout vu, pas l'égout manquant.
 
+KAN-95 (25 oct.) : le banc compte un comble réel mesuré vu par six photos (privé, hors dépôt ;
+`BENCH_SCENES` inchangé, décision PO). Deux facteurs de forme s'y ajoutent : combles lus sur
+une seule photo (`ATTIC_SINGLE_ERROR`, 15 %) et combles recoupés (concordance des photos,
+`FUSION_MIN_ERROR` au moins). Depuis le faîtage lu sur le profil (lot B), le contrôle n'est
+presque plus sensible à la focale (focale × 0,80 : faîtage +13 % → −3 %) ; le poids de la focale
+de repli (5 %) est gardé, appuyé sur les photos réelles (règle de la chambre, grenier).
+
 Le détail chiffré, régénéré à chaque passage du banc, est dans `data/eval/rapport-kan33.md`
 (hors dépôt) ; `tests/unit/test_confidence.py` recalcule la partie contrôle sur la fixture.
 """
@@ -72,7 +79,7 @@ from openplan.schemas.numbers import metres
 
 ScaleSource = Literal["reference", "entered", "assumed"]
 Level = Literal["fiable", "a_verifier", "approximatif"]
-FactorKey = Literal["scale", "focal", "floor", "eave", "room"]
+FactorKey = Literal["scale", "focal", "floor", "eave", "room", "shape"]
 
 LEVEL_LABEL: dict[Level, str] = {
     "fiable": "fiable",
@@ -114,6 +121,22 @@ CLOSE_UP_REACH = 1.5
 """KAN-91 : portée (`depthplan.depth_reach`, 90ᵉ centile de la profondeur en hauteurs de prise
 de vue) sous laquelle la photo ne voit pas le fond de la pièce. Mesuré : bureau vu de près 1,17 ;
 chambre 2,05, combles 2,72, pièce en L Blender 3,48, scène de contrôle 4,45."""
+
+
+ATTIC_SINGLE_ERROR = 0.15
+"""KAN-95 : combles lus sur une seule photo (forme lue sur cette photo). Banc du 25 oct.,
+grenier mesuré (faîtage 2,25 m, largeur au sol 7,20 m), 5 photos qui donnent des combles,
+hauteur supposée 1,50 m, après le lot B : erreurs −9, +13, +1, +15 % (faîtage), −4 % (largeur)
+et une photo masquée par un doigt à −87 % ; médiane 11 %. Avant le lot B : +57, +17, +530,
++182 % sur le faîtage. 15 % : avec la hauteur supposée (9 %), l'erreur annoncée (18 %) couvre
+l'erreur réelle médiane et 5 cotes sur 6."""
+FUSION_MIN_ERROR = 0.05
+"""KAN-95 : combles recoupés : la forme est à ±concordance (une photo retirée à tour de rôle,
+`attic_fusion`), jamais moins que 5 % ; sans photo de biais, jamais moins que 50 %
+(`attic_fusion.AXIAL_ONLY_ERROR`). Grenier mesuré, 6 photos : concordance ±28 %, erreur
+annoncée 29 % ; erreur réelle 13 % (faîtage) et 17 % (largeur), 4 % sur la largeur avec le
+faîtage connu (forme seule). Sur dix sous-ensembles de ces photos, l'erreur annoncée couvre
+l'erreur réelle de faîtage et de largeur, à une cote près (−19 % pour 18 % annoncés)."""
 
 
 def close_up(narrow_room: bool, reach: float | None) -> bool:
@@ -179,12 +202,47 @@ def assess(
     floor_out_of_view: bool = False,
     eave_unseen: bool = False,
     narrow_room: bool = False,
+    attic_single: bool = False,
+    fused_photos: int = 0,
+    fusion_spread: float | None = None,
     bench_scenes: int = BENCH_SCENES,
 ) -> EstimateConfidence:
     """Niveau de confiance d'une estimation depuis une photo et sa raison principale.
     `bench_scenes` : taille du banc qui fonde les poids (plancher de « fiable ») ; ne se change
-    que dans les tests, ou ici même quand une seconde scène mesurée rejoint le banc."""
+    que dans les tests, ou ici même quand une seconde scène mesurée rejoint le banc.
+    KAN-95 : `attic_single`, combles lus sur une seule photo ; `fused_photos` (au moins 2) et
+    `fusion_spread`, combles recoupés et leur concordance."""
     factors = [scale_factor(scale, camera_height_m)]
+    if fused_photos >= 2:
+        spread = max(
+            fusion_spread if fusion_spread is not None else ATTIC_SINGLE_ERROR, FUSION_MIN_ERROR
+        )
+        pct = math.ceil(spread * 100)
+        advice = (
+            f"les {fused_photos} photos ne concordent qu'à ±{pct} % : ajoutez une photo de biais "
+            "vers un versant, ou une mesure de référence"
+            if fusion_spread is not None
+            else f"les {fused_photos} photos ne se recoupent pas assez (une seule voit le "
+            "faîtage ou la pente) : ajoutez une photo de biais vers un versant"
+        )
+        factors.append(
+            Factor(
+                key="shape",
+                label=f"combles recoupés sur {fused_photos} photos (±{pct} %)",
+                error=spread,
+                advice=advice,
+            )
+        )
+    elif attic_single:
+        factors.append(
+            Factor(
+                key="shape",
+                label="combles lus sur une seule photo",
+                error=ATTIC_SINGLE_ERROR,
+                advice="pente lue sur une seule photo : ajoutez à la carte Photos une photo de "
+                "biais vers un versant",
+            )
+        )
     if not focal_from_vps:
         factors.append(
             Factor(

@@ -21,6 +21,8 @@ import type { Project } from "../api/types.gen";
 import { formatMeters, parseLength } from "../state/lengthInput";
 import {
   beforeAfter,
+  fusionOf,
+  fusionTooltip,
   measurability,
   referenceOf,
   type Point,
@@ -113,6 +115,10 @@ export function PhotoMeasure({
   const segment = referenceOf(project, imageId);
   const state = measurability(project, imageId);
   const basis = state.kind === "ready" ? state.basis : null;
+  // KAN-95 : plan recoupé sur plusieurs photos ; le survol dit ce que chacune apporte.
+  const fusedLevel =
+    state.kind === "ready" ? project.levels[state.levelId] : undefined;
+  const fused = fusedLevel ? fusionOf(fusedLevel) : null;
   const canMeasure = !readOnly && state.kind === "ready";
 
   const [mode, setMode] = useState<Mode>(() =>
@@ -643,7 +649,9 @@ export function PhotoMeasure({
         <div className="pm-scale" aria-label="Échelle de l'estimation">
           {basis ? (
             <>
-              <span>{basis.text}</span>
+              <span title={fused ? fusionTooltip(fused) : undefined}>
+                {basis.text}
+              </span>
               {badge && (
                 <span className={`pm-badge ${badge[1]}`}>{badge[0]}</span>
               )}

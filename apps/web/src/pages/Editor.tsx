@@ -50,6 +50,7 @@ import { ActivityPanel } from "../panels/ActivityPanel";
 import { BoardSide } from "../panels/BoardSide";
 import { takeBellTarget, useBellTargetToken } from "../state/bell";
 import { useLive } from "../state/live";
+import { fusionOf, fusionTooltip } from "../state/photoReference";
 import { useComments } from "../board/useComments";
 import { useReactions } from "../board/useReactions";
 import {
@@ -444,6 +445,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     ? ((state.levelId ? state.project.levels[state.levelId] : undefined) ??
       firstLevel(state.project))
     : undefined;
+  const fusion = level ? fusionOf(level) : null;
   const [newPlanOpen, setNewPlanOpen] = useState(false);
 
   // B2d (KAN-11) : bail d'édition du plan ouvert. Tenu par un autre membre : bandeau, plan
@@ -1952,6 +1954,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                       ? "reconstruit d'après les photos, pas un relevé : « ≈ » = cote estimée, sans « ≈ » = saisie ou mesurée"
                       : "proposé d'après votre texte : ajustez les cotes, « ≈ » = cote non saisie"}
                   </span>
+                  {fusion?.summary && (
+                    // KAN-95 : combles recoupés ; le survol dit ce que chaque photo apporte.
+                    <span
+                      className="muted"
+                      title={fusionTooltip(fusion)}
+                      aria-label={`${fusion.summary}. ${fusionTooltip(fusion)}`}
+                    >
+                      {fusion.summary}
+                    </span>
+                  )}
                   <button
                     className="link"
                     onClick={recalibrate}

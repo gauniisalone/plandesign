@@ -35,6 +35,7 @@ from openplan.pipeline.ingestion import IMAGES_DIR, ImageNotFoundError, load_ima
 from openplan.pipeline.recalibrate import room_axes
 from openplan.scene import history
 from openplan.schemas.common import Point2, StrictModel
+from openplan.schemas.elements import Camera
 from openplan.schemas.numbers import decimal, metres
 from openplan.schemas.scene import (
     REFERENCE_LENGTH_M,
@@ -255,10 +256,78 @@ def remove_depth(project_dir: Path, image_id: UUID) -> None:
 
 
 # ------------------------------------------------------------------ échelle du niveau
+FUSION_KEY = "fusion"
+"""KAN-95 : métadonnée de caméra, contribution de sa photo aux combles recoupés (survol)."""
+FUSION_FACTOR_KEY = "fusion_factor"
+"""KAN-95 : métadonnée de caméra, mètres par unité de la profondeur gardée de sa photo, à
+l'échelle du plan recoupé : une mesure de référence posée sur cette photo recale tout le plan."""
+FUSION_SUMMARY_KEY = "fusion_summary"
+FUSION_SPREAD_KEY = "fusion_spread"
+
+
+def _fusion_cameras(level: Level) -> list[Camera]:
+    return [
+        e
+        for e in level.elements.values()
+        if isinstance(e, Camera) and e.image_id is not None and FUSION_FACTOR_KEY in e.metadata
+    ]
+
+
+def photo_factor(level: Level, image_id: UUID) -> float | None:
+    """Mètres par unité de la profondeur gardée de cette photo, à l'échelle du niveau : celui
+    de l'origine de l'échelle, ou (KAN-95) celui d'une photo recoupée."""
+    basis = level.scale_basis
+    if basis is not None and basis.image_id == image_id:
+        return basis.factor
+    for camera in _fusion_cameras(level):
+        value = camera.metadata.get(FUSION_FACTOR_KEY)
+        if camera.image_id == image_id and isinstance(value, int | float) and value > 0:
+            return float(value)
+    return None
+
+
+def fusion_state(level: Level) -> tuple[int, float | None] | None:
+    """KAN-95 : (photos recoupées, concordance) d'un niveau aux combles recoupés, sinon None."""
+    cameras = _fusion_cameras(level)
+    if not cameras:
+        return None
+    used = 0
+    spread: float | None = None
+    for camera in cameras:
+        info = camera.metadata.get(FUSION_KEY)
+        if isinstance(info, dict) and info.get("kept"):
+            used += 1
+        value = camera.metadata.get(FUSION_SPREAD_KEY)
+        if isinstance(value, int | float):
+            spread = float(value)
+    return used, spread
+
+
+def _scale_fusion_factors(level: Level, factor: float) -> Level:
+    """Après un recalage du niveau, les mètres par unité de chaque photo recoupée suivent."""
+    elements = dict(level.elements)
+    for camera in _fusion_cameras(level):
+        value = camera.metadata.get(FUSION_FACTOR_KEY)
+        if isinstance(value, int | float):
+            elements[camera.id] = camera.model_copy(
+                update={"metadata": {**camera.metadata, FUSION_FACTOR_KEY: float(value) * factor}}
+            )
+    return level.model_copy(update={"elements": elements})
+
+
 def scale_3d(level: Level, factor: float) -> Level:
     """Toutes les longueurs du niveau, hauteurs comprises (plafond, murs, égouts ; les pentes
-    gardent leur angle)."""
-    return apply_axis_scale(level, 0.0, factor, factor, factor)[0]
+    gardent leur angle). KAN-95 : l'échelle de chaque photo recoupée suit."""
+    return _scale_fusion_factors(apply_axis_scale(level, 0.0, factor, factor, factor)[0], factor)
+
+
+def level_shape(level: Level) -> tuple[bool, int, float | None]:
+    """KAN-95 : ce que le niveau dit de la forme, pour la confiance recalculée quand l'échelle
+    change : (combles lus sur une seule photo, photos recoupées, concordance)."""
+    fused = fusion_state(level)
+    if fused is not None:
+        return False, fused[0], fused[1]
+    return level.kind == "attic", 0, None
 
 
 def scale_confidence(
@@ -267,10 +336,15 @@ def scale_confidence(
     camera_height_m: float | None = None,
     *,
     narrow_room: bool = False,
+    attic_single: bool = False,
+    fused_photos: int = 0,
+    fusion_spread: float | None = None,
 ) -> ScaleConfidence:
     """KAN-31 : confiance de l'estimation pour cette source d'échelle, les autres facteurs
     (focale, sol, égout) étant ceux de l'estimation de la photo. `narrow_room` (KAN-87) se lit
-    sur le plan lui-même, à cette échelle (`narrow`), il n'est pas gardé."""
+    sur le plan lui-même, à cette échelle (`narrow`), il n'est pas gardé. KAN-95 : forme des
+    combles lue sur une seule photo (`attic_single`) ou recoupée (`fused_photos`,
+    `fusion_spread`), lue elle aussi sur le niveau (`level_shape`)."""
     found = assess(
         source,
         camera_height_m=camera_height_m if source == "entered" else None,
@@ -278,6 +352,9 @@ def scale_confidence(
         floor_out_of_view=inputs.floor_out_of_view,
         eave_unseen=inputs.eave_unseen,
         narrow_room=narrow_room,
+        attic_single=attic_single,
+        fused_photos=fused_photos,
+        fusion_spread=fusion_spread,
     )
     return ScaleConfidence(
         level=found.level,
@@ -295,9 +372,11 @@ def camera_basis(
     entered: bool,
     inputs: ConfidenceInputs | None = None,
     narrow_room: bool = False,
+    attic_single: bool = False,
 ) -> ScaleBasis:
     """L'échelle d'un plan estimé : hauteur de prise de vue saisie, ou supposée par défaut,
-    avec la confiance qui va avec."""
+    avec la confiance qui va avec. `attic_single` (KAN-95) : combles lus sur cette seule
+    photo."""
     words = "saisie" if entered else "supposée"
     tail = "" if entered else " (par défaut)"
     inputs = inputs or ConfidenceInputs()
@@ -308,7 +387,11 @@ def camera_basis(
         factor=factor,
         camera_height_m=camera_height_m,
         confidence=scale_confidence(
-            "entered" if entered else "assumed", inputs, camera_height_m, narrow_room=narrow_room
+            "entered" if entered else "assumed",
+            inputs,
+            camera_height_m,
+            narrow_room=narrow_room,
+            attic_single=attic_single,
         ),
         confidence_inputs=inputs,
     )
@@ -332,7 +415,12 @@ def basis_level(project: Project, image_id: UUID) -> UUID:
     found = [
         (level.variant_of is not None, lid)
         for lid, level in project.levels.items()
-        if level.scale_basis is not None and level.scale_basis.image_id == image_id
+        if level.scale_basis is not None
+        and (
+            level.scale_basis.image_id == image_id
+            # KAN-95 : une photo recoupée porte elle aussi l'échelle de son plan.
+            or any(c.image_id == image_id for c in _fusion_cameras(level))
+        )
     ]
     if not found:
         msg = (
@@ -400,7 +488,8 @@ def apply_reference(
     basis = level.scale_basis
     assert basis is not None
     stored = load_depth(project_dir, image_id)
-    if stored is None or basis.factor is None:
+    factor = photo_factor(level, image_id)  # KAN-95 : celui de cette photo, recoupée ou non
+    if stored is None or factor is None:
         msg = (
             "la profondeur de cette photo n'a pas été gardée : réestimez la photo pour "
             "pouvoir mesurer"
@@ -413,11 +502,25 @@ def apply_reference(
         stored.to_grid(body.p1),
         stored.to_grid(body.p2),
     )
-    relative = reference_factor(distance, length, basis.factor)
+    relative = reference_factor(distance, length, factor)
     old = ref.reference_segments[0].id if ref.reference_segments else None
     camera = basis.previous if basis.source == "reference" else basis
     segment = ReferenceSegment(p1=body.p1, p2=body.p2, length_m=length, label=label, author=author)
     measurements, calibrations = _without_segment(project, image_id, old)
+    images = dict(project.images)
+    if basis.source == "reference" and basis.image_id != image_id and basis.segment_id:
+        # KAN-95 : une seule mesure par plan recoupé ; celle d'une autre photo est remplacée.
+        measurements.pop(basis.segment_id, None)
+        calibrations = [c for c in calibrations if basis.segment_id not in c.measurement_ids]
+        other = images.get(basis.image_id)
+        if other is not None:
+            images[basis.image_id] = other.model_copy(
+                update={
+                    "reference_segments": [
+                        s for s in other.reference_segments if s.id != basis.segment_id
+                    ]
+                }
+            )
     measurement = Measurement(
         id=segment.id,
         kind=MeasurementKind.POINT_TO_POINT,
@@ -441,25 +544,35 @@ def apply_reference(
     )
     what = f" ({label})" if label else ""
     before = room_size(project, level_id)
+    fused = fusion_state(level)
+    attic_single, fused_photos, fusion_spread = level_shape(level)
+    tail = ""
+    if fused is not None:
+        tail = f" · vaut pour les {fused[0]} photos recoupées"
     scaled = scale_3d(level, relative).model_copy(
         update={
             "scale_basis": ScaleBasis(
                 source="reference",
-                text=f"Échelle calée sur votre mesure de {metres(length)}{what}",
+                text=f"Échelle calée sur votre mesure de {metres(length)}{what}{tail}",
                 image_id=image_id,
                 segment_id=segment.id,
-                factor=basis.factor * relative,
+                factor=factor * relative,
                 before=before,
                 previous=camera,
                 camera_height_m=basis.camera_height_m,
                 confidence=scale_confidence(
-                    "reference", basis.confidence_inputs, narrow_room=narrow(before, relative)
+                    "reference",
+                    basis.confidence_inputs,
+                    narrow_room=narrow(before, relative),
+                    attic_single=attic_single,
+                    fused_photos=fused_photos,
+                    fusion_spread=fusion_spread,
                 ),
                 confidence_inputs=basis.confidence_inputs,
             )
         }
     )
-    images = {**project.images, image_id: ref.model_copy(update={"reference_segments": [segment]})}
+    images[image_id] = ref.model_copy(update={"reference_segments": [segment]})
     after = project.model_copy(
         update={
             "images": images,
@@ -495,8 +608,11 @@ def remove_reference(project: Project, image_id: UUID, segment_id: UUID, *, acto
         if basis is None or basis.segment_id != segment_id:
             continue
         back = basis.previous
-        if back is not None and back.factor is not None and basis.factor is not None:
-            levels[lid] = scale_3d(level, back.factor / basis.factor).model_copy(
+        # KAN-95 : l'échelle d'avant est celle de sa propre photo (une autre que la photo
+        # mesurée quand le plan est recoupé) ; son facteur actuel se lit sur le niveau.
+        now = photo_factor(level, back.image_id) if back is not None else None
+        if back is not None and back.factor is not None and now is not None:
+            levels[lid] = scale_3d(level, back.factor / now).model_copy(
                 update={"scale_basis": back}
             )
         else:

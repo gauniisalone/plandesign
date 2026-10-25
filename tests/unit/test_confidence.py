@@ -88,9 +88,13 @@ def test_weights_are_the_bench_numbers(control: dict[str, float]) -> None:
         pytest.approx(control["contrôle · sol hors champ (hauteur saisie 1,45 m)"], abs=0.03)
         == FLOOR_UNSEEN_ERROR
     )
-    # Focale de repli (≈ 10 % d'écart) : la moitié de l'effet d'une focale faussée de −20 %.
+    # Focale de repli (≈ 10 % d'écart) : au moins la moitié de l'effet d'une focale faussée de
+    # −20 % sur le contrôle. KAN-95 : depuis le faîtage lu sur le profil, le contrôle n'y est
+    # presque plus sensible (faîtage +13 % → −3 % à focale × 0,80) ; le poids de 5 % est gardé
+    # sur les photos réelles : règle de la chambre (5 points entre focale des lignes et repli),
+    # grenier mesuré (la focale fait passer le faîtage d'une photo de 2,28 à 3,65 m).
     focal_shift = control["contrôle · focale × 0,80"] - entered
-    assert pytest.approx(focal_shift / 2, abs=0.03) == FOCAL_FALLBACK_ERROR
+    assert focal_shift / 2 - 0.03 <= FOCAL_FALLBACK_ERROR
     # Égout non vu : largeur prise au sol au lieu de l'égout, sur la géométrie vraie du contrôle.
     from tests import control_attic
 

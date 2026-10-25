@@ -11,7 +11,11 @@ sortes de jeux, toutes estimées par le code actuel (lignes de fuite + profondeu
   mètres et, par photo, les deux extrémités repérées à la main en pixels) ; la longueur 3D
   estimée de la règle est comparée à la vraie, avec la hauteur de prise de vue et la focale
   estimées ;
-- **autre sous-dossier avec photos** : cotes estimées, rapportées sans vérité.
+- **autre sous-dossier avec photos** : cotes estimées, rapportées sans vérité ;
+- **comble mesuré vu par plusieurs photos** (KAN-95) : sous-dossier avec `mesures.txt`
+  (`hauteur_faitage`, et si connues `largeur` au sol et `longueur`) et au moins deux photos :
+  combles de chaque photo seule, puis recoupés (`attic_fusion`), contre ces cotes. Les cotes
+  restent dans le jeu (privé) ; sans elles, rien n'est mesuré ni signalé.
 
 Profondeur des photos : `<photo>.depth.npy` à côté de la photo (calculée une fois, modèle sur
 GPU) ; absente, elle est calculée et enregistrée si un estimateur est donné, sinon la photo est
@@ -33,7 +37,7 @@ from numpy.typing import NDArray
 from pydantic import Field
 
 from openplan.adapters.exif_camera import ExifCameraEstimator
-from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
+from openplan.adapters.heuristic.camera import CameraAnalysis, VanishingPointCameraEstimator
 from openplan.adapters.protocols import DepthEstimator, ImageArray
 from openplan.pipeline.attic import AtticEstimate, Estimate, analyse_attic, rescale
 from openplan.pipeline.confidence import EstimateConfidence, ScaleSource, assess
@@ -381,6 +385,156 @@ def bench_photo(
     return bench, rows
 
 
+# ------------------------------------------------------------------ KAN-95 : combles mesurés
+MEASURES_FILE = "mesures.txt"
+MULTI_TRUTH_KEYS = {
+    "hauteur_faitage": "faîtage",
+    "largeur": "largeur au sol",
+    "longueur": "longueur",
+}
+"""Cotes d'un comble mesuré (`mesures.txt`, « clé = valeur », « # » commente) comparées."""
+MIN_MULTI_PHOTOS = 2
+MULTI_WORK = "_recoupement"
+"""Dossier de travail dans le jeu lui-même (rien ne sort de la racine), effacé après."""
+
+
+def read_measures(path: Path) -> dict[str, float]:
+    values: dict[str, float] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if "=" not in line:
+            continue
+        key, value = (part.strip() for part in line.split("=", 1))
+        try:
+            values[key.lower()] = float(value.replace(",", ".").replace("m", "").strip())
+        except ValueError:
+            continue
+    return values
+
+
+def _truth_rows(case: str, cotes: dict[str, float | None], truth: dict[str, float]) -> list[Row]:
+    return [
+        Row.build(case, MULTI_TRUTH_KEYS[key], cotes.get(key), truth[key])
+        for key in MULTI_TRUTH_KEYS
+        if key in truth and key in cotes
+    ]
+
+
+def _single_attic_rows(
+    room: str, path: Path, depth: Float, camera: CameraAnalysis, truth: dict[str, float]
+) -> tuple[list[Row], str | None]:
+    frame_up = camera.frame.up if camera.frame is not None else None
+    est, *_ = analyse_attic(
+        depth,
+        camera.camera.focal_px,
+        camera.camera.principal_point,
+        frame_up=frame_up,
+        frame_up_reliable=camera.frame is not None and camera.frame.focal_from_vps,
+    )
+    if est.camera_height is None or est.ridge_height is None:
+        return [], f"{room}/{path.name} seule : pas de combles (faîtage non vu)"
+    s = rescale(est, DEFAULT_CAMERA_HEIGHT_M, entered=False)
+    at_floor = s.width is not None and all(e.value <= 0.0 for e in s.eave_heights)
+    case = f"{room} · {path.name} seule · hauteur supposée 1,50 m"
+    cotes = {
+        "hauteur_faitage": _value(s.ridge_height),
+        "largeur": _value(s.width) if at_floor else None,
+    }
+    return _truth_rows(case, cotes, truth), None
+
+
+def bench_attic_photos(  # noqa: PLR0915
+    room_dir: Path, photos: list[Path], estimator: DepthEstimator | None
+) -> tuple[list[Row], dict[str, float], list[str]]:
+    """KAN-95 : comble mesuré vu par plusieurs photos. Chaque photo seule (combles de l'app,
+    hauteur supposée 1,50 m) puis le recoupement (`attic_fusion`), à la hauteur supposée et
+    avec le faîtage connu (erreur de forme seule). Largeur comparée à la largeur au sol quand
+    l'égout estimé est nul (pentes jusqu'au sol) ; longueur déduite, rapportée à part."""
+    import shutil
+
+    from openplan.pipeline.attic_fusion import fuse_attic
+    from openplan.pipeline.ingestion import import_image
+    from openplan.pipeline.reference import write_depth
+    from openplan.scene.factory import new_project
+
+    room = room_dir.name
+    measured = read_measures(room_dir / MEASURES_FILE)
+    truth = {k: v for k, v in measured.items() if k in MULTI_TRUTH_KEYS}
+    rows: list[Row] = []
+    medians: dict[str, float] = {}
+    notes: list[str] = []
+    if "hauteur_faitage" not in truth:
+        return rows, medians, [f"{room} : pas de hauteur_faitage, recoupement non mesuré"]
+    work = room_dir / MULTI_WORK
+    shutil.rmtree(work, ignore_errors=True)
+    project = new_project(room)
+    ids = []
+    single: list[Row] = []
+    try:
+        for path in photos:
+            image = _load(path)
+            depth = photo_depth(path, image, estimator)
+            if depth is None:
+                notes.append(f"{room}/{path.name} : profondeur absente, hors recoupement")
+                continue
+            camera = VanishingPointCameraEstimator().analyse(image)
+            project, ref, _ = import_image(
+                project, work, path.read_bytes(), original_name=path.name
+            )
+            write_depth(
+                work,
+                ref.id,
+                np.asarray(depth, dtype=np.float32),
+                camera.camera.focal_px,
+                camera.camera.principal_point,
+                (image.width, image.height),
+                model_id="bench",
+            )
+            ids.append(ref.id)
+            found, note = _single_attic_rows(room, path, depth, camera, truth)
+            single += found
+            if note:
+                notes.append(note)
+        rows += single
+        m = _median_abs(single)
+        if m is not None:
+            medians[f"{room} · photo seule (combles)"] = m
+        run = fuse_attic(project, work, next(iter(project.levels)), ids)
+        if run.fusion is None:
+            return rows, medians, [*notes, *(f"{room} : {n}" for n in run.notices)]
+        f = run.fusion
+        cotes = {
+            "hauteur_faitage": f.ridge_height.value,
+            "largeur": f.width.value if f.eave_height.value <= 0 else None,
+            "longueur": f.length.value,
+        }
+        k = truth["hauteur_faitage"] / f.ridge_height.value
+        fused = _truth_rows(
+            f"{room} · recoupement {f.used} photos · hauteur supposée 1,50 m", cotes, truth
+        )
+        known = _truth_rows(
+            f"{room} · recoupement {f.used} photos · faîtage connu",
+            {
+                key: (None if v is None else v * k)
+                for key, v in cotes.items()
+                if key != "hauteur_faitage"
+            },
+            truth,
+        )
+        rows += [*fused, *known]
+        notes.append(f"{room} : {f.summary}, pente {decimal(f.pitch_deg, 1)}° ; longueur déduite")
+        for key, group in (
+            (f"{room} · recoupement", fused),
+            (f"{room} · recoupement, faîtage connu", known),
+        ):
+            m = _median_abs([r for r in group if r.metric != "longueur"])
+            if m is not None:
+                medians[key] = m
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return rows, medians, notes
+
+
 def _photos(room_dir: Path) -> list[Path]:
     """Photos du jeu ; un fichier en « _ » (image de diagnostic…) n'en est pas une."""
     return sorted(
@@ -426,6 +580,19 @@ def run_bench(
                 if r.error is not None:
                     config = r.case.rsplit(" · ", 1)[-1]
                     ruler_errors.setdefault(f"règle · {config}", []).append(abs(r.error))
+        # KAN-95 : comble mesuré (mesures.txt) vu par plusieurs photos ; sauté sans cotes.
+        photos = _photos(room_dir)
+        measures = room_dir / MEASURES_FILE
+        if (
+            measures.is_file()
+            and "hauteur_faitage" in read_measures(measures)
+            and len(photos) >= MIN_MULTI_PHOTOS
+        ):
+            say(f"{room_dir.name} : recoupement…")
+            multi_rows, multi_medians, multi_notes = bench_attic_photos(room_dir, photos, estimator)
+            report.rows.extend(multi_rows)
+            report.medians.update(multi_medians)
+            report.notes.extend(multi_notes)
     for key, errors in ruler_errors.items():
         report.medians[key] = statistics.median(errors)
     return report

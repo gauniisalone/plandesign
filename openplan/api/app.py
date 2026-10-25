@@ -42,6 +42,7 @@ from openplan.api.public_errors import public_detail
 from openplan.api.routes import (
     ai,
     assistant,
+    attic_fusion,
     autoplan,
     board,
     calibration,
@@ -306,6 +307,7 @@ def create_app(
         images.router,
         detection.router,
         autoplan.router,
+        attic_fusion.router,
         ai.router,
         assistant.router,
         models.router,

@@ -6,6 +6,8 @@ import { test } from "node:test";
 import type { Project } from "../src/api/types.gen";
 import {
   beforeAfter,
+  fusionOf,
+  fusionTooltip,
   measurability,
   referenceOf,
   type PhotoScaleBasis,
@@ -83,6 +85,47 @@ test("la mesure posée, p1 et p2 en nombres", () => {
   assert.deepEqual(r?.p1, [262, 600]);
   assert.equal(r?.label, "porte");
   assert.equal(referenceOf(project({}), IMG), null);
+});
+
+test("KAN-95 : une photo recoupée est mesurable avec son propre facteur", () => {
+  const meta = (kept: boolean, factor: number, reason: string) => ({
+    fusion: {
+      kept,
+      reason,
+      weight: kept ? 0.5 : 0,
+      ridge_m: 2.4,
+      pitch_deg: 33.2,
+    },
+    fusion_factor: factor,
+    fusion_summary: "2 photos concordent à ±6 %",
+  });
+  const cams = {
+    c1: {
+      type: "camera",
+      image_id: IMG,
+      metadata: meta(true, 0.8, "faîtage et pente"),
+    },
+    c2: {
+      type: "camera",
+      image_id: "img-2",
+      metadata: meta(true, 0.6, "pente seulement"),
+    },
+  };
+  const p = project({ a: level(basis(), cams) });
+  const m = measurability(p, "img-2");
+  assert.equal(m.kind, "ready");
+  assert.equal(m.kind === "ready" && m.basis.factor, 0.6);
+  assert.equal(m.kind === "ready" && m.basis.image_id, "img-2");
+  const lvl = (p.levels as Record<string, Parameters<typeof fusionOf>[0]>).a;
+  const fused = fusionOf(lvl);
+  assert.equal(fused?.summary, "2 photos concordent à ±6 %");
+  const tip = fusionTooltip(fused!);
+  assert.match(
+    tip,
+    /^Photo 1 : faîtage et pente · 50 % \(faîtage 2,40 m, pente 33°\)/,
+  );
+  assert.equal(tip.split("\n").length, 2);
+  assert.equal(fusionOf(level(basis()) as never), null);
 });
 
 test("« 4,06 → 5,00 m » depuis la boîte d'avant et le facteur", () => {

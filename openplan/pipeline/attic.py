@@ -87,6 +87,30 @@ class PlaneSummary(StrictModel):
     rms_m: float = Field(ge=0.0)
 
 
+class RidgeProfile(StrictModel):
+    """KAN-95 (lot B) : profil en travers des combles, lu sur l'enveloppe haute du nuage (le
+    dessus des points, c'est-à-dire la toiture vue par en dessous) et ajusté en « Λ ». Unités
+    de l'estimation (celles du modèle, puis mètres après `rescale`)."""
+
+    ridge_y: float
+    """Écart en travers entre l'appareil et le faîtage."""
+    ridge_z: float = Field(gt=0.0)
+    """Hauteur du faîtage au-dessus du sol."""
+    pitch_deg: tuple[float, float]
+    """Pente de chaque versant lue sur le profil (côté gauche, côté droit)."""
+    bins: tuple[int, int]
+    """Tranches d'enveloppe qui portent chaque versant (points d'appui)."""
+    rms: float = Field(ge=0.0)
+
+
+class PitchVote(StrictModel):
+    """KAN-95 (lot B) : un plan incliné en travers du faîtage vote pour la pente du toit."""
+
+    pitch_deg: float
+    weight: float = Field(ge=0.0)
+    """Part du nuage de points portée par ce plan."""
+
+
 class AtticEstimate(StrictModel):
     camera_height: Estimate | None = None
     ridge_height: Estimate | None = None
@@ -120,6 +144,17 @@ class AtticEstimate(StrictModel):
     l'écran ; faux quand les deux pentes lues diffèrent trop ou qu'une jambette manque."""
     """KAN-73 : égout trouvé puis écarté comme invraisemblable (raison affichée) ; `eave_heights`
     et `width` sont alors vides, l'égout est inconnu comme dans KAN-61."""
+    ridge_profile: RidgeProfile | None = None
+    """KAN-95 : profil en travers en « Λ » ; quand il est valable et qu'une pente au moins est
+    vue, c'est lui qui donne `ridge_height` (sauf toit symétrique KAN-72b, plus sûr)."""
+    pitch_votes: list[PitchVote] = Field(default_factory=list)
+    """KAN-95 : votes de pente de tous les plans inclinés en travers du faîtage."""
+    voted_pitch_deg: float | None = None
+    """KAN-95 : pente votée (médiane pondérée, aberrants écartés) ; sert au recoupement de
+    plusieurs photos (`attic_fusion`)."""
+    along_ridge: float | None = None
+    """KAN-95 : |cosinus| entre l'axe de la photo et le faîtage (1 = photo dans l'axe, qui voit
+    un pignon de face ; 0 = photo de biais vers un versant)."""
 
 
 EAVE_MIN_BELOW_RIDGE_M = 0.5
@@ -211,6 +246,15 @@ def rescale(
                 for p in estimate.planes
             ],
             "roof_windows": [w.scaled(factor) for w in estimate.roof_windows],
+            "ridge_profile": None
+            if estimate.ridge_profile is None
+            else estimate.ridge_profile.model_copy(
+                update={
+                    "ridge_y": estimate.ridge_profile.ridge_y * factor,
+                    "ridge_z": estimate.ridge_profile.ridge_z * factor,
+                    "rms": estimate.ridge_profile.rms * factor,
+                }
+            ),
             "scale_factor": estimate.scale_factor * factor,
             "scale_note": f"Échelle recalée sur la {words} : facteur {decimal(factor)} "
             f"appliqué aux longueurs du modèle de profondeur (qui donnait "
@@ -886,6 +930,241 @@ def far_along_ridge(points: Float, axes: Float) -> float | None:
     return float(np.percentile(ahead, FAR_PERCENTILE))
 
 
+# ------------------------------------------------------------------ KAN-95, lot B
+VOTE_TILT_DEG = (15.0, 70.0)
+"""Plans qui votent pour la pente : inclinés de 15 à 70° sur l'horizontale."""
+VOTE_MAX_ALONG = 0.25
+"""Un plan de toit a sa normale en travers du faîtage : composante le long au plus 0,25 (un
+plan oblique, coin de pignon ou objet, ne vote pas)."""
+VOTE_MAD_K = 2.5
+"""Rejet des aberrants : au-delà de 2,5 écarts absolus médians (normalisés) de la médiane."""
+AZIMUTH_BINS = 72
+PROFILE_BAND = 0.9
+"""Enveloppe haute : points à plus de 0,9 × la hauteur de l'appareil au-dessus du sol (la
+toiture ; l'encombrement du sol, planches et meubles, reste en dessous)."""
+PROFILE_BIN = 0.05
+"""Largeur d'une tranche en travers, en hauteurs d'appareil."""
+PROFILE_QUANTILE = 95.0
+PROFILE_MIN_BINS = 5
+"""Tranches minimales par versant pour lire un « Λ »."""
+PROFILE_PITCH_DEG = (10.0, 70.0)
+PROFILE_MAX_RIDGE = 4.0
+"""Faîtage lu au plus à 4 hauteurs d'appareil (6 m pour 1,50 m) : au-delà, le « Λ » suit du
+bruit, pas une toiture."""
+PROFILE_KEEP = 0.8
+"""Moindres carrés tronqués : 80 % des tranches les mieux ajustées gardées (deux passes)."""
+PROFILE_CANDIDATES = 120
+PROFILE_JOIN_WEIGHT = 50.0
+"""Poids de l'écart entre les deux droites au sommet (un seul faîtage)."""
+PROFILE_NOTE = "faîtage lu sur le profil en travers (enveloppe haute en « Λ »)"
+
+
+def weighted_median(values: list[float], weights: list[float]) -> float | None:
+    if not values:
+        return None
+    v = np.asarray(values, dtype=np.float64)
+    w = np.maximum(np.asarray(weights, dtype=np.float64), 0.0)
+    if float(w.sum()) <= 0.0:
+        w = np.ones_like(v)
+    order = np.argsort(v)
+    cumulative = np.cumsum(w[order])
+    return float(v[order][int(np.searchsorted(cumulative, cumulative[-1] / 2.0))])
+
+
+def robust_center(
+    values: list[float], weights: list[float], k: float = VOTE_MAD_K, min_band: float = 0.0
+) -> tuple[float | None, list[int]]:
+    """Médiane pondérée après rejet des valeurs à plus de k MAD (normalisés) de la médiane
+    pondérée, sans jamais rejeter à moins de `min_band` (des valeurs presque égales ne sont
+    pas des aberrantes) ; renvoie aussi les indices gardés."""
+    center = weighted_median(values, weights)
+    if center is None:
+        return None, []
+    deviations = np.abs(np.asarray(values, dtype=np.float64) - center)
+    mad = float(np.median(deviations))
+    band = max(k * 1.4826 * mad, min_band, 1e-6 + 1e-3 * abs(center))
+    kept = [i for i, d in enumerate(deviations) if d <= band]
+    if not kept:
+        return center, list(range(len(values)))
+    return weighted_median([values[i] for i in kept], [weights[i] for i in kept]), kept
+
+
+def _across_ridge(cls: ClassifiedPlanes, planes: list[FittedPlane]) -> Float | None:
+    """Direction horizontale en travers du faîtage, dans le repère des combles : mode (pondéré
+    par les points) de l'azimut des normales de tous les plans inclinés, angle doublé pour que
+    les deux versants votent ensemble. None sans plan incliné."""
+    hist = np.zeros(AZIMUTH_BINS)
+    for i, plane in enumerate(planes):
+        n = cls.world[i].normal
+        tilt = math.degrees(math.acos(min(1.0, abs(float(n[2])))))
+        if not VOTE_TILT_DEG[0] <= tilt <= VOTE_TILT_DEG[1] or plane.count == 0:
+            continue
+        doubled = (2.0 * math.atan2(float(n[1]), float(n[0]))) % (2.0 * math.pi)
+        hist[int(doubled / (2.0 * math.pi) * AZIMUTH_BINS) % AZIMUTH_BINS] += plane.count
+    if hist.sum() <= 0:
+        return None
+    smooth = hist + 0.5 * (np.roll(hist, 1) + np.roll(hist, -1))
+    k = int(np.argmax(smooth))
+    idx = [(k - 1) % AZIMUTH_BINS, k, (k + 1) % AZIMUTH_BINS]
+    angles = np.array([(i + 0.5) / AZIMUTH_BINS * 2.0 * math.pi for i in idx])
+    w = hist[idx]
+    doubled = math.atan2(float((w * np.sin(angles)).sum()), float((w * np.cos(angles)).sum()))
+    a = doubled / 2.0
+    return np.array([math.cos(a), math.sin(a), 0.0])
+
+
+def pitch_votes(planes: list[FittedPlane], cls: ClassifiedPlanes, total: int) -> list[PitchVote]:
+    """KAN-95 : tous les plans inclinés dont la normale est en travers du faîtage votent pour la
+    pente, avec pour poids leur part du nuage."""
+    across = _across_ridge(cls, planes)
+    if across is None:
+        return []
+    along = np.array([-across[1], across[0], 0.0])
+    out: list[PitchVote] = []
+    for i, plane in enumerate(planes):
+        n = cls.world[i].normal / max(float(np.linalg.norm(cls.world[i].normal)), 1e-12)
+        tilt = math.degrees(math.acos(min(1.0, abs(float(n[2])))))
+        if not VOTE_TILT_DEG[0] <= tilt <= VOTE_TILT_DEG[1] or plane.count == 0:
+            continue
+        if abs(float(n @ along)) >= VOTE_MAX_ALONG:
+            continue
+        out.append(PitchVote(pitch_deg=tilt, weight=plane.count / max(total, 1)))
+    return out
+
+
+def voted_pitch(votes: list[PitchVote]) -> float | None:
+    """Pente votée : médiane pondérée, aberrants écartés (VOTE_MAD_K)."""
+    value, _ = robust_center([v.pitch_deg for v in votes], [v.weight for v in votes])
+    return value
+
+
+def _fit_lambda(y: Float, z: Float) -> tuple[float, float, float, float, float, int, int] | None:
+    """Λ sur l'enveloppe : (y du sommet, z du sommet, tan gauche, tan droite, rms, tranches
+    gauche, tranches droite) ; moindres carrés tronqués par versant, sommet cherché sur une
+    grille, les deux droites devant se rejoindre au sommet."""
+    best: tuple[float, float, list[tuple[float, float, float, int]]] | None = None
+    for top in np.linspace(float(y.min()), float(y.max()), PROFILE_CANDIDATES)[1:-1]:
+        sides: list[tuple[float, float, float, int]] = []
+        residual = 0.0
+        for sign in (-1.0, 1.0):
+            mask = (y - top) * sign >= 0
+            if int(mask.sum()) < PROFILE_MIN_BINS:
+                break
+            d = np.abs(y[mask] - top)
+            zz = z[mask]
+            keep = np.ones(len(d), dtype=bool)
+            coef = np.zeros(2)
+            r = np.zeros(len(d))
+            for _ in range(2):
+                a = np.vstack([np.ones(int(keep.sum())), -d[keep]]).T
+                coef, *_ = np.linalg.lstsq(a, zz[keep], rcond=None)
+                r = np.abs(zz - (coef[0] - coef[1] * d))
+                keep = r <= np.quantile(r, PROFILE_KEEP)
+            rms = float(np.sqrt(np.mean(r[keep] ** 2)))
+            sides.append((float(coef[0]), float(coef[1]), rms, int(mask.sum())))
+            residual += float(np.sum(r[keep] ** 2))
+        if len(sides) < 2 or min(s[1] for s in sides) <= 0.0:
+            continue
+        score = residual + PROFILE_JOIN_WEIGHT * (sides[0][0] - sides[1][0]) ** 2
+        if best is None or score < best[0]:
+            best = (score, float(top), sides)
+    if best is None:
+        return None
+    _, top, sides = best
+    left, right = sides
+    return (
+        top,
+        (left[0] + right[0]) / 2.0,
+        left[1],
+        right[1],
+        math.hypot(left[2], right[2]),
+        left[3],
+        right[3],
+    )
+
+
+def ridge_profile(  # noqa: PLR0911
+    points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes
+) -> RidgeProfile | None:
+    """KAN-95 : faîtage lu sur le profil en travers. Les points au-dessus de PROFILE_BAND × h
+    sont projetés en travers du faîtage (direction votée par les plans inclinés) ; le haut de
+    chaque tranche (95ᵉ centile) dessine la toiture, ajustée en « Λ ». None si les deux
+    versants ne sont pas assez vus, ou si le « Λ » n'est pas un toit plausible (plafond plat,
+    pente hors de PROFILE_PITCH_DEG, sommet sous l'appareil)."""
+    if cls.floor_assumed:
+        return None
+    across = _across_ridge(cls, planes)
+    if across is None:
+        return None
+    h = float(cls.floor.plane.distance)
+    if h <= 0:
+        return None
+    world = points @ cls.axes.T
+    z = world[:, 2] + h
+    y = world @ across
+    high = np.isfinite(z) & np.isfinite(y) & (z > PROFILE_BAND * h)
+    if int(high.sum()) < PROFILE_MIN_BINS * 2:
+        return None
+    ys, zs = y[high], z[high]
+    step = PROFILE_BIN * h
+    minimum = max(5, round(len(points) / 5000))
+    env_y: list[float] = []
+    env_z: list[float] = []
+    for start in np.arange(float(ys.min()), float(ys.max()), step):
+        mask = (ys >= start) & (ys < start + step)
+        if int(mask.sum()) >= minimum:
+            env_y.append(float(start + step / 2.0))
+            env_z.append(float(np.percentile(zs[mask], PROFILE_QUANTILE)))
+    if len(env_y) < 2 * PROFILE_MIN_BINS:
+        return None
+    fit = _fit_lambda(np.asarray(env_y), np.asarray(env_z))
+    if fit is None:
+        return None
+    top, ridge_z, tan_left, tan_right, rms, n_left, n_right = fit
+    pitches = (math.degrees(math.atan(tan_left)), math.degrees(math.atan(tan_right)))
+    if not all(PROFILE_PITCH_DEG[0] <= p <= PROFILE_PITCH_DEG[1] for p in pitches):
+        return None
+    if not h < ridge_z <= PROFILE_MAX_RIDGE * h:
+        return None
+    return RidgeProfile(
+        ridge_y=top,
+        ridge_z=ridge_z,
+        pitch_deg=pitches,
+        bins=(n_left, n_right),
+        rms=rms,
+    )
+
+
+def _with_profile(
+    estimate: AtticEstimate, points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes
+) -> AtticEstimate:
+    """KAN-95 (lot B) : profil, votes de pente et axe de la photo ; le faîtage du profil
+    remplace celui de l'intersection des deux pentes (qui amplifie leur erreur loin du sol).
+    Il ne crée pas de faîtage là où les plans n'en voyaient pas : une photo seule qui ne voit
+    qu'une pente reste sans combles ; le recoupement de plusieurs photos lit son profil."""
+    profile = ridge_profile(points, planes, cls)
+    votes = pitch_votes(planes, cls, len(points))
+    across = _across_ridge(cls, planes)
+    # Axe du faîtage voté (comme le profil), ramené dans le repère de l'appareil : sa
+    # composante sur l'axe optique dit si la photo regarde dans l'axe ou de biais.
+    ridge_dir = (
+        cls.axes.T @ np.array([-across[1], across[0], 0.0]) if across is not None else cls.axes[0]
+    )
+    update: dict[str, object] = {
+        "ridge_profile": profile,
+        "pitch_votes": votes,
+        "voted_pitch_deg": voted_pitch(votes),
+        "along_ridge": abs(float(ridge_dir[2])) / max(float(np.linalg.norm(ridge_dir)), 1e-12),
+    }
+    if profile is not None and estimate.ridge_height is not None:
+        update["ridge_height"] = Estimate(
+            value=profile.ridge_z,
+            sigma=estimate_scale_sigma(profile.ridge_z, profile.rms),
+            note=PROFILE_NOTE,
+        )
+    return estimate.model_copy(update=update)
+
+
 def _add_residual_side_walls(
     points: Float, planes: list[FittedPlane], cls: ClassifiedPlanes
 ) -> list[FittedPlane]:
@@ -962,14 +1241,16 @@ def analyse_attic(  # noqa: PLR0912
     seed: int = 0,
     camera_height_m: float | None = None,
     camera_height_entered: bool = True,
+    stride: int = STRIDE,
 ) -> tuple[AtticEstimate, list[FittedPlane], ClassifiedPlanes | None, NDArray[np.intp], list[str]]:
     """Cœur de l'étape, sans fichier : estimation, plans, classement, pixels, avertissements.
 
     `camera_height_m` (hauteur de prise de vue) ne sert que si le sol n'est pas vu : le sol est
     alors posé à cette hauteur sous la caméra (sinon à la hauteur par défaut).
-    `camera_height_entered` (KAN-62) : faux quand cette hauteur est le défaut de l'app."""
+    `camera_height_entered` (KAN-62) : faux quand cette hauteur est le défaut de l'app.
+    `stride` (KAN-95) : un pixel sur `stride` ; plus petit pour une profondeur gardée réduite."""
     entered = camera_height_m is not None and camera_height_entered
-    points, pixel_index = backproject(depth, focal_px, principal_point, stride=STRIDE)
+    points, pixel_index = backproject(depth, focal_px, principal_point, stride=stride)
     h, w = depth.shape
     planes = fit_planes(points, pixel_index, (w, h), seed=seed)
     warnings: list[str] = []
@@ -1022,6 +1303,7 @@ def analyse_attic(  # noqa: PLR0912
                 f"{math.degrees(disagreement):.0f}° : sol ou lignes peu fiables."
             )
     estimate = summarize(planes, cls, len(points))
+    estimate = _with_profile(estimate, points, planes, cls)  # KAN-95, lot B
     if assumed_floor is None:
         estimate = symmetric_roof(estimate, planes, cls)
     if assumed_floor is not None:

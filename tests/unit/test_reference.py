@@ -225,7 +225,9 @@ def test_confidence_follows_the_measurement(tmp_path: Path) -> None:
         assert put.status_code == 200, put.text
         confidence = next(iter(put.json()["levels"].values()))["scale_basis"]["confidence"]
         assert confidence["level"] == "a_verifier" and confidence["label"] == "à vérifier"
-        assert "échelle calée sur votre mesure" in confidence["reason"]
+        # KAN-95 : sur des combles lus sur une seule photo, une fois l'échelle calée, c'est la
+        # forme (pente lue sur cette photo) qui pèse le plus : 15 % contre 10 %.
+        assert "pente lue sur une seule photo" in confidence["reason"]
         segment = put.json()["images"][str(image_id)]["reference_segments"][0]["id"]
         gone = client.delete(f"{url}/{segment}")
         assert gone.status_code == 200, gone.text
