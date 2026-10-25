@@ -62,6 +62,33 @@ MAX_COORD = 1e7
 ZOOM_RANGE = (0.01, 16.0)
 BELL = '{"type":"bell"}'
 """KAN-52 : « ta cloche a changé », sans dire de quoi (le client relit `/api/notifications`)."""
+SEND_TIMEOUT_S = 5.0
+"""Connexion lente (25 oct.) : un envoi qui ne part pas en 5 s ferme cette connexion (le client
+se reconnecte et resynchronise) ; les autres reçoivent en parallèle. Avant, les envois partaient
+l'un après l'autre et chaque écriture REST les attendait : un pair au réseau mort retenait la
+réponse de tout le monde jusqu'au délai du ping d'uvicorn (20 + 20 s)."""
+
+
+async def _deliver(socket: WebSocket, text: str) -> None:
+    """Un envoi borné ; une connexion morte ou bloquée est fermée, jamais attendue."""
+    try:
+        await asyncio.wait_for(socket.send_text(text), timeout=SEND_TIMEOUT_S)
+    except TimeoutError:
+        log.debug("connexion trop lente : fermée")
+        _closing.add(task := asyncio.ensure_future(_close_quietly(socket)))
+        task.add_done_callback(_closing.discard)
+    except Exception:  # connexion morte : elle partira à sa fermeture
+        log.debug("diffusion impossible vers une connexion fermée")
+
+
+_closing: set[asyncio.Future[None]] = set()
+
+
+async def _close_quietly(socket: WebSocket) -> None:
+    try:
+        await asyncio.wait_for(socket.close(code=1013), timeout=SEND_TIMEOUT_S)
+    except Exception:  # déjà fermée, ou impossible à fermer proprement
+        log.debug("fermeture d'une connexion bloquée")
 
 
 def display_name(user: AuthUser) -> str:
@@ -197,12 +224,12 @@ class MemoryHub:
 
     async def ring(self, user_ids: Iterable[str]) -> None:
         """La cloche de ces comptes a changé : un avis sans contenu, le client relit."""
-        for user_id in set(user_ids):
-            for socket in list(self.accounts.get(user_id, {}).values()):
-                try:
-                    await socket.send_text(BELL)
-                except Exception:  # connexion morte : elle partira à sa fermeture
-                    log.debug("cloche impossible vers une connexion fermée")
+        sockets = [
+            socket
+            for user_id in set(user_ids)
+            for socket in list(self.accounts.get(user_id, {}).values())
+        ]
+        await asyncio.gather(*(_deliver(socket, BELL) for socket in sockets))
 
     def peers(self, project_id: UUID) -> list[Peer]:
         seen: dict[str, Peer] = {}
@@ -261,13 +288,8 @@ class MemoryHub:
         to: Callable[[str, Conn], bool],
     ) -> None:
         text = json.dumps(message)
-        for key, entry in list(self.rooms.get(project_id, {}).items()):
-            if not to(key, entry):
-                continue
-            try:
-                await entry.socket.send_text(text)
-            except Exception:  # connexion morte : elle partira à sa fermeture
-                log.debug("diffusion impossible vers une connexion fermée")
+        targets = [e.socket for k, e in list(self.rooms.get(project_id, {}).items()) if to(k, e)]
+        await asyncio.gather(*(_deliver(socket, text) for socket in targets))
 
     async def _tell_followed(self, project_id: UUID, user_id: str) -> None:
         """Dit à la personne suivie (tous ses onglets) combien la suivent."""

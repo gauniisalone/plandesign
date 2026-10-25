@@ -122,9 +122,11 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   // laisse voir « Analyse de la photo… ».
   let sends = 0;
   const bodies: number[] = [];
+  const encodings: (string | undefined)[] = [];
   await page.route(/\/images\/[0-9a-f-]+\/depth\?/, async (route) => {
     sends += 1;
     bodies.push(route.request().postDataBuffer()?.length ?? 0);
+    encodings.push(route.request().headers()["content-encoding"]);
     if (sends === 1) {
       await route.fulfill({
         status: 422,
@@ -196,8 +198,11 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   const level = Object.values(project.levels)[0]!;
   const walls = Object.values(level.elements).filter((e) => e.type === "wall");
   expect(walls.length).toBeGreaterThanOrEqual(3);
-  // 640 × 480 valeurs float16 pour la photo de 1280 × 960.
-  expect(bodies).toEqual([640 * 480 * 2, 640 * 480 * 2]);
+  // 640 × 480 valeurs float16 pour la photo de 1280 × 960, compressées en gzip (connexion
+  // lente, 25 oct.) : plus petites que les 614 400 octets bruts.
+  expect(encodings).toEqual(["gzip", "gzip"]);
+  expect(bodies.length).toBe(2);
+  for (const size of bodies) expect(size).toBeLessThan(640 * 480 * 2);
   expect([...origins]).toEqual([new URL(page.url()).origin]);
   expect(failures).toEqual([]);
 });

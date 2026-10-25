@@ -11,6 +11,7 @@ import type {
   Violation,
 } from "./types.gen";
 import type { Op } from "./ops";
+import { tuned } from "../netTuning";
 
 const BASE = "/api";
 
@@ -220,6 +221,108 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Connexion lente (25 oct.) : un envoi sans le moindre progrès pendant ce délai est abandonné
+ *  (avant, `fetch` sans délai pouvait attendre pour toujours). Le délai court depuis le dernier
+ *  octet parti, puis pendant la réponse : un envoi lent mais qui avance n'est jamais coupé. */
+export const STALL_MS = 45_000;
+
+/** L'envoi n'a pas abouti : connexion trop lente ou coupée (aucun progrès pendant STALL_MS,
+ *  ou réseau perdu). Le message est en ton neutre, prêt à être montré. */
+export class UploadStalled extends Error {
+  constructor() {
+    super("la connexion est trop lente ou coupée");
+    this.name = "UploadStalled";
+  }
+}
+
+/** Le corps compressé en gzip par le navigateur (`CompressionStream`) ; null s'il ne sait pas
+ *  le faire (le corps part alors tel quel). */
+export async function gzipped(data: Blob): Promise<Blob | null> {
+  if (typeof CompressionStream === "undefined") return null;
+  try {
+    const stream = data.stream().pipeThrough(new CompressionStream("gzip"));
+    return await new Response(stream).blob();
+  } catch {
+    return null;
+  }
+}
+
+/** Un envoi avec sa progression réelle (`XMLHttpRequest` : `fetch` ne la donne pas), un délai
+ *  sans progrès (STALL_MS) et les mêmes en-têtes et erreurs que `request`. `onProgress` reçoit
+ *  la part déjà envoyée (0 à 1). */
+function sendWithProgress<T>(
+  path: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: Blob;
+    onProgress?: (fraction: number) => void;
+    stallMs?: number;
+  },
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(init.method, BASE + path);
+    xhr.withCredentials = true;
+    for (const [k, v] of Object.entries(init.headers))
+      xhr.setRequestHeader(k, v);
+    const token = readToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (liveConn) xhr.setRequestHeader("X-Live-Conn", liveConn);
+    let timer = 0;
+    const arm = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => {
+          xhr.abort();
+          reject(new UploadStalled());
+        },
+        init.stallMs ?? tuned("stallMs", STALL_MS),
+      );
+    };
+    xhr.upload.onprogress = (e) => {
+      arm();
+      if (e.lengthComputable && e.total > 0)
+        init.onProgress?.(e.loaded / e.total);
+    };
+    xhr.upload.onload = () => {
+      init.onProgress?.(1);
+      arm(); // la réponse a le même délai
+    };
+    xhr.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new UploadStalled());
+    };
+    xhr.onload = () => {
+      window.clearTimeout(timer);
+      let body: { detail?: unknown; report?: ValidationReport } | T | undefined;
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        body = undefined;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as T);
+        return;
+      }
+      if (xhr.status === 401 && accountsMode) signedOutHandler?.();
+      const err = (body ?? {}) as {
+        detail?: unknown;
+        report?: ValidationReport;
+      };
+      const detail =
+        typeof err.detail === "string"
+          ? err.detail
+          : err.detail !== undefined
+            ? JSON.stringify(err.detail)
+            : `${xhr.status} ${xhr.statusText}`;
+      reject(new ApiError(detail, xhr.status, err.report));
+    };
+    arm();
+    xhr.send(init.body);
+  });
 }
 
 const json = (body: unknown): RequestInit => ({
@@ -1044,34 +1147,51 @@ export const autoplanApi = {
 
 /** KAN-79 : profondeur calculée par le navigateur (float16, grille de 640 px au plus). */
 export const browserDepthApi = {
-  put: (
+  /** La carte (float16, 640 px au plus : ~600 Ko) compressée en gzip quand le navigateur le
+   *  sait, avec sa progression réelle et un délai sans progrès (connexion lente, 25 oct.). */
+  put: async (
     pid: string,
     lid: string,
     imageId: string,
     grid: Uint16Array,
     width: number,
     height: number,
-  ) =>
-    request<{
+    onProgress?: (fraction: number) => void,
+  ) => {
+    const raw = new Blob([grid as Uint16Array<ArrayBuffer>]);
+    const packed = await gzipped(raw);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/octet-stream",
+    };
+    if (packed) headers["Content-Encoding"] = "gzip";
+    return sendWithProgress<{
       image_id: string;
       depth_size: [number, number];
       model_id: string;
     }>(
       `/projects/${pid}/levels/${lid}/images/${imageId}/depth?image_width=${width}&image_height=${height}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: new Blob([grid as Uint16Array<ArrayBuffer>]),
-      },
-    ),
+      { method: "PUT", headers, body: packed ?? raw, onProgress },
+    );
+  },
   /** La photo telle que le serveur la garde (orientation appliquée). */
   photo: async (pid: string, imageId: string): Promise<Blob> => {
-    const res = await fetch(api.imageFileUrl(pid, imageId), {
-      credentials: "same-origin",
-    });
-    if (!res.ok)
-      throw new ApiError(`photo illisible (${res.status})`, res.status);
-    return res.blob();
+    // Connexion lente (25 oct.) : jamais d'attente sans fin (avant : `fetch` sans délai).
+    const stop = new AbortController();
+    const timer = window.setTimeout(() => stop.abort(), 4 * STALL_MS);
+    try {
+      const res = await fetch(api.imageFileUrl(pid, imageId), {
+        credentials: "same-origin",
+        signal: stop.signal,
+      });
+      if (!res.ok)
+        throw new ApiError(`photo illisible (${res.status})`, res.status);
+      return await res.blob();
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new UploadStalled();
+    } finally {
+      window.clearTimeout(timer);
+    }
   },
 };
 

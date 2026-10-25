@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 
 from openplan.adapters.neural.web_depth import ONNX_NAME, WEB_MODEL_ID, read_sha256
 from openplan.adapters.neural.weights import is_installed, weights_dir
+from openplan.api.body_encoding import decoded_body
 from openplan.api.deps import ProjectDep, SettingsDep, StoreDep
 from openplan.pipeline.client_depth import (
     MAX_BYTES,
@@ -74,13 +75,16 @@ def put_client_depth(
     body: Annotated[bytes, Body(media_type="application/octet-stream")],
     image_width: int,
     image_height: int,
+    content_encoding: Annotated[str | None, Header()] = None,
 ) -> ClientDepthResult:
     """Range la profondeur calculée par le navigateur pour cette photo du projet ; ne modifie
-    pas le plan (l'estimation, lancée ensuite, la relit sans modèle)."""
+    pas le plan (l'estimation, lancée ensuite, la relit sans modèle). La carte peut arriver
+    compressée (gzip ou deflate, connexion lente), décompressée avec un plafond."""
     if level_id not in project.levels:
         raise HTTPException(status_code=404, detail=f"niveau inconnu : {level_id}")
     if image_id not in project.images:
         raise HTTPException(status_code=404, detail=f"image inconnue : {image_id}")
+    body = decoded_body(body, content_encoding, MAX_BYTES)
     if len(body) > MAX_BYTES:
         raise HTTPException(status_code=422, detail="profondeur trop grande (640 px au plus)")
     try:

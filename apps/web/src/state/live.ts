@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { setLiveConn } from "../api/client";
+import { tuned } from "../netTuning";
 
 /** Présence en temps réel (B2a, note 14 § 7) : un WebSocket par projet ouvert, avec les
  *  comptes. Il reçoit qui est là et « le projet a changé ». Coupé (redémarrage du serveur,
@@ -69,7 +70,19 @@ type Message =
   | { type: "pong" };
 
 const BASE_DELAY_MS = 500;
-const MAX_DELAY_MS = 15_000;
+const MAX_DELAY_MS = 30_000;
+/** Connexion lente (25 oct.) : une poignée de main sans « hello » dans ce délai est
+ *  abandonnée et retentée (avant, elle pouvait rester ouverte pour toujours). */
+export const HELLO_TIMEOUT_MS = 20_000;
+/** Battement de cœur : un ping toutes les 25 s ; sans aucun message pendant 60 s, la
+ *  connexion est tenue pour morte et refaite. */
+export const PING_EVERY_MS = 25_000;
+export const SILENCE_MS = 60_000;
+/** Après autant d'essais ratés d'affilée, le message « Connexion instable » remplace
+ *  « Reconnexion… ». */
+export const UNSTABLE_AFTER = 4;
+/** Vérification de session (après des échecs) : jamais plus longue que cela. */
+const SESSION_CHECK_MS = 10_000;
 /** Refus définitifs (origine, membre) : on ne réessaie pas ; 4401 : session perdue. */
 const FINAL_CODES = new Set([4403, 4404]);
 /** Derrière l'intergiciel, un refus de poignée de main n'est qu'un échec (HTTP 403, aucun code
@@ -181,11 +194,14 @@ export function useLive(
   },
 ): {
   status: LiveStatus;
+  /** Connexion lente (25 oct.) : plusieurs reconnexions ratées d'affilée. */
+  unstable: boolean;
   peers: Peer[];
   me: Peer | null;
   presence: PresenceOut;
 } {
   const [status, setStatus] = useState<LiveStatus>("off");
+  const [unstable, setUnstable] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [me, setMe] = useState<Peer | null>(null);
   const [following, setFollowing] = useState<string | null>(null);
@@ -221,22 +237,84 @@ export function useLive(
     let failures = 0;
     let stopped = false;
     let dropped = false;
+    let helloTimer: number | null = null;
+    let heartbeat: number | null = null;
+    let lastSeen = Date.now();
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${scheme}://${window.location.host}/ws/projects/${projectId}`;
+
+    const clearTimers = () => {
+      if (helloTimer !== null) window.clearTimeout(helloTimer);
+      if (heartbeat !== null) window.clearInterval(heartbeat);
+      helloTimer = heartbeat = null;
+    };
 
     const retry = () => {
       dropped = true;
       setStatus("reconnecting");
+      setUnstable(attempt >= tuned("unstableAfter", UNSTABLE_AFTER));
+      if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(connect, retryDelay(attempt));
       attempt += 1;
     };
 
+    /** La connexion est perdue (fermée par le serveur, poignée de main sans fin, silence) :
+     *  réessai borné, vérification de la session après des échecs d'affilée. */
+    const lost = (code: number, greeted: boolean) => {
+      clearTimers();
+      if (stopped) return;
+      if (code === 4401) {
+        handlersRef.current.onSignedOut();
+        return;
+      }
+      if (FINAL_CODES.has(code)) {
+        setStatus("off");
+        return;
+      }
+      if (!greeted) failures += 1;
+      if (failures < FAILURES_BEFORE_CHECK) {
+        retry();
+        return;
+      }
+      // Plus de boucle aveugle : une session révoquée ramène à la connexion.
+      failures = 0;
+      void sessionAlive().then((alive) => {
+        if (stopped) return;
+        if (alive) retry();
+        else handlersRef.current.onSignedOut();
+      });
+    };
+
+    /** Abandonne une connexion qui ne répond plus, sans attendre sa fermeture (sur un réseau
+     *  mort, la fermeture elle-même peut ne jamais aboutir). */
+    const abandon = (current: WebSocket, greeted: boolean) => {
+      if (socket !== current) return;
+      socket = null;
+      current.onclose = null;
+      current.onmessage = null;
+      try {
+        current.close();
+      } catch {
+        /* déjà fermée */
+      }
+      setLiveConn(null);
+      sendRef.current = () => undefined;
+      lost(1006, greeted);
+    };
+
     const connect = () => {
+      timer = null;
       setStatus(dropped ? "reconnecting" : "connecting");
       let greeted = false;
       const current = new WebSocket(url);
       socket = current;
+      clearTimers();
+      helloTimer = window.setTimeout(
+        () => abandon(current, false),
+        tuned("helloMs", HELLO_TIMEOUT_MS),
+      );
       current.onmessage = (event) => {
+        lastSeen = Date.now();
         let message: Message;
         try {
           message = JSON.parse(String(event.data)) as Message;
@@ -247,6 +325,20 @@ export function useLive(
           greeted = true;
           attempt = 0;
           failures = 0;
+          setUnstable(false);
+          if (helloTimer !== null) window.clearTimeout(helloTimer);
+          helloTimer = null;
+          heartbeat = window.setInterval(
+            () => {
+              if (Date.now() - lastSeen > tuned("silenceMs", SILENCE_MS)) {
+                abandon(current, true);
+                return;
+              }
+              if (current.readyState === WebSocket.OPEN)
+                current.send('{"type":"ping"}');
+            },
+            tuned("pingMs", PING_EVERY_MS),
+          );
           setLiveConn(message.conn);
           setMe(message.you);
           setPeers(message.peers);
@@ -328,36 +420,25 @@ export function useLive(
         }
       };
       current.onclose = (event) => {
-        if (socket === current) {
-          setLiveConn(null);
-          sendRef.current = () => undefined;
-        }
-        if (stopped) return;
-        if (event.code === 4401) {
-          handlersRef.current.onSignedOut();
-          return;
-        }
-        if (FINAL_CODES.has(event.code)) {
-          setStatus("off");
-          return;
-        }
-        if (!greeted) failures += 1;
-        if (failures < FAILURES_BEFORE_CHECK) {
-          retry();
-          return;
-        }
-        // Plus de boucle aveugle : une session révoquée ramène à la connexion.
-        failures = 0;
-        void sessionAlive().then((alive) => {
-          if (stopped) return;
-          if (alive) retry();
-          else handlersRef.current.onSignedOut();
-        });
+        if (socket !== current) return; // déjà abandonnée
+        socket = null;
+        setLiveConn(null);
+        sendRef.current = () => undefined;
+        lost(event.code, greeted);
       };
     };
+    // Le réseau revient : on n'attend pas la fin du recul.
+    const online = () => {
+      if (stopped || socket !== null || timer === null) return;
+      window.clearTimeout(timer);
+      connect();
+    };
+    window.addEventListener("online", online);
     connect();
     return () => {
       stopped = true;
+      window.removeEventListener("online", online);
+      clearTimers();
       if (timer !== null) window.clearTimeout(timer);
       socket?.close();
       setLiveConn(null);
@@ -416,6 +497,7 @@ export function useLive(
 
   return {
     status: enabled ? status : "off",
+    unstable: enabled && status === "reconnecting" && unstable,
     peers: enabled ? peers : [],
     me,
     presence: { ...presence, following, followed, leases, leaseRequest },
@@ -440,13 +522,20 @@ function withLease(
 /** /api/auth/me répond-il encore ? Une 401 dit « session révoquée » ; une panne réseau ou un
  *  serveur absent, non (on continue d'attendre). */
 async function sessionAlive(): Promise<boolean> {
+  // Connexion lente (25 oct.) : sans réponse en 10 s, on continue d'attendre (réessai), au
+  // lieu de rester suspendu à une requête qui ne revient pas.
+  const stop = new AbortController();
+  const timer = window.setTimeout(() => stop.abort(), SESSION_CHECK_MS);
   try {
     const response = await fetch("/api/auth/me", {
       credentials: "same-origin",
+      signal: stop.signal,
     });
     return response.status !== 401;
   } catch {
     return true;
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 

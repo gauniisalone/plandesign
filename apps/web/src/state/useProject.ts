@@ -157,6 +157,9 @@ export interface PhotoDepthState {
   /** La bibliothèque de calcul n'a pas démarré dans cette page : seul un rechargement aide
    *  (« Recharger la page » au lieu de « Réessayer », correctif de KAN-79). */
   reload?: boolean;
+  /** Connexion lente (25 oct.) : l'analyse est faite, c'est son envoi qui a échoué ;
+   *  « Réessayer » la renvoie sans la recalculer. */
+  sending?: boolean;
 }
 
 const INITIAL: EditorState = {
@@ -614,41 +617,50 @@ export function useProject(projectId: string) {
         );
       const progress = (p: DepthProgress) =>
         patch({ label: p.label, fraction: p.fraction });
+      // Connexion lente (25 oct.) : l'analyse faite est gardée ; si l'envoi échoue,
+      // « Réessayer » la renvoie sans la recalculer.
+      let computed: Awaited<ReturnType<typeof computeDepth>> | null = null;
       const go = (): void => {
         setState((s) => ({
           ...s,
           error: null,
           photoDepth: {
             imageId,
-            label: "Analyse de la photo…",
-            fraction: null,
+            label: computed ? "Envoi de l'analyse" : "Analyse de la photo…",
+            fraction: computed ? 0 : null,
             firstTime: false,
             error: null,
           },
         }));
         void (async () => {
           try {
-            patch({ firstTime: !(await modelCached()) });
-            const local = file ?? (await browserDepthApi.photo(pid, imageId));
-            let result;
-            try {
-              result = await computeDepth(
-                local,
-                ref.width_px,
-                ref.height_px,
-                progress,
-              );
-            } catch (e) {
-              if (!(e instanceof PhotoSizeMismatch) || !file) throw e;
-              // Photo réorientée ou recompressée à l'import : celle du serveur fait foi.
-              result = await computeDepth(
-                await browserDepthApi.photo(pid, imageId),
-                ref.width_px,
-                ref.height_px,
-                progress,
-              );
+            if (!computed) {
+              patch({ firstTime: !(await modelCached()) });
+              const local = file ?? (await browserDepthApi.photo(pid, imageId));
+              try {
+                computed = await computeDepth(
+                  local,
+                  ref.width_px,
+                  ref.height_px,
+                  progress,
+                );
+              } catch (e) {
+                if (!(e instanceof PhotoSizeMismatch) || !file) throw e;
+                // Photo réorientée ou recompressée à l'import : celle du serveur fait foi.
+                computed = await computeDepth(
+                  await browserDepthApi.photo(pid, imageId),
+                  ref.width_px,
+                  ref.height_px,
+                  progress,
+                );
+              }
             }
-            patch({ label: "Envoi de l'analyse", fraction: null });
+            const result = computed;
+            patch({
+              label: "Envoi de l'analyse",
+              fraction: 0,
+              firstTime: false,
+            });
             await browserDepthApi.put(
               pid,
               lid,
@@ -656,6 +668,7 @@ export function useProject(projectId: string) {
               result.grid,
               result.width,
               result.height,
+              (fraction) => patch({ fraction }),
             );
             depthSent.current.add(imageId);
             depthRetry.current = null;
@@ -667,6 +680,7 @@ export function useProject(projectId: string) {
               fraction: null,
               error: e instanceof Error ? e.message : String(e),
               reload: e instanceof LibraryFailed,
+              sending: computed !== null,
             });
           }
         })();
@@ -886,7 +900,7 @@ export function useProject(projectId: string) {
   /** Une photo déposée sur le tableau (T4) : projet sans plan et bascule « générer au dépôt
    *  d'une photo » active → construction du plan puis chemin automatique, sans autre geste. */
   const planFromPhoto = useCallback(
-    (project: Project, imageId: string) => {
+    (project: Project, imageId: string, file?: File) => {
       const { levelId } = state;
       if (!levelId || !project.render.auto_on_drop) return;
       const level = project.levels[levelId];
@@ -894,7 +908,13 @@ export function useProject(projectId: string) {
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       if (!currentCapabilities().photoPlan) return; // photo rangée, plan bientôt en ligne
       if (state.photoDepth && !state.photoDepth.error) return;
-      autoplanFromPhoto(project, levelId, imageId, project.history_cursor);
+      autoplanFromPhoto(
+        project,
+        levelId,
+        imageId,
+        project.history_cursor,
+        file,
+      );
     },
     [state, autoplanFromPhoto],
   );

@@ -699,6 +699,15 @@ def _serve(args: argparse.Namespace) -> int:
     return 0
 
 
+WS_PING_INTERVAL_S = 30.0
+WS_PING_TIMEOUT_S = 90.0
+"""Connexion lente (MEP 14, 25 oct.) : avec les valeurs par défaut d'uvicorn (ping toutes les
+20 s, fermeture sans pong sous 20 s), un WebSocket sur un réseau lent ou occupé par un envoi
+tombait au bout de 40 à 120 s. Le client envoie déjà son battement de cœur (25 s) et se
+reconnecte de lui-même ; le ping d'uvicorn ne sert plus qu'à libérer, côté serveur, une
+connexion vraiment morte : il est espacé et patient."""
+
+
 def _run_server(
     args: argparse.Namespace, settings: Settings, create_app: Callable[..., FastAPI]
 ) -> None:
@@ -711,9 +720,17 @@ def _run_server(
             host=settings.host,
             port=settings.port,
             reload=True,
+            ws_ping_interval=WS_PING_INTERVAL_S,
+            ws_ping_timeout=WS_PING_TIMEOUT_S,
         )
     else:
-        uvicorn.run(create_app(settings=settings), host=settings.host, port=settings.port)
+        uvicorn.run(
+            create_app(settings=settings),
+            host=settings.host,
+            port=settings.port,
+            ws_ping_interval=WS_PING_INTERVAL_S,
+            ws_ping_timeout=WS_PING_TIMEOUT_S,
+        )
 
 
 def _load(path: Path) -> Project:

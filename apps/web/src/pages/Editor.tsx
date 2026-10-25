@@ -1658,11 +1658,23 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               </button>
             </div>
           )}
-          {live.status === "reconnecting" && (
-            <div className="live-banner" role="status">
-              <span className="spinner" aria-hidden="true" /> Reconnexion…
-            </div>
-          )}
+          {live.status === "reconnecting" &&
+            (live.unstable ? (
+              // Connexion lente (25 oct.) : après plusieurs essais, le dire et rassurer.
+              <div className="live-banner live-unstable" role="status">
+                <span>
+                  Connexion instable : vos modifications sont enregistrées ; la
+                  mise à jour en direct reprendra dès que le réseau le permet.
+                </span>
+                <button type="button" onClick={() => window.location.reload()}>
+                  Recharger
+                </button>
+              </div>
+            ) : (
+              <div className="live-banner" role="status">
+                <span className="spinner" aria-hidden="true" /> Reconnexion…
+              </div>
+            ))}
           {shareOpen && (
             <ShareDialog
               projectId={projectId}

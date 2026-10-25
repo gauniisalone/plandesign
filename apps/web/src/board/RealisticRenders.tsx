@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   realisticApi,
   type ReactionKey,
@@ -10,6 +16,7 @@ import type { Project } from "../api/types.gen";
 import { allCameras, isFreeCamera } from "../model";
 import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
 import { RenderViewer } from "./RenderViewer";
+import { useRetryImage } from "./retryImage";
 import {
   etaText,
   gallery,
@@ -38,6 +45,53 @@ const TICK_MS = 1_000;
 
 /** Lu une fois par session de page : le droit ne change pas en cours de route. */
 let allowedOnce: Promise<RealisticStatus | null> | null = null;
+/** Une case de la galerie (connexion lente, 25 oct.) : l'image se recharge seule quand elle
+ *  échoue, puis laisse une case grise « Image non chargée · Réessayer » au lieu du texte
+ *  de remplacement brut ; un clic sur la case réessaie alors au lieu d'ouvrir le rendu. */
+function RetryTile({
+  src,
+  alt,
+  label,
+  onOpen,
+  children,
+}: {
+  src: string;
+  alt: string;
+  label: string;
+  onOpen: () => void;
+  children: ReactNode;
+}) {
+  const image = useRetryImage(src);
+  return (
+    <button
+      type="button"
+      className="rgal-open"
+      onClick={image.failed ? image.retry : onOpen}
+      aria-label={
+        image.failed ? `Image non chargée : réessayer (${alt})` : label
+      }
+    >
+      {image.failed ? (
+        <span className="rgal-img img-failed">
+          Image non chargée ·{" "}
+          <span className="img-failed-retry">Réessayer</span>
+        </span>
+      ) : (
+        <img
+          className="rgal-img"
+          src={image.src}
+          alt={alt}
+          draggable={false}
+          decoding="async"
+          onError={image.onError}
+          onLoad={image.onLoad}
+        />
+      )}
+      {children}
+    </button>
+  );
+}
+
 function statusOnce(): Promise<RealisticStatus | null> {
   allowedOnce ??= realisticApi.status().catch(() => {
     allowedOnce = null; // relue au prochain affichage
@@ -403,22 +457,16 @@ export function RealisticRenders({
             const total = pills.reduce((n, p) => n + p.count, 0);
             return (
               <li key={r.id} className="rgal-cell">
-                <button
-                  type="button"
-                  className="rgal-open"
-                  onClick={() => setViewing(r.id)}
-                  aria-label={
+                <RetryTile
+                  src={realisticApi.imageUrl(project.id, r.id)}
+                  alt={`Rendu réaliste : ${viewName(r)}`}
+                  onOpen={() => setViewing(r.id)}
+                  label={
                     tile.kind === "more"
                       ? `${tile.count} plus anciens : tout voir`
                       : `Ouvrir le rendu : ${viewName(r)}, ${hour(r.created_at)}`
                   }
                 >
-                  <img
-                    className="rgal-img"
-                    src={realisticApi.imageUrl(project.id, r.id)}
-                    alt={`Rendu réaliste : ${viewName(r)}`}
-                    draggable={false}
-                  />
                   {tile.kind === "more" ? (
                     <span className="rgal-more">
                       +{tile.count} plus anciens · Tout voir
@@ -438,7 +486,7 @@ export function RealisticRenders({
                       )}
                     </>
                   )}
-                </button>
+                </RetryTile>
               </li>
             );
           })}

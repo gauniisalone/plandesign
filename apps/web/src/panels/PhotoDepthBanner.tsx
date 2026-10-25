@@ -19,12 +19,25 @@ export function PhotoDepthBanner({
         role="alert"
         aria-label="Analyse de la photo"
       >
-        <span>
-          <strong>L'analyse de la photo n'a pas abouti</strong> : {depth.error}.
-          <span className="notice">
-            La photo est rangée ; vous pouvez continuer à travailler.
+        {depth.sending ? (
+          // Connexion lente (25 oct.) : l'analyse est faite, seul son envoi a échoué.
+          <span>
+            <strong>L'envoi de l'analyse n'a pas abouti</strong> : {depth.error}
+            .
+            <span className="notice">
+              L'analyse est gardée : « Réessayer » la renvoie sans la refaire.
+              La photo est rangée ; vous pouvez continuer à travailler.
+            </span>
           </span>
-        </span>
+        ) : (
+          <span>
+            <strong>L'analyse de la photo n'a pas abouti</strong> :{" "}
+            {depth.error}.
+            <span className="notice">
+              La photo est rangée ; vous pouvez continuer à travailler.
+            </span>
+          </span>
+        )}
         {depth.reload ? (
           // Correctif de KAN-79 : la bibliothèque n'a pas démarré dans cette page, une nouvelle
           // tentative ici échouerait encore ; le rechargement repart de zéro.

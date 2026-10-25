@@ -190,7 +190,7 @@ interface Props {
   onCancelQueued?: () => void;
   /** T4 : une photo réelle déposée (projet à jour, id de la première) ; le chemin décide
    *  selon la bascule « générer au dépôt d'une photo ». */
-  onPhotoDropped: (project: Project, imageId: string) => void;
+  onPhotoDropped: (project: Project, imageId: string, file?: File) => void;
   /** T4 : « Générer maintenant » (plan s'il manque, sinon chemin automatique). */
   onGenerateNow: (fresh: Requirements) => void;
   /** T4 : il y a déjà des rendus (la barre du déclencheur se retire). */
@@ -1118,6 +1118,8 @@ export function BoardCanvas(props: Props) {
     const added: BoardItem[] = [];
     let changed: Project | null = null;
     let firstPhoto: string | null = null;
+    // Connexion lente (25 oct.) : le fichier déposé sert à l'analyse, sans le retélécharger.
+    let firstFile: File | undefined;
     let offset = 0;
     let target = into ?? frameAt(at);
     const dropped = target;
@@ -1138,7 +1140,10 @@ export function BoardCanvas(props: Props) {
         if (isImage && !inspirations) {
           const result = await api.uploadImage(project.id, file);
           changed = result.project;
-          firstPhoto ??= result.image.id;
+          if (firstPhoto === null) {
+            firstPhoto = result.image.id;
+            firstFile = file;
+          }
           item = {
             id: uid(),
             kind: "photo",
@@ -1206,7 +1211,7 @@ export function BoardCanvas(props: Props) {
           ? plansFedBy(board, dropped.id)
           : [];
       if (changed && firstPhoto && fed.includes(level))
-        props.onPhotoDropped(changed, firstPhoto);
+        props.onPhotoDropped(changed, firstPhoto, firstFile);
       else if (firstPhoto && fed.length && props.onPlanMembers)
         // La carte d'un autre plan (l'étage) : c'est ce plan-là qui la lit.
         for (const lid of fed) props.onPlanMembers(lid, [firstPhoto], []);
