@@ -11,7 +11,9 @@ import {
   createEmptyProject,
   expectSpace,
   goSpace,
+  hasWeights,
   openRendersPane,
+  PHOTO_WEIGHTS,
   showPanel,
   waitNoHeavyJob,
 } from "./helpers";
@@ -493,6 +495,12 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
   page,
 }) => {
   test.skip(!existsSync(FIXTURE), "fixture image.png absente");
+  // Sans profondeur ni détecteur, le bandeau local dit la commande d'installation (avec
+  // l'identifiant du modèle) : ce test vérifie le bandeau d'une installation complète.
+  test.skip(
+    !(await hasWeights(page, PHOTO_WEIGHTS)),
+    "poids de l'analyse fine absents (profondeur, portes et fenêtres)",
+  );
   await createProject(page, "E2E photo");
 
   // Directive d'augus du 29 septembre : la photo déposée construit le plan toute seule,

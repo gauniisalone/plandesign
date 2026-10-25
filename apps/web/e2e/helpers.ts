@@ -14,6 +14,27 @@ export async function createEmptyProject(
   return id;
 }
 
+/** Poids des modèles d'images (rendu contextualisé, finition) et de l'analyse fine d'une photo
+ *  (profondeur, portes et fenêtres) : mêmes identifiants que /api/health. */
+export const IMAGE_WEIGHTS = [
+  "stable_diffusion_1_5@1.5",
+  "controlnet_depth_sd15@1.1",
+];
+export const PHOTO_WEIGHTS = [
+  "depth_anything_v2_metric_indoor_small@1.0",
+  "owlv2_base@1.0",
+];
+
+/** Les poids sont-ils installés sur ce serveur ? Un test qui en dépend se saute proprement
+ *  sans eux (copie de travail sans poids ni torch), au lieu d'attendre un bouton caché. */
+export async function hasWeights(page: Page, ids: string[]): Promise<boolean> {
+  const r = await page.request.get("/api/health");
+  if (!r.ok()) return false;
+  const body = (await r.json()) as { weights?: string[] };
+  const weights = new Set(body.weights ?? []);
+  return ids.every((id) => weights.has(id));
+}
+
 /** T7d1 (isolation des e2e lourds, PO du 18 oct.) : à la fin d'un test qui lance le chemin
  *  automatique, attendre que le serveur n'ait plus de tâche lourde, ni en cours ni en
  *  attente : le test suivant ne démarre pas derrière le calcul du précédent. */

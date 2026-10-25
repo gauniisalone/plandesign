@@ -62,11 +62,21 @@ OPENINGS_NOT_ONLINE = (
 """KAN-79 : distances lues dans la profondeur du navigateur, seul le détecteur manque."""
 
 
-def _missing_notice(missing: list[str]) -> list[str]:
-    """Une seule phrase pour tout ce qui manque, avec la commande ; le plan est construit
-    quand même avec ce qui est installé."""
+FINER_NOT_ONLINE = (
+    "Analyse plus fine (distances, portes et fenêtres) indisponible en ligne : le plan vient "
+    "des lignes de la photo."
+)
+"""API exposée : rien à installer pour l'utilisateur, ni identifiant de modèle (MEP 15)."""
+
+
+def _missing_notice(missing: list[str], *, exposed: bool) -> list[str]:
+    """Une seule phrase pour tout ce qui manque ; le plan est construit quand même avec ce qui
+    est installé. Sur la boucle locale, avec la commande à lancer (l'utilisateur administre sa
+    machine) ; en ligne, une phrase fixe."""
     if not missing:
         return []
+    if exposed:
+        return [FINER_NOT_ONLINE]
     return [
         "Analyse plus fine non installée (distances, portes et fenêtres) : le plan vient des "
         "lignes de la photo. Pour l'activer : " + " ; ".join(dict.fromkeys(missing))
@@ -117,7 +127,11 @@ def autoplan(
         detector: RoomElementDetector | None = _optional(
             get_opening_detector, request, missing, exposed=exposed
         )
-        notices = [OPENINGS_NOT_ONLINE] if from_browser and missing else _missing_notice(missing)
+        notices = (
+            [OPENINGS_NOT_ONLINE]
+            if from_browser and missing
+            else _missing_notice(missing, exposed=exposed)
+        )
         before = store.load(project_id)
         run = run_autoplan(
             before,

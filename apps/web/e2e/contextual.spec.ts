@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, expectSpace } from "./helpers";
+import {
+  createEmptyProject,
+  expectSpace,
+  hasWeights,
+  IMAGE_WEIGHTS,
+} from "./helpers";
 import { reloadApp } from "./app-ready";
 
 /** A1 : rendu contextualisé depuis le tableau. Le prompt enrichi par le plan est montré et
@@ -17,6 +22,10 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   page,
 }) => {
   test.setTimeout(180_000);
+  test.skip(
+    !(await hasWeights(page, IMAGE_WEIGHTS)),
+    "poids des modèles d'images absents : pas de « Rendu contextualisé… »",
+  );
   const outside: string[] = [];
   page.on("request", (r) => {
     const host = new URL(r.url()).hostname;
@@ -57,7 +66,9 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   await photo.click();
   await expect(panel).not.toContainText("Photo · Photo");
   const bar = page.getByRole("toolbar", { name: "Actions de la sélection" });
-  await bar.getByRole("button", { name: "Dans Inspirations", exact: true }).click();
+  await bar
+    .getByRole("button", { name: "Dans Inspirations", exact: true })
+    .click();
   await expect(photo.locator(".board-reference")).toHaveText("Référence");
   await expect(
     bar.getByRole("button", { name: "Dans Inspirations", exact: true }),

@@ -5,6 +5,8 @@ import {
   createEmptyProject,
   expectSpace,
   goSpace,
+  hasWeights,
+  IMAGE_WEIGHTS,
   waitNoHeavyJob,
 } from "./helpers";
 
@@ -118,7 +120,11 @@ test("cadres typés : consignes, inspiration cochée Référence, photo dans son
       return Object.keys(p.images).length;
     })
     .toBe(1);
-  // Le volet du rendu contextualisé voit la référence cochée.
+  // Le volet du rendu contextualisé voit la référence cochée (bouton caché sans les poids).
+  test.skip(
+    !(await hasWeights(page, IMAGE_WEIGHTS)),
+    "poids des modèles d'images absents : pas de « Rendu contextualisé… »",
+  );
   await photo.click();
   // KAN-64 : dans le panneau (zones visibles) ou en bas au centre (un volet ouvert).
   await page.getByRole("button", { name: "Rendu contextualisé…" }).click();
