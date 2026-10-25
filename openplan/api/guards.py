@@ -175,6 +175,9 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", L + "/detect-depth"): E,
     ("POST", L + "/images/{image_id}/openings"): E,
     ("POST", L + "/images/{image_id}/autoplan"): E,
+    # KAN-95 : le plan recoupé sur plusieurs photos (combles, pièce droite), comme autoplan.
+    ("POST", L + "/attic-fusion"): E,
+    ("POST", L + "/photo-fusion"): E,
     ("POST", L + "/views/{camera_id}/adopt"): E,
     ("POST", L + "/views/{camera_id}/rotate"): E,
     ("POST", L + "/views/auto"): E,
