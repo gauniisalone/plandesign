@@ -20,6 +20,11 @@ longue sur l'autre axe » et déplacer ce mur inféré au lieu d'être signalée
 seule ne distingue pas ces deux lectures. Une fois les quatre murs estimés, ou quand
 l'utilisateur fixe l'orientation (« Tourner la vue », `rotate_view`), la contradiction est
 signalée.
+
+Seulement pour un plan tiré des lignes d'une pièce droite (`confrontable`) : la confrontation ne
+lit que des arêtes sol-mur, ni les pentes, ni le faîtage, ni la profondeur. Sur un plan de combles
+ou tiré de la profondeur, elle déplaçait un mur supposé sur deux arêtes de lignes (essai
+multiphoto du grenier, 25 oct. : largeur de 7,04 m ramenée à 0,33 m) ; ce plan n'est plus touché.
 """
 
 from __future__ import annotations
@@ -66,7 +71,27 @@ from openplan.validation.consistency import (
 STEP = "floorplan.add_view"
 ADOPT_STEP = "floorplan.adopt_view"
 ROTATE_STEP = "floorplan.rotate_view"
+NOT_FROM_LINES = frozenset({"attic.apply", "floorplan.depth"})
+"""Étapes qui posent un plan que la confrontation par lignes ne sait pas lire : combles
+(`attic_scene.STEP`) et profondeur (`depthplan.STEP`) ; vérifié par les tests."""
+NOT_CONFRONTED = (
+    "Plan des combles ou tiré de la profondeur : la photo est gardée, mais n'est pas confrontée "
+    "au plan (cette confrontation ne lit que les lignes d'une pièce droite)."
+)
 ORIENTATION_KEY = "orientation_quarter_turns"
+
+
+def confrontable(level: Level) -> bool:
+    """Le plan de ce niveau peut-il être confronté à une photo de plus (`add_view`) ? Non s'il
+    vient des combles (pans de toit, murs posés par les combles) ou de la profondeur."""
+    for element in level.elements.values():
+        if element.type == "roof_plane":
+            return False
+        if isinstance(element, Wall) and element.provenance.step in NOT_FROM_LINES:
+            return False
+    return True
+
+
 AMBIGUOUS_KEY = "orientation_ambiguous"
 USER_ORIENTED_KEY = "orientation_user_fixed"
 """Métadonnée de caméra : True quand l'utilisateur a tourné la vue lui-même (2.5c)."""
@@ -451,6 +476,14 @@ def add_view(
         msg = f"image inconnue : {image_id}"
         raise DetectionError(msg)
     model_ids = [analysis.camera.model_id]
+    if not confrontable(level):
+        return project, StepResult(
+            step=STEP,
+            confidence=0.0,
+            warnings=[NOT_CONFRONTED],
+            duration_s=time.perf_counter() - started,
+            model_ids=model_ids,
+        )
     if not analysis.floor_edges:
         return project, StepResult(
             step=STEP,
