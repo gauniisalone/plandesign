@@ -310,6 +310,26 @@ export function useProject(projectId: string) {
     [state.project, run, applyProject],
   );
 
+  /** KAN-91 (retours MEP 14) : « Supprimer le plan ». Le plan ouvert supprimé laisse la
+   *  place au premier plan ; un refus du serveur (409) est dit tel quel. */
+  const deletePlan = useCallback(
+    async (levelId: string): Promise<boolean> => {
+      if (!state.project) return false;
+      const id = state.project.id;
+      const done = await run(async () => {
+        const project = await api.deletePlan(id, levelId);
+        const keep =
+          levelRef.current && levelRef.current !== levelId
+            ? levelRef.current
+            : Object.keys(project.levels)[0];
+        await applyProject(project, keep);
+        return true;
+      });
+      return done === true;
+    },
+    [state.project, run, applyProject],
+  );
+
   useEffect(() => {
     let cancelled = false;
     // À l'ouverture, le nom automatique suit la pièce ; un ancien nom de fichier
@@ -1916,6 +1936,7 @@ export function useProject(projectId: string) {
       addSectionView,
       openLevel,
       newPlan,
+      deletePlan,
       startRender,
       renderProposal,
       clearError,

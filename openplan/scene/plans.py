@@ -112,3 +112,35 @@ def add_plan(project: Project, body: NewPlan, *, actor: str = USER_ACTOR) -> tup
     after = project.model_copy(update={"levels": {**project.levels, level.id: level}})
     label = f"Nouveau plan « {name} »"
     return history.commit(project, after, actor=actor, label=label), level.id
+
+
+ONLY_PLAN = "C'est le seul plan du projet : il ne se supprime pas."
+FIRST_PLAN = (
+    "Le premier plan du projet ne se supprime pas encore : ses cartes Photos et Rendus sont "
+    "celles de départ. Supprimez les autres plans, ou videz celui-ci."
+)
+HAS_VARIANTS = "Cet étage a des variantes : supprimez d'abord ses variantes ({names})."
+
+
+class PlanRefusedError(ValueError):
+    """Suppression refusée, la raison dite à l'utilisateur (409)."""
+
+
+def remove_plan(project: Project, level_id: UUID, *, actor: str = USER_ACTOR) -> Project:
+    """KAN-91 (retours MEP 14), « Supprimer le plan » : un seul pas d'historique, Ctrl+Z le
+    rend. Jamais le seul plan ni le premier (ses cartes sont celles sans `ref`, ticket à part),
+    jamais un étage dont des variantes dépendent (elles deviendraient orphelines)."""
+    level = project.levels.get(level_id)
+    if level is None:
+        msg = f"plan inconnu : {level_id}"
+        raise PlanError(msg)
+    if len(project.levels) < 2:
+        raise PlanRefusedError(ONLY_PLAN)
+    if next(iter(project.levels)) == level_id:
+        raise PlanRefusedError(FIRST_PLAN)
+    variants = [lv.name for lv in project.levels.values() if lv.variant_of == level_id]
+    if variants:
+        raise PlanRefusedError(HAS_VARIANTS.format(names=", ".join(f"« {n} »" for n in variants)))
+    levels = {lid: lv for lid, lv in project.levels.items() if lid != level_id}
+    after = project.model_copy(update={"levels": levels})
+    return history.commit(project, after, actor=actor, label=f"Supprimer le plan « {level.name} »")

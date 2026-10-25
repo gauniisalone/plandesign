@@ -263,6 +263,76 @@ def test_each_level_has_its_photo_card_and_feeds_only_its_plan(tmp_path: Path) -
     assert refused.status_code == 409 and refused.json()["detail"] == NOT_A_MEMBER
 
 
+def test_delete_a_plan_cards_and_links_go_photos_stay_undo_brings_it_back(
+    tmp_path: Path,
+) -> None:
+    """Retours de la MEP 14 : « Supprimer le plan » par l'API ; 409 pour le premier plan ;
+    les photos de la carte de l'étage restent, hors carte ; Ctrl+Z rend le plan."""
+    w = Local(tmp_path)
+    storey = w.client.post(
+        f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"}
+    ).json()["level_id"]
+    r = w.client.post(
+        f"/api/projects/{w.pid}/images",
+        params={"level_id": storey},
+        files={"file": ("e.png", _png(), "image/png")},
+    )
+    upstairs = r.json()["image"]["id"]
+    first = w.client.delete(f"/api/projects/{w.pid}/levels/{w.level}")
+    assert first.status_code == 409 and "premier plan" in first.json()["detail"]
+    assert w.client.delete(f"/api/projects/{w.pid}/levels/{uuid4()}").status_code == 404
+    done = w.client.delete(f"/api/projects/{w.pid}/levels/{storey}")
+    assert done.status_code == 200, done.text
+    assert list(done.json()["levels"]) == [str(w.level)]
+    board = w.board()
+    assert not any(i.get("ref") == storey for i in board["items"])
+    assert len([i for i in board["items"] if i.get("role") == "photos"]) == 1
+    photo = w.item(board, upstairs)
+    assert photo["frame"] is None
+    ids = {i["id"] for i in board["items"]}
+    assert all(k["source"] in ids and k["target"] in ids for k in board["links"])
+    # Ctrl+Z : le plan revient, avec une carte Photos vide reliée ; la photo reste hors carte.
+    assert w.client.post(f"/api/projects/{w.pid}/undo").status_code == 200
+    board = w.board()
+    card = next(i for i in board["items"] if i.get("role") == "photos" and i["ref"] == storey)
+    plan = next(i for i in board["items"] if i["kind"] == "plan" and i["ref"] == storey)
+    assert any(k["source"] == card["id"] and k["target"] == plan["id"] for k in board["links"])
+    assert w.item(board, upstairs)["frame"] is None
+
+
+def test_a_hand_made_inspirations_card_links_by_hand_to_several_renders(tmp_path: Path) -> None:
+    """N-N : une carte Inspirations ajoutée (`ref` = son id) n'est reliée à rien ; reliée à la
+    main à deux cartes Rendus, chacune lit les deux cartes Inspirations (poids égal)."""
+    w = Local(tmp_path)
+    w.client.post(f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"})
+    card_id = str(uuid4())
+    hand = {
+        "id": card_id,
+        "kind": "frame",
+        "x": -900,
+        "y": 0,
+        "w": 624,
+        "h": 374,
+        "role": "inspirations",
+        "ref": card_id,
+        "text": "Inspirations · bois",
+    }
+    assert w.patch({"set": [hand]}).status_code == 200
+    board = w.board()
+    frames = [i for i in board["items"] if i.get("role") == "inspirations"]
+    assert len(frames) == 2, "la carte ajoutée reste, la carte de départ aussi"
+    assert not any(k["source"] == card_id for k in board["links"])
+    renders = [i["id"] for i in board["items"] if i.get("role") == "renders"]
+    assert len(renders) == 2
+    out = w.patch({"links_set": [_link(card_id, r, "guides_style") for r in renders]})
+    assert out.status_code == 200, out.text
+    for r in renders:
+        guides = [
+            k for k in out.json()["links"] if k["kind"] == "guides_style" and k["target"] == r
+        ]
+        assert len(guides) == 2, r
+
+
 def test_a_second_photo_link_to_a_level_is_refused_409(tmp_path: Path) -> None:
     w = Local(tmp_path)
     storey = w.client.post(

@@ -23,6 +23,7 @@ import {
   linkRefusal,
   LINK_NAMES,
 } from "./links";
+import { route, wireEnds, type Point, type WireEnds } from "./wires";
 
 const KIND_CLASS: Record<LinkKind, string> = {
   feeds_plan: "wire-feeds",
@@ -30,75 +31,16 @@ const KIND_CLASS: Record<LinkKind, string> = {
   renders_view: "wire-view",
 };
 
-interface Point {
-  x: number;
-  y: number;
+/** Le fil qu'on tire, de la poignée (bord droit de la source) au pointeur. */
+function drawing(source: BoardItem, to: Point): string {
+  const a = { x: source.x + source.w, y: source.y + source.h / 2 };
+  const dx = Math.max(60, Math.abs(to.x - a.x) / 2);
+  return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
 }
 
-function anchors(source: BoardItem, target: BoardItem): [Point, Point] {
-  return [
-    { x: source.x + source.w, y: source.y + source.h / 2 },
-    { x: target.x, y: target.y + target.h / 2 },
-  ];
-}
-
-/** Les cartes qu'un fil direct de `a` à `b` traverserait (une carte entre les deux, à la
- *  hauteur du fil : Inspirations à gauche du plan, Rendus à sa droite). */
-function crossedBy(a: Point, b: Point, obstacles: BoardItem[]): BoardItem[] {
-  const left = Math.min(a.x, b.x);
-  const right = Math.max(a.x, b.x);
-  return obstacles.filter(
-    (o) =>
-      o.x > left + 8 &&
-      o.x + o.w < right - 8 &&
-      o.y < Math.max(a.y, b.y) &&
-      o.y + o.h > Math.min(a.y, b.y),
-  );
-}
-
-interface Route {
-  d: string;
-  mid: Point;
-}
-
-/** Le tracé d'un fil : une courbe horizontale ; s'il traverserait des cartes, un chemin à
- *  angles arrondis qui monte dans l'espace entre les colonnes, passe au-dessus d'elles et
- *  redescend devant la cible (la pastille au milieu du passage haut). */
-function route(a: Point, b: Point, obstacles: BoardItem[] = []): Route {
-  const crossed = crossedBy(a, b, obstacles);
-  if (!crossed.length || b.x <= a.x) {
-    const dx = Math.max(60, Math.abs(b.x - a.x) / 2);
-    const c1 = { x: a.x + dx, y: a.y };
-    const c2 = { x: b.x - dx, y: b.y };
-    return {
-      d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
-      mid: {
-        x: 0.125 * a.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * b.x,
-        y: 0.125 * a.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * b.y,
-      },
-    };
-  }
-  const top = Math.min(...crossed.map((o) => o.y)) - 90;
-  const x1 = a.x + Math.max(8, (Math.min(...crossed.map((o) => o.x)) - a.x) / 2);
-  const x2 =
-    b.x - Math.max(8, (b.x - Math.max(...crossed.map((o) => o.x + o.w))) / 2);
-  const r = Math.min(24, (x2 - x1) / 4, Math.abs(a.y - top) / 2, Math.abs(b.y - top) / 2);
-  return {
-    d:
-      `M ${a.x} ${a.y} L ${x1 - r} ${a.y} Q ${x1} ${a.y} ${x1} ${a.y - r} ` +
-      `L ${x1} ${top + r} Q ${x1} ${top} ${x1 + r} ${top} ` +
-      `L ${x2 - r} ${top} Q ${x2} ${top} ${x2} ${top + r} ` +
-      `L ${x2} ${b.y - r} Q ${x2} ${b.y} ${x2 + r} ${b.y} L ${b.x} ${b.y}`,
-    mid: { x: (x1 + x2) / 2, y: top },
-  };
-}
-
-function curve(a: Point, b: Point, obstacles: BoardItem[] = []): string {
-  return route(a, b, obstacles).d;
-}
-
-function middle(a: Point, b: Point, obstacles: BoardItem[] = []): Point {
-  return route(a, b, obstacles).mid;
+/** Le fil d'un lien seul (fantôme d'un lien coupé), ports au milieu des côtés. */
+function single(l: BoardLink, s: BoardItem, t: BoardItem): WireEnds {
+  return wireEnds([{ id: l.id, kind: l.kind, s, t }]).get(l.id)!;
 }
 
 function Glyph({ kind }: { kind: LinkKind }) {
@@ -180,13 +122,27 @@ export function WireLayer({
 
   const scale = 1 / Math.max(zoom, 0.05);
   const cards = items.filter((i) => cardRole(i) !== null);
-  const around = (s: BoardItem, t: BoardItem) =>
-    cards.filter((c) => c.id !== s.id && c.id !== t.id);
   const links = (board.links ?? [])
     .map((l) => ({ l, s: byId.get(l.source), t: byId.get(l.target) }))
     .filter((x): x is { l: BoardLink; s: BoardItem; t: BoardItem } =>
       Boolean(x.s && x.t),
     );
+  // Retours de la MEP 14 : un port d'entrée par sorte de lien, ports répartis, fils qui ne
+  // passent jamais sous une carte, pastille jamais sur une carte (wires.ts).
+  const ends = wireEnds(
+    links.map(({ l, s, t }) => ({ id: l.id, kind: l.kind, s, t })),
+  );
+  // La pastille (rayon 15, « auto » dessous) garde sa taille à l'écran : marge et couloirs
+  // grandissent au dézoom.
+  const routeOf = (_id: string, e: WireEnds, s: BoardItem, t: BoardItem) =>
+    route(e, cards, {
+      clearance: 20 * Math.max(1, scale),
+      gap: 48 * Math.max(1, scale),
+      skip: [s.id, t.id],
+    });
+  const routes = new Map(
+    links.map(({ l, s, t }) => [l.id, routeOf(l.id, ends.get(l.id)!, s, t)]),
+  );
   const sources = readOnly ? [] : items.filter(canSource);
   const shownId = selected ?? hover;
   const shown = links.find((x) => x.l.id === shownId);
@@ -216,11 +172,14 @@ export function WireLayer({
           const s = byId.get(g.source);
           const t = byId.get(g.target);
           if (!s || !t) return null;
-          const [a, b] = anchors(s, t);
-          const m = middle(a, b, around(s, t));
+          const r = routeOf(g.id, single(g, s, t), s, t);
+          const m = r.mid;
           return (
-            <g key={`ghost-${g.id}`} className={`board-wire-ghost ${KIND_CLASS[g.kind]}`}>
-              <path d={curve(a, b, around(s, t))} />
+            <g
+              key={`ghost-${g.id}`}
+              className={`board-wire-ghost ${KIND_CLASS[g.kind]}`}
+            >
+              <path d={r.d} />
               <text
                 x={m.x}
                 y={m.y}
@@ -234,8 +193,11 @@ export function WireLayer({
           );
         })}
         {links.map(({ l, s, t }) => {
-          const [a, b] = anchors(s, t);
-          const m = middle(a, b, around(s, t));
+          const a = ends.get(l.id)!.a;
+          const { d, mid: m, room } = routes.get(l.id)!;
+          // La pastille (et « auto » dessous, ≈ 34 unités) tient dans la place libre : jamais
+          // par-dessus une carte, quitte à se faire plus petite entre deux cartes serrées.
+          const badge = Math.min(scale, room / 34);
           const cls = KIND_CLASS[l.kind];
           return (
             <g
@@ -243,15 +205,18 @@ export function WireLayer({
               className={`board-wire ${cls}${l.id === selected ? " selected" : ""}`}
               data-link={l.id}
               data-kind={l.kind}
+              data-entry={ends.get(l.id)!.bSide}
             >
-              <path
-                d={curve(a, b, around(s, t))}
-                markerEnd={`url(#${cls}-arrow)`}
+              <path d={d} markerEnd={`url(#${cls}-arrow)`} />
+              <circle
+                cx={a.x}
+                cy={a.y}
+                r={5 * scale}
+                className="board-wire-start"
               />
-              <circle cx={a.x} cy={a.y} r={5 * scale} className="board-wire-start" />
               <g
                 className="board-wire-badge"
-                transform={`translate(${m.x} ${m.y}) scale(${scale})`}
+                transform={`translate(${m.x} ${m.y}) scale(${badge})`}
                 role="button"
                 tabIndex={0}
                 aria-label={`${LINK_NAMES[l.kind]} : ${cardTitle(s)} → ${cardTitle(t)}`}
@@ -278,12 +243,7 @@ export function WireLayer({
         })}
         {drag && (
           <g className={`board-wire-drawing${drag.refused ? " refused" : ""}`}>
-            <path
-              d={curve(
-                { x: drag.source.x + drag.source.w, y: drag.source.y + drag.source.h / 2 },
-                drag.to,
-              )}
-            />
+            <path d={drawing(drag.source, drag.to)} />
           </g>
         )}
         {drag &&
@@ -346,8 +306,7 @@ export function WireLayer({
           role={selected === shown.l.id ? "toolbar" : "tooltip"}
           aria-label={selected === shown.l.id ? "Lien choisi" : undefined}
           style={(() => {
-            const [a, b] = anchors(shown.s, shown.t);
-            const m = middle(a, b, around(shown.s, shown.t));
+            const m = routes.get(shown.l.id)!.mid;
             return {
               left: m.x,
               top: m.y,
@@ -357,7 +316,9 @@ export function WireLayer({
           })()}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <strong className="board-wire-type">{LINK_NAMES[shown.l.kind]}</strong>
+          <strong className="board-wire-type">
+            {LINK_NAMES[shown.l.kind]}
+          </strong>
           <span className="board-wire-cards">
             {cardTitle(shown.s)} → {cardTitle(shown.t)}
           </span>
@@ -366,8 +327,10 @@ export function WireLayer({
           </span>
           <span className="board-wire-meta">
             {shown.l.auto ? "Créé automatiquement" : "Tiré à la main"}
-            {selected === shown.l.id ? "" : " · cliquer pour modifier ou couper"} ·{" "}
-            {summary?.rights ?? "modifiable par tous les éditeurs du projet"}
+            {selected === shown.l.id
+              ? ""
+              : " · cliquer pour modifier ou couper"}{" "}
+            · {summary?.rights ?? "modifiable par tous les éditeurs du projet"}
           </span>
           {selected === shown.l.id && (
             <span className="board-wire-actions">

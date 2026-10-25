@@ -167,6 +167,53 @@ def test_worker_reports_pause_and_skipped_turns(tmp_path: Path) -> None:
     assert client.states == ["waiting", "paused", "idle"]
 
 
+def test_after_a_render_the_next_claim_waits_its_cadence(tmp_path: Path) -> None:
+    """Retours de la MEP 14 (429 sur `claim`) : après un rendu, le prochain appel attend la
+    cadence normale (10 à 15 s) ; même si un chemin demandait 0 s, jamais moins de 10 s."""
+    client = StubClient([object(), None, object(), None])
+    worker = _worker(tmp_path, client)
+    returns = iter([worker.jitter(10.0, 15.0), 0.0])
+    waits: list[float] = []
+
+    def wait(seconds: float) -> None:
+        waits.append(seconds)
+        if len(waits) == 4:
+            (tmp_path / "worker.stop").touch()
+
+    worker.process = lambda _job: next(returns)  # type: ignore[method-assign]
+    worker.wait = wait  # type: ignore[method-assign]
+    assert worker.run() == 0
+    assert client.states == ["idle"] * 4
+    assert waits == [12.5, 12.5, 10.0, 12.5], "dépôt, rien, rendu sorti à 0 s, rien"
+    assert Worker.pace(300.0) == 300.0, "un recul plus long reste entier"
+
+
+def test_a_second_worker_on_the_same_machine_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Un verrou de fichier (worker.lock) : un deuxième `openplan worker run` est refusé avec
+    un message clair (et le processus du premier) ; libre de nouveau quand le premier s'arrête."""
+    path = tmp_path / "plandesign" / "worker.env"
+    assert main(["worker", "--config", str(path), "token"]) == 0
+    capsys.readouterr()
+    with config.single_worker(path.parent):
+        with (
+            pytest.raises(config.WorkerAlreadyRunningError) as caught,
+            config.single_worker(path.parent),
+        ):
+            pass
+        assert f"processus {os.getpid()}" in str(caught.value)
+        # Par la commande : refusé avant tout appel, le drapeau d'arrêt du premier intact.
+        (path.parent / "worker.stop").touch()
+        assert main(["worker", "--config", str(path), "run", "--once"]) == 2
+        out = capsys.readouterr().out
+        assert "un poste de rendu tourne déjà sur cette machine" in out
+        assert "openplan worker stop" in out
+        assert (path.parent / "worker.stop").exists()
+    with config.single_worker(path.parent):
+        pass
+
+
 def test_stop_flag_ends_the_loop(tmp_path: Path) -> None:
     client = StubClient([None] * 5)
     worker = _worker(tmp_path, client)

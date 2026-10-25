@@ -564,6 +564,10 @@ export const api = {
       `/projects/${pid}/levels`,
       json(body),
     ),
+  /** KAN-91 (retours MEP 14) : « Supprimer le plan » ; 409 avec la raison (seul plan, premier
+   *  plan, étage qui a des variantes). */
+  deletePlan: (pid: string, lid: string) =>
+    request<Project>(`/projects/${pid}/levels/${lid}`, { method: "DELETE" }),
   undo: (pid: string) =>
     request<Project>(`/projects/${pid}/undo`, { method: "POST" }),
   redo: (pid: string) =>

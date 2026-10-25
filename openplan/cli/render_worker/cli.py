@@ -82,12 +82,15 @@ def _run(cfg: config.WorkerConfig, pause: Path, stop: Path, *, once: bool) -> in
     from openplan.cli.render_worker.client import WorkerClient
     from openplan.cli.render_worker.loop import Worker
 
-    stop.unlink(missing_ok=True)  # un ancien drapeau ne doit pas arrêter ce lancement
-    client = WorkerClient(cfg.url, cfg.token)
-    print(f"Poste de rendu vers {cfg.url} (moteur {cfg.engine}) ; Ctrl+C pour arrêter.")
-    try:
-        return Worker(client=client, engine=cfg.engine, pause_flag=pause, stop_flag=stop).run(
-            once=once
-        )
-    finally:
-        client.close()
+    # Retours de la MEP 14 : un seul poste à la fois (verrou pris avant tout, y compris avant
+    # d'effacer le drapeau d'arrêt, qui appartient au poste déjà lancé).
+    with config.single_worker(stop.parent):
+        stop.unlink(missing_ok=True)  # un ancien drapeau ne doit pas arrêter ce lancement
+        client = WorkerClient(cfg.url, cfg.token)
+        print(f"Poste de rendu vers {cfg.url} (moteur {cfg.engine}) ; Ctrl+C pour arrêter.")
+        try:
+            return Worker(client=client, engine=cfg.engine, pause_flag=pause, stop_flag=stop).run(
+                once=once
+            )
+        finally:
+            client.close()

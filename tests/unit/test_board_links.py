@@ -294,6 +294,33 @@ def test_an_old_automatic_cross_level_link_leaves_a_hand_made_one_stays() -> Non
     assert t.feeds(kept) == {(t.photos.id, t.plan.id), (t.photos.id, t.plan2.id)}
 
 
+def test_a_new_inspirations_card_links_to_nothing_the_first_keeps_its_links() -> None:
+    """Retours de la MEP 14 (N-N) : la carte Inspirations de départ guide chaque carte Rendus ;
+    une carte ajoutée à la main (`ref` = son id) n'est reliée à rien, puis se relie à la main
+    à plusieurs cartes Rendus, et une carte Rendus lit plusieurs cartes (D1)."""
+    s = Scene()
+    s.renders = s.renders.model_copy(update={"ref": None})
+    s.items[2] = s.renders
+    hand = _frame("inspirations", text="Inspirations · salon")
+    hand = hand.model_copy(update={"ref": str(hand.id)})
+    other = _frame("renders", ref=str(uuid4()), text="Rendus · Étage")
+    items = [i for i in s.items if i.id != s.insp_b.id] + [hand, other]
+    links = bl.auto_links(items, [], [])
+    guides = {(k.source, k.target) for k in links if k.kind == "guides_style"}
+    assert guides == {(s.insp_a.id, s.renders.id), (s.insp_a.id, other.id)}
+    mine = [
+        BoardLink(source=hand.id, target=s.renders.id, kind="guides_style"),
+        BoardLink(source=hand.id, target=other.id, kind="guides_style"),
+    ]
+    both = bl.auto_links(items, [*links, *mine], [])
+    assert len([k for k in both if k.kind == "guides_style"]) == 4
+    board = Board(items=items, links=both)
+    member = _in(hand, reference=True)
+    board = board.model_copy(update={"items": [*items, member]})
+    cards = {i.card for i in bl.generation_inputs(board, s.renders.id).inspirations}
+    assert cards == {s.insp_a.id, hand.id}
+
+
 def test_a_cut_level_pair_is_not_recreated_and_a_hand_card_stays_free() -> None:
     t = TwoLevels()
     cut = f"{t.photos2.id}>{t.plan2.id}"

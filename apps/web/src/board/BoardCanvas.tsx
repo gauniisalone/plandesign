@@ -63,6 +63,7 @@ import {
 import { PhotoMeasure } from "./PhotoMeasure";
 import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
+import { overlapping } from "./wires";
 import {
   accepts,
   cardRole,
@@ -224,6 +225,9 @@ interface Props {
   /** « + Nouveau plan » (T7e ; retour d'augus du 19 oct. : sous la dernière rangée Plan +
    *  Rendus, plus dans la barre du haut) ; absent pour un lecteur. */
   onNewPlan?: () => void;
+  /** KAN-91 (retours MEP 14) : « Supprimer le plan » (après confirmation) ; absent pour un
+   *  lecteur. */
+  onDeletePlan?: (levelId: string) => void;
   /** A1 : « Rendu contextualisé… » depuis une photo, un rendu ou le plan. */
   onContextual: (pick: {
     kind: "photo" | "render" | "plan";
@@ -298,6 +302,41 @@ function missingHint(role: string, caps: Capabilities): string | null {
   if (role === "photos" && !caps.photoPlan)
     return "Plan depuis photo : bientôt en ligne";
   return null;
+}
+
+/** KAN-91 (retours MEP 14) : la confirmation dit ce qui part et ce qui reste. Le premier plan
+ *  ne se supprime pas encore (ses cartes sont celles de départ) : le bouton le dit. */
+const FIRST_PLAN =
+  "Le premier plan du projet ne se supprime pas encore : ses cartes Photos et Rendus sont celles de départ.";
+
+function DeletePlanButton({
+  name,
+  first,
+  onDelete,
+}: {
+  name: string;
+  first: boolean;
+  onDelete: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="board-plan-delete"
+      disabled={first}
+      title={first ? FIRST_PLAN : "Supprimer ce plan (Ctrl+Z le rend)"}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => {
+        if (
+          window.confirm(
+            `Supprimer le plan « ${name} » ? Sa carte Photos et ses liens partent avec lui ; ses photos restent sur l'espace de travail, hors carte. Les autres plans ne changent pas. Ctrl+Z le rend.`,
+          )
+        )
+          onDelete();
+      }}
+    >
+      Supprimer le plan
+    </button>
+  );
 }
 
 function RendersFrameActions({
@@ -707,7 +746,10 @@ export function BoardCanvas(props: Props) {
   /** KAN-91 : « Référence » ne se coche plus, il suit l'appartenance (C1). « Dans
    *  Inspirations » fait entrer les images choisies dans la carte Inspirations, comme si on
    *  les y glissait : leur allure guide alors les rendus reliés. */
-  const inspirationsCard = items.find((i) => cardRole(i) === "inspirations");
+  // La carte Inspirations de départ (sans `ref`), sinon la première posée à la main.
+  const inspirationsCard =
+    items.find((i) => cardRole(i) === "inspirations" && !i.ref) ??
+    items.find((i) => cardRole(i) === "inspirations");
   const outsideInspirations = referenceable.filter(
     (i) => !inspirationsCard || i.frame !== inspirationsCard.id,
   );
@@ -794,9 +836,14 @@ export function BoardCanvas(props: Props) {
     });
   };
 
-  /** KAN-91 : une carte Photos vide, sans lien (`ref` = son propre id : elle n'est la carte
-   *  d'aucun plan tant qu'on ne la relie pas). */
-  const addPhotosCard = () => {
+  /** KAN-91 : une carte Photos (ou Inspirations, retours de la MEP 14) vide, sans lien (`ref`
+   *  = son propre id : elle n'est la carte d'aucun plan, ni la carte Inspirations de départ,
+   *  tant qu'on ne la relie pas). */
+  const addCard = (
+    role: "photos" | "inspirations",
+    text: string,
+    hint: string,
+  ) => {
     if (!newPhotosAt) return;
     const id = uid();
     const card: BoardItem = {
@@ -810,15 +857,25 @@ export function BoardCanvas(props: Props) {
       locked: false,
       frame: null,
       ref: id,
-      text: "Photos de la pièce",
-      role: "photos",
+      text,
+      role,
     };
     commit([...items, card]);
     setSelected(new Set([id]));
-    setToast({
-      text: "Nouvelle carte Photos, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
-    });
+    setToast({ text: hint });
   };
+  const addPhotosCard = () =>
+    addCard(
+      "photos",
+      "Photos de la pièce",
+      "Nouvelle carte Photos, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
+    );
+  const addInspirationsCard = () =>
+    addCard(
+      "inspirations",
+      "Inspirations",
+      "Nouvelle carte Inspirations, sans lien : tirez sa poignée « + » vers une ou plusieurs cartes Rendus pour que ses images guident leur allure.",
+    );
 
   /** KAN-91 : la carte (plan, cadre Photos, Inspirations ou Rendus) sous un point. */
   const cardAt = (at: { x: number; y: number }, except: string) =>
@@ -1653,6 +1710,15 @@ export function BoardCanvas(props: Props) {
                   Modifier le plan
                 </button>
               )}
+              {props.onDeletePlan &&
+                item.ref &&
+                Object.keys(project.levels).length > 1 && (
+                  <DeletePlanButton
+                    name={level?.name ?? item.text}
+                    first={Object.keys(project.levels)[0] === item.ref}
+                    onDelete={() => props.onDeletePlan?.(item.ref!)}
+                  />
+                )}
             </span>
             {emptyPlan ? (
               // T3 : le plan n'existe pas encore ; deux chemins, et la progression ici.
@@ -2063,6 +2129,9 @@ export function BoardCanvas(props: Props) {
   const dimmed = new Set(
     items.filter((i) => i.frame && unplanned.has(i.frame)).map((i) => i.id),
   );
+  // Retours de la MEP 14 : une carte métier posée sur une autre (déplacement à la main,
+  // permis) le montre ; rien n'est déplacé d'office.
+  const overlaps = overlapping(items.filter((i) => cardRole(i) !== null));
   const box =
     selection.length > 0
       ? {
@@ -2343,7 +2412,7 @@ export function BoardCanvas(props: Props) {
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}`}
               style={{
                 left: item.x,
                 top: item.y,
@@ -2377,6 +2446,14 @@ export function BoardCanvas(props: Props) {
                   }
                 >
                   {OFF_CARD}
+                </span>
+              )}
+              {overlaps.has(item.id) && (
+                <span
+                  className="board-overlap-tag"
+                  title="Cette carte en recouvre une autre : écartez-les pour que les liens restent lisibles"
+                >
+                  recouvre une carte
                 </span>
               )}
               {item.locked && (
@@ -2462,6 +2539,18 @@ export function BoardCanvas(props: Props) {
               title="Une carte Photos vide, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent"
             >
               <IconPlus aria-hidden="true" /> Nouvelle carte Photos
+            </button>
+          )}
+          {newPhotosAt && (
+            <button
+              type="button"
+              className="board-new-plan board-new-photos board-new-insp"
+              style={{ left: newPhotosAt.x, top: newPhotosAt.y }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={addInspirationsCard}
+              title="Une carte Inspirations vide, sans lien : tirez sa poignée « + » vers une ou plusieurs cartes Rendus"
+            >
+              <IconPlus aria-hidden="true" /> Nouvelle carte Inspirations
             </button>
           )}
           {marquee && (

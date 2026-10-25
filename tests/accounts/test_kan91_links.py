@@ -110,3 +110,31 @@ def test_two_levels_each_photo_card_feeds_only_its_plan(tmp_path: Path, migrated
     for ref, expected in ((storey, [image]), (next(r for r in plans if r != storey), [])):
         inputs = m["viewer"].get(f"/api/projects/{pid}/board/inputs/{plans[ref]}").json()
         assert inputs["photos"] == expected, ref
+
+
+def test_deleting_a_plan_is_for_editors_and_every_member_sees_it(
+    tmp_path: Path, migrated_url: str
+) -> None:
+    """Retours de la MEP 14 : « Supprimer le plan » est un geste d'éditeur (403 pour le lecteur
+    et le commentateur) ; l'éditeur supprime l'étage du propriétaire, tous relisent un
+    espace de travail sans sa carte Photos ni ses liens, la photo hors carte."""
+    owner, m, pid, _ = _team(tmp_path, migrated_url)
+    storey = owner.post(
+        f"/api/projects/{pid}/levels", json={"name": "Étage", "kind": "storey"}
+    ).json()["level_id"]
+    image = owner.post(
+        f"/api/projects/{pid}/images",
+        params={"level_id": storey},
+        files={"file": ("e.png", _png(), "image/png")},
+    ).json()["image"]["id"]
+    url = f"/api/projects/{pid}/levels/{storey}"
+    for role in ("viewer", "commenter"):
+        assert m[role].delete(url).status_code == 403, role
+    done = m["editor"].delete(url)
+    assert done.status_code == 200, done.text
+    for who in (owner, m["viewer"]):
+        board = who.get(f"/api/projects/{pid}/board").json()
+        assert not any(i.get("ref") == storey for i in board["items"])
+        assert next(i for i in board["items"] if i.get("ref") == image)["frame"] is None
+        ids = {i["id"] for i in board["items"]}
+        assert all(k["source"] in ids and k["target"] in ids for k in board["links"])

@@ -72,6 +72,7 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", P + "/undo"): E,
     ("POST", P + "/redo"): E,
     ("POST", P + "/levels"): E,
+    ("DELETE", P + "/levels/{level_id}"): E,  # KAN-91 : « Supprimer le plan »
     ("GET", P + "/jobs/{job_id}"): V,
     ("DELETE", P + "/jobs/{job_id}"): E,  # annuler un calcul en attente (file d'attente)
     # Espace de travail et fichiers joints

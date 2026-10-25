@@ -281,6 +281,9 @@ def _key(item: BoardItem) -> str:
         # KAN-91 : la carte Photos d'un plan autre que le premier (ou une carte ajoutée à la
         # main, `ref` = son propre id).
         return f"frame:photos:{item.ref}"
+    if item.kind == "frame" and item.role == "inspirations" and item.ref:
+        # KAN-91 (retours MEP 14) : une carte Inspirations ajoutée à la main (`ref` = son id).
+        return f"frame:inspirations:{item.ref}"
     if item.kind == "frame" and item.role in FIXED_FRAMES:
         return f"frame:{item.role}"
     return f"{item.kind}:{item.ref}" if item.ref else ""
@@ -425,7 +428,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     lids = {lid for lid, _ in have.plans}
     gone = {i.id for i in items if i.kind == "frame" and i.role == "renders" and i.ref}
     gone = {fid for fid in gone if next(i for i in items if i.id == fid).ref not in lids}
-    items = _without_empty_photo_cards(
+    items = _without_gone_photo_cards(
         [i for i in items if i.id not in gone and i.frame not in gone], lids
     )
 
@@ -500,22 +503,24 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     return current.model_copy(update={"items": items, "links": links}), changed
 
 
-def _without_empty_photo_cards(items: list[BoardItem], lids: set[str]) -> list[BoardItem]:
-    """KAN-91 : la carte Photos d'un plan disparu (annulé) s'en va si elle est vide ; avec des
-    photos, elle reste (sans lien), aucune photo ne change de carte en silence. Une carte
-    ajoutée à la main (`ref` = son propre id) n'est jamais celle d'un plan."""
-    filled = {i.frame for i in items if i.frame}
-    return [
-        i
+def _without_gone_photo_cards(items: list[BoardItem], lids: set[str]) -> list[BoardItem]:
+    """KAN-91 : la carte Photos d'un plan disparu (supprimé ou annulé) s'en va avec ses liens ;
+    ses photos restent à leur place, hors carte (retours de la MEP 14 : on les garde, jamais
+    rangées en silence dans une autre carte). Une carte ajoutée à la main (`ref` = son propre
+    id) n'est jamais celle d'un plan."""
+    gone = {
+        i.id
         for i in items
-        if not (
-            i.kind == "frame"
-            and i.role == "photos"
-            and i.ref
-            and i.ref != str(i.id)
-            and i.ref not in lids
-            and i.id not in filled
-        )
+        if i.kind == "frame"
+        and i.role == "photos"
+        and i.ref
+        and i.ref != str(i.id)
+        and i.ref not in lids
+    }
+    return [
+        i.model_copy(update={"frame": None}) if i.frame in gone else i
+        for i in items
+        if i.id not in gone
     ]
 
 
@@ -657,12 +662,15 @@ class _Adder:
 
     def _frame(self, role: BoardRole, title: str) -> BoardItem:
         # KAN-91 : la carte Photos fixe est celle sans `ref` (celle du premier plan) ; une
-        # photo nouvelle y entre, jamais dans la carte d'un autre plan.
+        # photo nouvelle y entre, jamais dans la carte d'un autre plan. De même, la carte
+        # Inspirations fixe est celle sans `ref`, pas une carte ajoutée à la main.
         found = next(
             (
                 i
                 for i in self.items
-                if i.kind == "frame" and i.role == role and (role != "photos" or i.ref is None)
+                if i.kind == "frame"
+                and i.role == role
+                and (role not in ("photos", "inspirations") or i.ref is None)
             ),
             None,
         )

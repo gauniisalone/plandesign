@@ -7888,6 +7888,32 @@ marker.wire-feeds,
   /* KAN-91 : même allure que « + Nouveau plan », sous la colonne des cartes Photos. */
   white-space: nowrap;
 }
+/* KAN-91 (retours MEP 14) : « Nouvelle carte Inspirations » sous « Nouvelle carte Photos »
+   (40 px à l'écran, quel que soit le zoom ; `translate` s'applique avant `transform`). */
+.board-new-insp {
+  translate: 0 calc(40px * var(--inv, 1));
+}
+.board-plan-head .board-plan-delete:not(:disabled) {
+  color: var(--danger, var(--warn));
+}
+/* Une carte métier qui en recouvre une autre (après un déplacement à la main) : le
+   chevauchement se voit, contour pointillé et mention ; rien n'est déplacé d'office. */
+.board-item.board-overlap {
+  outline: calc(2px * var(--inv, 1)) dashed var(--warn);
+  outline-offset: calc(2px * var(--inv, 1));
+}
+.board-overlap-tag {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: calc(11px * max(1, var(--inv, 1)));
+  pointer-events: none;
+}
 .board-offcard {
   position: absolute;
   left: 6px;

@@ -1432,6 +1432,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               activeLevelId={level.id}
               onOpenLevel={actions.openLevel}
               onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
+              onDeletePlan={
+                readOnly ? undefined : (lid) => void actions.deletePlan(lid)
+              }
               onOpenViewer={(lid) => {
                 if (lid !== level.id) actions.openLevel(lid);
                 openViewer("");
@@ -1444,11 +1447,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onGeneratePlan={() => {
                 journalApi.ui(projectId, "generate_clicked", "plan");
                 // KAN-91 (C1) : la première photo de la carte Photos reliée à ce plan.
-                actions.generatePlan(undefined, planPhotos(board.board, level.id)[0]);
+                actions.generatePlan(
+                  undefined,
+                  planPhotos(board.board, level.id)[0],
+                );
               }}
               onGenerateNow={(fresh) => {
                 journalApi.ui(projectId, "generate_clicked", "now");
-                actions.generateNow(fresh, planPhotos(board.board, level.id)[0]);
+                actions.generateNow(
+                  fresh,
+                  planPhotos(board.board, level.id)[0],
+                );
               }}
               onPhotoDropped={actions.planFromPhoto}
               queued={queued}

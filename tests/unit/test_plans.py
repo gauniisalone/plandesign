@@ -14,10 +14,18 @@ from openplan.pipeline.stale import stale_cameras, step_scope
 from openplan.scene import history
 from openplan.scene.migrate import load_project
 from openplan.scene.ops import SetIntent, apply_op
-from openplan.scene.plans import NewPlan, PlanError, add_plan, stack_of, storey_of
+from openplan.scene.plans import (
+    NewPlan,
+    PlanError,
+    PlanRefusedError,
+    add_plan,
+    remove_plan,
+    stack_of,
+    storey_of,
+)
 from openplan.schemas.common import SCHEMA_VERSION
 from openplan.schemas.elements import Camera, Room
-from openplan.schemas.scene import Level
+from openplan.schemas.scene import ImageRef, Level
 from openplan.validation.invariants import validate_invariants
 from tests.factories import attic_project, only_level, rect_room_project
 
@@ -223,6 +231,68 @@ def test_each_plan_gets_its_own_photo_card_and_photos_stay_put(tmp_path: Path) -
     undone, _ = sync_board(board2, history.undo(after), runs)
     left = [i for i in undone.items if i.kind == "frame" and i.role == "photos"]
     assert [i.ref for i in left] == [None] and left[0].text == "Photos de la pièce"
+
+
+def test_remove_plan_is_one_undoable_step_with_its_refusals() -> None:
+    """KAN-91 (retours MEP 14) : « Supprimer le plan ». Jamais le seul plan, ni le premier, ni
+    un étage dont dépendent des variantes ; un seul pas d'historique, Ctrl+Z le rend."""
+    project = rect_room_project()
+    base = only_level(project)
+    with pytest.raises(PlanRefusedError, match="seul plan"):
+        remove_plan(project, base.id)
+    after, storey = add_plan(project, NewPlan(name="Étage", kind="storey"))
+    with pytest.raises(PlanRefusedError, match="premier plan"):
+        remove_plan(after, base.id)
+    with pytest.raises(PlanError):
+        remove_plan(after, uuid4())
+    with_variant, variant = add_plan(
+        after, NewPlan(name="Étage bis", kind="empty", source_level_id=storey)
+    )
+    with pytest.raises(PlanRefusedError, match="« Étage bis »"):
+        remove_plan(with_variant, storey)
+    # La variante d'abord, puis l'étage : les autres plans ne changent pas.
+    no_variant = remove_plan(with_variant, variant)
+    gone = remove_plan(no_variant, storey)
+    assert list(gone.levels) == [base.id] and gone.levels[base.id] == base
+    assert validate_invariants(gone).valid
+    back = history.undo(gone)
+    assert set(back.levels) == {base.id, storey}
+    assert back.levels[storey] == no_variant.levels[storey]
+
+
+def test_a_removed_plan_takes_its_cards_and_links_its_photos_stay_off_card(
+    tmp_path: Path,
+) -> None:
+    """La carte Photos et la carte Rendus du plan supprimé s'en vont avec leurs liens ; ses
+    photos restent à leur place, hors carte ; la rangée du premier plan ne bouge pas."""
+    image = ImageRef(
+        path="images/e.jpg", sha256="0" * 64, width_px=10, height_px=10, exif_stripped=True
+    )
+    project = rect_room_project().model_copy(update={"images": {image.id: image}})
+    base = only_level(project)
+    runs = tmp_path / "runs"
+    after, storey = add_plan(project, NewPlan(name="Étage", kind="storey"))
+    board, _ = sync_board(None, after, runs)
+    card = next(i for i in board.items if i.role == "photos" and i.ref == str(storey))
+    # La photo glissée dans la carte de l'étage.
+    placed = next(i for i in board.items if i.kind == "photo")
+    photo = placed.model_copy(update={"x": card.x + 24, "y": card.y + 160, "frame": card.id})
+    board = board.model_copy(
+        update={"items": [photo if i.id == placed.id else i for i in board.items]}
+    )
+    kept = {i.id: i for i in board.items if i.ref in (None, str(base.id)) and i.kind != "photo"}
+    gone, changed = sync_board(board, remove_plan(after, storey), runs)
+    assert changed
+    ids = {i.id for i in gone.items}
+    assert card.id not in ids
+    assert not any(i.kind == "plan" and i.ref == str(storey) for i in gone.items)
+    assert not any(i.role == "renders" and i.ref == str(storey) for i in gone.items)
+    left = next(i for i in gone.items if i.id == photo.id)
+    assert left.frame is None and (left.x, left.y) == (photo.x, photo.y)
+    assert all(k.source in ids and k.target in ids for k in gone.links)
+    for item in gone.items:
+        if item.id in kept and item.kind != "frame":
+            assert (item.x, item.y) == (kept[item.id].x, kept[item.id].y)
 
 
 def test_014_project_loads_with_every_level_a_storey() -> None:

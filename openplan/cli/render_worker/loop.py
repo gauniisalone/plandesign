@@ -116,12 +116,19 @@ class Worker:
                 delay = self.cycle()
                 if once:
                     break
-                self.wait(delay)
+                self.wait(self.pace(delay))
         finally:
             signal.signal(signal.SIGINT, previous)
             signal.signal(signal.SIGTERM, previous_term)
         self.say(f"Poste arrêté ({self.rendered} rendu(s) déposé(s)).")
         return 0
+
+    @staticmethod
+    def pace(delay: float) -> float:
+        """Retours de la MEP 14 (429 sur `claim`) : l'attente avant le prochain appel, celle
+        demandée, jamais moins de POLL_MIN_S, quel que soit le chemin (après un rendu, un
+        dépôt, un échec) ; le serveur refuse plus d'un appel par 5 s et par jeton."""
+        return max(delay, POLL_MIN_S)
 
     def state(self) -> Literal["idle", "paused", "waiting"]:
         if self.pause_flag.exists():

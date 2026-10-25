@@ -755,7 +755,8 @@ test("B2d : bail du plan, demander et rendre la main, curseur en mètres", async
   // (1er passage : ses IP habituelles ; répétitions : 203.0.113.x, plage de documentation).
   const run = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const rep = test.info().repeatEachIndex;
-  const ip = (k: 1 | 2) => (rep === 0 ? `198.51.100.${60 + k}` : `203.0.113.${10 * rep + k}`);
+  const ip = (k: 1 | 2) =>
+    rep === 0 ? `198.51.100.${60 + k}` : `203.0.113.${10 * rep + k}`;
   const owner = await person(browser, ip(1));
   await gotoApp(owner, "/");
   await signInHere(owner, `fanny-${run}@example.org`, "Fanny");

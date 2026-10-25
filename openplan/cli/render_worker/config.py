@@ -12,10 +12,12 @@ lisible par d'autres que son propriétaire est refusé. Les drapeaux `worker.pau
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import hashlib
 import os
 import secrets
 import stat
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -47,6 +49,39 @@ def stop_flag() -> Path:
 class WorkerConfigError(RuntimeError):
     """Configuration absente, trop ouverte ou invalide (le message ne contient jamais le
     jeton)."""
+
+
+LOCK_FILE = "worker.lock"
+ALREADY_RUNNING = (
+    "un poste de rendu tourne déjà sur cette machine{pid} : un seul à la fois (deux postes "
+    "appellent le serveur trop souvent et se font refuser). `openplan worker stop` l'arrête, "
+    "ou laissez-le tourner."
+)
+
+
+class WorkerAlreadyRunningError(WorkerConfigError):
+    """Retours de la MEP 14 : un deuxième `openplan worker run` avec la même configuration."""
+
+
+@contextlib.contextmanager
+def single_worker(folder: Path) -> Iterator[None]:
+    """Verrou de fichier (`worker.lock`, à côté de worker.env) tenu tant que le poste tourne ;
+    rendu par le système même si le poste est tué. Un deuxième poste est refusé, avec le pid
+    du premier."""
+    folder.mkdir(parents=True, exist_ok=True)
+    fd = os.open(folder / LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            other = os.read(fd, 16).decode(errors="ignore").strip()
+            pid = f" (processus {other})" if other.isdigit() else ""
+            raise WorkerAlreadyRunningError(ALREADY_RUNNING.format(pid=pid)) from None
+        os.ftruncate(fd, 0)
+        os.write(fd, str(os.getpid()).encode())
+        yield
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True)

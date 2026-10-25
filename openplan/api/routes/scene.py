@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.pipeline import journal
@@ -22,7 +22,7 @@ from openplan.scene.ops import (
     SetIntent,
     UpdateElement,
 )
-from openplan.scene.plans import NewPlan, PlanError, add_plan
+from openplan.scene.plans import NewPlan, PlanError, PlanRefusedError, add_plan, remove_plan
 from openplan.schemas.common import StrictModel
 from openplan.schemas.derived import DerivedLevel
 from openplan.schemas.elements import Furniture
@@ -137,6 +137,27 @@ def new_plan(body: NewPlan, project: ProjectDep, store: StoreDep, actor: ActorDe
         store.save(after)
     edit = _result(after, level_id, report)
     return NewPlanResult(**edit.model_dump(), level_id=level_id)
+
+
+@router.delete("/projects/{project_id}/levels/{level_id}")
+def delete_plan(level_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep) -> Project:
+    """KAN-91 (retours MEP 14), « Supprimer le plan » : un seul pas d'historique, annulable.
+    L'espace de travail suit à sa lecture : la carte Rendus et la carte Photos du plan s'en
+    vont avec leurs liens, ses photos restent, hors carte. 409 pour le seul plan, le premier,
+    ou un étage qui a des variantes."""
+    with store.lock(project.id):
+        fresh = store.load(project.id)
+        try:
+            after = remove_plan(fresh, level_id, actor=actor)
+        except PlanRefusedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except PlanError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        report = validate_invariants(after)
+        if not report.valid:
+            raise InvalidEditError(report)
+        store.save(after)
+    return after
 
 
 @router.post("/projects/{project_id}/undo")

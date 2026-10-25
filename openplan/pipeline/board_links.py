@@ -212,7 +212,8 @@ def auto_links(
     first_level: str | None = None,
 ) -> list[BoardLink]:
     """Zéro geste (KAN-91) : chaque carte Photos est reliée au plan de son niveau, chaque plan à
-    sa carte Rendus si elle n'en rend aucun, la carte Inspirations à chaque carte Rendus. Une
+    sa carte Rendus si elle n'en rend aucun, la carte Inspirations de départ à chaque carte
+    Rendus (une carte Inspirations ajoutée à la main se relie à la main, N-N). Une
     paire coupée à la main n'est jamais recréée. Un lien automatique d'une carte Photos vers le
     plan d'un autre niveau (avant les cartes par plan) s'en va : la photo d'un étage ne
     construit pas le rez-de-chaussée (C1). `first_level` : le premier plan du projet (sinon le
@@ -259,8 +260,11 @@ def auto_links(
         if rendered is not None and frame.id not in viewed:
             add(rendered, frame, "renders_view")
             viewed.add(frame.id)
+        # Seule la carte Inspirations de départ (sans `ref`) guide d'elle-même chaque carte
+        # Rendus ; une carte ajoutée à la main n'est reliée à rien (retours de la MEP 14).
         for card in inspirations:
-            add(card, frame, "guides_style")
+            if card.ref is None:
+                add(card, frame, "guides_style")
     return out
 
 
