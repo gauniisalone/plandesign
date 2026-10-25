@@ -101,6 +101,9 @@ class RidgeProfile(StrictModel):
     bins: tuple[int, int]
     """Tranches d'enveloppe qui portent chaque versant (points d'appui)."""
     rms: float = Field(ge=0.0)
+    under_beam: bool = False
+    """Le sommet du « Λ » tombait sur une poutre horizontale (faîtage caché) : `ridge_z` est
+    l'intersection des versants si elle est plausible, sinon la poutre (borne basse)."""
 
 
 class PitchVote(StrictModel):
@@ -1156,13 +1159,46 @@ def _with_profile(
         "voted_pitch_deg": voted_pitch(votes),
         "along_ridge": abs(float(ridge_dir[2])) / max(float(np.linalg.norm(ridge_dir)), 1e-12),
     }
+    if profile is not None and _beam_at_apex(profile, cls):
+        # Une poutre horizontale sous le faîtage (sa face basse, classée « plafond ») cache le
+        # haut des versants : l'enveloppe s'arrête à la poutre, le « Λ » est aplati et son
+        # sommet tombe sur elle. Le faîtage est au-dessus : l'intersection des deux pentes,
+        # quand elle est plausible (au plus BEAM_MAX_ABOVE au-dessus), sinon la poutre (borne
+        # basse).
+        crossing = estimate.ridge_height.value if estimate.ridge_height is not None else None
+        if crossing is not None and profile.ridge_z < crossing <= BEAM_MAX_ABOVE * profile.ridge_z:
+            profile = profile.model_copy(update={"ridge_z": crossing, "under_beam": True})
+        else:
+            profile = profile.model_copy(update={"under_beam": True})
+        update["ridge_profile"] = profile
     if profile is not None and estimate.ridge_height is not None:
         update["ridge_height"] = Estimate(
             value=profile.ridge_z,
             sigma=estimate_scale_sigma(profile.ridge_z, profile.rms),
-            note=PROFILE_NOTE,
+            note=BEAM_NOTE if profile.under_beam else PROFILE_NOTE,
         )
     return estimate.model_copy(update=update)
+
+
+BEAM_BAND = (0.88, 1.05)
+"""Poutre « au sommet » : plan horizontal (classé plafond) entre 88 % et 105 % de la hauteur du
+sommet du « Λ » (l'ajustement arrondit le sommet au-dessus de la poutre : 2,32 m pour une
+poutre à 2,10 m sous un faîtage à 2,50 m, combles synthétiques)."""
+BEAM_MAX_ABOVE = 1.3
+"""Faîtage pris à l'intersection des pentes au plus 30 % au-dessus de la poutre ; au-delà,
+l'intersection amplifie l'erreur des pentes (grenier : jusqu'à ×6)."""
+BEAM_NOTE = "poutre sous le faîtage : faîtage pris à l'intersection des versants"
+
+
+def _beam_at_apex(profile: RidgeProfile, cls: ClassifiedPlanes) -> bool:
+    h = float(cls.floor.plane.distance)
+    for i, kind in cls.kinds.items():
+        if kind != "ceiling":
+            continue
+        z = cls.world[i].distance + h
+        if BEAM_BAND[0] * profile.ridge_z <= z <= BEAM_BAND[1] * profile.ridge_z:
+            return True
+    return False
 
 
 def _add_residual_side_walls(

@@ -80,6 +80,25 @@ def test_b_profile_reads_the_ridge_and_the_planes_vote_the_pitch() -> None:
     assert est.along_ridge is not None and est.along_ridge > 0.9
 
 
+def test_b_a_beam_under_the_ridge_does_not_flatten_it() -> None:
+    """Poutre (ici un plafond étroit) sous le faîtage : le haut de l'enveloppe s'arrête à elle.
+    Le faîtage n'est pas pris sur la poutre, mais à l'intersection des versants (grenier
+    d'augus, photo mono : 1,86 m sur la poutre, 2,32 m au faîtage)."""
+    from tests.synthetic_depth import Face
+
+    cam = camera(*AXIAL_A)
+    faces = [
+        *attic_faces(
+            length=ATTIC.length, width=ATTIC.width, ridge_height=ATTIC.ridge, eave_height=0.0
+        ),
+        Face((0.0, 0.0, 1.0), 2.1),
+    ]
+    est, *_ = analyse_attic(render_depth(faces, cam), FOCAL_PX, cam.principal_point)
+    assert est.ridge_profile is not None and est.ridge_profile.under_beam
+    assert est.ridge_height is not None
+    assert est.ridge_height.value == pytest.approx(ATTIC.ridge, rel=0.05)
+
+
 def test_b_a_flat_ceiling_gives_no_profile_and_no_ridge() -> None:
     cam = camera(1.0, 1.0, 1.5, 30.0, 0.0)
     depth = render_depth(box_faces(5.0, 4.0, 2.5), cam)
