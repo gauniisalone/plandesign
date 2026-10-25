@@ -297,8 +297,9 @@ class RenderQueue:
                 row.last_seen_at, row.state = now, state
 
     def worker_status(self) -> str:
-        """`online`, `busy`, `paused` ou `offline` (pas d'appel depuis ONLINE_WITHIN). Un rendu
-        pris depuis moins de TAKE_TTL dit `busy` : le poste ne rappelle pas pendant le calcul."""
+        """`online`, `busy`, `paused`, `waiting` ou `offline` (pas d'appel depuis ONLINE_WITHIN).
+        Un rendu pris depuis moins de TAKE_TTL dit `busy` : le poste ne rappelle pas pendant le
+        calcul. `waiting` : en ligne, mais il passe son tour (il finit un autre travail)."""
         now = self.clock()
         with self.session() as db:
             row = db.get(RenderWorker, WORKER_NAME)
@@ -313,6 +314,8 @@ class RenderQueue:
             return "offline"
         if row.state == "paused":
             return "paused"
+        if row.state == "waiting":
+            return "waiting"
         return "busy" if row.state == "busy" else "online"
 
     # --- journal -----------------------------------------------------------------------

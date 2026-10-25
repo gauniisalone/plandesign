@@ -39,6 +39,8 @@ import {
 
 const NOT_YET = "Rendus réalistes : bientôt en ligne";
 const OFFLINE = "Poste de rendu hors ligne : le rendu sera fait à son retour";
+/** Le poste est en ligne mais passe son tour (il finit un autre travail sur sa machine). */
+const WAITING = "En attente : le poste de rendu finit un autre travail";
 const POLL_BUSY_MS = 5_000;
 const POLL_IDLE_MS = 30_000;
 const TICK_MS = 1_000;
@@ -428,7 +430,9 @@ export function RealisticRenders({
                   ? "Rendu en cours"
                   : worker === "offline"
                     ? OFFLINE
-                    : "En attente";
+                    : worker === "waiting"
+                      ? WAITING
+                      : "En attente";
               return (
                 <li key={r.id} className="rgal-cell rgal-running">
                   <span role="status" aria-live="polite" className="rgal-state">

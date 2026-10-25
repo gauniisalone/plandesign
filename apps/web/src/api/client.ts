@@ -418,7 +418,8 @@ export function invitationLink(token: string): string {
 /** KAN-89 : rendus réalistes calculés par le poste d'augus (comptes autorisés seulement). */
 export interface RealisticStatus {
   allowed: boolean;
-  worker: "online" | "offline" | "paused" | "busy";
+  /** `waiting` : en ligne, mais le poste finit un autre travail (verrou, GPU, tests). */
+  worker: "online" | "offline" | "paused" | "busy" | "waiting";
   quota: number;
   used_today: number;
 }

@@ -84,8 +84,10 @@ def test_turn_is_skipped_when_the_machine_works(tmp_path: Path) -> None:
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX)
     try:
-        reason = checks.skip_reason(needs_gpu=True, run=calm, lock=lock)
-        assert reason == "verrou du travail lourd pris"
+        reason = checks.skip_reason(needs_gpu=True, run=calm, lock=lock) or ""
+        # Lu dans le vrai /proc/locks : c'est ce pytest qui tient le verrou.
+        assert reason.startswith("en attente : un test lourd tourne depuis"), reason
+        assert reason.endswith("le rendu partira dès qu'il sera fini")
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
@@ -99,6 +101,75 @@ def test_turn_is_skipped_when_the_machine_works(tmp_path: Path) -> None:
     assert checks.skip_reason(needs_gpu=False, run=no_smi, lock=lock) is None
     tests = _runner({"nvidia-smi": (0, "0\n"), "pgrep": (0, "4242\n")})
     assert "tests en cours" in (checks.skip_reason(needs_gpu=True, run=tests, lock=lock) or "")
+
+
+def test_who_holds_the_lock_is_said_from_proc_locks(tmp_path: Path) -> None:
+    """Retour d'augus : « verrou pris » faisait croire à une panne. Le poste dit qui tient le
+    verrou, sa commande raccourcie et depuis quand (un faux /proc ici)."""
+    argv = [
+        "flock", "-w", "600", "/tmp/pd-lourd.lock", "nice", "-n", "10", "timeout", "900",
+        "npx", "playwright", "test", "e2e/openings.spec.ts", "--reporter=list",
+    ]  # fmt: skip
+    assert checks.short_command(argv) == "playwright test e2e/openings.spec.ts"
+    script = ["flock", "-w", "1800", "/tmp/pd-lourd.lock", "bash", "/x/pass14_commit.sh", "14:42"]
+    assert checks.short_command(script) == "pass14_commit.sh 14:42"
+
+    lock = tmp_path / "pd-lourd.lock"
+    lock.touch()
+    st = lock.stat()
+    dev = f"{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino}"
+    proc = tmp_path / "proc"
+    (proc / "4321").mkdir(parents=True)
+    (proc / "locks").write_text(
+        f"1: POSIX  ADVISORY  WRITE 99 00:01:1 0 EOF\n2: FLOCK  ADVISORY  WRITE 4321 {dev} 0 EOF\n"
+    )
+    (proc / "4321" / "cmdline").write_bytes(
+        b"\0".join(a.replace("/tmp/pd-lourd.lock", str(lock)).encode() for a in argv) + b"\0"
+    )
+    tick = os.sysconf("SC_CLK_TCK")
+    started = 1000 * tick  # 1000 s après le démarrage de la machine
+    fields = ["S"] + ["0"] * 18 + [str(started)] + ["0"] * 10
+    (proc / "4321" / "stat").write_text(f"4321 (flock) {' '.join(fields)}\n")
+    (proc / "uptime").write_text("1240.00 9000.00\n")  # il tourne depuis 4 min
+    holder = checks.lock_holder(lock, proc)
+    assert holder is not None and holder.pid == 4321
+    assert checks.waiting_text(holder) == (
+        "en attente : un test lourd tourne depuis 4 min (playwright test "
+        "e2e/openings.spec.ts), le rendu partira dès qu'il sera fini"
+    )
+    # Processus disparu (le verrou passé à un enfant) : la phrase reste juste, sans détail.
+    (proc / "4321" / "cmdline").unlink()
+    gone = checks.lock_holder(lock, proc)
+    assert gone is not None and gone.command is None
+    assert "un travail lourd tient le verrou" in checks.waiting_text(gone)
+
+
+def test_the_wait_is_said_once_a_minute_at_most(tmp_path: Path) -> None:
+    said: list[str] = []
+    now = [0.0]
+    reasons = iter(
+        ["en attente : un test lourd tourne depuis 4 min (x)"] * 8
+        + [None, "GPU déjà occupé (812 Mio)"]
+    )
+    worker = Worker(
+        client=StubClient([]),  # type: ignore[arg-type]
+        engine="fake",
+        pause_flag=tmp_path / "worker.pause",
+        stop_flag=tmp_path / "worker.stop",
+        skip=lambda: next(reasons),
+        say=said.append,
+        clock=lambda: now[0],
+    )
+    states = []
+    for _ in range(10):
+        states.append(worker.state())
+        now[0] += 12.5  # un tour toutes les 10 à 15 s
+    assert states == ["waiting"] * 8 + ["idle", "waiting"]
+    assert said == [
+        "En attente : un test lourd tourne depuis 4 min (x).",  # à 0 s
+        "En attente : un test lourd tourne depuis 4 min (x).",  # à 62,5 s
+        "Tour passé : GPU déjà occupé (812 Mio).",  # après une reprise : dit aussitôt
+    ]
 
 
 def test_backoff_never_loops_tightly() -> None:

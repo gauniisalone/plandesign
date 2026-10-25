@@ -130,8 +130,9 @@ class RealisticStatus(StrictModel):
     """État du service pour la personne connectée (cadre Rendus)."""
 
     allowed: bool
-    worker: Literal["online", "offline", "paused", "busy"] = "offline"
-    """`offline` : pas de battement de cœur récent ; le rendu sera fait à son retour."""
+    worker: Literal["online", "offline", "paused", "busy", "waiting"] = "offline"
+    """`offline` : pas de battement de cœur récent ; le rendu sera fait à son retour.
+    `waiting` : en ligne, mais le poste finit un autre travail (verrou, GPU, tests)."""
     quota: int = 0
     used_today: int = 0
 

@@ -164,6 +164,10 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     assert paused.status_code == 204
     status = world.client.get("/api/realistic/status").json()
     assert status == {"allowed": True, "worker": "paused", "quota": 20, "used_today": 1}
+    # Il passe son tour (verrou du travail lourd, GPU, tests) : en ligne, mais « en attente ».
+    waiting = world.worker.post("/api/worker/claim", json={"state": "waiting"}, headers=WORKER)
+    assert waiting.status_code == 204
+    assert world.client.get("/api/realistic/status").json()["worker"] == "waiting"
     # Prise : la demande, puis rien ; pendant le rendu, le poste est « en cours ».
     job = world.worker.post("/api/worker/claim", json={"state": "idle"}, headers=WORKER)
     assert job.status_code == 200, job.text

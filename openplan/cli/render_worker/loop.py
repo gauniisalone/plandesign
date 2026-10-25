@@ -43,6 +43,8 @@ from openplan.schemas.render_queue import (
 )
 
 POLL_MIN_S, POLL_MAX_S = 10.0, 15.0
+SAY_EVERY_S = 60.0
+"""Une ligne au plus par minute pour dire que le poste attend (il passe son tour plus souvent)."""
 AUTH_BACKOFF_S = (60.0, 300.0)
 BUSY_BASE_S, BUSY_MAX_S = 15.0, 300.0
 
@@ -78,8 +80,11 @@ class Worker:
     sleep: Callable[[float], None] = time.sleep
     jitter: Callable[[float, float], float] = random.uniform
     backoff: Backoff = field(default_factory=Backoff)
+    clock: Callable[[], float] = time.monotonic
     stopping: bool = False
     rendered: int = 0
+    said_at: float | None = None
+    """Quand le poste a dit pour la dernière fois pourquoi il passe son tour."""
 
     def __post_init__(self) -> None:
         if self.skip is None:
@@ -135,10 +140,18 @@ class Worker:
             return "paused"
         assert self.skip is not None
         reason = self.skip()
-        if reason is not None:
-            self.say(f"Tour passé : {reason}.")
-            return "waiting"
-        return "idle"
+        if reason is None:
+            self.said_at = None  # la prochaine attente se dira aussitôt
+            return "idle"
+        # Une ligne par minute au plus (le poste passe son tour toutes les 10 à 15 s).
+        now = self.clock()
+        if self.said_at is None or now - self.said_at >= SAY_EVERY_S:
+            self.said_at = now
+            if reason.startswith("en attente"):
+                self.say(f"{reason[0].upper()}{reason[1:]}.")
+            else:
+                self.say(f"Tour passé : {reason}.")
+        return "waiting"
 
     def cycle(self) -> float:
         """Un appel `claim` (et le rendu s'il y en a un) ; renvoie l'attente avant le suivant."""
