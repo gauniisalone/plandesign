@@ -9382,9 +9382,8 @@ button.link,
   }
 }
 
-/* ---- Connexion lente (MEP 14, 25 oct.) : image non chargée, connexion instable, consigne
-   d'une carte vide au-dessus d'« Importer ». Noms vérifiés libres (img-failed*,
-   live-unstable). Jetons de KAN-77 seulement. ---- */
+/* ---- Connexion lente (MEP 14, 25 oct.) : image non chargée, connexion instable. Noms
+   vérifiés libres (img-failed*, live-unstable). Jetons de KAN-77 seulement. ---- */
 .img-failed {
   display: grid;
   place-items: center;
@@ -9405,11 +9404,4 @@ button.link,
 }
 .live-banner.live-unstable button {
   flex: none;
-}
-/* La consigne d'une carte vide (deux lignes dans une carte étroite) s'arrête au-dessus de la
-   rangée « Importer » au lieu de passer dessous. */
-.board-item.kind-frame:has(.board-frame-import-row) .board-frame-hint {
-  bottom: calc(50% - 2.2em);
-  place-items: end center;
-  padding-bottom: 0.4em;
 }
