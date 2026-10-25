@@ -1973,13 +1973,17 @@ export function BoardCanvas(props: Props) {
                     <IconUpload aria-hidden="true" /> Importer
                   </button>
                   {item.role === "photos" && (
-                    // KAN-91 L5 : le guide, à côté de « Importer », seulement sur demande.
+                    // KAN-91 L5 : le guide, à côté de « Importer », seulement sur demande ;
+                    // nom court pour tenir dans la carte étroite (KAN-77), entier pour les
+                    // lecteurs d'écran et dans l'infobulle.
                     <button
                       type="button"
                       className="link board-frame-guide"
+                      aria-label={PHOTO_GUIDE_LINK}
+                      title={PHOTO_GUIDE_LINK}
                       onClick={() => setGuide({ frame: item })}
                     >
-                      {PHOTO_GUIDE_LINK}
+                      Guide
                     </button>
                   )}
                 </span>
