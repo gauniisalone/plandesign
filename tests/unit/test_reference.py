@@ -271,5 +271,5 @@ def test_migration_from_0_15_0_has_no_reference_and_no_basis() -> None:
     for level in data["levels"].values():
         level.pop("scale_basis", None)
     loaded = load_project(data)
-    assert loaded.schema_version == "0.18.0"
+    assert loaded.schema_version == "0.19.0"
     assert all(level.scale_basis is None for level in loaded.levels.values())

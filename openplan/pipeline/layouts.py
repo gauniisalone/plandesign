@@ -37,6 +37,7 @@ from openplan.geom.built_in_bed import (
     STANDING_M,
     standing_at,
 )
+from openplan.geom.floor_zones import quad
 from openplan.geom.roof import derived_roofs, roof_window_footprint
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import DINING_TABLES, TABLE_CHAIRS, Slot, compose
@@ -51,6 +52,7 @@ from openplan.schemas.common import Point2, Point3, Provenance, Source, StrictMo
 from openplan.schemas.derived import DerivedRoof
 from openplan.schemas.elements import (
     DOOR_KINDS,
+    FloorZone,
     Furniture,
     Opening,
     OpeningKind,
@@ -98,6 +100,8 @@ STEP = "layout.generate"
 APPLY_STEP = "layout.apply"
 WALL_STEP_M = 0.10
 GRID_STEP_M = 0.25
+ZONE_EDGE_M = 0.02
+"""KAN-92 : demi-largeur de la bande interdite sur le bord d'une zone de sol surélevée."""
 WALL_GAP_M = 0.02
 """Jour laissé entre le dos d'un meuble et la face du mur."""
 NEAR_M = 1.2
@@ -516,6 +520,13 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
     obstacles = [p.polygon for p in pieces_of(level) if p.polygon.intersects(polygon)]
     # Escaliers (S1) : ni meuble sur la trémie, ni sur le palier d'arrivée.
     forbidden.extend(z for _, opening, arrival in stair_zones(level) for z in (opening, arrival))
+    # KAN-92 : un meuble est tout entier sur une zone de sol surélevée ou à côté, jamais à
+    # cheval sur la marche.
+    forbidden.extend(
+        quad(e.polygon).exterior.buffer(ZONE_EDGE_M)
+        for e in level.elements.values()
+        if isinstance(e, FloorZone) and e.visible and e.elevation > 0.0
+    )
     catalog = load_catalog()
     by_category: dict[str, CatalogAsset] = {}
     for asset in catalog.assets:

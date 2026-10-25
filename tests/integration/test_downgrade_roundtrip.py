@@ -12,7 +12,8 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,9 +27,10 @@ from openplan.schemas import events as event_schema
 from openplan.schemas.events import ProjectEvent
 from openplan.schemas.scene import ImageRef, ReferenceSegment
 
-PRODUCTIONS = [("3da4d52", "0.16.0"), ("a1c630f", "0.17.0")]
-"""Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0) et MEP 13
-(22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91)."""
+PRODUCTIONS = [("3da4d52", "0.16.0"), ("a1c630f", "0.17.0"), ("14e8870", "0.18.0")]
+"""Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0), MEP 13
+(22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91) et MEP 15
+(25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92)."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
@@ -127,8 +129,31 @@ def _write_with_the_new_code(data: Path) -> list[str]:
                 {"type": "reaction", "project_id": pid2, "actor": "local", "label": "👍"}
             )
         )
+    ids.append(str(_with_floor_zone(store)))
     (data / "ids.json").write_text(json.dumps(ids))
     return ids
+
+
+def _with_floor_zone(store: Any) -> UUID:
+    """KAN-92 : une pièce avec une zone de sol élevée de 20 cm (par l'API, comme Pousser/Tirer)
+    et un mur épaissi à 30 cm."""
+    from openplan.scene.ops import AddFloorZone, UpdateElement, apply_op
+    from openplan.schemas.common import Point2
+    from openplan.schemas.elements import FloorZone, Wall
+    from tests.factories import rect_room_project
+
+    project = rect_room_project(name="Estrade")
+    level = next(iter(project.levels.values()))
+    wall = next(e for e in level.elements.values() if isinstance(e, Wall))
+    corners = [(1.0, 1.0), (2.0, 1.0), (2.0, 2.0), (1.0, 2.0)]
+    project = apply_op(
+        project, level.id, AddFloorZone(polygon=[Point2(x=x, y=y) for x, y in corners])
+    )
+    zone = next(e for e in project.levels[level.id].elements.values() if isinstance(e, FloorZone))
+    for eid, fields in ((zone.id, {"elevation": 0.2}), (wall.id, {"thickness": 0.3})):
+        project = apply_op(project, level.id, UpdateElement(element_id=eid, fields=fields))
+    store.save(project)
+    return project.id
 
 
 @pytest.mark.parametrize(("production", "target"), PRODUCTIONS)
@@ -155,4 +180,4 @@ def test_production_rereads_downgraded_projects_without_409_or_500(
     assert all(code == 200 for code in statuses.values()), statuses
     # Pour l'ancien code, les deux cartes Photos du projet à deux niveaux restent des cartes
     # Photos (rôle « photos »), relues sans erreur.
-    assert sorted(seen_out["cartes_photos"].values()) == [1, 2], seen_out
+    assert sorted(seen_out["cartes_photos"].values()) == [1, 1, 2], seen_out

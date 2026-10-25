@@ -15,7 +15,10 @@ from typing import Any, Literal
 from uuid import UUID
 from xml.sax.saxutils import escape
 
+from shapely.geometry import LineString
+
 from openplan.brand import APP_NAME
+from openplan.geom.floor_zones import quad
 from openplan.geom.furniture_symbols import place_symbol, symbol_for
 from openplan.geom.opening_symbols import OpeningSymbol, opening_symbol
 from openplan.geom.roof import roof_window_footprint
@@ -23,7 +26,14 @@ from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.derived import compute_derived
 from openplan.schemas.common import Point2, Source
 from openplan.schemas.derived import DerivedLevel, DerivedRoom, DerivedStairs, DerivedWall
-from openplan.schemas.elements import Furniture, Opening, OpeningKind, RoofWindow, Wall
+from openplan.schemas.elements import (
+    FloorZone,
+    Furniture,
+    Opening,
+    OpeningKind,
+    RoofWindow,
+    Wall,
+)
 from openplan.schemas.numbers import area, centimetres, decimal, length
 from openplan.schemas.results import Artifact
 from openplan.schemas.scene import Level, Project
@@ -67,6 +77,9 @@ _STYLE = """
 .stairs-cut { fill: none; stroke: #222; stroke-width: 0.9; }
 .stairs-railing { fill: none; stroke: #222; stroke-width: 2.4; }
 .stairs-label { font: 10px sans-serif; fill: #222; text-anchor: middle; }
+.floor-zone { fill: #8a5cc7; fill-opacity: 0.08; stroke: #73528c; stroke-width: 1.2; }
+.floor-zone-hatch { fill: none; stroke: #73528c; stroke-width: 0.5; stroke-opacity: 0.6; }
+.floor-zone-label { font: bold 11px sans-serif; fill: #5c3f73; text-anchor: middle; }
 """
 _DARK_STYLE = """
 .wall { fill: #c9ccd6; stroke: #e6e8ef; }
@@ -89,11 +102,47 @@ _DARK_STYLE = """
 .stairs-tread { stroke: #a3a7b3; }
 .stairs-walk, .stairs-cut, .stairs-railing { stroke: #d0d3dc; }
 .stairs-label { fill: #e6e8ef; }
+.floor-zone, .floor-zone-hatch { stroke: #c4a3e6; }
+.floor-zone-label { fill: #d9c2f0; }
 """
 """Thème sombre (C1) : les couleurs de l'éditeur de plan en sombre, pour la vignette du plan
 sur le tableau ; jamais pour un export à imprimer."""
 SvgTheme = Literal["light", "dark"]
 USABLE_LABEL = "1,80 m sous pente"
+ZONE_HATCH_M = 0.12
+"""KAN-92 : pas de la hachure d'une zone de sol (diagonale à 45°)."""
+
+
+def floor_zones(level: Level) -> list[FloorZone]:
+    return [e for e in level.elements.values() if isinstance(e, FloorZone) and e.visible]
+
+
+def zone_label(zone: FloorZone) -> str:
+    """La hauteur d'une zone de sol telle qu'écrite sur le plan : « +20 cm »."""
+    return f"+{round(zone.elevation * 100)} cm" if zone.elevation > 0 else "zone de sol"
+
+
+def zone_center(zone: FloorZone) -> Point2:
+    c = quad(zone.polygon).representative_point()
+    return Point2(x=float(c.x), y=float(c.y))
+
+
+def zone_hatch(zone: FloorZone) -> list[tuple[Point2, Point2]]:
+    """Hachure à 45° d'une zone de sol, au pas ZONE_HATCH_M, coupée à son contour."""
+    shape = quad(zone.polygon)
+    minx, miny, maxx, maxy = shape.bounds
+    out: list[tuple[Point2, Point2]] = []
+    k = math.floor((minx - maxy) / ZONE_HATCH_M)
+    while k * ZONE_HATCH_M <= maxx - miny:
+        c = k * ZONE_HATCH_M
+        line = LineString([(miny + c, miny), (maxy + c, maxy)])
+        piece = shape.intersection(line)
+        for part in getattr(piece, "geoms", [piece]):
+            if isinstance(part, LineString) and part.length > 1e-6:
+                (x0, y0), (x1, y1) = part.coords[0], part.coords[-1]
+                out.append((Point2(x=x0, y=y0), Point2(x=x1, y=y1)))
+        k += 1
+    return out
 
 
 def area_label(room: DerivedRoom) -> str:
@@ -186,6 +235,18 @@ def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> s
         out.append(f'<text class="room-label" x="{cx:.1f}" y="{cy:.1f}">{name}</text>')
         out.append(
             f'<text class="room-area" x="{cx:.1f}" y="{cy + 16:.1f}">{area_label(room)}</text>'
+        )
+    # Zones de sol (KAN-92) : contour, hachure, hauteur
+    for zone in floor_zones(level):
+        out.append(f'<polygon class="floor-zone" points="{pts(zone.polygon)}"/>')
+        out.extend(
+            f'<polyline class="floor-zone-hatch" points="{pts([a, b])}"/>'
+            for a, b in zone_hatch(zone)
+        )
+        center = zone_center(zone)
+        out.append(
+            f'<text class="floor-zone-label" x="{sx(center.x):.1f}" y="{sy(center.y):.1f}">'
+            f"{zone_label(zone)}</text>"
         )
     # Pentes : zone sous 1,80 m hachurée entre l'égout et la ligne de hauteur utile
     for roof in derived.roofs.values():
@@ -477,6 +538,7 @@ def render_pdf(project: Project, level_id: UUID, *, page_format: str = "A4") -> 
     x0 = MARGIN_PT + ((page[0] - 2 * MARGIN_PT) - (maxx - minx) * k) / 2.0
     plan = _PdfPlan(c, k, x0 - minx * k, MARGIN_PT + TITLE_BLOCK_PT - miny * k)
     plan.rooms(level, derived)
+    plan.zones(level)
     plan.roofs(derived)
     plan.furniture(level)
     plan.roof_windows(level, derived)
@@ -592,6 +654,22 @@ class _PdfPlan:
             c.drawCentredString(cx, cy, element.name or "Pièce")
             c.setFont("Helvetica", 8)
             c.drawCentredString(cx, cy - 11, area_label(room))
+
+    def zones(self, level: Level) -> None:
+        """KAN-92 : zones de sol, contour, hachure et hauteur (« +20 cm »)."""
+        c = self.c
+        for zone in floor_zones(level):
+            c.setStrokeColorRGB(0.45, 0.32, 0.55)
+            c.setLineWidth(0.6)
+            self.polygon(zone.polygon, fill=False, stroke=True)
+            c.setLineWidth(0.25)
+            for a, b in zone_hatch(zone):
+                self.path([a, b], closed=False)
+            center = zone_center(zone)
+            c.setFont("Helvetica", 7)
+            c.setFillColorRGB(0.45, 0.32, 0.55)
+            c.drawCentredString(self.sx(center.x), self.sy(center.y), zone_label(zone))
+        c.setLineWidth(0.5)
 
     def roofs(self, derived: DerivedLevel) -> None:
         """Zone sous 1,80 m et lignes d'égout / de hauteur utile."""
@@ -757,6 +835,7 @@ DXF_LAYERS: dict[str, tuple[int, str]] = {
     "PENTES": (30, "DASHED"),
     "COTES": (1, "CONTINUOUS"),
     "ESCALIERS": (4, "CONTINUOUS"),
+    "ZONES_SOL": (6, "CONTINUOUS"),
 }
 """Calques DXF (couleur ACI, type de ligne) : les murs estimés, inférés ou générés sont sur
 leur propre calque, en tirets, pour rester distinguables dans tout logiciel de dessin."""
@@ -801,6 +880,13 @@ def render_dxf(project: Project, level_id: UUID) -> str:
         )
         text(element.name or "Pièce", room.centroid.x, room.centroid.y + 0.12, "PIECES", 0.2)
         text(_dxf_area_label(room), room.centroid.x, room.centroid.y - 0.15, "PIECES", 0.14)
+    for zone in floor_zones(level):
+        attrs = {"layer": "ZONES_SOL"}
+        msp.add_lwpolyline([(p.x, p.y) for p in zone.polygon], close=True, dxfattribs=attrs)
+        for a, b in zone_hatch(zone):
+            msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs=attrs)
+        c = zone_center(zone)
+        text(zone_label(zone), c.x, c.y, "ZONES_SOL", 0.14)
     for roof in derived.roofs.values():
         a, b = roof.eave
         msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs={"layer": "PENTES"})

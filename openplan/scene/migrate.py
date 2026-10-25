@@ -81,6 +81,13 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.18.0", "0.19.0")
+def _floor_zones(data: dict[str, Any]) -> dict[str, Any]:
+    """0.19.0 (KAN-92) : zones de sol surélevées (`floor_zone`) ; un projet 0.18.0 n'en a pas.
+    Version montée pour qu'un retour arrière vers 0.18.0 passe par la descente (qui les retire)."""
+    return data
+
+
 @register("0.17.0", "0.18.0")
 def _board_links(data: dict[str, Any]) -> dict[str, Any]:
     """0.18.0 (KAN-91) : l'espace de travail en cartes reliées, dans `board.json` (liens, paires

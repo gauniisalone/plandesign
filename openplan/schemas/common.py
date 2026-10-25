@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-SCHEMA_VERSION = "0.18.0"
+SCHEMA_VERSION = "0.19.0"
 
 Meters = Annotated[float, Field(ge=0.0)]
 """Longueur en mètres, jamais négative."""

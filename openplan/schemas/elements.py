@@ -162,6 +162,21 @@ class Floor(ElementBase):
     material: UUID | None = None
 
 
+class FloorZone(ElementBase):
+    """KAN-92 (schéma 0.19.0) : zone de sol surélevée (estrade, marche, plancher technique),
+    quadrilatère posé dans une pièce et élevé de 0 à 1,20 m. Ses sommets sont les siens (le
+    graphe des murs, la détection et la surface des pièces n'en dépendent pas) ; un meuble dont
+    le centre est dessus monte avec elle, par calcul (`openplan.geom.floor_zones.lift_at`)."""
+
+    type: Literal["floor_zone"] = "floor_zone"
+    polygon: list[Point2] = Field(min_length=4, max_length=4)
+    """Les 4 coins, dans l'ordre du tracé (la forme est vérifiée par la commande)."""
+    elevation: float = Field(default=0.0, ge=0.0, le=1.20)
+    """Hauteur du dessus de la zone au-dessus du sol du niveau, en mètres."""
+    room: UUID | None = None
+    """La pièce qui la contient (renseignée par la commande)."""
+
+
 class Ceiling(ElementBase):
     type: Literal["ceiling"] = "ceiling"
     room: UUID
@@ -292,6 +307,7 @@ Element = Annotated[
     | Opening
     | Room
     | Floor
+    | FloorZone
     | Ceiling
     | RoofPlane
     | RoofWindow
@@ -311,6 +327,7 @@ ELEMENT_TYPES: tuple[type[ElementBase], ...] = (
     Opening,
     Room,
     Floor,
+    FloorZone,
     Ceiling,
     RoofPlane,
     RoofWindow,

@@ -85,6 +85,34 @@ def _drop_board_links(board: dict[str, Any]) -> int:
 
 
 @step(
+    "0.19.0",
+    "0.18.0",
+    lost="les zones de sol surélevées (estrades, marches) ; pour un projet qui en avait, "
+    "l'historique d'annulation (un Ctrl+Z les ferait revenir dans l'ancienne application). Les "
+    "épaisseurs et hauteurs de murs réglées restent",
+    removes={".levels{}.elements{}.type=floor_zone", ".levels{}.elements{}.elevation"},
+)
+def _drop_floor_zones(data: dict[str, Any]) -> int:
+    removed = 0
+    for level in (data.get("levels") or {}).values():
+        elements = level.get("elements") if isinstance(level, dict) else None
+        if not isinstance(elements, dict):
+            continue
+        zones = [
+            k for k, e in elements.items() if isinstance(e, dict) and e.get("type") == "floor_zone"
+        ]
+        for key in zones:
+            del elements[key]
+        removed += len(zones)
+    history = data.get("history")
+    if isinstance(history, list) and "floor_zone" in json.dumps(history):
+        removed += len(history)
+        data["history"] = []
+        data["history_cursor"] = 0
+    return removed
+
+
+@step(
     "0.18.0",
     "0.17.0",
     lost="les liens entre cartes de l'espace de travail et les étiquettes désactivées ; les "

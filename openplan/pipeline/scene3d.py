@@ -30,6 +30,7 @@ from trimesh.visual.color import ColorVisuals
 from openplan.geom.built_in_bed import BUILT_IN_BED, NICHE_GAP_M, capping, niche
 from openplan.geom.built_in_bed import parts as bed_parts
 from openplan.geom.convex import SURE_TOUCH_M, Solid
+from openplan.geom.floor_zones import FLAT_M, lift_at, quad
 from openplan.geom.polygon import largest_polygon, to_points
 from openplan.geom.stairs import railing_lines, stair_layout
 from openplan.geom.velux import (
@@ -71,6 +72,7 @@ from openplan.schemas.elements import (
     Ceiling,
     Fixture,
     Floor,
+    FloorZone,
     Furniture,
     Opening,
     Room,
@@ -571,6 +573,7 @@ def _bake_level(project: Project, level: Level, graph: WallGraph, style: BakeSty
                 polyhedra.append(_polyhedron(mesh, element, slab.part, "slab", style))
             continue
         prisms.append(slab)
+    prisms.extend(_bake_floor_zones(level, style))
     furniture = _bake_furniture(level, style)
     for panel in panels:
         polyhedra.extend(_bake_roof_panel(level, panel, style, furniture))
@@ -603,14 +606,52 @@ def _bake_level(project: Project, level: Level, graph: WallGraph, style: BakeSty
     )
 
 
+def _bake_floor_zones(level: Level, style: BakeStyle) -> list[Prism]:
+    """KAN-92 : chaque zone de sol, un plancher de sa hauteur posé sur le sol du niveau ; à 0 m,
+    une plaque de quelques millimètres (Pousser/Tirer doit pouvoir attraper son dessus)."""
+    out: list[Prism] = []
+    for element in level.elements.values():
+        if not isinstance(element, FloorZone) or not element.visible:
+            continue
+        shape = orient(quad(element.polygon))
+        finish = finish_of(element, "floor")
+        out.append(
+            Prism(
+                element_id=element.id,
+                kind="floor",
+                source=element.source,
+                exterior=to_points(shape),
+                z0=level.elevation,
+                z1=level.elevation + max(element.elevation, FLAT_M),
+                color=FINISH_COLORS[finish] if style == "realistic" else SLAB_COLORS["floor"],
+                finish=finish,
+            )
+        )
+    return out
+
+
+def _on_zones(element: Furniture | Fixture, zones: list[FloorZone]) -> Furniture | Fixture:
+    """KAN-92 : le meuble tel que posé, monté de la zone de sol sous son centre (jamais
+    stocké : seule la 3D le voit plus haut)."""
+    t = element.transform
+    dz = lift_at(zones, t.position.x, t.position.y) if zones else 0.0
+    if dz <= 0.0:
+        return element
+    position = t.position.model_copy(update={"z": t.position.z + dz})
+    return element.model_copy(update={"transform": t.model_copy(update={"position": position})})
+
+
 def _bake_furniture(level: Level, style: BakeStyle) -> list[Prism]:
     """Meubles et éléments fixes : leur boîte, posée à la hauteur de leur transformée et
     tournée de son lacet ; un meuble du catalogue porte aussi son modèle 3D, que le rendu
-    met à l'échelle de la boîte."""
+    met à l'échelle de la boîte. KAN-92 : un meuble dont le centre est sur une zone de sol
+    monte avec elle."""
     out: list[Prism] = []
-    for element in level.elements.values():
-        if not isinstance(element, Furniture | Fixture) or not element.visible:
+    zones = [e for e in level.elements.values() if isinstance(e, FloorZone)]
+    for stored in level.elements.values():
+        if not isinstance(stored, Furniture | Fixture) or not stored.visible:
             continue
+        element = _on_zones(stored, zones)
         t, b = element.transform, element.bbox
         if isinstance(element, Furniture) and element.category == BUILT_IN_BED:
             out.extend(_bake_built_in_bed(element, style))

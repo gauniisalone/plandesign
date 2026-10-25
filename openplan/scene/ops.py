@@ -18,6 +18,8 @@ from uuid import UUID
 
 from pydantic import Field, JsonValue, TypeAdapter, ValidationError
 
+from openplan.geom.floor_zones import MAX_ELEVATION_M as MAX_ZONE_ELEVATION_M
+from openplan.geom.floor_zones import quad, quad_problem
 from openplan.geom.roof import slope_length
 from openplan.geom.wallgraph import Anchor, WallGraph
 from openplan.scene import history
@@ -37,6 +39,7 @@ from openplan.schemas.elements import (
     Ceiling,
     Element,
     Floor,
+    FloorZone,
     Furniture,
     Opening,
     OpeningKind,
@@ -194,6 +197,16 @@ class AddCamera(StrictModel):
     """Focale pour 1280 px de large ; None = focale par défaut du rendu."""
 
 
+class AddFloorZone(StrictModel):
+    """KAN-92 : une zone de sol (4 coins dans l'ordre), dans une pièce ; Pousser/Tirer l'élève
+    ensuite (`update_element`, champ `elevation`)."""
+
+    op: Literal["add_floor_zone"] = "add_floor_zone"
+    polygon: list[Point2] = Field(min_length=4, max_length=4)
+    elevation: float = Field(default=0.0, ge=0.0, le=MAX_ZONE_ELEVATION_M)
+    name: str | None = None
+
+
 class UpdateElement(StrictModel):
     """Modifie des champs d'un élément ; `id` et `type` sont interdits."""
 
@@ -254,6 +267,7 @@ Op = Annotated[
     | AddFurniture
     | ReplaceFurniture
     | AddCamera
+    | AddFloorZone
     | UpdateElement
     | SetIntent
     | UpdateVertex
@@ -342,8 +356,10 @@ def _dispatch(level: Level, op: Op, actor: str) -> tuple[Level, str]:  # noqa: P
             return _replace_furniture(level, op), "Remplacer un meuble"
         case AddCamera():
             return _add_camera(level, op), "Ajouter un point de vue"
+        case AddFloorZone():
+            return _add_floor_zone(level, op), "Dessiner une zone de sol"
         case UpdateElement():
-            return _update_element(level, op, actor), "Modifier un élément"
+            return _update_element(level, op, actor), _update_label(level, op)
         case SetIntent():
             return _set_intent(level, op, actor), "Modifier l'ambiance"
         case UpdateVertex():
@@ -592,6 +608,93 @@ def _add_camera(level: Level, op: AddCamera) -> Level:
 
 _CAMERA_POSE = frozenset({"position", "yaw", "pitch", "roll", "focal_px"})
 
+# KAN-92 : limites de Pousser/Tirer, dites telles quelles à l'utilisateur.
+MIN_WALL_THICKNESS_M, MAX_WALL_THICKNESS_M = 0.05, 0.60
+ZONE_OUTSIDE = "la zone de sol doit rester à l'intérieur d'une pièce"
+
+
+def _cm(value: float) -> str:
+    return f"{round(value * 100)} cm"
+
+
+def _update_label(level: Level, op: UpdateElement) -> str:
+    """Le nom du geste dans l'historique (Ctrl+Z) : Pousser/Tirer dit ce qu'il a changé."""
+    element = level.elements.get(op.element_id)
+    if isinstance(element, Wall) and op.fields.keys() == {"thickness"}:
+        return "Épaisseur du mur"
+    if isinstance(element, Wall) and op.fields.keys() == {"height"}:
+        return "Hauteur du mur"
+    if isinstance(element, FloorZone) and op.fields.keys() == {"elevation"}:
+        return "Élever la zone de sol"
+    if isinstance(element, FloorZone) and "polygon" in op.fields:
+        return "Modifier la zone de sol"
+    return "Modifier un élément"
+
+
+def _check_push_pull(level: Level, element: Element, fields: dict[str, JsonValue]) -> None:
+    """KAN-92 : épaisseur de mur 5 à 60 cm, hauteur jusqu'au plafond du niveau, zone de sol de
+    0 à 1,20 m ; la valeur demandée est dite."""
+
+    def number(key: str) -> float | None:
+        value = fields.get(key)
+        return float(value) if isinstance(value, int | float) else None
+
+    if isinstance(element, Wall):
+        thickness = number("thickness")
+        if thickness is not None and not (
+            MIN_WALL_THICKNESS_M - 1e-9 <= thickness <= MAX_WALL_THICKNESS_M + 1e-9
+        ):
+            msg = (
+                f"épaisseur de mur de {_cm(MIN_WALL_THICKNESS_M)} à {_cm(MAX_WALL_THICKNESS_M)} "
+                f"(demandé : {_cm(thickness)})"
+            )
+            raise OpError(msg)
+        height = number("height")
+        if height is not None and not 0.0 < height <= level.height + 1e-9:
+            msg = (
+                f"hauteur de mur jusqu'au plafond du niveau, {metres(level.height)} "
+                f"(demandé : {metres(height)})"
+            )
+            raise OpError(msg)
+    if isinstance(element, FloorZone):
+        elevation = number("elevation")
+        if elevation is not None and not 0.0 <= elevation <= MAX_ZONE_ELEVATION_M + 1e-9:
+            msg = (
+                f"zone de sol de 0 à {metres(MAX_ZONE_ELEVATION_M)} de haut "
+                f"(demandé : {metres(elevation)})"
+            )
+            raise OpError(msg)
+
+
+def _zone_room(level: Level, polygon: list[Point2]) -> UUID:
+    """La pièce qui contient toute la zone (à 1 mm près), ou une erreur dite."""
+    if problem := quad_problem(polygon):
+        raise OpError(problem)
+    shape = quad(polygon)
+    graph = WallGraph.from_level(level)
+    for eid, element in level.elements.items():
+        if not isinstance(element, Room):
+            continue
+        try:
+            inside = graph.room_polygon(eid).buffer(1e-3).covers(shape)
+        except (KeyError, ValueError):
+            continue
+        if inside:
+            return eid
+    raise OpError(ZONE_OUTSIDE)
+
+
+def _add_floor_zone(level: Level, op: AddFloorZone) -> Level:
+    zone = FloorZone(
+        name=op.name or "Zone de sol",
+        polygon=op.polygon,
+        elevation=op.elevation,
+        room=_zone_room(level, op.polygon),
+        source=Source.USER_DEFINED,
+        confidence=1.0,
+    )
+    return level.model_copy(update={"elements": {**level.elements, zone.id: zone}})
+
 
 def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) -> Level:
     element = level.elements.get(op.element_id)
@@ -601,12 +704,15 @@ def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) ->
     if forbidden := {"id", "type"} & op.fields.keys():
         msg = f"champs non modifiables : {sorted(forbidden)}"
         raise OpError(msg)
+    _check_push_pull(level, element, op.fields)
     data = element.model_dump(mode="json")
     data.update(op.fields)
     try:
         updated = _ELEMENT_ADAPTER.validate_python(data)
     except ValidationError as exc:
         raise OpError(str(exc)) from exc
+    if isinstance(updated, FloorZone) and "polygon" in op.fields:
+        updated = updated.model_copy(update={"room": _zone_room(level, updated.polygon)})
     if isinstance(updated, Furniture) and "bbox" in op.fields:
         _check_catalog_size(updated)
     if (
