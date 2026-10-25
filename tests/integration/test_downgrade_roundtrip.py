@@ -122,6 +122,14 @@ def _write_with_the_new_code(data: Path) -> list[str]:
         ).status_code
         == 200
     )
+    # Un fichier joint posé par l'espace de travail (`placed`, 25 oct.) : l'index des fichiers
+    # est relu par l'ancienne application avec un modèle strict.
+    sent = client.post(
+        f"/api/projects/{pid2}/media",
+        params={"placed": "true"},
+        files={"file": ("note.txt", b"bonjour", "text/plain")},
+    )
+    assert sent.status_code == 201, sent.text
     ids.append(pid2)
     if "reaction" in event_schema.EventType.__args__:  # type: ignore[attr-defined]
         ProjectEvents(store.project_dir(__import__("uuid").UUID(pid2))).append(

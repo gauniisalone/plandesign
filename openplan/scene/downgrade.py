@@ -39,8 +39,17 @@ _DOWNGRADES: dict[str, tuple[str, DowngradeFn, str]] = {}
 _BOARD_DOWNGRADES: dict[str, DowngradeFn] = {}
 """version de départ → fonction appliquée au `board.json` du projet (KAN-91), s'il existe."""
 
+MediaFn = Callable[[list[Any]], int]
+_MEDIA_DOWNGRADES: dict[str, MediaFn] = {}
+"""version de départ → fonction appliquée à `media/index.json` (fichiers joints), s'il existe."""
+
 BOARD_FILE = "board.json"
-REMOVED_PATHS: dict[str, set[str]] = {"project.json": set(), BOARD_FILE: set()}
+MEDIA_INDEX = "media/index.json"
+REMOVED_PATHS: dict[str, set[str]] = {
+    "project.json": set(),
+    BOARD_FILE: set(),
+    MEDIA_INDEX: set(),
+}
 """Chemins de champs (notation de `tests/unit/test_downgrade.py`) retirés par une marche :
 la garde vérifie que tout champ ajouté depuis la production y figure."""
 
@@ -53,9 +62,12 @@ def step(
     removes: set[str],
     board: DowngradeFn | None = None,
     board_removes: set[str] | None = None,
+    media: MediaFn | None = None,
+    media_removes: set[str] | None = None,
 ) -> Callable[[DowngradeFn], DowngradeFn]:
-    """Une marche de descente : `fn` réécrit `project.json` ; `board`, s'il est donné, réécrit
-    le `board.json` du même projet (la version du format est celle du projet)."""
+    """Une marche de descente : `fn` réécrit `project.json` ; `board` et `media`, s'ils sont
+    donnés, réécrivent le `board.json` et le `media/index.json` du même projet (la version du
+    format est celle du projet)."""
 
     def decorator(fn: DowngradeFn) -> DowngradeFn:
         if from_version in _DOWNGRADES:
@@ -66,6 +78,9 @@ def step(
         if board is not None:
             _BOARD_DOWNGRADES[from_version] = board
             REMOVED_PATHS[BOARD_FILE] |= board_removes or set()
+        if media is not None:
+            _MEDIA_DOWNGRADES[from_version] = media
+            REMOVED_PATHS[MEDIA_INDEX] |= media_removes or set()
         return fn
 
     return decorator
@@ -84,13 +99,27 @@ def _drop_board_links(board: dict[str, Any]) -> int:
     return removed
 
 
+def _drop_media_placed(media: list[Any]) -> int:
+    """`placed` (fichier envoyé par l'espace de travail, 25 oct.) : l'ancienne application
+    relit l'index des fichiers joints avec un modèle strict."""
+    removed = 0
+    for ref in media:
+        if isinstance(ref, dict) and "placed" in ref:
+            del ref["placed"]
+            removed += 1
+    return removed
+
+
 @step(
     "0.19.0",
     "0.18.0",
     lost="les zones de sol surélevées (estrades, marches) ; pour un projet qui en avait, "
     "l'historique d'annulation (un Ctrl+Z les ferait revenir dans l'ancienne application). Les "
-    "épaisseurs et hauteurs de murs réglées restent",
+    "épaisseurs et hauteurs de murs réglées restent. La marque « posé par l'espace de travail » "
+    "des fichiers joints (sans effet visible)",
     removes={".levels{}.elements{}.type=floor_zone", ".levels{}.elements{}.elevation"},
+    media=_drop_media_placed,
+    media_removes={".placed"},
 )
 def _drop_floor_zones(data: dict[str, Any]) -> int:
     removed = 0
@@ -219,10 +248,12 @@ def downgrade_tree(root: Path, target: str, *, dry_run: bool = False) -> Downgra
                 for version in steps:
                     if version in _BOARD_DOWNGRADES:
                         removed += _BOARD_DOWNGRADES[version](board)
+            media, media_removed = _media_down(path.parent / MEDIA_INDEX, target)
         except (OSError, ValueError) as exc:
             report.errors.append((path, str(exc)[:200]))
             continue
-        if data.get("schema_version") == before:
+        removed += media_removed
+        if data.get("schema_version") == before and media is None:
             report.unchanged += 1
             continue
         report.changed.append(path)
@@ -232,8 +263,24 @@ def downgrade_tree(root: Path, target: str, *, dry_run: bool = False) -> Downgra
             # que la prochaine descente reprend (elle est idempotente).
             if board is not None:
                 _write(path.with_name(BOARD_FILE), board)
+            if media is not None:
+                _write(path.parent / MEDIA_INDEX, media)
             _write(path, data)
     return report
+
+
+def _media_down(path: Path, target: str) -> tuple[list[Any] | None, int]:
+    """L'index des fichiers joints descendu vers `target` (None s'il ne change pas). Il s'écrit
+    sans réécrire `project.json` (un envoi ne touche pas le projet) : il descend selon la
+    version visée, pas selon celle du projet."""
+    wanted = [v for v in _MEDIA_DOWNGRADES if _parse(v) > _parse(target)]
+    if not wanted or not path.is_file():
+        return None, 0
+    media = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(media, list):
+        return None, 0
+    removed = sum(_MEDIA_DOWNGRADES[v](media) for v in wanted)
+    return (media, removed) if removed else (None, 0)
 
 
 def _steps(version: str, target: str) -> list[str]:
@@ -248,7 +295,7 @@ def _steps(version: str, target: str) -> list[str]:
     return out
 
 
-def _write(path: Path, data: dict[str, Any]) -> None:
+def _write(path: Path, data: dict[str, Any] | list[Any]) -> None:
     tmp = path.with_name(path.name + ".downgrade.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)

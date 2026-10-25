@@ -135,6 +135,31 @@ def test_board_links_go_down_with_the_project_to_0_17(tmp_path: Path) -> None:
     assert again.changed == [] and again.unchanged == 1
 
 
+def test_the_media_index_loses_placed_even_when_project_json_was_not_rewritten(
+    tmp_path: Path,
+) -> None:
+    """`placed` (25 oct.) vit dans `media/index.json`, qu'un envoi écrit sans réécrire
+    `project.json` : l'index descend selon la version visée, même pour un projet resté en
+    0.18.0 sur le disque ; sans `placed`, rien ne change."""
+    store = ProjectStore(tmp_path / "projects")
+    path = store.save(new_project("Fichiers"))
+    data = json.loads(path.read_text())
+    data["schema_version"] = "0.18.0"  # jamais réécrit depuis la montée
+    path.write_text(json.dumps(data))
+    media = path.parent / "media"
+    media.mkdir()
+    entry = {"id": "00000000-0000-4000-8000-000000000001", "name": "a.txt", "placed": True}
+    (media / "index.json").write_text(json.dumps([entry, {**entry, "placed": False}]))
+    dry = downgrade_tree(tmp_path, "0.18.0", dry_run=True)
+    assert len(dry.changed) == 1 and dry.removed == 2
+    assert "placed" in (media / "index.json").read_text(), "--dry-run n'écrit rien"
+    done = downgrade_tree(tmp_path, "0.18.0")
+    assert done.removed == 2 and "placed" not in (media / "index.json").read_text()
+    assert json.loads(path.read_text())["schema_version"] == "0.18.0"
+    again = downgrade_tree(tmp_path, "0.18.0")
+    assert again.changed == [] and again.unchanged == 1
+
+
 def test_floor_zones_go_down_to_0_18_with_the_undo_history_that_knew_them() -> None:
     """KAN-92 : 0.19.0 → 0.18.0 retire les zones de sol ; l'historique d'annulation d'un projet
     qui en avait est vidé (un Ctrl+Z les ferait revenir dans l'ancienne application). Un projet

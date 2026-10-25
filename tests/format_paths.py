@@ -15,6 +15,8 @@ MODELS = {
     "board.json": "openplan.schemas.board:Board",
     "comments.json": "openplan.pipeline.comments:CommentFile",
     "events.jsonl": "openplan.schemas.events:ProjectEvent",
+    # Une entrée de l'index des fichiers joints (liste de MediaRef, relue strictement).
+    "media/index.json": "openplan.schemas.board:MediaRef",
 }
 """Fichiers d'un projet et le modèle strict qui les relit (un champ inconnu y est refusé)."""
 

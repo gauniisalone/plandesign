@@ -522,5 +522,19 @@
   ".type=plan.changed",
   ".type=reaction.added",
   ".type=render.done"
+ ],
+ "media/index.json": [
+  ".id",
+  ".imported_at",
+  ".kind",
+  ".kind=file",
+  ".kind=image",
+  ".kind=pdf",
+  ".kind=video",
+  ".media_type",
+  ".name",
+  ".path",
+  ".size",
+  ".thumb"
  ]
 }
