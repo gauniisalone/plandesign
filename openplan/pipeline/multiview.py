@@ -354,7 +354,12 @@ def rotate_view(
     placement = Placement(turns % 4, fits, rotated)  # type: ignore[arg-type]
     metadata: dict[str, JsonValue] = {
         **camera.metadata,
-        **_metadata(placement, camera.position.z, camera.metadata.get(AMBIGUOUS_KEY) is True),
+        **_metadata(
+            placement,
+            camera.position.z,
+            camera.metadata.get(AMBIGUOUS_KEY) is True,
+            compared=confrontable(level),
+        ),
         USER_ORIENTED_KEY: True,
     }
     turned = camera.model_copy(
@@ -664,14 +669,9 @@ def _pose_only(
 def _metadata(
     placement: Placement, h: float, ambiguous: bool, *, compared: bool = True
 ) -> dict[str, JsonValue]:
-    """`compared` faux (combles, profondeur) : sans les distances observées, la vue n'est pas
-    confrontée aux murs (`check_views` n'a rien à comparer)."""
-    if not compared:
-        return {
-            "camera_height_m": h,
-            ORIENTATION_KEY: placement.quarter_turns,
-            AMBIGUOUS_KEY: ambiguous,
-        }
+    """`compared` faux (combles, profondeur) : sans les étendues observées, la vue n'est pas
+    confrontée aux murs (`check_views` n'a rien à comparer, « Garder cette photo » non
+    proposé) ; les distances restent, pour « Tourner la vue », qui ne bouge que la caméra."""
     extents: dict[str, JsonValue] = {}
     distances: dict[str, JsonValue] = {}
     for axis, obs in placement.observations.items():
@@ -682,7 +682,7 @@ def _metadata(
         if obs.hi is not None:
             distances[f"{axis}+"] = round(obs.hi, 4)
     return {
-        EXTENTS_KEY: extents,
+        **({EXTENTS_KEY: extents} if compared else {}),
         DISTANCES_KEY: distances,
         "camera_height_m": h,
         ORIENTATION_KEY: placement.quarter_turns,

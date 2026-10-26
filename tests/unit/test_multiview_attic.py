@@ -17,10 +17,19 @@ from openplan.pipeline.autoplan import run_autoplan
 from openplan.pipeline.depthplan import observe_room, propose_floorplan_from_depth
 from openplan.pipeline.detection import detect_and_propose
 from openplan.pipeline.ingestion import import_image
-from openplan.pipeline.multiview import NOT_FROM_LINES, POSED_ONLY, confrontable
+from openplan.pipeline.multiview import (
+    NOT_FROM_LINES,
+    ORIENTATION_KEY,
+    POSED_ONLY,
+    USER_ORIENTED_KEY,
+    confrontable,
+    observations_from_metadata,
+    rotate_view,
+)
 from openplan.schemas import Camera, Wall
 from openplan.schemas.elements import RoofPlane
 from openplan.schemas.scene import Project
+from openplan.validation.consistency import EXTENTS_KEY, check_views
 from tests.attic_scenes import AXIAL_A, AXIAL_B, OBLIQUE, Attic, camera, project_with_photos
 from tests.factories import only_level
 from tests.synthetic_depth import box_faces, render_depth
@@ -124,6 +133,46 @@ def test_a_second_photo_on_a_depth_plan_gets_its_camera(tmp_path: Path) -> None:
     assert _plan(run.project) == before
     assert _cameras(run.project) == 2
     assert POSED_ONLY in run.floorplan.warnings
+
+
+@needs_fixture
+def test_the_posed_view_can_still_be_turned(tmp_path: Path) -> None:
+    """slice.spec:654 avec les poids (passage 17) : sur un plan tiré de la profondeur, la vue
+    posée garde ses orientations proposées (« Tourner la vue », 2.5c), qui ne tournent que la
+    caméra ; elle n'est pas confrontée aux murs (pas d'étendues, pas de « Garder cette photo »)."""
+    project, level = _photo(tmp_path)
+    first = next(iter(project.images))
+    depth = render_depth(box_faces(4.0, 3.0, 2.5), CAMERA, noise=0.01, seed=1)
+    obs, _ = observe_room(depth, CAMERA.focal_px, CAMERA.principal_point)
+    assert obs is not None
+    planned, _ = propose_floorplan_from_depth(project, level.id, obs, image_id=first)
+    before = _plan(planned)
+    project2, ref2, _ = import_image(
+        planned, tmp_path, FIXTURE.read_bytes(), original_name="p2.png"
+    )
+    run = detect_and_propose(project2, tmp_path, level.id, ref2.id, tmp_path / "runs")
+    assert _plan(run.project) == before
+    assert _cameras(run.project) == 2
+    view = next(
+        e
+        for e in only_level(run.project).elements.values()
+        if isinstance(e, Camera) and e.image_id == ref2.id
+    )
+    seen = observations_from_metadata(view).values()
+    assert any(o.lo is not None or o.hi is not None for o in seen)
+    assert ORIENTATION_KEY in view.metadata
+    assert EXTENTS_KEY not in view.metadata
+    assert not [v for v in check_views(run.project) if view.id in v.element_ids]
+
+    turned, _ = rotate_view(run.project, level.id, view.id)
+    after = only_level(turned).elements[view.id]
+    assert isinstance(after, Camera)
+    assert after.metadata[USER_ORIENTED_KEY] is True
+    assert after.metadata[ORIENTATION_KEY] != view.metadata[ORIENTATION_KEY]
+    assert (after.yaw, after.position) != (view.yaw, view.position)
+    assert EXTENTS_KEY not in after.metadata
+    assert _plan(turned) == before
+    assert _cameras(turned) == 2
 
 
 def _cameras_by_photo(project: Project) -> dict[UUID, int]:
