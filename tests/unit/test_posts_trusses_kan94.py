@@ -265,6 +265,32 @@ def test_a_truss_off_a_shortened_ridge_is_kept_and_flagged() -> None:
     assert flagged and "hors du faîtage" in flagged[0].message
 
 
+def test_an_ops_body_without_op_stays_detect_rooms(tmp_path: object) -> None:
+    """Le corps de la route /ops est choisi dans l'union par ordre quand « op » manque : « {} »
+    (le pas vide) reste DetectRooms, jamais AddPost ni AddTruss, même sous un faîtage où une
+    ferme se poserait."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from openplan.api.app import create_app
+    from openplan.api.settings import Settings
+
+    assert isinstance(tmp_path, Path)
+    app = create_app(settings=Settings(data_dir=tmp_path / "local"))
+    client = TestClient(app)
+    project = attic_project(user_defined=True, camera=False)
+    app.state.store.save(project)
+    level = only_level(project)
+    r = client.post(f"/api/projects/{project.id}/levels/{level.id}/ops", json={})
+    assert r.status_code == 200, r.text
+    after = app.state.store.load(project.id)
+    elements = after.levels[level.id].elements.values()
+    assert not any(isinstance(e, Post | Truss) for e in elements)
+    # DetectRooms ne trouve rien de neuf : aucun pas d'historique (une ferme en aurait ajouté un).
+    assert len(after.history) == len(project.history)
+
+
 # ------------------------------------------------------------------ 3D, aménagement, exports
 def test_posts_and_trusses_are_baked_in_wood() -> None:
     after, level_id, truss = _attic_truss()
