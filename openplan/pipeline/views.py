@@ -30,7 +30,7 @@ from shapely.ops import unary_union
 
 from openplan.geom.framing import ROOF as ROOF_SURFACE
 from openplan.geom.framing import Box, FramingScene, Pose, Shares, Solid
-from openplan.geom.roof import derived_roofs, roof_window_footprint
+from openplan.geom.roof import derived_roofs, ridge_line, roof_window_footprint
 from openplan.geom.stairs import stair_layout
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import BEDS, RUGS, SOFAS
@@ -1344,30 +1344,6 @@ RIDGE_DEPTH_M = 6.8
 meubles devenaient minuscules)."""
 RIDGE_ASPECT = "4:5"
 RIDGE_SLIDE_M = 2.0
-RIDGE_OPPOSITE_COS = -0.95
-"""Deux pentes dont les sens de montée sont opposés (à ~18° près) se rejoignent au faîtage."""
-
-
-def ridge_line(roofs: list[DerivedRoof]) -> tuple[tuple[float, float], tuple[float, float]] | None:
-    """Un point du faîtage et sa direction (unitaire), en plan, s'il y a deux pentes
-    opposées ; None sinon (appentis, toit plat)."""
-    for i, a in enumerate(roofs):
-        for b in roofs[i + 1 :]:
-            if a.inward.x * b.inward.x + a.inward.y * b.inward.y > RIDGE_OPPOSITE_COS:
-                continue
-
-            def top(r: DerivedRoof) -> tuple[float, float]:
-                mx = (r.eave[0].x + r.eave[1].x) / 2.0
-                my = (r.eave[0].y + r.eave[1].y) / 2.0
-                return mx + r.inward.x * r.run_m, my + r.inward.y * r.run_m
-
-            (ax, ay), (bx, by) = top(a), top(b)
-            dx, dy = a.eave[1].x - a.eave[0].x, a.eave[1].y - a.eave[0].y
-            n = math.hypot(dx, dy)
-            if n < 1e-9:
-                continue
-            return ((ax + bx) / 2.0, (ay + by) / 2.0), (dx / n, dy / n)
-    return None
 
 
 def _furniture_seen(room: _Room, x: float, y: float, yaw: float, half: float) -> int:

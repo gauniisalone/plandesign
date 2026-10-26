@@ -221,6 +221,42 @@ class Beam(ElementBase):
     section_height: Meters
 
 
+class Post(ElementBase):
+    """KAN-94 (schéma 0.20.0) : poteau posé en plan, section `width` × `depth` tournée de `yaw`.
+    Sans `top`, il monte jusqu'au bois au-dessus de lui (faîtière, panne, chevron), sinon sous
+    la pente ou au plafond du niveau, par calcul (`openplan.pipeline.scene3d.post_top`)."""
+
+    type: Literal["post"] = "post"
+    position: Point2
+    width: float = Field(default=0.15, ge=0.05, le=0.40)
+    depth: float = Field(default=0.12, ge=0.05, le=0.40)
+    yaw: Radians = 0.0
+    top: float | None = Field(default=None, gt=0.0)
+    """Hauteur du haut du poteau au-dessus du sol du niveau ; None = jusqu'au-dessus de lui."""
+    room: UUID | None = None
+    """La pièce qui le contient (renseignée par la commande)."""
+
+
+class Truss(ElementBase):
+    """KAN-94 (schéma 0.20.0) : ferme intermédiaire sous le faîtage, un seul élément : deux
+    poteaux symétriques de part et d'autre du faîtage, écartés de `spacing`, et une poutre
+    entre eux à `beam_height`. `position` est un point de l'axe du faîtage ; poteaux et poutre
+    sont calculés (`openplan.geom.truss.truss_parts`), jamais stockés. Si le faîtage change, la
+    ferme est reprojetée sur le nouvel axe ; hors faîtage, elle reste et est signalée."""
+
+    type: Literal["truss"] = "truss"
+    position: Point2
+    spacing: float = Field(default=1.00, gt=0.0, le=6.0)
+    """Écartement des deux poteaux, d'axe en axe."""
+    beam_height: float = Field(default=2.00, gt=0.0, le=6.0)
+    """Hauteur du dessous de la poutre au-dessus du sol du niveau."""
+    post_width: float = Field(default=0.15, ge=0.05, le=0.40)
+    post_depth: float = Field(default=0.12, ge=0.05, le=0.40)
+    beam_width: float = Field(default=0.15, ge=0.05, le=0.40)
+    beam_depth: float = Field(default=0.20, ge=0.05, le=0.40)
+    room: UUID | None = None
+
+
 class Radiator(ElementBase):
     type: Literal["radiator"] = "radiator"
     host_wall: UUID
@@ -312,6 +348,8 @@ Element = Annotated[
     | RoofPlane
     | RoofWindow
     | Beam
+    | Post
+    | Truss
     | Radiator
     | Stairs
     | Fixture
@@ -332,6 +370,8 @@ ELEMENT_TYPES: tuple[type[ElementBase], ...] = (
     RoofPlane,
     RoofWindow,
     Beam,
+    Post,
+    Truss,
     Radiator,
     Stairs,
     Fixture,

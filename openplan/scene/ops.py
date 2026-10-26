@@ -21,6 +21,16 @@ from pydantic import Field, JsonValue, TypeAdapter, ValidationError
 from openplan.geom.floor_zones import MAX_ELEVATION_M as MAX_ZONE_ELEVATION_M
 from openplan.geom.floor_zones import quad, quad_problem
 from openplan.geom.roof import slope_length
+from openplan.geom.truss import (
+    NO_RIDGE,
+    Ridge,
+    gable_face,
+    place_truss,
+    post_footprint,
+    ridge_span,
+    room_containing,
+    truss_shape,
+)
 from openplan.geom.wallgraph import Anchor, WallGraph
 from openplan.scene import history
 from openplan.scene.catalog import CatalogError, asset, furniture_from_asset
@@ -43,6 +53,7 @@ from openplan.schemas.elements import (
     Furniture,
     Opening,
     OpeningKind,
+    Post,
     Radiator,
     RoofPlane,
     RoofWindow,
@@ -51,6 +62,7 @@ from openplan.schemas.elements import (
     Stairs,
     StairTurn,
     Swing,
+    Truss,
     Vertex,
     Wall,
 )
@@ -207,8 +219,34 @@ class AddFloorZone(StrictModel):
     name: str | None = None
 
 
+class AddPost(StrictModel):
+    """KAN-94 : un poteau dans une pièce ; sans `top`, il monte jusqu'à ce qui est au-dessus."""
+
+    op: Literal["add_post"] = "add_post"
+    position: Point2
+    width: float = Field(default=0.15, ge=0.05, le=0.40)
+    depth: float = Field(default=0.12, ge=0.05, le=0.40)
+    yaw: float = 0.0
+    top: float | None = Field(default=None, gt=0.0)
+    name: str | None = None
+
+
+class AddTruss(StrictModel):
+    """KAN-94 : une ferme intermédiaire sous le faîtage, à `distance` du pignon `from_wall`
+    (sa face intérieure), ou du premier bout du faîtage sans pignon ; à mi-faîtage sans
+    distance. Une poutre trop haute pour la pente est abaissée, et l'historique le dit."""
+
+    op: Literal["add_truss"] = "add_truss"
+    distance: float | None = Field(default=None, ge=0.0)
+    from_wall: UUID | None = None
+    spacing: float = Field(default=1.00, gt=0.0, le=6.0)
+    beam_height: float = Field(default=2.00, gt=0.0, le=6.0)
+    name: str | None = None
+
+
 class UpdateElement(StrictModel):
-    """Modifie des champs d'un élément ; `id` et `type` sont interdits."""
+    """Modifie des champs d'un élément ; `id` et `type` sont interdits. Une ferme (KAN-94)
+    accepte aussi `distance` et `from_wall`, convertis en point du faîtage."""
 
     op: Literal["update_element"] = "update_element"
     element_id: UUID
@@ -274,7 +312,12 @@ Op = Annotated[
     | RemoveElement
     | RemoveVertex
     | DetectRooms
-    | UpdateLevel,
+    | UpdateLevel
+    # KAN-94, en dernier : le corps de la route /ops n'a pas toujours son discriminant, et un
+    # corps sans `op` (« {} », un pas vide) doit rester DetectRooms, la première commande dont
+    # tous les champs ont une valeur par défaut ; AddTruss en a aussi.
+    | AddPost
+    | AddTruss,
     Field(discriminator="op"),
 ]
 
@@ -358,6 +401,12 @@ def _dispatch(level: Level, op: Op, actor: str) -> tuple[Level, str]:  # noqa: P
             return _add_camera(level, op), "Ajouter un point de vue"
         case AddFloorZone():
             return _add_floor_zone(level, op), "Dessiner une zone de sol"
+        case AddPost():
+            return _add_post(level, op), "Poser un poteau"
+        case AddTruss():
+            return _add_truss(level, op)
+        case UpdateElement() if isinstance(level.elements.get(op.element_id), Truss):
+            return _update_truss(level, op, actor)
         case UpdateElement():
             return _update_element(level, op, actor), _update_label(level, op)
         case SetIntent():
@@ -696,6 +745,139 @@ def _add_floor_zone(level: Level, op: AddFloorZone) -> Level:
     return level.model_copy(update={"elements": {**level.elements, zone.id: zone}})
 
 
+POST_OUTSIDE = "le poteau doit être à l'intérieur d'une pièce"
+
+
+def _placed_post(level: Level, post: Post) -> Post:
+    """KAN-94 : le poteau tient dans une pièce, son haut donné reste sous le plafond du niveau."""
+    if post.top is not None and post.top > level.height + 1e-9:
+        msg = (
+            f"haut du poteau jusqu'au plafond du niveau, {metres(level.height)} "
+            f"(demandé : {metres(post.top)})"
+        )
+        raise OpError(msg)
+    room = room_containing(level, WallGraph.from_level(level), post_footprint(post))
+    if room is None:
+        raise OpError(POST_OUTSIDE)
+    return post.model_copy(update={"room": room})
+
+
+def _add_post(level: Level, op: AddPost) -> Level:
+    count = sum(1 for e in level.elements.values() if isinstance(e, Post))
+    post = _placed_post(
+        level,
+        Post(
+            name=op.name or f"Poteau {count + 1}",
+            position=op.position,
+            width=op.width,
+            depth=op.depth,
+            yaw=op.yaw,
+            top=op.top,
+            source=Source.USER_DEFINED,
+            confidence=1.0,
+        ),
+    )
+    return level.model_copy(update={"elements": {**level.elements, post.id: post}})
+
+
+def _ridge(level: Level) -> tuple[Ridge, WallGraph]:
+    graph = WallGraph.from_level(level)
+    ridge = ridge_span(level, graph)
+    if ridge is None:
+        raise OpError(NO_RIDGE)
+    return ridge, graph
+
+
+def _truss_point(
+    level: Level, ridge: Ridge, graph: WallGraph, distance: float | None, from_wall: UUID | None
+) -> Point2:
+    """Le point du faîtage à `distance` de la face intérieure du pignon `from_wall` (du premier
+    bout du faîtage sans pignon) ; le milieu du faîtage sans distance."""
+    if distance is None:
+        x, y = ridge.at((ridge.t0 + ridge.t1) / 2.0)
+        return Point2(x=x, y=y)
+    start, sense = float(ridge.t0), 1
+    if from_wall is not None:
+        try:
+            start, sense = gable_face(level, graph, ridge, from_wall)
+        except ValueError as exc:
+            raise OpError(str(exc)) from exc
+    x, y = ridge.at(start + sense * distance)
+    return Point2(x=x, y=y)
+
+
+def _placed_truss(level: Level, ridge: Ridge, graph: WallGraph, truss: Truss) -> tuple[Truss, str]:
+    """La ferme ramenée sur l'axe du faîtage, sa poutre sous la pente ; refusée (raison dite)
+    hors du faîtage ou trop large. Renvoie aussi la note de l'historique (poutre abaissée)."""
+    parts = place_truss(ridge, truss)
+    if isinstance(parts, str):
+        raise OpError(parts)
+    note = ""
+    if parts.lowered:
+        note = f" (poutre abaissée à {metres(parts.beam_height)} : la pente passe plus bas)"
+    x, y = parts.centre
+    shape = truss_shape(ridge, truss, parts)
+    return truss.model_copy(
+        update={
+            "position": Point2(x=x, y=y),
+            "beam_height": parts.beam_height,
+            "room": room_containing(level, graph, shape),
+        }
+    ), note
+
+
+def _add_truss(level: Level, op: AddTruss) -> tuple[Level, str]:
+    ridge, graph = _ridge(level)
+    count = sum(1 for e in level.elements.values() if isinstance(e, Truss))
+    truss, note = _placed_truss(
+        level,
+        ridge,
+        graph,
+        Truss(
+            name=op.name or f"Ferme intermédiaire {count + 1}",
+            position=_truss_point(level, ridge, graph, op.distance, op.from_wall),
+            spacing=op.spacing,
+            beam_height=op.beam_height,
+            source=Source.USER_DEFINED,
+            confidence=1.0,
+        ),
+    )
+    elements = {**level.elements, truss.id: truss}
+    return level.model_copy(update={"elements": elements}), "Ajouter une ferme intermédiaire" + note
+
+
+def _update_truss(level: Level, op: UpdateElement, actor: str) -> tuple[Level, str]:
+    """KAN-94 : une ferme ne bouge que le long du faîtage (son point y est ramené) ; `distance`
+    et `from_wall` la placent depuis l'un ou l'autre pignon."""
+    ridge, graph = _ridge(level)
+    fields = dict(op.fields)
+    distance, from_wall = fields.pop("distance", None), fields.pop("from_wall", None)
+    if distance is not None or from_wall is not None:
+        if not isinstance(distance, int | float) or distance < 0:
+            msg = "distance au pignon en mètres, positive"
+            raise OpError(msg)
+        try:
+            wall = UUID(str(from_wall)) if from_wall is not None else None
+        except ValueError as exc:
+            msg = f"mur inconnu : {from_wall}"
+            raise OpError(msg) from exc
+        point = _truss_point(level, ridge, graph, float(distance), wall)
+        fields["position"] = point.model_dump(mode="json")
+    moved = _update_element(level, op.model_copy(update={"fields": fields}), actor)
+    current = moved.elements[op.element_id]
+    if not isinstance(current, Truss):
+        msg = f"ferme inconnue : {op.element_id}"
+        raise OpError(msg)
+    truss, note = _placed_truss(moved, ridge, graph, current)
+    label = (
+        "Déplacer la ferme intermédiaire"
+        if fields.keys() == {"position"}
+        else "Modifier la ferme intermédiaire"
+    )
+    elements = {**moved.elements, op.element_id: truss}
+    return moved.model_copy(update={"elements": elements}), label + note
+
+
 def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) -> Level:
     element = level.elements.get(op.element_id)
     if element is None:
@@ -713,6 +895,8 @@ def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) ->
         raise OpError(str(exc)) from exc
     if isinstance(updated, FloorZone) and "polygon" in op.fields:
         updated = updated.model_copy(update={"room": _zone_room(level, updated.polygon)})
+    if isinstance(updated, Post):
+        updated = _placed_post(level, updated)
     if isinstance(updated, Furniture) and "bbox" in op.fields:
         _check_catalog_size(updated)
     if (

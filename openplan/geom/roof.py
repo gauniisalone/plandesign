@@ -114,6 +114,42 @@ def derived_roofs(level: Level, graph: WallGraph) -> dict[UUID, DerivedRoof]:
     return out
 
 
+RIDGE_OPPOSITE_COS = -0.95
+"""Deux pentes dont les sens de montée sont opposés (à ~18° près) se rejoignent au faîtage."""
+
+
+def ridge_pair(roofs: list[DerivedRoof]) -> tuple[DerivedRoof, DerivedRoof] | None:
+    """Les deux premières pentes opposées (elles se rejoignent au faîtage) ; None sinon
+    (appentis, toit plat)."""
+    for i, a in enumerate(roofs):
+        for b in roofs[i + 1 :]:
+            if a.inward.x * b.inward.x + a.inward.y * b.inward.y > RIDGE_OPPOSITE_COS:
+                continue
+            if math.hypot(a.eave[1].x - a.eave[0].x, a.eave[1].y - a.eave[0].y) < 1e-9:
+                continue
+            return a, b
+    return None
+
+
+def ridge_line(roofs: list[DerivedRoof]) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Un point du faîtage et sa direction (unitaire), en plan, s'il y a deux pentes
+    opposées ; None sinon (appentis, toit plat)."""
+    pair = ridge_pair(roofs)
+    if pair is None:
+        return None
+    a, b = pair
+
+    def top(r: DerivedRoof) -> tuple[float, float]:
+        mx = (r.eave[0].x + r.eave[1].x) / 2.0
+        my = (r.eave[0].y + r.eave[1].y) / 2.0
+        return mx + r.inward.x * r.run_m, my + r.inward.y * r.run_m
+
+    (ax, ay), (bx, by) = top(a), top(b)
+    dx, dy = a.eave[1].x - a.eave[0].x, a.eave[1].y - a.eave[0].y
+    n = math.hypot(dx, dy)
+    return ((ax + bx) / 2.0, (ay + by) / 2.0), (dx / n, dy / n)
+
+
 def pitch_from_rise(rise: float, run: float) -> float:
     """Inclinaison d'une pente qui monte de `rise` sur une course horizontale `run`."""
     if run <= 0:

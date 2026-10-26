@@ -110,6 +110,48 @@ def _drop_media_placed(media: list[Any]) -> int:
     return removed
 
 
+def _drop_element_types(data: dict[str, Any], types: set[str]) -> int:
+    """Retire les éléments de ces types de tous les niveaux, et l'historique d'annulation s'il
+    en parle (un Ctrl+Z les ferait revenir dans l'ancienne application)."""
+    removed = 0
+    for level in (data.get("levels") or {}).values():
+        elements = level.get("elements") if isinstance(level, dict) else None
+        if not isinstance(elements, dict):
+            continue
+        gone = [k for k, e in elements.items() if isinstance(e, dict) and e.get("type") in types]
+        for key in gone:
+            del elements[key]
+        removed += len(gone)
+    history = data.get("history")
+    words = {f'"{w}"' for t in types for w in (t, f"add_{t}")}
+    if isinstance(history, list) and any(w in json.dumps(history) for w in words):
+        removed += len(history)
+        data["history"] = []
+        data["history_cursor"] = 0
+    return removed
+
+
+@step(
+    "0.20.0",
+    "0.19.0",
+    lost="les poteaux et les fermes intermédiaires ; pour un projet qui en avait, l'historique "
+    "d'annulation (un Ctrl+Z les ferait revenir dans l'ancienne application)",
+    removes={
+        ".levels{}.elements{}.type=post",
+        ".levels{}.elements{}.type=truss",
+        ".levels{}.elements{}.top",
+        ".levels{}.elements{}.spacing",
+        ".levels{}.elements{}.beam_height",
+        ".levels{}.elements{}.post_width",
+        ".levels{}.elements{}.post_depth",
+        ".levels{}.elements{}.beam_width",
+        ".levels{}.elements{}.beam_depth",
+    },
+)
+def _drop_posts_trusses(data: dict[str, Any]) -> int:
+    return _drop_element_types(data, {"post", "truss"})
+
+
 @step(
     "0.19.0",
     "0.18.0",
@@ -122,23 +164,7 @@ def _drop_media_placed(media: list[Any]) -> int:
     media_removes={".placed"},
 )
 def _drop_floor_zones(data: dict[str, Any]) -> int:
-    removed = 0
-    for level in (data.get("levels") or {}).values():
-        elements = level.get("elements") if isinstance(level, dict) else None
-        if not isinstance(elements, dict):
-            continue
-        zones = [
-            k for k, e in elements.items() if isinstance(e, dict) and e.get("type") == "floor_zone"
-        ]
-        for key in zones:
-            del elements[key]
-        removed += len(zones)
-    history = data.get("history")
-    if isinstance(history, list) and "floor_zone" in json.dumps(history):
-        removed += len(history)
-        data["history"] = []
-        data["history_cursor"] = 0
-    return removed
+    return _drop_element_types(data, {"floor_zone"})
 
 
 @step(

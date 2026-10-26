@@ -10,18 +10,26 @@ from __future__ import annotations
 import io
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 from xml.sax.saxutils import escape
 
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Polygon
 
 from openplan.brand import APP_NAME
 from openplan.geom.floor_zones import quad
 from openplan.geom.furniture_symbols import place_symbol, symbol_for
 from openplan.geom.opening_symbols import OpeningSymbol, opening_symbol
 from openplan.geom.roof import roof_window_footprint
+from openplan.geom.truss import (
+    footprint,
+    place_truss,
+    post_footprint,
+    ridge_span,
+    truss_footprints,
+)
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.derived import compute_derived
 from openplan.schemas.common import Point2, Source
@@ -31,7 +39,9 @@ from openplan.schemas.elements import (
     Furniture,
     Opening,
     OpeningKind,
+    Post,
     RoofWindow,
+    Truss,
     Wall,
 )
 from openplan.schemas.numbers import area, centimetres, decimal, length
@@ -80,6 +90,9 @@ _STYLE = """
 .floor-zone { fill: #3e5a7e; fill-opacity: 0.08; stroke: #3e5a7e; stroke-width: 1.2; }
 .floor-zone-hatch { fill: none; stroke: #3e5a7e; stroke-width: 0.5; stroke-opacity: 0.6; }
 .floor-zone-label { font: bold 11px sans-serif; fill: #2f4560; text-anchor: middle; }
+.timber-post { fill: #7a5230; stroke: #4a3019; stroke-width: 1; }
+.timber-beam { fill: none; stroke: #7a5230; stroke-width: 1.2; stroke-dasharray: 8 3 2 3; }
+.timber-label { font: 10px sans-serif; fill: #4a3019; text-anchor: middle; }
 """
 _DARK_STYLE = """
 .wall { fill: #c9ccd6; stroke: #e6e8ef; }
@@ -104,6 +117,9 @@ _DARK_STYLE = """
 .stairs-label { fill: #e6e8ef; }
 .floor-zone, .floor-zone-hatch { stroke: #9fb3ce; }
 .floor-zone-label { fill: #c9d6e6; }
+.timber-post { fill: #b08358; stroke: #d9b48a; }
+.timber-beam { stroke: #d9b48a; }
+.timber-label { fill: #e3c7a4; }
 """
 """Thème sombre (C1) : les couleurs de l'éditeur de plan en sombre, pour la vignette du plan
 sur le tableau ; jamais pour un export à imprimer."""
@@ -142,6 +158,49 @@ def zone_hatch(zone: FloorZone) -> list[tuple[Point2, Point2]]:
                 (x0, y0), (x1, y1) = part.coords[0], part.coords[-1]
                 out.append((Point2(x=x0, y=y0), Point2(x=x1, y=y1)))
         k += 1
+    return out
+
+
+@dataclass(frozen=True)
+class Timber:
+    """KAN-94 : une pièce de charpente vue en plan (section d'un poteau, ou poutre d'une
+    ferme, en trait mixte, avec sa hauteur)."""
+
+    outline: list[Point2]
+    beam: bool = False
+    label: str | None = None
+    at: Point2 | None = None
+
+
+def structure(level: Level, graph: WallGraph) -> list[Timber]:
+    """Poteaux et fermes intermédiaires du niveau, tels que le bake les bâtit ; une ferme que
+    le faîtage ne porte plus n'est pas dessinée (la règle `truss_off_ridge` le dit)."""
+
+    def ring(shape: Polygon) -> list[Point2]:
+        return [Point2(x=x, y=y) for x, y in list(shape.exterior.coords)[:-1]]
+
+    out: list[Timber] = []
+    ridge = ridge_span(level, graph)
+    for element in level.elements.values():
+        if isinstance(element, Post) and element.visible:
+            out.append(Timber(ring(post_footprint(element))))
+        elif isinstance(element, Truss) and element.visible and ridge is not None:
+            parts = place_truss(ridge, element)
+            if isinstance(parts, str):
+                continue
+            out += [Timber(ring(p)) for p in truss_footprints(ridge, element, parts)]
+            beam = footprint(
+                parts.centre, element.beam_width, element.spacing + element.post_width, ridge.normal
+            )
+            x, y = parts.centre
+            out.append(
+                Timber(
+                    ring(beam),
+                    beam=True,
+                    label=f"poutre à {decimal(parts.beam_height)} m",
+                    at=Point2(x=x, y=y),
+                )
+            )
     return out
 
 
@@ -248,6 +307,15 @@ def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> s
             f'<text class="floor-zone-label" x="{sx(center.x):.1f}" y="{sy(center.y):.1f}">'
             f"{zone_label(zone)}</text>"
         )
+    # Charpente posée (KAN-94) : sections des poteaux, poutres des fermes en trait mixte
+    for timber in structure(level, graph):
+        css = "timber-beam" if timber.beam else "timber-post"
+        out.append(f'<polygon class="{css}" points="{pts(timber.outline)}"/>')
+        if timber.label and timber.at:
+            out.append(
+                f'<text class="timber-label" x="{sx(timber.at.x):.1f}" '
+                f'y="{sy(timber.at.y) - 6:.1f}">{escape(timber.label)}</text>'
+            )
     # Pentes : zone sous 1,80 m hachurée entre l'égout et la ligne de hauteur utile
     for roof in derived.roofs.values():
         a, b = roof.eave
@@ -539,6 +607,7 @@ def render_pdf(project: Project, level_id: UUID, *, page_format: str = "A4") -> 
     plan = _PdfPlan(c, k, x0 - minx * k, MARGIN_PT + TITLE_BLOCK_PT - miny * k)
     plan.rooms(level, derived)
     plan.zones(level)
+    plan.structure(level, graph)
     plan.roofs(derived)
     plan.furniture(level)
     plan.roof_windows(level, derived)
@@ -670,6 +739,25 @@ class _PdfPlan:
             c.setFillColorRGB(0.24, 0.35, 0.49)
             c.drawCentredString(self.sx(center.x), self.sy(center.y), zone_label(zone))
         c.setLineWidth(0.5)
+
+    def structure(self, level: Level, graph: WallGraph) -> None:
+        """KAN-94 : poteaux pleins, poutres des fermes en trait mixte avec leur hauteur."""
+        c = self.c
+        c.setStrokeColorRGB(0.29, 0.19, 0.10)
+        c.setFillColorRGB(0.48, 0.32, 0.19)
+        for timber in structure(level, graph):
+            if timber.beam:
+                c.setDash([6, 2, 1.5, 2])
+                self.polygon(timber.outline, fill=False, stroke=True)
+                c.setDash()
+                if timber.label and timber.at:
+                    c.setFont("Helvetica", 7)
+                    c.drawCentredString(
+                        self.sx(timber.at.x), self.sy(timber.at.y) + 4, timber.label
+                    )
+            else:
+                self.polygon(timber.outline, fill=True, stroke=True)
+        c.setFillColorRGB(0.13, 0.13, 0.13)
 
     def roofs(self, derived: DerivedLevel) -> None:
         """Zone sous 1,80 m et lignes d'égout / de hauteur utile."""
@@ -836,9 +924,31 @@ DXF_LAYERS: dict[str, tuple[int, str]] = {
     "COTES": (1, "CONTINUOUS"),
     "ESCALIERS": (4, "CONTINUOUS"),
     "ZONES_SOL": (6, "CONTINUOUS"),
+    "CHARPENTE": (32, "CONTINUOUS"),
 }
 """Calques DXF (couleur ACI, type de ligne) : les murs estimés, inférés ou générés sont sur
 leur propre calque, en tirets, pour rester distinguables dans tout logiciel de dessin."""
+
+
+def _dxf_zones_and_structure(
+    msp: Any, level: Level, graph: WallGraph, text: Callable[[str, float, float, str, float], None]
+) -> None:
+    """Calque ZONES_SOL (KAN-92 : contour, hachure, hauteur) et calque CHARPENTE (KAN-94 :
+    sections des poteaux, poutres des fermes en trait mixte avec leur hauteur)."""
+    for zone in floor_zones(level):
+        zone_attrs = {"layer": "ZONES_SOL"}
+        msp.add_lwpolyline([(p.x, p.y) for p in zone.polygon], close=True, dxfattribs=zone_attrs)
+        for a, b in zone_hatch(zone):
+            msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs=zone_attrs)
+        c = zone_center(zone)
+        text(zone_label(zone), c.x, c.y, "ZONES_SOL", 0.14)
+    for timber in structure(level, graph):
+        attrs = {"layer": "CHARPENTE"}
+        if timber.beam:
+            attrs["linetype"] = "DASHDOT"
+        msp.add_lwpolyline([(p.x, p.y) for p in timber.outline], close=True, dxfattribs=attrs)
+        if timber.label and timber.at:
+            text(timber.label, timber.at.x, timber.at.y + 0.12, "CHARPENTE", 0.12)
 
 
 def render_dxf(project: Project, level_id: UUID) -> str:
@@ -880,13 +990,7 @@ def render_dxf(project: Project, level_id: UUID) -> str:
         )
         text(element.name or "Pièce", room.centroid.x, room.centroid.y + 0.12, "PIECES", 0.2)
         text(_dxf_area_label(room), room.centroid.x, room.centroid.y - 0.15, "PIECES", 0.14)
-    for zone in floor_zones(level):
-        attrs = {"layer": "ZONES_SOL"}
-        msp.add_lwpolyline([(p.x, p.y) for p in zone.polygon], close=True, dxfattribs=attrs)
-        for a, b in zone_hatch(zone):
-            msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs=attrs)
-        c = zone_center(zone)
-        text(zone_label(zone), c.x, c.y, "ZONES_SOL", 0.14)
+    _dxf_zones_and_structure(msp, level, graph, text)
     for roof in derived.roofs.values():
         a, b = roof.eave
         msp.add_line((a.x, a.y), (b.x, b.y), dxfattribs={"layer": "PENTES"})

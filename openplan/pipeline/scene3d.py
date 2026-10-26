@@ -32,7 +32,15 @@ from openplan.geom.built_in_bed import parts as bed_parts
 from openplan.geom.convex import SURE_TOUCH_M, Solid
 from openplan.geom.floor_zones import FLAT_M, lift_at, quad
 from openplan.geom.polygon import largest_polygon, to_points
+from openplan.geom.roof import derived_roofs
 from openplan.geom.stairs import railing_lines, stair_layout
+from openplan.geom.truss import (
+    footprint,
+    place_truss,
+    post_footprint,
+    ridge_span,
+    truss_footprints,
+)
 from openplan.geom.velux import (
     PURLIN,
     RAFTER,
@@ -75,12 +83,14 @@ from openplan.schemas.elements import (
     FloorZone,
     Furniture,
     Opening,
+    Post,
     Room,
     Stairs,
+    Truss,
 )
 from openplan.schemas.results import Artifact
 from openplan.schemas.scene import Level, Project
-from openplan.validation.layout import footprint_corners, stair_zones
+from openplan.validation.layout import clearance_at, footprint_corners, stair_zones
 
 SLAB = 0.02
 """Épaisseur des dalles de sol et plafond (visuelle)."""
@@ -579,6 +589,7 @@ def _bake_level(project: Project, level: Level, graph: WallGraph, style: BakeSty
         polyhedra.extend(_bake_roof_panel(level, panel, style, furniture))
     prisms.extend(furniture)
     polyhedra.extend(_bake_niches(level, graph, style))
+    polyhedra.extend(_bake_structure(level, graph, style))
     prisms.extend(_bake_stairs(level, graph, style))
     # Menuiseries (E5b) : teintes de matière dans les deux styles, c'est de l'habillage.
     prisms.extend(joinery_prisms(level, graph, lambda _o, finish: FINISH_COLORS[finish]))
@@ -627,6 +638,78 @@ def _bake_floor_zones(level: Level, style: BakeStyle) -> list[Prism]:
                 finish=finish,
             )
         )
+    return out
+
+
+def post_top(
+    level: Level, graph: WallGraph, post: Post, solids: list[Float] | None = None
+) -> float:
+    """KAN-94 : hauteur du haut d'un poteau au-dessus du sol du niveau. Donnée, elle est prise
+    (sous le plafond) ; sinon il monte jusqu'au bas du bois au-dessus de lui (faîtière, panne,
+    chevron : même test de contact que `_furniture_top_under`), sinon sous la pente, sinon au
+    plafond du niveau."""
+    if post.top is not None:
+        return min(post.top, level.height)
+    shape = post_footprint(post)
+    roofs = list(derived_roofs(level, graph).values())
+    ceiling = clearance_at((post.position.x, post.position.y), roofs, level)
+    pieces = timber_solids(level, graph) if solids is None else solids
+    boards = [s for s in (Solid.of(points) for points in pieces) if s is not None]
+    z0 = level.elevation
+
+    def hits(height: float) -> bool:
+        return any(b.depth_in(shape, z0, z0 + height) > SURE_TOUCH_M for b in boards)
+
+    if not hits(ceiling):
+        return ceiling
+    low, high = 0.0, ceiling
+    while high - low > 1e-3:
+        mid = (low + high) / 2.0
+        if hits(mid):
+            high = mid
+        else:
+            low = mid
+    return round(low, 3)
+
+
+def _box(shape: Polygon, z0: float, z1: float) -> Float:
+    ring = list(shape.exterior.coords)[:-1]
+    return np.array([(x, y, z) for z in (z0, z1) for x, y in ring])
+
+
+def _bake_structure(level: Level, graph: WallGraph, style: BakeStyle) -> list[Polyhedron]:
+    """KAN-94 : poteaux et fermes intermédiaires, en bois de charpente. Une ferme que le faîtage
+    ne porte plus n'est pas bâtie (la règle `truss_off_ridge` le dit)."""
+    out: list[Polyhedron] = []
+    tf = _timber_finish()
+    solids: list[Float] | None = None
+    ridge = ridge_span(level, graph)
+    z0 = level.elevation
+    for element in level.elements.values():
+        boxes: list[Float] = []
+        if isinstance(element, Post) and element.visible:
+            if solids is None:
+                solids = timber_solids(level, graph)
+            top = post_top(level, graph, element, solids)
+            boxes.append(_box(post_footprint(element), z0, z0 + top))
+        elif isinstance(element, Truss) and element.visible and ridge is not None:
+            parts = place_truss(ridge, element)
+            if isinstance(parts, str):
+                continue
+            beam = footprint(
+                parts.centre, element.beam_width, element.spacing + element.post_width, ridge.normal
+            )
+            boxes += [
+                _box(p, z0, z0 + parts.beam_height) for p in truss_footprints(ridge, element, parts)
+            ]
+            boxes.append(
+                _box(beam, z0 + parts.beam_height, z0 + parts.beam_height + element.beam_depth)
+            )
+        for k, points in enumerate(boxes):
+            piece = _polyhedron(trimesh.convex.convex_hull(points), element, k, "timber", style)
+            out.append(
+                piece.model_copy(update={"finish": tf, "color": _color(piece.source, tf, style)})
+            )
     return out
 
 

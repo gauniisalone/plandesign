@@ -32,7 +32,7 @@ from openplan.schemas.elements import Fixture, Floor, Furniture, RoofPlane
 from openplan.schemas.scene import Project
 
 SectionAxis = Literal["x", "y"]
-STRUCTURE = frozenset({"wall", "floor", "ceiling", "roof_plane", "beam", "stairs"})
+STRUCTURE = frozenset({"wall", "floor", "ceiling", "roof_plane", "beam", "post", "truss", "stairs"})
 
 
 @dataclass

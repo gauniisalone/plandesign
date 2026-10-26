@@ -27,10 +27,17 @@ from openplan.schemas import events as event_schema
 from openplan.schemas.events import ProjectEvent
 from openplan.schemas.scene import ImageRef, ReferenceSegment
 
-PRODUCTIONS = [("3da4d52", "0.16.0"), ("a1c630f", "0.17.0"), ("14e8870", "0.18.0")]
+PRODUCTIONS = [
+    ("3da4d52", "0.16.0"),
+    ("a1c630f", "0.17.0"),
+    ("14e8870", "0.18.0"),
+    ("f6137ff", "0.19.0"),
+    ("af6bf71", "0.19.0"),
+]
 """Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0), MEP 13
-(22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91) et MEP 15
-(25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92)."""
+(22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91), MEP 15
+(25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92), MEP 16
+(f6137ff) et le passage 16 (af6bf71), schéma 0.19.0, d'avant les poteaux et fermes de KAN-94."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
@@ -138,8 +145,30 @@ def _write_with_the_new_code(data: Path) -> list[str]:
             )
         )
     ids.append(str(_with_floor_zone(store)))
+    ids.append(str(_with_posts_and_truss(store)))
     (data / "ids.json").write_text(json.dumps(ids))
     return ids
+
+
+def _with_posts_and_truss(store: Any) -> UUID:
+    """KAN-94 : des combles avec une ferme intermédiaire (déplacée, donc un historique qui la
+    connaît) et un poteau à hauteur donnée."""
+    from openplan.scene.ops import AddPost, AddTruss, UpdateElement, apply_op
+    from openplan.schemas.common import Point2
+    from openplan.schemas.elements import Truss
+    from tests.factories import attic_project
+
+    project = attic_project(user_defined=True, camera=False)
+    level = next(iter(project.levels.values()))
+    project = apply_op(project, level.id, AddTruss(distance=1.5))
+    truss = next(e for e in project.levels[level.id].elements.values() if isinstance(e, Truss))
+    project = apply_op(
+        project, level.id, UpdateElement(element_id=truss.id, fields={"spacing": 1.2})
+    )
+    near = Point2(x=truss.position.x + 0.4, y=truss.position.y + 0.4)
+    project = apply_op(project, level.id, AddPost(position=near, top=2.1))
+    store.save(project)
+    return project.id
 
 
 def _with_floor_zone(store: Any) -> UUID:
@@ -188,4 +217,4 @@ def test_production_rereads_downgraded_projects_without_409_or_500(
     assert all(code == 200 for code in statuses.values()), statuses
     # Pour l'ancien code, les deux cartes Photos du projet à deux niveaux restent des cartes
     # Photos (rôle « photos »), relues sans erreur.
-    assert sorted(seen_out["cartes_photos"].values()) == [1, 1, 2], seen_out
+    assert sorted(seen_out["cartes_photos"].values()) == [1, 1, 1, 2], seen_out

@@ -16,7 +16,9 @@ Chaque règle produit des violations compréhensibles, avec les éléments conce
 - `furniture_unreachable` : un meuble que l'on ne peut pas atteindre depuis la porte avec un
   passage de 0,80 m de large (souple) ;
 - `velux_casing` : un meuble qui entre dans le caisson d'un velux (KAN-67, souple) ; le volume
-  est celui que le bake bâtit (`geom.velux.velux_casings`), en pleine profondeur.
+  est celui que le bake bâtit (`geom.velux.velux_casings`), en pleine profondeur ;
+- `truss_off_ridge` : une ferme intermédiaire que le faîtage ne porte plus (KAN-94, souple ;
+  gardée, jamais supprimée en silence), `truss_lowered` : sa poutre abaissée sous la pente.
 
 « Dure » = sévérité `high` (l'édition est refusée, la proposition d'aménagement écartée) ;
 « souple » = `medium` (affichée, pénalité de score). Une `Constraint` de la sorte
@@ -57,6 +59,7 @@ from openplan.geom.opening_symbols import (
 )
 from openplan.geom.roof import derived_roofs, height_under_slope
 from openplan.geom.stairs import ARRIVAL_DEPTH_M, HEADROOM_M, arrival_zone, headroom, stair_layout
+from openplan.geom.truss import truss_parts
 from openplan.geom.velux import velux_casings as baked
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.scene.catalog import CatalogError, load_catalog
@@ -70,6 +73,7 @@ from openplan.schemas.elements import (
     Radiator,
     Room,
     Stairs,
+    Truss,
 )
 from openplan.schemas.numbers import metres
 from openplan.schemas.results import Severity, Violation
@@ -506,6 +510,7 @@ def check_layout(project: Project) -> list[Violation]:
         graph = WallGraph.from_level(level)
         out.extend(_check_stairs(project, level, graph, pieces))
         out.extend(_check_stacks(level, graph))
+        out.extend(_check_trusses(level, graph))
         if not pieces:
             continue
         out.extend(_check_slopes(project, level, graph, pieces))
@@ -516,6 +521,37 @@ def check_layout(project: Project) -> list[Violation]:
         out.extend(_check_openings(project, level, graph, pieces, rooms))
         out.extend(_check_clearances(project, level, graph, pieces, rooms))
         out.extend(_check_passages(project, level, graph, pieces, rooms))
+    return out
+
+
+def _check_trusses(level: Level, graph: WallGraph) -> list[Violation]:
+    """KAN-94 : une ferme intermédiaire que le faîtage du moment ne porte plus (toit retouché,
+    plan recalculé) reste dans le plan et le dit ; une poutre abaissée sous la pente aussi."""
+    out: list[Violation] = []
+    for truss in (e for e in level.elements.values() if isinstance(e, Truss) and e.visible):
+        name = truss.name or "ferme intermédiaire"
+        parts = truss_parts(level, graph, truss)
+        if isinstance(parts, str):
+            out.append(
+                Violation(
+                    type="truss_off_ridge",
+                    severity="medium",
+                    element_ids=[truss.id],
+                    message=f"« {name} » : {parts} ; à replacer ou à supprimer.",
+                )
+            )
+        elif parts.lowered:
+            out.append(
+                Violation(
+                    type="truss_lowered",
+                    severity="low",
+                    element_ids=[truss.id],
+                    message=(
+                        f"« {name} » : poutre abaissée à {_metres(parts.beam_height)} m, la "
+                        "pente passe plus bas que la hauteur demandée."
+                    ),
+                )
+            )
     return out
 
 

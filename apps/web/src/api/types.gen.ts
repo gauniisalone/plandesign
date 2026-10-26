@@ -487,6 +487,8 @@ export interface Level {
       | RoofPlane
       | RoofWindow
       | Beam
+      | Post
+      | Truss
       | Radiator
       | Stairs
       | Fixture
@@ -807,6 +809,57 @@ export interface Beam {
   source: Source1;
   start: Point3;
   type: "beam";
+  uncertainty: Uncertainty;
+  visible: boolean;
+}
+
+export interface Post {
+  confidence: number;
+  depth: number;
+  id: string;
+  locked: boolean;
+  metadata: {
+    [k: string]: JsonValue;
+  };
+  name: string | null;
+  position: Point2;
+  provenance: Provenance;
+  room: string | null;
+  source: Source1;
+  top: number | null;
+  type: "post";
+  uncertainty: Uncertainty;
+  visible: boolean;
+  width: number;
+  yaw: number;
+}
+/**
+ * KAN-94 (schéma 0.20.0) : ferme intermédiaire sous le faîtage, un seul élément : deux
+ * poteaux symétriques de part et d'autre du faîtage, écartés de `spacing`, et une poutre
+ * entre eux à `beam_height`. `position` est un point de l'axe du faîtage ; poteaux et poutre
+ * sont calculés (`openplan.geom.truss.truss_parts`), jamais stockés. Si le faîtage change, la
+ * ferme est reprojetée sur le nouvel axe ; hors faîtage, elle reste et est signalée.
+ */
+
+export interface Truss {
+  beam_depth: number;
+  beam_height: number;
+  beam_width: number;
+  confidence: number;
+  id: string;
+  locked: boolean;
+  metadata: {
+    [k: string]: JsonValue;
+  };
+  name: string | null;
+  position: Point2;
+  post_depth: number;
+  post_width: number;
+  provenance: Provenance;
+  room: string | null;
+  source: Source1;
+  spacing: number;
+  type: "truss";
   uncertainty: Uncertainty;
   visible: boolean;
 }

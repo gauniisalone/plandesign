@@ -39,6 +39,7 @@ from openplan.geom.built_in_bed import (
 )
 from openplan.geom.floor_zones import quad
 from openplan.geom.roof import derived_roofs, roof_window_footprint
+from openplan.geom.truss import post_shapes
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import DINING_TABLES, TABLE_CHAIRS, Slot, compose
 from openplan.pipeline.floorplan import DetectionError
@@ -527,6 +528,8 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
         for e in level.elements.values()
         if isinstance(e, FloorZone) and e.visible and e.elevation > 0.0
     )
+    # KAN-94 : aucun meuble sur un poteau, seul ou de ferme.
+    forbidden.extend(post_shapes(level, graph))
     catalog = load_catalog()
     by_category: dict[str, CatalogAsset] = {}
     for asset in catalog.assets:
