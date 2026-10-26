@@ -36,6 +36,8 @@ NO_RIDGE = (
     "une ferme intermédiaire se pose sous un faîtage : ce niveau n'a pas deux pentes qui se "
     "rejoignent"
 )
+NO_RIDGE_KEPT = "plus de faîtage sur ce niveau : la ferme intermédiaire n'est plus dessinée"
+"""Une ferme déjà posée dont le faîtage a disparu : gardée, signalée avec ce texte."""
 
 
 @dataclass(frozen=True)
@@ -170,7 +172,7 @@ def truss_parts(level: Level, graph: WallGraph, truss: Truss) -> TrussParts | st
     dite en français (plus de faîtage, hors du faîtage, écartement trop grand)."""
     ridge = ridge_span(level, graph)
     if ridge is None:
-        return "plus de faîtage sur ce niveau : la ferme intermédiaire n'est plus dessinée"
+        return NO_RIDGE_KEPT
     return place_truss(ridge, truss)
 
 

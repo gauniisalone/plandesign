@@ -31,11 +31,13 @@ import type {
   Furniture,
   Level,
   Opening,
+  Post,
   Project,
   RoofPlane,
   Room,
   Source,
   Stairs,
+  Truss,
   ValidationReport,
   Vertex,
   Violation,
@@ -59,7 +61,9 @@ import {
   ROOM_TYPE_LABELS,
   rooms,
   isRoofWindow,
+  isPost,
   isStairs,
+  isTruss,
   STAIR_LABELS,
 } from "../model";
 import { ViewActions, ViewSummary } from "./ViewActions";
@@ -155,6 +159,21 @@ export function Inspector(props: Props) {
         isStairs(level.elements[selection.id]) && (
           <StairsPanel
             stairs={level.elements[selection.id] as Stairs}
+            derived={props.derived}
+            onOp={props.onOp}
+          />
+        )}
+      {selection.kind === "element" && isPost(level.elements[selection.id]) && (
+        <PostPanel
+          post={level.elements[selection.id] as Post}
+          height={level.height}
+          onOp={props.onOp}
+        />
+      )}
+      {selection.kind === "element" &&
+        isTruss(level.elements[selection.id]) && (
+          <TrussPanel
+            truss={level.elements[selection.id] as Truss}
             derived={props.derived}
             onOp={props.onOp}
           />
@@ -1274,6 +1293,163 @@ function AmbianceField({
           .join(", ") || "selon le style"}
       </p>
     </div>
+  );
+}
+
+const cm = (m: number | null | undefined, fallback: number) =>
+  Math.round((m ?? fallback) * 100);
+
+/** KAN-94 : poteau seul : section (5 à 40 cm), orientation, haut (automatique : jusqu'à la
+ *  charpente au-dessus, sinon sous la pente ou au plafond). */
+function PostPanel({
+  post,
+  height,
+  onOp,
+}: {
+  post: Post;
+  height: number;
+  onOp: (op: Op) => void;
+}) {
+  const update = (fields: Record<string, unknown>) =>
+    onOp({ op: "update_element", element_id: post.id, fields });
+  const section = (v: number) => v >= 5 && v <= 40;
+  return (
+    <section>
+      <h2>Poteau : {post.name ?? "Poteau"}</h2>
+      <Badge source={post.source} confidence={post.confidence} />
+      <NumberField
+        label="Largeur"
+        value={cm(post.width, 0.15)}
+        suffix="cm"
+        step={1}
+        onCommit={(v) => section(v) && update({ width: v / 100 })}
+      />
+      <NumberField
+        label="Profondeur"
+        value={cm(post.depth, 0.12)}
+        suffix="cm"
+        step={1}
+        onCommit={(v) => section(v) && update({ depth: v / 100 })}
+      />
+      <NumberField
+        label="Orientation"
+        value={Math.round((((post.yaw ?? 0) * 180) / Math.PI) * 10) / 10}
+        suffix="°"
+        step={15}
+        onCommit={(v) => update({ yaw: (v * Math.PI) / 180 })}
+      />
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={post.top == null}
+          onChange={(e) =>
+            update({
+              top: e.target.checked ? null : Math.round(height * 100) / 100,
+            })
+          }
+        />
+        Hauteur automatique (jusqu'à la charpente ou au plafond)
+      </label>
+      {post.top != null && (
+        <NumberField
+          label="Haut du poteau"
+          value={round2(post.top)}
+          suffix="m"
+          step={0.05}
+          onCommit={(v) => v > 0 && v <= height && update({ top: v })}
+        />
+      )}
+      <p>
+        Section 5 à 40 cm ; glisser le poteau le déplace (Alt : sans accroche au
+        mur).
+      </p>
+    </section>
+  );
+}
+
+/** KAN-94 : ferme intermédiaire : distance depuis l'un ou l'autre pignon, écartement des
+ *  poteaux, hauteur sous poutre ; ce que le serveur a calculé (poutre abaissée, hors faîtage). */
+function TrussPanel({
+  truss,
+  derived,
+  onOp,
+}: {
+  truss: Truss;
+  derived: DerivedLevel | null;
+  onOp: (op: Op) => void;
+}) {
+  const update = (fields: Record<string, unknown>) =>
+    onOp({ op: "update_element", element_id: truss.id, fields });
+  const gables = derived?.ridge?.gables ?? [];
+  const [from, setFrom] = useState<string | null>(null);
+  const gable = gables.find((g) => g.wall_id === from) ?? gables[0];
+  const d = derived?.trusses?.[truss.id];
+  const distance = gable ? d?.distances?.[gable.wall_id] : undefined;
+  return (
+    <section>
+      <h2>Ferme intermédiaire : {truss.name ?? "Ferme"}</h2>
+      <Badge source={truss.source} confidence={truss.confidence} />
+      {d?.problem && (
+        <p className="truss-problem" role="alert">
+          {d.problem.charAt(0).toUpperCase() + d.problem.slice(1)} : à replacer
+          ou à supprimer.
+        </p>
+      )}
+      {d?.lowered && d.beam_height != null && (
+        <p className="truss-problem">
+          Poutre abaissée à {metres(d.beam_height)} : la pente passe plus bas
+          que la hauteur demandée.
+        </p>
+      )}
+      {gable && (
+        <>
+          <label className="field">
+            <span>Mesurée depuis</span>
+            <select
+              aria-label="Pignon de référence"
+              value={gable.wall_id}
+              onChange={(e) => setFrom(e.target.value)}
+            >
+              {gables.map((g) => (
+                <option key={g.wall_id} value={g.wall_id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {distance != null && (
+            <NumberField
+              label="Distance au pignon"
+              value={round2(distance)}
+              suffix="m"
+              step={0.05}
+              onCommit={(v) =>
+                v >= 0 && update({ distance: v, from_wall: gable.wall_id })
+              }
+            />
+          )}
+        </>
+      )}
+      <NumberField
+        label="Écartement des poteaux"
+        value={round2(truss.spacing ?? 1)}
+        suffix="m"
+        step={0.05}
+        onCommit={(v) => v > 0 && v <= 6 && update({ spacing: v })}
+      />
+      <NumberField
+        label="Hauteur sous poutre"
+        value={round2(truss.beam_height ?? 2)}
+        suffix="m"
+        step={0.05}
+        onCommit={(v) => v > 0 && v <= 6 && update({ beam_height: v })}
+      />
+      <p>
+        Poteaux {cm(truss.post_width, 0.15)} × {cm(truss.post_depth, 0.12)} cm,
+        poutre {cm(truss.beam_width, 0.15)} × {cm(truss.beam_depth, 0.2)} cm ;
+        glisser la ferme la déplace le long du faîtage.
+      </p>
+    </section>
   );
 }
 

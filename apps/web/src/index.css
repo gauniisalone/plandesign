@@ -1622,7 +1622,8 @@ button.cta:hover:not(:disabled) {
 }
 .plan.tool-wall,
 .plan.tool-door,
-.plan.tool-window {
+.plan.tool-window,
+.plan.tool-post {
   cursor: crosshair;
 }
 
@@ -1842,6 +1843,57 @@ button.cta:hover:not(:disabled) {
 .plan .plan-zone-snap {
   font-size: 11px;
   fill: var(--pd-volet-encre);
+  pointer-events: none;
+}
+
+/* KAN-94 : charpente posée. Poteaux pleins (bois), poutre d'une ferme en trait mixte,
+   faîtage en trait d'axe quand une ferme est choisie (noms vérifiés libres : plan-post,
+   plan-beam, plan-truss*, plan-ridge). */
+.plan .plan-post {
+  fill: var(--pd-tuile);
+  stroke: var(--pd-encre);
+  stroke-width: 1;
+  cursor: move;
+}
+.plan .plan-post.selected,
+.plan .plan-truss.selected .plan-post {
+  stroke-width: 2.5;
+}
+.plan .plan-beam {
+  fill: none;
+  stroke: var(--pd-tuile);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 3 2 3;
+  cursor: move;
+}
+.plan .plan-truss.selected .plan-beam {
+  stroke-width: 2.5;
+}
+.plan .plan-truss-label {
+  font-size: 11px;
+  text-anchor: middle;
+  fill: var(--pd-encre);
+  paint-order: stroke;
+  stroke: var(--plan-room);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+.plan .plan-truss-lost {
+  fill: var(--panel, #fff);
+  stroke: var(--pd-ocre);
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+  cursor: pointer;
+}
+.inspector .truss-problem {
+  color: var(--pd-ocre);
+}
+.plan .plan-ridge {
+  fill: none;
+  stroke: var(--pd-encre);
+  stroke-width: 1;
+  stroke-dasharray: 12 3 2 3;
+  stroke-opacity: 0.6;
   pointer-events: none;
 }
 

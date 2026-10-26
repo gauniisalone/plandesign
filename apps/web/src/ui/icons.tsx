@@ -315,6 +315,22 @@ export const IconFloorZone = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-94 : poteau (une pièce verticale sur sa base). */
+export const IconPost = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 4h4v16h-4z" />
+    <path d="M7 20h10" />
+  </Svg>
+);
+
+/** KAN-94 : ferme intermédiaire (deux poteaux, une poutre, sous les pentes). */
+export const IconTruss = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 13l9-8 9 8" />
+    <path d="M8 21v-9M16 21v-9M7 12h10" />
+  </Svg>
+);
+
 export const IconStairs = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 20h4v-4h4v-4h4V8h4V4" />

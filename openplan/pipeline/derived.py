@@ -11,17 +11,31 @@ from shapely.ops import unary_union
 from openplan.geom.polygon import to_points
 from openplan.geom.roof import derived_roofs
 from openplan.geom.stairs import arrow_head, cut_line, headroom, railing_lines, stair_layout
+from openplan.geom.truss import (
+    NO_RIDGE,
+    NO_RIDGE_KEPT,
+    Ridge,
+    footprint,
+    gable_face,
+    place_truss,
+    post_footprint,
+    ridge_span,
+    truss_footprints,
+)
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.schemas.common import Point2
 from openplan.schemas.derived import (
     Bounds,
+    DerivedGable,
     DerivedLevel,
+    DerivedRidge,
     DerivedRoof,
     DerivedRoom,
     DerivedStairs,
+    DerivedTruss,
     DerivedWall,
 )
-from openplan.schemas.elements import Room, Stairs
+from openplan.schemas.elements import Post, Room, Stairs, Truss, Wall
 from openplan.schemas.scene import Level
 from openplan.validation.layout import clearance_at
 
@@ -69,14 +83,75 @@ def compute_derived(level: Level) -> DerivedLevel:
     roofs = derived_roofs(level, graph)
     if roofs:
         rooms = {rid: _with_usable_area(room, roofs) for rid, room in rooms.items()}
+    ridge = ridge_span(level, graph)
     return DerivedLevel(
         level_id=level.id,
         walls=walls,
         rooms=rooms,
         roofs=roofs,
         stairs=derived_stairs(level, graph, roofs),
+        ridge=_ridge(level, graph, ridge),
+        truss_blocked=NO_RIDGE if ridge is None else None,
+        posts={
+            eid: to_points(post_footprint(e))
+            for eid, e in level.elements.items()
+            if isinstance(e, Post)
+        },
+        trusses={
+            eid: _truss(level, graph, ridge, e)
+            for eid, e in level.elements.items()
+            if isinstance(e, Truss)
+        },
         loops=loops,
         bounds=bounds,
+    )
+
+
+def _gables(level: Level, graph: WallGraph, ridge: Ridge) -> list[tuple[Wall, float]]:
+    out: list[tuple[Wall, float]] = []
+    for wall in (e for e in level.elements.values() if isinstance(e, Wall)):
+        try:
+            face, _ = gable_face(level, graph, ridge, wall.id)
+        except ValueError:
+            continue
+        out.append((wall, face))
+    return out
+
+
+def _ridge(level: Level, graph: WallGraph, ridge: Ridge | None) -> DerivedRidge | None:
+    """KAN-94 : l'axe du faîtage et ses pignons, pour poser et déplacer une ferme en 2D."""
+    if ridge is None:
+        return None
+
+    def at(t: float) -> Point2:
+        x, y = ridge.at(t)
+        return Point2(x=x, y=y)
+
+    return DerivedRidge(
+        start=at(ridge.t0),
+        end=at(ridge.t1),
+        gables=[
+            DerivedGable(wall_id=wall.id, name=wall.name or "Pignon", face=at(face))
+            for wall, face in _gables(level, graph, ridge)
+        ],
+    )
+
+
+def _truss(level: Level, graph: WallGraph, ridge: Ridge | None, truss: Truss) -> DerivedTruss:
+    """KAN-94 : poteaux, poutre et distances aux pignons ; hors faîtage, la raison seule."""
+    if ridge is None:
+        return DerivedTruss(problem=NO_RIDGE_KEPT)
+    parts = place_truss(ridge, truss)
+    if isinstance(parts, str):
+        return DerivedTruss(problem=parts)
+    beam = footprint(parts.centre, truss.beam_width, truss.spacing + truss.post_width, ridge.normal)
+    t = ridge.along(parts.centre)
+    return DerivedTruss(
+        posts=[to_points(p) for p in truss_footprints(ridge, truss, parts)],
+        beam=to_points(beam),
+        beam_height=parts.beam_height,
+        lowered=parts.lowered,
+        distances={wall.id: round(abs(t - face), 3) for wall, face in _gables(level, graph, ridge)},
     )
 
 

@@ -10,11 +10,13 @@ import type {
   Furniture,
   Level,
   Opening,
+  Post,
   Project,
   RoofPlane,
   Room,
   Source,
   Stairs,
+  Truss,
   Vertex,
   Violation,
   Wall,
@@ -219,6 +221,16 @@ export function zoneLabel(zone: FloorZone): string {
   return zone.elevation > 0
     ? `+${Math.round(zone.elevation * 100)} cm`
     : "zone de sol";
+}
+
+/** KAN-94 : poteau seul ; son emprise vient du serveur (`derived.posts`). */
+export function isPost(e: Element | undefined): e is Post {
+  return e?.type === "post";
+}
+
+/** KAN-94 : ferme intermédiaire ; poteaux et poutre viennent du serveur (`derived.trusses`). */
+export function isTruss(e: Element | undefined): e is Truss {
+  return e?.type === "truss";
 }
 
 export function isStairs(e: Element | undefined): e is Stairs {

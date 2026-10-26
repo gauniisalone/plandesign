@@ -111,6 +111,28 @@ export interface AddFloorZone {
   name?: string | null;
 }
 
+/** KAN-94 : un poteau dans une pièce ; sans `top`, il monte jusqu'à ce qui est au-dessus. */
+export interface AddPost {
+  op: "add_post";
+  position: Point2;
+  width?: number;
+  depth?: number;
+  yaw?: number;
+  top?: number | null;
+  name?: string | null;
+}
+
+/** KAN-94 : une ferme intermédiaire sous le faîtage, à `distance` de la face intérieure du
+ *  pignon `from_wall` ; à mi-faîtage sans distance. */
+export interface AddTruss {
+  op: "add_truss";
+  distance?: number | null;
+  from_wall?: string | null;
+  spacing?: number;
+  beam_height?: number;
+  name?: string | null;
+}
+
 export interface UpdateElement {
   op: "update_element";
   element_id: string;
@@ -161,6 +183,8 @@ export type Op =
   | ReplaceFurniture
   | AddCamera
   | AddFloorZone
+  | AddPost
+  | AddTruss
   | UpdateElement
   | SetIntent
   | UpdateVertex

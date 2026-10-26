@@ -68,12 +68,50 @@ class DerivedStairs(StrictModel):
     """Échappée la plus faible au-dessus des marches."""
 
 
+class DerivedGable(StrictModel):
+    """KAN-94 : un pignon, mur en travers du faîtage ; une distance se mesure depuis sa face
+    intérieure."""
+
+    wall_id: UUID
+    name: str
+    face: Point2
+    """Le point de l'axe du faîtage au droit de la face intérieure du mur."""
+
+
+class DerivedRidge(StrictModel):
+    """KAN-94 : l'axe du faîtage en plan, d'un pignon à l'autre."""
+
+    start: Point2
+    end: Point2
+    gables: list[DerivedGable] = Field(default_factory=list)
+
+
+class DerivedTruss(StrictModel):
+    """KAN-94 : une ferme intermédiaire posée sur le faîtage du moment (poteaux et poutre
+    calculés), ou la raison pour laquelle elle ne l'est plus (`problem`)."""
+
+    posts: list[list[Point2]] = Field(default_factory=list)
+    beam: list[Point2] = Field(default_factory=list)
+    beam_height: float | None = None
+    lowered: bool = False
+    distances: dict[UUID, float] = Field(default_factory=dict)
+    """Distance du centre de la ferme à la face intérieure de chaque pignon (mètres)."""
+    problem: str | None = None
+
+
 class DerivedLevel(StrictModel):
     level_id: UUID
     walls: dict[UUID, DerivedWall] = Field(default_factory=dict)
     rooms: dict[UUID, DerivedRoom] = Field(default_factory=dict)
     roofs: dict[UUID, DerivedRoof] = Field(default_factory=dict)
     stairs: dict[UUID, DerivedStairs] = Field(default_factory=dict)
+    ridge: DerivedRidge | None = None
+    """KAN-94 : le faîtage, s'il y a deux pentes qui se rejoignent."""
+    truss_blocked: str | None = None
+    """KAN-94 : pourquoi « Ajouter une ferme intermédiaire » est grisé (None : possible)."""
+    posts: dict[UUID, list[Point2]] = Field(default_factory=dict)
+    """KAN-94 : emprise de chaque poteau seul."""
+    trusses: dict[UUID, DerivedTruss] = Field(default_factory=dict)
     loops: list[list[UUID]] = Field(default_factory=list)
     """Boucles fermées détectées, qu'une pièce les représente déjà ou non."""
     bounds: Bounds | None = None

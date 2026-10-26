@@ -244,6 +244,10 @@ export interface DerivedLevel {
   bounds: Bounds | null;
   level_id: string;
   loops: string[][];
+  posts: {
+    [k: string]: Point2[];
+  };
+  ridge: DerivedRidge | null;
   roofs: {
     [k: string]: DerivedRoof;
   };
@@ -252,6 +256,10 @@ export interface DerivedLevel {
   };
   stairs: {
     [k: string]: DerivedStairs;
+  };
+  truss_blocked: string | null;
+  trusses: {
+    [k: string]: DerivedTruss;
   };
   walls: {
     [k: string]: DerivedWall;
@@ -262,6 +270,26 @@ export interface Bounds {
   max: Point2;
   min: Point2;
 }
+
+export interface DerivedRidge {
+  end: Point2;
+  gables: DerivedGable[];
+  start: Point2;
+}
+/**
+ * KAN-94 : un pignon, mur en travers du faîtage ; une distance se mesure depuis sa face
+ * intérieure.
+ */
+
+export interface DerivedGable {
+  face: Point2;
+  name: string;
+  wall_id: string;
+}
+/**
+ * Pente vue en plan : ligne d'égout, sens de montée, course jusqu'au faîtage et
+ * distance de l'égout à laquelle on tient debout (1,80 m).
+ */
 
 export interface DerivedRoof {
   /**
@@ -302,6 +330,21 @@ export interface DerivedStairs {
   risers: number;
   treads: Point2[][];
   walk: Point2[];
+}
+/**
+ * KAN-94 : une ferme intermédiaire posée sur le faîtage du moment (poteaux et poutre
+ * calculés), ou la raison pour laquelle elle ne l'est plus (`problem`).
+ */
+
+export interface DerivedTruss {
+  beam: Point2[];
+  beam_height: number | null;
+  distances: {
+    [k: string]: number;
+  };
+  lowered: boolean;
+  posts: Point2[][];
+  problem: string | null;
 }
 
 export interface DerivedWall {

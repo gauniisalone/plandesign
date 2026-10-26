@@ -18,6 +18,8 @@ import {
   IconDownload,
   IconFit,
   IconFloorZone,
+  IconPost,
+  IconTruss,
   IconGear,
   IconHand,
   IconMaterials,
@@ -375,11 +377,17 @@ export function ToolPalette({
   onCatalog,
   onStairs,
   onLayout,
+  onAddTruss,
+  trussBlocked = null,
   locked = false,
 }: {
   /** B2d : un autre membre modifie ce plan : outils d'édition grisés (voir et se déplacer
    *  restent possibles). */
   locked?: boolean;
+  /** KAN-94 : pose une ferme intermédiaire à mi-faîtage. */
+  onAddTruss: () => void;
+  /** KAN-94 : pourquoi la ferme ne se pose pas ici (pas de faîtage) ; null : possible. */
+  trussBlocked?: string | null;
   project: Project;
   tool: Tool;
   viewMode: ViewMode;
@@ -461,6 +469,25 @@ export function ToolPalette({
           active={tool === "floorzone"}
           disabled={viewMode === "2d" || !!locked}
           onClick={() => onTool("floorzone")}
+        />
+        {/* KAN-94 : charpente posée, sans raccourci clavier (décision du PO). */}
+        <IconButton
+          label="Poteau"
+          more="un clic sur le plan pose un poteau (contre le mur s'il est proche ; Alt : libre) ; il monte jusqu'à la charpente ou au plafond"
+          Icon={IconPost}
+          active={tool === "post"}
+          disabled={!drawing}
+          onClick={() => onTool("post")}
+        />
+        <IconButton
+          label="Ajouter une ferme intermédiaire"
+          more={
+            trussBlocked ??
+            "deux poteaux et une poutre sous le faîtage, à mi-faîtage ; puis la glisser le long du faîtage"
+          }
+          Icon={IconTruss}
+          disabled={busy || !drawing || trussBlocked !== null}
+          onClick={onAddTruss}
         />
         {hasBackground &&
           toolButton(

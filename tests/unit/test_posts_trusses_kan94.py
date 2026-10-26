@@ -265,6 +265,42 @@ def test_a_truss_off_a_shortened_ridge_is_kept_and_flagged() -> None:
     assert flagged and "hors du faîtage" in flagged[0].message
 
 
+def test_the_plan_gets_the_ridge_the_gables_and_the_computed_trusses() -> None:
+    """L2 : le plan 2D lit tout dans `derived` (aucune géométrie côté navigateur) : faîtage et
+    pignons, poteaux et poutre de chaque ferme, distances aux deux pignons, emprise des
+    poteaux ; sans faîtage, la raison qui grise le bouton."""
+    from openplan.pipeline.derived import compute_derived
+
+    after, level_id, truss = _attic_truss(distance=2.0)
+    level = after.levels[level_id]
+    first, second = _gables(level)
+    derived = compute_derived(level)
+    assert derived.ridge is not None and derived.truss_blocked is None
+    assert {g.wall_id for g in derived.ridge.gables} == {first.id, second.id}
+    shown = derived.trusses[truss.id]
+    assert shown.problem is None and len(shown.posts) == 2 and len(shown.beam) == 4
+    assert shown.beam_height == pytest.approx(2.0)
+    graph = WallGraph.from_level(level)
+    ridge = ridge_span(level, graph)
+    assert ridge is not None
+    a = gable_face(level, graph, ridge, first.id)[0]
+    b = gable_face(level, graph, ridge, second.id)[0]
+    # Placée depuis le bout du faîtage (pas de pignon donné) : à 2,00 m moins la demi-épaisseur
+    # du pignon de sa face intérieure ; les deux distances font l'entre-pignons.
+    assert shown.distances[first.id] == pytest.approx(2.0 - (a - ridge.t0), abs=1e-3)
+    assert shown.distances[first.id] + shown.distances[second.id] == pytest.approx(b - a, abs=1e-3)
+    flat = rect_room_project()
+    flat_level = only_level(flat)
+    with_post = apply_op(flat, flat_level.id, AddPost(position=Point2(x=2.0, y=1.5)))
+    plain = compute_derived(with_post.levels[flat_level.id])
+    assert plain.ridge is None and plain.truss_blocked == NO_RIDGE
+    assert [len(p) for p in plain.posts.values()] == [4]
+    roof = _roofs(level)[0]
+    gone = apply_op(after, level_id, RemoveElement(element_id=roof.id))
+    lost = compute_derived(gone.levels[level_id]).trusses[truss.id]
+    assert lost.posts == [] and lost.problem and "plus de faîtage" in lost.problem
+
+
 def test_an_ops_body_without_op_stays_detect_rooms(tmp_path: object) -> None:
     """Le corps de la route /ops est choisi dans l'union par ordre quand « op » manque : « {} »
     (le pas vide) reste DetectRooms, jamais AddPost ni AddTruss, même sous un faîtage où une

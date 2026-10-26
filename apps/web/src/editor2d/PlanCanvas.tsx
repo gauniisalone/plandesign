@@ -30,7 +30,9 @@ import {
   isFurniture,
   isExcludedView,
   isOpening,
+  isPost,
   isStairs,
+  isTruss,
   isFreeCamera,
   isUncertain,
   openings,
@@ -89,7 +91,9 @@ export type Tool =
   | "scale"
   /** KAN-92 : outils de la vue 3D ; le plan 2D se comporte alors comme « Sélection ». */
   | "pushpull"
-  | "floorzone";
+  | "floorzone"
+  /** KAN-94 : un clic pose un poteau (contre un mur s'il est près, sinon sur la grille). */
+  | "post";
 
 /** Fond de photo : image du projet posée dans le plan (coin bas-gauche en (tx, ty), mètres). */
 export interface Background {
@@ -221,6 +225,34 @@ function cameraLabel(cam: Camera): string {
 const GRID_M = 0.05;
 const SNAP_WALL_M = 0.35;
 const WALL_GAP_M = 0.02;
+/** KAN-94 : section d'un poteau neuf (le serveur garde 15 × 12 cm par défaut). */
+const POST_DEPTH_M = 0.12;
+
+function roundPoint(p: Point2): Point2 {
+  return { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
+}
+
+/** Aperçu d'un poteau glissé : `width` le long de `yaw`, `depth` en travers (comme le serveur). */
+function rectangle(
+  c: Point2,
+  width: number,
+  depth: number,
+  yaw: number,
+): Point2[] {
+  const ux = Math.cos(yaw);
+  const uy = Math.sin(yaw);
+  const a = width / 2;
+  const b = depth / 2;
+  return [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ].map(([s, t]) => ({
+    x: c.x + s! * a * ux - t! * b * uy,
+    y: c.y + s! * a * uy + t! * b * ux,
+  }));
+}
 
 /** Accroche le dos d'un meuble à la face du mur le plus proche (à moins de 35 cm), tourné
  *  face à la pièce ; null loin des murs (ou avec Alt). */
@@ -311,6 +343,22 @@ type Drag =
   | { kind: "spin"; id: string; yaw: number }
   | { kind: "stairsSpin"; id: string; yaw: number }
   | { kind: "stairsMove"; id: string; current: Point2; offset: Point2 }
+  /** KAN-94 : un poteau glissé (accroché au mur proche, Alt : libre) ; une ferme glissée
+   *  seulement le long du faîtage (`current` est sur l'axe). */
+  | {
+      kind: "postMove";
+      id: string;
+      current: Point2;
+      yaw: number;
+      offset: Point2;
+    }
+  | {
+      kind: "trussMove";
+      id: string;
+      start: Point2;
+      current: Point2;
+      grab: Point2;
+    }
   | {
       /** Poignée d'un meuble (E2) : hu, hv ∈ {−1, 0, 1} le long de sa largeur, profondeur. */
       kind: "resize";
@@ -488,6 +536,27 @@ export function PlanCanvas({
       ? null
       : snapToWall(raw, placing.depth, level, positions);
     return snapped ?? { position: raw, yaw: placeAt?.yaw ?? 0 };
+  };
+  /** KAN-94 : où tombe un poteau : contre la face du mur proche (35 cm), sinon sur la grille
+   *  de 5 cm ; Alt : libre. */
+  const postSpot = (w: Point2, depth: number, free: boolean) => {
+    if (free) return { position: w, yaw: 0 };
+    const raw = snapToGrid(w, GRID_M);
+    return (
+      snapToWall(raw, depth, level, positions) ?? { position: raw, yaw: 0 }
+    );
+  };
+  /** KAN-94 : un point ramené sur l'axe du faîtage, entre ses deux pignons. */
+  const onRidge = (p: Point2): Point2 => {
+    const r = derived?.ridge;
+    if (!r) return p;
+    const { along, length } = projectOnSegment(p, r.start, r.end);
+    if (length === 0) return r.start;
+    const k = along / length;
+    return {
+      x: r.start.x + (r.end.x - r.start.x) * k,
+      y: r.start.y + (r.end.y - r.start.y) * k,
+    };
   };
   const showNotice = (text: string) => {
     setNotice(text);
@@ -885,6 +954,16 @@ export function PlanCanvas({
       })();
       return;
     }
+    if (tool === "post") {
+      // KAN-94 : un clic, un poteau ; hors d'une pièce, le serveur dit pourquoi.
+      const at = postSpot(toWorld(view, x, y), POST_DEPTH_M, e.altKey);
+      onOp({
+        op: "add_post",
+        position: roundPoint(at.position),
+        yaw: Math.round(at.yaw * 1000) / 1000,
+      });
+      return;
+    }
     if (tool === "select") {
       // Poignées de redimensionnement (E2) : avant les sommets, elles sont dessus.
       const handle = (e.target as SVGElement).dataset["handle"];
@@ -967,6 +1046,32 @@ export function PlanCanvas({
             x: w.x - element.position.x,
             y: w.y - element.position.y,
           },
+        });
+        return;
+      }
+      // KAN-94 : poteau glissé librement (accroché au mur proche) ; ferme glissée le long
+      // du faîtage seulement.
+      if (target && isPost(element)) {
+        onSelect({ kind: "element", id: target });
+        const w = toWorld(view, x, y);
+        setDrag({
+          kind: "postMove",
+          id: target,
+          current: { x: element.position.x, y: element.position.y },
+          yaw: element.yaw ?? 0,
+          offset: { x: w.x - element.position.x, y: w.y - element.position.y },
+        });
+        return;
+      }
+      if (target && isTruss(element)) {
+        onSelect({ kind: "element", id: target });
+        const start = { x: element.position.x, y: element.position.y };
+        setDrag({
+          kind: "trussMove",
+          id: target,
+          start,
+          current: start,
+          grab: toWorld(view, x, y),
         });
         return;
       }
@@ -1260,6 +1365,25 @@ export function PlanCanvas({
         { x: f.transform.position.x, y: f.transform.position.y },
         yaw,
       );
+    } else if (drag.kind === "postMove") {
+      const post = level.elements[drag.id];
+      if (!isPost(post)) return;
+      const w = toWorld(view, x, y);
+      const raw = { x: w.x - drag.offset.x, y: w.y - drag.offset.y };
+      const at = postSpot(raw, post.depth ?? POST_DEPTH_M, e.altKey);
+      setDrag({
+        ...drag,
+        current: at.position,
+        yaw: e.altKey ? drag.yaw : at.yaw,
+      });
+    } else if (drag.kind === "trussMove") {
+      // Le pas en travers du faîtage est ignoré : la ferme glisse sur l'axe seulement.
+      const w = toWorld(view, x, y);
+      const moved = {
+        x: drag.start.x + w.x - drag.grab.x,
+        y: drag.start.y + w.y - drag.grab.y,
+      };
+      setDrag({ ...drag, current: onRidge(moved) });
     } else if (drag.kind === "stairsMove") {
       const w = toWorld(view, x, y);
       const raw = { x: w.x - drag.offset.x, y: w.y - drag.offset.y };
@@ -1299,6 +1423,31 @@ export function PlanCanvas({
   };
 
   const onMouseUp = async () => {
+    // KAN-94 : un pas d'historique par glissé ; refusé (hors pièce, hors faîtage) : le serveur
+    // dit pourquoi.
+    if (drag?.kind === "postMove") {
+      const post = level.elements[drag.id];
+      if (isPost(post) && distance(drag.current, post.position) > 1e-6) {
+        onOp({
+          op: "update_element",
+          element_id: drag.id,
+          fields: {
+            position: roundPoint(drag.current),
+            yaw: Math.round(drag.yaw * 1000) / 1000,
+          },
+        });
+      }
+    }
+    if (
+      drag?.kind === "trussMove" &&
+      distance(drag.current, drag.start) > 1e-6
+    ) {
+      onOp({
+        op: "update_element",
+        element_id: drag.id,
+        fields: { position: roundPoint(drag.current) },
+      });
+    }
     if (drag?.kind === "zoneCorner") {
       // Un seul pas d'historique ; hors de la pièce ou côtés croisés : le serveur dit pourquoi.
       const zone = level.elements[drag.id];
@@ -2317,6 +2466,111 @@ export function PlanCanvas({
               data-element={w.id}
             >
               <title>{w.name ?? "Velux"}</title>
+            </polygon>
+          );
+        })}
+
+      {/* KAN-94 : faîtage (pendant qu'une ferme est choisie), fermes et poteaux */}
+      {derived?.ridge &&
+        selection.kind === "element" &&
+        isTruss(level.elements[selection.id]) && (
+          <polyline
+            className="plan-ridge"
+            points={pts([derived.ridge.start, derived.ridge.end])}
+          />
+        )}
+      {derived &&
+        Object.entries(derived.trusses ?? {}).map(([id, t]) => {
+          const truss = level.elements[id];
+          if (!isTruss(truss)) return null;
+          const selected = selection.kind === "element" && selection.id === id;
+          if (t.problem) {
+            // Gardée, jamais supprimée en silence : un repère cliquable dit pourquoi.
+            const c = S(truss.position);
+            return (
+              <g
+                key={id}
+                className={`plan-truss lost${selected ? " selected" : ""}`}
+              >
+                <circle
+                  className="plan-truss-lost"
+                  cx={c.x}
+                  cy={c.y}
+                  r={7}
+                  data-element={id}
+                >
+                  <title>{t.problem}</title>
+                </circle>
+              </g>
+            );
+          }
+          const moving =
+            drag?.kind === "trussMove" && drag.id === id ? drag : null;
+          const shift = moving
+            ? `translate(${S(moving.current).x - S(moving.start).x} ${S(moving.current).y - S(moving.start).y})`
+            : undefined;
+          const middle = t.beam.length
+            ? S({
+                x: t.beam.reduce((s, p) => s + p.x, 0) / t.beam.length,
+                y: t.beam.reduce((s, p) => s + p.y, 0) / t.beam.length,
+              })
+            : null;
+          return (
+            <g
+              key={id}
+              className={`plan-truss${selected ? " selected" : ""}`}
+              data-element={id}
+              transform={shift}
+            >
+              <polygon
+                className="plan-beam"
+                points={pts(t.beam)}
+                data-element={id}
+              />
+              {t.posts.map((p, i) => (
+                <polygon
+                  key={i}
+                  className="plan-post"
+                  points={pts(p)}
+                  data-element={id}
+                />
+              ))}
+              {selected && middle && t.beam_height != null && (
+                <text
+                  className="plan-truss-label"
+                  x={middle.x}
+                  y={middle.y - 8}
+                >
+                  poutre à {metres(t.beam_height)}
+                </text>
+              )}
+              <title>{truss.name ?? "Ferme intermédiaire"}</title>
+            </g>
+          );
+        })}
+      {derived &&
+        Object.entries(derived.posts ?? {}).map(([id, outline]) => {
+          const post = level.elements[id];
+          if (!isPost(post)) return null;
+          const selected = selection.kind === "element" && selection.id === id;
+          const moving =
+            drag?.kind === "postMove" && drag.id === id ? drag : null;
+          const shape = moving
+            ? rectangle(
+                moving.current,
+                post.width ?? 0.15,
+                post.depth ?? 0.12,
+                moving.yaw,
+              )
+            : outline;
+          return (
+            <polygon
+              key={id}
+              className={`plan-post${selected ? " selected" : ""}`}
+              points={pts(shape)}
+              data-element={id}
+            >
+              <title>{post.name ?? "Poteau"}</title>
             </polygon>
           );
         })}

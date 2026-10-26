@@ -1763,6 +1763,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onCatalog={() => togglePane("catalog")}
               onStairs={openStairs}
               onLayout={() => togglePane("amenager")}
+              trussBlocked={state.derived?.truss_blocked ?? null}
+              onAddTruss={() => actions.apply({ op: "add_truss" })}
             />
           )}
           {step === "edit" && (
