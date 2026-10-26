@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test:unit": "node --test \"unit/*.test.ts\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=\"src/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov.info \"unit/*.test.ts\"",
     "preview": "vite preview",
     "gen-types": "node scripts/gen-types.mjs schemas",
     "e2e": "playwright test",

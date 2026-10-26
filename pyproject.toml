@@ -155,6 +155,9 @@ markers = [
 [tool.coverage.run]
 source = ["openplan"]
 branch = true
+# KAN-107 : chemins relatifs dans coverage.xml (SonarQube Cloud les relit depuis un autre job,
+# et aucun chemin de machine n'en sort).
+relative_files = true
 
 # ------------------------------------------------------------------
 # Frontières d'architecture (voir docs/architecture/00 §4)

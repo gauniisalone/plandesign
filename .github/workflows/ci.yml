@@ -1,6 +1,7 @@
 # Intégration continue (D1, 15 oct. 2026) : lint, types et tests rapides à chaque push sur main et
 # à chaque PR, sans GPU, sans Blender, sans torch et sans e2e (les e2e Playwright restent sur le
-# créneau PO ; voir docs/architecture/15-ci-cd-deploiement.md). Jobs parallèles, cible < 4 min.
+# créneau PO ; voir docs/architecture/15-ci-cd-deploiement.md). Jobs parallèles, cible < 4 min ;
+# KAN-107 : SonarQube Cloud après python et web (non bloquant).
 # Dépôt privé, plan Free : 2 000 min/mois ; artefacts gardés 7 jours. Runner épinglé (ubuntu-latest
 # bascule sur Ubuntu 26 le 19 oct. 2026).
 name: ci
@@ -36,8 +37,13 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       # Sans les tests marqués `slow` (modèles, rendu) ; ceux marqués `blender` s'ignorent d'eux-mêmes
-      # quand le binaire est absent.
-      - run: uv run pytest -m "not slow"
+      # quand le binaire est absent. KAN-107 : couverture en XML pour SonarQube Cloud.
+      - run: uv run pytest -m "not slow" --cov-report=xml:coverage.xml
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-python
+          path: coverage.xml
+          retention-days: 1
 
   web:
     name: web (eslint, tsc, tests unitaires, vite build)
@@ -56,8 +62,47 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run test:unit
+      # KAN-107 : les mêmes tests unitaires, avec la couverture de src/ en lcov (exécuteur de Node).
+      - run: npm run test:coverage
+      # Node écrit les chemins depuis apps/web ; SonarQube Cloud les lit depuis la racine.
+      - run: sed -i 's|^SF:src/|SF:apps/web/src/|' lcov.info
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-web
+          path: apps/web/lcov.info
+          retention-days: 1
       - run: npm run build
+
+  # KAN-107 : SonarQube Cloud (organisation gauniisalone), après les tests, avec leur couverture.
+  # Non bloquant au départ : le job peut échouer sans faire échouer la CI, et le scanner n'attend
+  # pas la porte qualité. Le jeton ne sert qu'ici, par secrets.SONAR_TOKEN ; une PR venue d'un
+  # fork ou de Dependabot n'a pas le secret : le job ne tourne pas. Ce que l'analyse envoie :
+  # voir sonar-project.properties (openplan/ et apps/web/src/ seulement, jamais data/).
+  # Prérequis : l'analyse automatique de SonarQube Cloud coupée (les deux sont incompatibles).
+  sonar:
+    name: sonar (SonarQube Cloud, non bloquant)
+    needs: [python, web]
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # historique complet : nouveau code et blame justes
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-python
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-web
+          path: apps/web
+      - uses: SonarSource/sonarqube-scan-action@v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   image:
     name: image Docker (construction seule, pas de push)

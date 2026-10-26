@@ -1,0 +1,70 @@
+# KAN-107 : Dependabot pour la SÉCURITÉ seulement. `open-pull-requests-limit: 0` coupe les
+# mises à jour de version ; les mises à jour de sécurité (alertes du dépôt) ont leur propre limite
+# et restent ouvertes, regroupées en une PR par écosystème, au plus une fois par semaine.
+# Prérequis côté dépôt (augus) : « Dependabot alerts » et « Dependabot security updates » activés.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 0
+    groups:
+      securite-python:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 0
+    groups:
+      securite-web:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/apps/site"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 0
+    groups:
+      securite-site:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 0
+    groups:
+      securite-actions:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 0
+    groups:
+      securite-docker:
+        applies-to: security-updates
+        patterns: ["*"]

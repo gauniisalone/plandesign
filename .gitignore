@@ -20,6 +20,8 @@ pids
 # ============================================================
 coverage/
 *.lcov
+lcov.info
+coverage.xml
 .nyc_output
 .pytest_cache/
 htmlcov/

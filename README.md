@@ -1,5 +1,10 @@
 # PlanDesign
 
+[![ci](https://github.com/gauniisalone/plandesign/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gauniisalone/plandesign/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=gauniisalone_plandesign&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gauniisalone_plandesign)
+[![Couverture](https://sonarcloud.io/api/project_badges/measure?project=gauniisalone_plandesign&metric=coverage)](https://sonarcloud.io/component_measures?id=gauniisalone_plandesign&metric=coverage)
+[![Sécurité](https://sonarcloud.io/api/project_badges/measure?project=gauniisalone_plandesign&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=gauniisalone_plandesign)
+
 *Anciennement OpenPlan Studio. La commande reste `openplan` (alias `plandesign`), comme le paquet
 Python, les variables `OPENPLAN_*` et le dossier des données.*
 
