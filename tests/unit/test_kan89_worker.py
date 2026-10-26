@@ -251,7 +251,7 @@ def test_after_a_render_the_next_claim_waits_its_cadence(tmp_path: Path) -> None
         if len(waits) == 4:
             (tmp_path / "worker.stop").touch()
 
-    worker.process = lambda _job: next(returns)  # type: ignore[method-assign]
+    worker.process = lambda _job: next(returns)  # type: ignore[method-assign, assignment]
     worker.wait = wait  # type: ignore[method-assign]
     assert worker.run() == 0
     assert client.states == ["idle"] * 4
@@ -332,7 +332,7 @@ def test_zimage_contract_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         pass
 
     calls: list[dict[str, object]] = []
-    mode = {"raise": None}
+    mode: dict[str, Exception | None] = {"raise": None}
 
     def render_scene(
         bake_path: Path,
@@ -343,8 +343,9 @@ def test_zimage_contract_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         prompt: str | None = None,
     ) -> object:
         calls.append({"bake": bake_path, "project": project_path, "prompt": prompt})
-        if mode["raise"] is not None:
-            raise mode["raise"]  # type: ignore[misc]
+        error = mode["raise"]
+        if error is not None:
+            raise error
         out_png.write_bytes(png_bytes(32, 16, (1, 2, 3)))
         return types.SimpleNamespace(
             seconds=3.5, vram_peak_mib=4700, width=32, height=16, engine="zimage"
@@ -365,7 +366,7 @@ def test_zimage_contract_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         (TimeoutError(), "timeout"),
         (RuntimeError("cuda"), "engine_error"),
     ):
-        mode["raise"] = exc  # type: ignore[assignment]
+        mode["raise"] = exc
         with pytest.raises(EngineFailedError) as caught:
             engine.render("zimage", *args)
         assert caught.value.reason == reason
