@@ -8946,6 +8946,13 @@ button.link,
   margin: 0;
   color: var(--muted);
 }
+/* KAN-97 : ce qui a guidé le dernier rendu (mots lus dans les inspirations). */
+.rgal-guided {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
 .rgal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

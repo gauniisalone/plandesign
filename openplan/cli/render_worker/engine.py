@@ -16,7 +16,7 @@ import importlib
 import struct
 import time
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from openplan.schemas.bake import RenderCamera
@@ -24,6 +24,8 @@ from openplan.schemas.render_queue import MAX_IMAGE_SIDE, FailureReason
 
 ZIMAGE_MODULE = "openplan.pipeline.zimage_render"
 FAKE_LONG_SIDE = 1024
+FAKE_STYLE_WORDS = ("scandinavian", "bright")
+"""KAN-97 : ce que le moteur factice « lit » dans des images de style (tests, e2e)."""
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class RenderOutcome:
     width: int
     height: int
     engine: str
+    style_words: list[str] | None = None
+    """KAN-97 : mots de style retenus ; None sans image de style (ou moteur sans eux)."""
 
 
 class EngineFailedError(Exception):
@@ -79,7 +83,12 @@ def fake_render(camera_path: Path, out_png: Path) -> RenderOutcome:
 
 
 def zimage_render(
-    project: Path, bake: Path, camera: Path, out_png: Path, seed: int | None = None
+    project: Path,
+    bake: Path,
+    camera: Path,
+    out_png: Path,
+    seed: int | None = None,
+    style_dir: Path | None = None,
 ) -> RenderOutcome:
     try:
         module = importlib.import_module(ZIMAGE_MODULE)
@@ -88,7 +97,9 @@ def zimage_render(
     unavailable = getattr(module, "ZImageUnavailable", ())
     vram = getattr(module, "ZImageVramGuard", ())
     # KAN-91 : une variante passe son tirage ; sinon, celui par défaut du moteur (KAN-88).
-    extra = {} if seed is None else {"seed": seed}
+    extra: dict[str, object] = {} if seed is None else {"seed": seed}
+    if style_dir is not None:  # KAN-97 : images d'inspiration déposées par le poste
+        extra["style_dir"] = style_dir
     try:
         result = module.render_scene(bake, camera, out_png, project_path=project, **extra)
     except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
@@ -105,7 +116,14 @@ def zimage_render(
         width=int(result.width),
         height=int(result.height),
         engine=str(getattr(result, "engine", "zimage")),
+        style_words=_words(getattr(result, "style_words", None)),
     )
+
+
+def _words(value: object) -> list[str] | None:
+    if value is None or not isinstance(value, list | tuple):
+        return None
+    return [str(w) for w in value]
 
 
 def render(
@@ -116,9 +134,14 @@ def render(
     out_png: Path,
     *,
     seed: int | None = None,
+    style_dir: Path | None = None,
 ) -> RenderOutcome:
     if engine == "fake":
-        return fake_render(camera, out_png)
+        outcome = fake_render(camera, out_png)
+        # Le moteur factice des tests lit les images de style sans modèle : un mot fixe.
+        if style_dir is not None and any(style_dir.iterdir()):
+            return replace(outcome, style_words=list(FAKE_STYLE_WORDS))
+        return outcome
     if engine == "zimage":
-        return zimage_render(project, bake, camera, out_png, seed)
+        return zimage_render(project, bake, camera, out_png, seed, style_dir)
     raise EngineFailedError("unavailable")

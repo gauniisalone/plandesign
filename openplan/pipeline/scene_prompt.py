@@ -160,11 +160,14 @@ pas « vu » ; les meubles, eux, suivent `VISIBLE_MIN_PX` (KAN-88)."""
 
 @dataclass(frozen=True)
 class SceneWords:
-    """Les trois groupes du prompt tirés de la scène ; un groupe vide est tu."""
+    """Les groupes du prompt tirés de la scène ; un groupe vide est tu."""
 
     surfaces: list[str] = field(default_factory=list)
     furniture: list[str] = field(default_factory=list)
     textiles: list[str] = field(default_factory=list)
+    style: list[str] = field(default_factory=list)
+    """KAN-97 : les mots lus dans les images d'inspiration (`pipeline.style_words`), placés
+    après le style de l'ambiance et avant les surfaces : jamais une matière de surface."""
 
 
 def _dominant(solids: list[Prism] | list[Polyhedron], kinds: set[str]) -> str | None:

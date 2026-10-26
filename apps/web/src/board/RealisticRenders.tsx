@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  guidedLine,
   realisticApi,
   type ReactionKey,
   type RealisticListing,
@@ -322,6 +323,8 @@ export function RealisticRenders({
   const worker = listing.status.worker;
   const eta = etaText(listing.typical_seconds);
   const latest = g.done[0];
+  // KAN-97 : ce qui a guidé le dernier rendu fait (mots lus par le poste, en français).
+  const guided = latest ? guidedLine(latest) : null;
   const canRender =
     !readOnly && linked && (views.length > 0 || photos.length > 0);
   const viewName = (r: RealisticRequest) => {
@@ -414,6 +417,7 @@ export function RealisticRenders({
           {NO_PLAN_TEXT}
         </p>
       )}
+      {guided && <p className="rgal-guided">{guided}</p>}
       {linked && cameras.length === 0 && (
         <p className="realistic-empty">
           Aucune vue : posez un point de vue sur le plan.

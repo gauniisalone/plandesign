@@ -52,6 +52,7 @@ WORKER_ROUTES = {
     ("POST", "/api/worker/jobs/{request_id}/result"),
     ("POST", "/api/worker/jobs/{request_id}/fail"),
     ("POST", "/api/worker/jobs/{request_id}/beat"),
+    ("GET", "/api/worker/jobs/{request_id}/style/{index}"),
 }
 
 
@@ -334,6 +335,7 @@ def test_new_routes_are_guarded_and_refuse_without_session_or_token(world: World
         ("POST", f"/api/worker/jobs/{rid}/result"),
         ("POST", f"/api/worker/jobs/{rid}/fail"),
         ("POST", f"/api/worker/jobs/{rid}/beat"),
+        ("GET", f"/api/worker/jobs/{rid}/style/0"),
     ):
         assert anonymous.request(method, url).status_code == 401, url
         # Une session (même celle d'augus) n'ouvre pas l'API du poste.

@@ -14,6 +14,7 @@ from openplan.adapters.neural import (
     finish,
     inspiration,
     openings,
+    siglip,
     web_depth,
     zimage,
 )
@@ -46,6 +47,7 @@ IN_CODE = {
     finish.IP_ADAPTER_MODEL_ID,
     web_depth.WEB_MODEL_ID,
     openings.MODEL_ID,
+    siglip.MODEL_ID,
     *zimage.Z_MODEL_IDS,
 }
 """Algorithmes locaux : identifiant du registre = model_id dans le code."""

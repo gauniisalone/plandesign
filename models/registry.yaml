@@ -298,6 +298,26 @@ models:
       - LICENSE*
     notes: Portes et fenêtres par détection zéro-shot conditionnée par le texte (OWLv2, Google, 0,2 Md de paramètres). Requêtes « a door », « an open doorway », « a window » ; rectangles image avec score, projetés ensuite sur le mur hôte en source observed (2.4b). Décision PO du 25 sept. 2026 (docs/models/openings-candidates.md) ; repli Grounding DINO tiny (Apache-2.0) si le critère de la fixture n'est pas atteint. Poids par `openplan models pull owlv2_base@1.0`, jamais livrés.
 
+  - id: siglip2_base@1.0
+    role: style_describer
+    kind: weights
+    license: Apache-2.0
+    commercial_ok: true
+    remote: false
+    memory_mb: 2000
+    weights_mb: 1500
+    device: cpu
+    status: implemented
+    module: openplan.adapters.neural.siglip
+    hf_repo: google/siglip2-base-patch16-224
+    allow_patterns:
+      - "*.json"
+      - "*.model"
+      - model.safetensors
+      - README.md
+      - LICENSE*
+    notes: KAN-97 — images de style (cartes Inspirations reliées à la carte Rendus) dites en mots par classification zéro-shot (SigLIP2, Google) sur un vocabulaire fermé sans matière de surface (pipeline/style_words.py), au plus 8 mots dans la description Z-Image. Sur le processeur du poste de rendu, avant Z-Image, puis libéré (la carte reste à Z-Image). Poids par `openplan models pull siglip2_base@1.0`, jamais livrés.
+
   - id: sam2_hiera_small@1.0
     role: segmentation_model
     kind: weights

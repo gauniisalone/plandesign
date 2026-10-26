@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   api,
+  guidedLine,
   realisticApi,
   REACTIONS,
   type ReactionKey,
@@ -427,6 +428,7 @@ export function RenderViewer(props: RenderViewerProps) {
                 ? `point de vue de la ${photoName} (caméra estimée)`
                 : `point de vue « ${camera?.name || "Vue"} »`}
             </li>
+            {guidedLine(render) && <li className="rview-guided">{guidedLine(render)}</li>}
             <li>
               Calculé par le poste de rendu
               {duration(render.seconds)

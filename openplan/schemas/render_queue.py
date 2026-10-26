@@ -8,7 +8,7 @@ ne porte une commande, un chemin ou une adresse : le poste n'exécute rien de ce
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -34,6 +34,15 @@ JSON_FILES: dict[str, int] = {
 }
 """Fichiers qu'un poste peut télécharger pour une demande, et leur plafond (octets)."""
 MAX_SEED = 2**31 - 1
+MAX_STYLE_IMAGES = 6
+"""KAN-97 : images de style envoyées au poste pour un rendu, au plus."""
+MAX_STYLE_IMAGE_BYTES = 2 * 1024 * 1024
+"""KAN-97 : une image de style servie au poste (JPEG réduit à STYLE_IMAGE_SIDE), au plus."""
+STYLE_IMAGE_SIDE = 512
+MAX_STYLE_WORDS = 8
+StyleName = Annotated[str, Field(min_length=1, max_length=120)]
+StyleKey = Annotated[str, Field(min_length=1, max_length=32, pattern=r"^[a-z][a-z -]*$")]
+"""Un mot du vocabulaire de style (`pipeline.style_words`), tel que le poste le renvoie."""
 TYPICAL_SECONDS = 120.0
 """KAN-91 : durée annoncée d'un rendu tant que le journal n'en a pas assez (« ~2 min »)."""
 
@@ -48,6 +57,10 @@ class WorkerJob(StrictModel):
     seed: int | None = Field(default=None, ge=0, le=MAX_SEED)
     """KAN-91 : tirage d'une variante (même vue, autre tirage) ; absent du message pour un
     premier rendu, qui garde le tirage par défaut du moteur."""
+    style: list[StyleName] | None = Field(default=None, max_length=MAX_STYLE_IMAGES)
+    """KAN-97 : les noms des images de style (cartes Inspirations reliées à la carte Rendus,
+    C1), dans l'ordre de `/style/{k}` ; envoyé seulement à un poste qui annonce `STYLE` (un
+    ancien poste refuserait ce champ)."""
 
 
 class WorkerClaim(StrictModel):
@@ -67,6 +80,9 @@ class WorkerResult(StrictModel):
     width: int = Field(ge=16, le=MAX_IMAGE_SIDE)
     height: int = Field(ge=16, le=MAX_IMAGE_SIDE)
     engine: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9_.-]+$")
+    style_words: list[StyleKey] | None = Field(default=None, max_length=MAX_STYLE_WORDS)
+    """KAN-97 : les mots de style retenus (vocabulaire fermé, anglais), [] si aucun ; envoyé
+    seulement à un serveur qui sert `STYLE` (un ancien serveur refuserait ce champ)."""
 
 
 class WorkerFailure(StrictModel):
@@ -96,6 +112,12 @@ class RealisticRequest(StrictModel):
     photo_id: UUID | None = None
     """KAN-91 (D5) : la photo dont la caméra estimée est la vue de ce rendu ; None pour un
     point de vue libre. L'avant/après avec cette photo est alors fidèle."""
+    guided_by: list[str] | None = None
+    """KAN-97 : « Guidé par : … ». Les mots de style retenus par le poste, en français ; à
+    défaut (ancien poste), les noms des images d'inspiration (`guided_read` faux) ; [] : aucune
+    inspiration reliée ; None : rendu d'avant KAN-97."""
+    guided_read: bool = False
+    """Vrai quand `guided_by` est fait des mots que le poste a lus dans les images."""
 
 
 class RealisticCreate(StrictModel):
@@ -163,6 +185,9 @@ joints par « + »). En en-tête, pas dans `WorkerJob` (strict chez un ancien po
 poste ou un ancien serveur l'ignore. Le poste n'use d'une capacité que si elle y figure."""
 HEARTBEAT = "heartbeat"
 """KAN-96 : le poste bat pour sa prise pendant le calcul et l'envoi (bail court)."""
+STYLE = "style"
+"""KAN-97 : le poste lit les images de style (`WorkerJob.style`, `/style/{k}`) et renvoie ses
+mots (`WorkerResult.style_words`)."""
 BEAT_EVERY_S = 30
 """KAN-96 : cadence du battement d'un rendu pris (calcul et envoi compris)."""
 

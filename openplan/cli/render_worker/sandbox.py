@@ -37,6 +37,8 @@ PROJECT, BAKE, CAMERA, OUT, RESULT = (
 )
 SEED = "seed.txt"
 """KAN-91 : tirage d'une variante (entier écrit par le poste), absent pour un premier rendu."""
+STYLE_DIR = "style"
+"""KAN-97 : images d'inspiration téléchargées par le poste (`0.jpg`, `1.jpg`…), absent sans."""
 TIMEOUT_S = 20 * 60
 """Le moteur a sa propre garde (15 min) ; au-delà de 20 min, le poste tue le calcul."""
 Mode = Literal["unshare", "socket"]
@@ -150,7 +152,10 @@ def read_result(job_dir: Path, code: int | None) -> RenderOutcome:
         raise EngineFailedError(reason if reason in valid else "engine_error")
     if code != 0:
         raise EngineFailedError("engine_error")
-    return RenderOutcome(**data["outcome"])
+    try:
+        return RenderOutcome(**data["outcome"])
+    except TypeError:
+        raise EngineFailedError("engine_error") from None
 
 
 def read_seed(job_dir: Path) -> int | None:
@@ -173,6 +178,7 @@ def child(job_dir: Path, engine: str) -> int:
             job_dir / CAMERA,
             job_dir / OUT,
             seed=read_seed(job_dir),
+            style_dir=style if (style := job_dir / STYLE_DIR).is_dir() else None,
         )
     except EngineFailedError as exc:
         out.write_text(json.dumps({"ok": False, "reason": exc.reason}), encoding="utf-8")

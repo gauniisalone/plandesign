@@ -40,6 +40,13 @@ from openplan.api.accounts.render_queue import (
     RenderQueue,
     public_request,
 )
+from openplan.api.accounts.render_style import (
+    note_references,
+    note_words,
+    style_image,
+    style_names,
+    with_guidance,
+)
 from openplan.api.board_rules import render_inputs
 from openplan.api.deps import ActorDep
 from openplan.api.files import served_file
@@ -58,6 +65,7 @@ from openplan.schemas.render_queue import (
     HEARTBEAT,
     JSON_FILES,
     MAX_IMAGE_BYTES,
+    STYLE,
     RealisticCover,
     RealisticCreate,
     RealisticFromPhoto,
@@ -86,7 +94,7 @@ NO_PHOTO_VIEW = "Cette photo n'a pas encore de point de vue estimé : analysez-l
 COVER_META = Path(IMAGES_DIR) / "cover.json"
 """KAN-91 : quel rendu est la couverture (à côté de sa réduction, `CHOSEN_COVER`)."""
 RENDER_LABEL = "Rendu réaliste"
-SERVED_CAPABILITIES = frozenset({HEARTBEAT})
+SERVED_CAPABILITIES = frozenset({HEARTBEAT, STYLE})
 """Les capacités du poste que ce serveur sait servir (renvoyées dans `CAPABILITIES_HEADER`)."""
 
 
@@ -220,8 +228,12 @@ def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> Reali
     return RealisticList(
         status=_status(request, user),
         requests=[
-            public_request(
-                r, image_path(store, project_id, r.id).is_file(), photos.get(r.camera_id)
+            with_guidance(
+                store,
+                project_id,
+                public_request(
+                    r, image_path(store, project_id, r.id).is_file(), photos.get(r.camera_id)
+                ),
             )
             for r in rows
         ],
@@ -426,7 +438,10 @@ def _create(
         row = queue.create(user.id, project_id, level_id, camera_id)
     except QuotaExceededError as exc:
         raise HTTPException(status_code=429, detail=QUOTA_TEXT) from exc
-    return public_request(row, False, photo)
+    # KAN-97 : les images de style du moment du clic, lues plus tard par le poste.
+    with contextlib.suppress(OSError):
+        note_references(store, project, level_id, row.id)
+    return with_guidance(store, project_id, public_request(row, False, photo))
 
 
 @router.get(P + "/realistic/{request_id}/image")
@@ -473,6 +488,11 @@ def worker_claim(
     if job is None:
         return Response(status_code=204, headers=headers)
     queue.beat("busy")
+    if STYLE in served:  # KAN-97 : jamais à un poste qui n'a pas annoncé « style »
+        row = queue.get(job.request_id)
+        names = [] if row is None else style_names(store_of(request), row.project_id, row.id)
+        if names:
+            job = job.model_copy(update={"style": names})
     # KAN-91 : `seed` n'est envoyé que pour une variante (un premier rendu garde le message de
     # KAN-89, qu'un poste d'avant KAN-91 lit toujours).
     return Response(
@@ -523,6 +543,27 @@ def worker_file(
     if len(data) > JSON_FILES[name]:
         raise HTTPException(status_code=413, detail="fichier trop gros pour le poste")
     return Response(content=data, media_type="application/json")
+
+
+@router.get("/api/worker/jobs/{request_id}/style/{index}")
+def worker_style(
+    request_id: UUID, index: int, request: Request, lease: LeaseHeader = None
+) -> Response:
+    """KAN-97 : l'image de style `index` de la demande (cartes Inspirations du moment du clic),
+    réduite en JPEG ; 404 sans le bail, 410 si l'image n'existe plus (le poste rend sans)."""
+    try:
+        row = queue_of(request).leased(request_id, lease)
+    except LeaseError as exc:
+        raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
+    store = store_of(request)
+    try:
+        project = store.load(row.project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=410, detail="la vue n'existe plus") from exc
+    data = style_image(store, project, request_id, index)
+    if data is None:
+        raise HTTPException(status_code=410, detail="image de style introuvable")
+    return Response(content=data, media_type="image/jpeg")
 
 
 def png_size(head: bytes) -> tuple[int, int] | None:
@@ -585,6 +626,9 @@ async def worker_result(
             return public_request(again, target.is_file())
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
     os.replace(partial, target)
+    if result.style_words is not None:  # KAN-97 : « Guidé par » sur la carte Rendus
+        with contextlib.suppress(OSError):
+            note_words(store, row.project_id, request_id, result.style_words)
     queue.beat("idle")
     _announce_done(request, done)
     return public_request(done, True)

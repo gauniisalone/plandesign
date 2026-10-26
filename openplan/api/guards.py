@@ -287,6 +287,8 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/worker/jobs/{request_id}/fail"): "worker",
     # KAN-96 : battement du poste pour sa prise (calcul et envoi).
     ("POST", "/api/worker/jobs/{request_id}/beat"): "worker",
+    # KAN-97 : images de style d'une demande prise (sous bail).
+    ("GET", "/api/worker/jobs/{request_id}/style/{index}"): "worker",
 }
 
 NOT_A_MEMBER = "projet inconnu : {}"

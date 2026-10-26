@@ -16,17 +16,22 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 import numpy as np
 
+from openplan.adapters.neural.siglip import SigLipStyleScorer
 from openplan.adapters.neural.weights import DEFAULT_WEIGHTS_ROOT
 from openplan.adapters.neural.zimage import ZImageFinisher, ZImageStoppedError, z_size
-from openplan.adapters.protocols import AdapterUnavailableError, FinishRequest
+from openplan.adapters.protocols import AdapterUnavailableError, FinishRequest, ImageArray
+from openplan.pipeline import style_words as sw
 from openplan.pipeline.finish import finish_prompt
 from openplan.pipeline.guides import view_guides
-from openplan.pipeline.scene_prompt import scene_words
+from openplan.pipeline.scene_prompt import SceneWords, scene_words
+from openplan.pipeline.style_words import MAX_IMAGES
 from openplan.scene.migrate import load_project
 from openplan.schemas.bake import Bake, RenderCamera
 
@@ -49,6 +54,47 @@ class ZImageResult:
     width: int
     height: int
     engine: str = "zimage"
+    style_words: tuple[str, ...] | None = None
+    """KAN-97 : les mots de style retenus (None sans image de style)."""
+
+
+STYLE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def style_images(style_dir: Path | None) -> list[ImageArray]:
+    """Les images de style déposées par le poste dans `style_dir` (au plus MAX_IMAGES, dans
+    l'ordre de leur nom) ; une image illisible est ignorée."""
+    if style_dir is None or not style_dir.is_dir():
+        return []
+    from PIL import Image, UnidentifiedImageError
+
+    out: list[ImageArray] = []
+    for path in sorted(style_dir.iterdir()):
+        if path.suffix.lower() not in STYLE_SUFFIXES or len(out) >= MAX_IMAGES:
+            continue
+        try:
+            with Image.open(path) as img:
+                pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
+        except (OSError, UnidentifiedImageError, ValueError):
+            continue
+        out.append(ImageArray(image_id=uuid5(NAMESPACE_URL, path.name), pixels=pixels))
+    return out
+
+
+def describe_style(
+    images: list[ImageArray], scene: SceneWords, weights_root: Path, scorer: Any = None
+) -> list[str]:
+    """KAN-97 : les mots de style des images (SigLIP2 sur le processeur, libéré ensuite pour
+    laisser la carte à Z-Image), sans contredire les couleurs de la scène."""
+    if not images:
+        return []
+    describer = scorer if scorer is not None else SigLipStyleScorer(weights_root)
+    try:
+        values = describer.scores(images, sw.prompts())
+    finally:
+        describer.release()
+    scores = {w.key: s for w, s in zip(sw.VOCABULARY, values, strict=True)}
+    return sw.choose(scores, [*scene.surfaces, *scene.textiles])
 
 
 def models_root() -> Path:
@@ -74,23 +120,35 @@ def render_scene(
     prompt: str | None = None,
     seed: int = DEFAULT_SEED,
     weights_root: Path | None = None,
+    style_dir: Path | None = None,
 ) -> ZImageResult:
     """Image Z-Image de la vue `camera_path` de la scène `bake_path`, écrite dans `out_png`
-    (taille de génération : grand côté 1 024, format de la caméra)."""
+    (taille de génération : grand côté 1 024, format de la caméra). KAN-97 : avec `style_dir`
+    (images d'inspiration déposées par le poste), leurs mots de style entrent dans la
+    description ; SigLIP2 absent, le rendu se fait sans eux (`style_words` vide)."""
     if prompt is None and project_path is None:
         msg = "render_scene : il faut le prompt, ou le projet pour le dériver de la scène"
         raise ValueError(msg)
     started = time.perf_counter()
+    root = weights_root or models_root()
     try:
-        finisher = ZImageFinisher(weights_root or models_root())
+        finisher = ZImageFinisher(root)
     except AdapterUnavailableError as exc:
         raise ZImageUnavailable(str(exc)) from exc
     bake = Bake.model_validate_json(bake_path.read_text(encoding="utf-8"))
     camera = RenderCamera.model_validate_json(camera_path.read_text(encoding="utf-8"))
+    images = style_images(style_dir)
+    chosen: list[str] | None = None
     if prompt is None:
         assert project_path is not None
         project = load_project(json.loads(project_path.read_text(encoding="utf-8")))
         words = scene_words(bake, project, bake.level_id, camera)
+        if images:
+            try:
+                chosen = describe_style(images, words, root)
+            except AdapterUnavailableError:
+                chosen = []
+            words = replace(words, style=list(chosen))
         prompt = finish_prompt(project, None, bake.level_id, scene=words, engine="zimage")
     width, height = z_size(camera.width_px, camera.height_px)
     guides = view_guides(bake, camera, (width, height))
@@ -112,4 +170,5 @@ def render_scene(
         vram_peak_mib=round(peak_mb / 1.048576),
         width=width,
         height=height,
+        style_words=None if chosen is None else tuple(chosen),
     )

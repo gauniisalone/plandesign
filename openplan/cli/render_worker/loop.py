@@ -38,10 +38,20 @@ from openplan.cli.render_worker.client import (
     WorkerClient,
 )
 from openplan.cli.render_worker.engine import EngineFailedError
-from openplan.cli.render_worker.sandbox import BAKE, CAMERA, OUT, PROJECT, SEED, Sandbox
+from openplan.cli.render_worker.sandbox import (
+    BAKE,
+    CAMERA,
+    OUT,
+    PROJECT,
+    SEED,
+    STYLE_DIR,
+    Sandbox,
+)
 from openplan.schemas.render_queue import (
     MAX_IMAGE_BYTES,
     MAX_IMAGE_SIDE,
+    MAX_STYLE_WORDS,
+    STYLE,
     WorkerFailure,
     WorkerJob,
     WorkerResult,
@@ -236,6 +246,16 @@ class Worker:
         with Heartbeat(self.client, job, every) as heart:
             return self._render(job, work, heart)
 
+    def _fetch_style(self, job: WorkerJob, work: Path) -> bool:
+        """KAN-97 : les images de style de la demande, si le serveur sert « style » ; vrai
+        quand le poste doit renvoyer des mots (même aucun : « [] » dit qu'il a lu)."""
+        served: frozenset[str] = getattr(self.client, "served", frozenset())
+        if not job.style or STYLE not in served:
+            return False
+        for index in range(len(job.style)):
+            self.client.fetch_style(job, index, work / STYLE_DIR)
+        return True
+
     def _render(self, job: WorkerJob, work: Path, heart: Heartbeat) -> float:  # noqa: PLR0911 - une sortie par issue
         short = str(job.request_id)[:8]
         self.say(f"Rendu {short} pris.")
@@ -244,6 +264,7 @@ class Worker:
                 self.client.fetch(job, name, work / target)  # type: ignore[arg-type]
             if job.seed is not None:  # KAN-91 : variante, autre tirage
                 (work / SEED).write_text(str(job.seed), encoding="utf-8")
+            styled = self._fetch_style(job, work)
             outcome = self.sandbox.run(work, self.engine)
             image = (work / OUT).read_bytes()
             if len(image) > MAX_IMAGE_BYTES or max(outcome.width, outcome.height) > MAX_IMAGE_SIDE:
@@ -256,6 +277,8 @@ class Worker:
                 width=outcome.width,
                 height=outcome.height,
                 engine=outcome.engine,
+                # KAN-97 : les mots ne partent que vers un serveur qui sert « style ».
+                style_words=list(outcome.style_words or [])[:MAX_STYLE_WORDS] if styled else None,
             )
             if not self._deliver(job, result, image, heart):
                 self.say(

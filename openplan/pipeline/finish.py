@@ -183,17 +183,21 @@ def finish_prompt(
 
     KAN-86 : avec `scene` (la scène rendue), les matières par surface sont celles de la scène
     et non celles par défaut du style, et les meubles vus et l'habillage sont nommés ; la
-    longueur suit le moteur (`ENGINE_WORDS`)."""
+    longueur suit le moteur (`ENGINE_WORDS`). KAN-97 : les mots lus dans les images
+    d'inspiration (`scene.style`) suivent le style et l'humeur de l'ambiance, sans redite."""
     room, intent = _room_word(project, level_id)
     limit = ENGINE_WORDS[engine]
     if scene is None:
         return prompt_words(room, intent, style, limit=limit)
     groups = prompt_groups(room, intent, style)
     surfaces = scene.surfaces or groups["surfaces"]
+    said = " ".join([*groups["lead"], *groups["style"], *groups["mood"]]).lower()
+    inspired = [w for w in scene.style if w.lower() not in said]
     parts = [
         *groups["lead"],
         *groups["style"],
         *groups["mood"],
+        *inspired,
         *surfaces,
         *scene.furniture,
         *scene.textiles,

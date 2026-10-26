@@ -26,6 +26,8 @@ from openplan.schemas.render_queue import (
     CAPABILITIES_HEADER,
     HEARTBEAT,
     JSON_FILES,
+    MAX_STYLE_IMAGE_BYTES,
+    STYLE,
     WorkerClaim,
     WorkerFailure,
     WorkerJob,
@@ -37,8 +39,9 @@ from openplan.schemas.scene import Project
 FileName = Literal["project", "bake", "camera"]
 SCHEMAS: dict[str, type[BaseModel]] = {"project": Project, "bake": Bake, "camera": RenderCamera}
 USER_AGENT = "plandesign-worker/1"
-CAPABILITIES = (HEARTBEAT,)
+CAPABILITIES = (HEARTBEAT, STYLE)
 """Ce que ce poste sait faire, annoncé dans chaque prise (jetons joints par « + »)."""
+STYLE_SUFFIX = {"image/jpeg": ".jpg", "image/png": ".png"}
 WRITE_TIMEOUT_S = 120.0
 """KAN-96 : un envoi de 2 à 3 Mo a pris 25,7 s sur le lien montant du domicile ; une écriture
 bloquée plus longtemps coupe l'essai, qui est réessayé sans recalcul."""
@@ -88,6 +91,9 @@ class WorkerClient:
         self.beat_every_s: float | None = None
         """La cadence du battement annoncée par le serveur (None : il ne sait pas tenir le bail,
         le poste ne bat pas)."""
+        self.served: frozenset[str] = frozenset()
+        """Les capacités que le serveur a confirmées à la dernière prise (`CAPABILITIES_HEADER`) :
+        le poste n'use que de celles-là (KAN-96, KAN-97)."""
 
     def close(self) -> None:
         self.http.close()
@@ -124,8 +130,8 @@ class WorkerClient:
             "/api/worker/claim",
             json=WorkerClaim(state=state, version="+".join(CAPABILITIES)).model_dump(),
         )
-        served = parse_capabilities(response.headers.get(CAPABILITIES_HEADER, ""))
-        self.beat_every_s = float(BEAT_EVERY_S) if HEARTBEAT in served else None
+        self.served = parse_capabilities(response.headers.get(CAPABILITIES_HEADER, ""))
+        self.beat_every_s = float(BEAT_EVERY_S) if HEARTBEAT in self.served else None
         if response.status_code == 204:
             return None
         try:
@@ -157,12 +163,48 @@ class WorkerClient:
             raise InvalidJobError(name) from exc
         target.write_text(model.model_dump_json(), encoding="utf-8")
 
+    def fetch_style(self, job: WorkerJob, index: int, folder: Path) -> Path | None:
+        """KAN-97 : l'image de style `index` (JPEG ou PNG, plafonnée, relue par PIL avant
+        d'être gardée) dans `folder` ; None si elle n'est plus servie ou ne se lit pas : le rendu
+        se fait sans elle."""
+        url = f"/api/worker/jobs/{UUID(str(job.request_id))}/style/{int(index)}"
+        headers = {"X-Render-Lease": str(job.lease)}
+        try:
+            with self.http.stream("GET", url, headers=headers) as response:
+                if response.status_code in (404, 410):
+                    return None
+                self._check(response)
+                suffix = STYLE_SUFFIX.get(response.headers.get("content-type", "").split(";")[0])
+                if suffix is None:
+                    return None
+                body = bytearray()
+                for chunk in response.iter_bytes():
+                    body += chunk
+                    if len(body) > MAX_STYLE_IMAGE_BYTES:
+                        return None
+        except httpx.HTTPError as exc:
+            raise ApiBusyError(type(exc).__name__) from exc
+        from io import BytesIO
+
+        from PIL import Image, UnidentifiedImageError
+
+        try:
+            with Image.open(BytesIO(bytes(body))) as img:
+                img.verify()
+        except (OSError, UnidentifiedImageError, ValueError):
+            return None
+        folder.mkdir(exist_ok=True)
+        target = folder / f"{int(index)}{suffix}"
+        target.write_bytes(bytes(body))
+        return target
+
     def upload(self, job: WorkerJob, result: WorkerResult, image: bytes) -> None:
+        # Sans `style_words` (None) le message reste celui que lit un serveur d'avant KAN-97.
         self._send(
             "POST",
             f"/api/worker/jobs/{job.request_id}/result",
             headers={"X-Render-Lease": str(job.lease)},
-            data={"meta": result.model_dump_json()},
+            data={"meta": result.model_dump_json(exclude_none=True)},
             files={"image": ("render.png", image, "image/png")},
         )
 
