@@ -175,7 +175,7 @@ def test_the_wait_is_said_once_a_minute_at_most(tmp_path: Path) -> None:
 def test_backoff_never_loops_tightly() -> None:
     backoff = Backoff()
     assert [backoff.refused() for _ in range(4)] == [60.0, 300.0, 300.0, 300.0]
-    assert [backoff.busy() for _ in range(7)] == [15.0, 30.0, 60.0, 120.0, 240.0, 300.0, 300.0]
+    assert [backoff.busy() for _ in range(4)] == [15.0, 30.0, 30.0, 30.0]  # KAN-96
     backoff.reset()
     assert backoff.refused() == 60.0 and backoff.busy() == 15.0
 
@@ -224,7 +224,7 @@ def test_worker_waits_after_refusals_and_errors(tmp_path: Path) -> None:
     )
     worker = _worker(tmp_path, client)
     delays = [worker.cycle() for _ in range(9)]
-    assert delays == [60.0, 300.0, 300.0, 12.5, 15.0, 30.0, 60.0, 12.5, 60.0]
+    assert delays == [60.0, 300.0, 300.0, 12.5, 15.0, 30.0, 30.0, 12.5, 60.0]
     assert all(d >= 10.0 for d in delays)
 
 

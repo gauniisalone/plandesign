@@ -51,6 +51,7 @@ WORKER_ROUTES = {
     ("GET", "/api/worker/jobs/{request_id}/files/{name}"),
     ("POST", "/api/worker/jobs/{request_id}/result"),
     ("POST", "/api/worker/jobs/{request_id}/fail"),
+    ("POST", "/api/worker/jobs/{request_id}/beat"),
 }
 
 
@@ -174,7 +175,10 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     assert set(job.json()) == {"request_id", "lease", "created_at"}
     rid, lease = job.json()["request_id"], job.json()["lease"]
     assert rid == first["id"]
-    assert world.worker.post("/api/worker/claim", headers=WORKER).status_code == 204
+    # Pendant le calcul, un appel « en attente » ne prend rien (un appel libre reprendrait la
+    # prise : KAN-96, le poste ne l'aurait plus en main).
+    waiting = world.worker.post("/api/worker/claim", json={"state": "waiting"}, headers=WORKER)
+    assert waiting.status_code == 204
     leased = {**WORKER, "X-Render-Lease": lease}
     files = f"/api/worker/jobs/{rid}/files"
     project = world.worker.get(f"{files}/project", headers=leased)
@@ -218,14 +222,22 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     )
     assert done.status_code == 200, done.text
     assert done.json()["state"] == "done" and done.json()["image"] is True
-    # Le bail est consommé : plus de second dépôt.
+    # KAN-96 : un second dépôt sous le même bail (réponse perdue en route) répond comme le
+    # premier, sans rien réécrire ; un autre bail est refusé.
     twice = world.worker.post(
         result,
         headers=leased,
         data={"meta": meta.model_dump_json()},
+        files={"image": ("r.png", png(32, 32), "image/png")},
+    )
+    assert twice.status_code == 200 and twice.json() == done.json()
+    other = world.worker.post(
+        result,
+        headers=wrong,
+        data={"meta": meta.model_dump_json()},
         files={"image": ("r.png", png(), "image/png")},
     )
-    assert twice.status_code == 404
+    assert other.status_code == 404
     listing = world.client.get(f"/api/projects/{world.project_id}/realistic").json()
     row = listing["requests"][0]
     assert row["state"] == "done" and row["image"] is True and row["seconds"] == 42.5
@@ -236,6 +248,7 @@ def test_request_worker_and_image(world: World) -> None:  # noqa: PLR0915 - un p
     text = journal.read_text(encoding="utf-8")
     entry = json.loads(text.splitlines()[-1])
     assert entry["result"] == "done" and entry["seconds"] == 42.5
+    assert [json.loads(x)["result"] for x in text.splitlines()] == ["done"]
     for secret in (rid, str(world.project_id), str(world.augus_id), AUGUS, TOKEN):
         assert secret not in text
     # Rétention : un rendu fait reste une image du projet (dossier du projet, compté dans sa
@@ -320,6 +333,7 @@ def test_new_routes_are_guarded_and_refuse_without_session_or_token(world: World
         ("GET", f"/api/worker/jobs/{rid}/files/bake"),
         ("POST", f"/api/worker/jobs/{rid}/result"),
         ("POST", f"/api/worker/jobs/{rid}/fail"),
+        ("POST", f"/api/worker/jobs/{rid}/beat"),
     ):
         assert anonymous.request(method, url).status_code == 401, url
         # Une session (même celle d'augus) n'ouvre pas l'API du poste.
@@ -553,8 +567,9 @@ def test_expiry_and_abandoned_claims(migrated_url: str, tmp_path: Path) -> None:
     clock.now += TAKE_TTL + timedelta(seconds=1)
     queue.sweep()
     again = queue.get(fresh.id)
-    assert again is not None and again.state == "pending" and again.lease_id is None
-    # … l'ancien bail ne vaut plus rien, et une attente trop longue expire.
+    assert again is not None and again.state == "pending" and again.beat_at is None
+    # … l'ancien bail n'ouvre plus les fichiers (KAN-96 : seul un dépôt en retard reste
+    # reconnu tant que la demande n'est pas reprise), et une attente trop longue expire.
     with pytest.raises(LeaseError):
         queue.leased(fresh.id, job.lease)
     clock.now += timedelta(hours=1)
@@ -573,7 +588,7 @@ def test_abandoned_claim_goes_back_then_fails(migrated_url: str, tmp_path: Path)
         clock.now += TAKE_TTL + timedelta(seconds=1)
         queue.sweep()
     final = queue.get(row.id)
-    assert final is not None and final.state == "failed" and final.error == "abandoned"
+    assert final is not None and final.state == "failed" and final.error == "lost"
     assert queue.claim() is None
     lines = (tmp_path / "renders.jsonl").read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[-1])["result"] == "failed"

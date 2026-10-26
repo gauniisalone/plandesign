@@ -226,6 +226,9 @@ class RenderRequest(Base):
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    beat_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    """KAN-96 : dernier battement du poste pour cette prise ; None pour un poste qui n'a pas
+    annoncé savoir battre (seul le délai de reprise `TAKE_TTL` vaut alors)."""
 
 
 class RenderWorker(Base):

@@ -154,4 +154,26 @@ FAILURE_TEXT: dict[str, str] = {
     "engine_error": "Le rendu a échoué sur le poste de rendu.",
     "invalid_input": "La vue n'a pas pu être lue par le poste de rendu.",
     "abandoned": "Le poste de rendu ne l'a pas terminé.",
+    "lost": "Le poste de rendu a perdu la connexion, relancez le rendu.",
 }
+
+CAPABILITIES_HEADER = "X-Render-Capabilities"
+"""Réponse à `claim` : les capacités annoncées par le poste que ce serveur sait servir (jetons
+joints par « + »). En en-tête, pas dans `WorkerJob` (strict chez un ancien poste) : un ancien
+poste ou un ancien serveur l'ignore. Le poste n'use d'une capacité que si elle y figure."""
+HEARTBEAT = "heartbeat"
+"""KAN-96 : le poste bat pour sa prise pendant le calcul et l'envoi (bail court)."""
+BEAT_EVERY_S = 30
+"""KAN-96 : cadence du battement d'un rendu pris (calcul et envoi compris)."""
+
+
+def parse_capabilities(text: str) -> frozenset[str]:
+    """Jetons séparés par « + » ; un jeton inconnu est ignoré par celui qui lit."""
+    return frozenset(t for t in text.split("+") if t)
+
+
+def capabilities(claim: WorkerClaim | None) -> frozenset[str]:
+    """Les capacités que le poste annonce dans `WorkerClaim.version` (KAN-96, KAN-97) : un seul
+    mécanisme, déjà accepté par le serveur de production (un nouveau champ du modèle strict
+    vaudrait un 422 à un poste en avance sur la production)."""
+    return frozenset() if claim is None else parse_capabilities(claim.version)

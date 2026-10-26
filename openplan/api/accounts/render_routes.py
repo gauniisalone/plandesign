@@ -15,7 +15,7 @@ import os
 import struct
 from pathlib import Path
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -54,6 +54,8 @@ from openplan.schemas.elements import Camera
 from openplan.schemas.events import ProjectEvent
 from openplan.schemas.reactions import EMOJI, Reaction, ReactionKey
 from openplan.schemas.render_queue import (
+    CAPABILITIES_HEADER,
+    HEARTBEAT,
     JSON_FILES,
     MAX_IMAGE_BYTES,
     RealisticCover,
@@ -67,6 +69,7 @@ from openplan.schemas.render_queue import (
     WorkerFailure,
     WorkerJob,
     WorkerResult,
+    capabilities,
 )
 from openplan.schemas.scene import Project
 
@@ -83,6 +86,8 @@ NO_PHOTO_VIEW = "Cette photo n'a pas encore de point de vue estimé : analysez-l
 COVER_META = Path(IMAGES_DIR) / "cover.json"
 """KAN-91 : quel rendu est la couverture (à côté de sa réduction, `CHOSEN_COVER`)."""
 RENDER_LABEL = "Rendu réaliste"
+SERVED_CAPABILITIES = frozenset({HEARTBEAT})
+"""Les capacités du poste que ce serveur sait servir (renvoyées dans `CAPABILITIES_HEADER`)."""
 
 
 def queue_of(request: Request) -> RenderQueue:
@@ -450,17 +455,45 @@ def worker_claim(
     request: Request, body: Annotated[WorkerClaim | None, Body()] = None
 ) -> WorkerJob | Response:
     """L'appel périodique du poste, qui vaut battement de cœur : la plus ancienne demande en
-    attente (prise atomique) si le poste est libre (corps absent = libre), sinon 204."""
+    attente (prise atomique) si le poste est libre (corps absent = libre), sinon 204.
+
+    KAN-96 : libre, le poste n'a plus rien en main ; une demande encore prise est reprise
+    (`release_held`). Un poste qui annonce savoir battre (`HEARTBEAT` dans `version`) le voit
+    confirmé dans `CAPABILITIES_HEADER`, et ses prises suivent le bail court."""
     state = "idle" if body is None else body.state
+    served = capabilities(body) & SERVED_CAPABILITIES
+    beats = HEARTBEAT in served
+    headers = {CAPABILITIES_HEADER: "+".join(sorted(served))} if served else {}
     queue = queue_of(request)
     queue.beat(state)
-    job = queue.claim() if state == "idle" else None
+    job = None
+    if state == "idle":
+        queue.release_held()
+        job = queue.claim(beats=beats)
     if job is None:
-        return Response(status_code=204)
+        return Response(status_code=204, headers=headers)
     queue.beat("busy")
     # KAN-91 : `seed` n'est envoyé que pour une variante (un premier rendu garde le message de
     # KAN-89, qu'un poste d'avant KAN-91 lit toujours).
-    return Response(content=job.model_dump_json(exclude_none=True), media_type="application/json")
+    return Response(
+        content=job.model_dump_json(exclude_none=True),
+        media_type="application/json",
+        headers=headers,
+    )
+
+
+@router.post("/api/worker/jobs/{request_id}/beat", status_code=204)
+def worker_beat(request_id: UUID, request: Request, lease: LeaseHeader = None) -> Response:
+    """KAN-96 : le poste bat pour sa prise pendant le calcul et l'envoi (bail `BEAT_LEASE`)."""
+    queue = queue_of(request)
+    try:
+        if lease is None:
+            raise LeaseError
+        queue.renew(request_id, lease)
+    except LeaseError as exc:
+        raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
+    queue.beat("busy")
+    return Response(status_code=204)
 
 
 @router.get("/api/worker/jobs/{request_id}/files/{name}")
@@ -508,7 +541,9 @@ async def worker_result(
     image: Annotated[UploadFile, File()],
     lease: LeaseHeader = None,
 ) -> RealisticRequest:
-    """Dépôt de l'image (PNG, plafond MAX_IMAGE_BYTES, taille conforme à `meta`)."""
+    """Dépôt de l'image (PNG, plafond MAX_IMAGE_BYTES, taille conforme à `meta`). KAN-96 : le
+    poste réessaie un envoi coupé ; un second dépôt d'un rendu déjà fait sous ce bail répond
+    comme le premier, sans rien réécrire (un seul résultat)."""
     try:
         length = int(request.headers.get("content-length", "0"))
     except ValueError:
@@ -520,29 +555,36 @@ async def worker_result(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="résultat invalide") from exc
     queue = queue_of(request)
+    store = store_of(request)
     try:
-        row = queue.leased(request_id, lease)
+        row = queue.deliverable(request_id, lease)
     except LeaseError as exc:
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
+    if row.state == "done":
+        return public_request(row, image_path(store, row.project_id, request_id).is_file())
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="image trop grosse")
     if png_size(data[:24]) != (result.width, result.height):
         raise HTTPException(status_code=422, detail="image PNG attendue, à la taille annoncée")
-    store = store_of(request)
     target = image_path(store, row.project_id, request_id)
     if not store.project_dir(row.project_id).is_dir():
         raise HTTPException(status_code=410, detail="la vue n'existe plus")
     target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_suffix(".part")
+    # KAN-96 : un fichier par envoi, mis en place seulement si cet envoi fait le rendu ; deux
+    # envois du même rendu en même temps (le poste réessaie) ne s'écrasent ni ne s'effacent.
+    partial = target.with_suffix(f".{uuid4().hex}.part")
     partial.write_bytes(data)
-    os.replace(partial, target)
     try:
         done = queue.complete(request_id, lease, result)  # type: ignore[arg-type]
     except LeaseError as exc:
         with contextlib.suppress(OSError):
-            target.unlink()
+            partial.unlink()
+        again = queue.get(request_id)
+        if again is not None and again.state == "done" and again.lease_id == lease:
+            return public_request(again, target.is_file())
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
+    os.replace(partial, target)
     queue.beat("idle")
     _announce_done(request, done)
     return public_request(done, True)

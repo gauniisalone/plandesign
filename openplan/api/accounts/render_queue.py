@@ -5,8 +5,15 @@ rendu d'augus la prend par un appel sortant (`claim`, atomique : deux prises sim
 reçoivent jamais la même demande), puis la dépose ou signale un échec avec le bail reçu.
 
 États : `pending` (en attente) → `taken` (pris) → `done` (fait) ou `failed` (échoué) ;
-`pending` non pris avant `expires_at` → `expired`. Une demande prise dont le poste ne revient
-pas avant `TAKE_TTL` repasse en attente (au plus `MAX_ATTEMPTS` prises), puis échoue.
+`pending` non pris avant `expires_at` → `expired`.
+
+Bail (KAN-96) : une prise sans nouvelles du poste repasse en attente une fois, puis échoue
+(`lost`, « perdu la connexion »). Sans nouvelles = pas de battement depuis `BEAT_LEASE` pour un
+poste qui a annoncé savoir battre, sinon (ancien poste) pas de dépôt avant `TAKE_TTL` ; et un
+`claim` libre du poste alors qu'une demande est prise (un seul poste, un rendu à la fois : il
+ne l'a plus en main). Le bail survit à la remise en attente : un dépôt en retard sous ce bail
+est accepté tant que la demande n'a pas été reprise, et un second dépôt d'un rendu fait sous le
+même bail répond comme le premier (réponse perdue en route).
 
 Journal des rendus (`<data>/renders.jsonl`) : date, résultat, durée, moteur, taille ; ni
 compte, ni projet, ni identifiant de demande.
@@ -22,7 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, and_, func, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from openplan.api.accounts.db import aware, utcnow
@@ -39,8 +46,13 @@ from openplan.schemas.render_queue import (
 )
 
 TAKE_TTL = timedelta(minutes=30)
-"""Une prise sans dépôt ni échec après ce délai est reprise par la file (poste tombé)."""
-MAX_ATTEMPTS = 3
+"""Une prise sans dépôt ni échec après ce délai est reprise par la file (poste tombé), même si
+le poste bat encore : plafond absolu."""
+BEAT_LEASE = timedelta(minutes=5)
+"""KAN-96 : sans battement depuis ce délai, la prise d'un poste qui bat est reprise (battement
+toutes les 30 s ; le lien montant saturé du domicile peut en retarder un pendant un envoi)."""
+MAX_ATTEMPTS = 2
+"""KAN-96 : une prise perdue repasse en attente une fois, puis échoue."""
 ONLINE_WITHIN = timedelta(seconds=60)
 """Le poste appelle `claim` (qui vaut battement de cœur) toutes les 10 à 15 s ; sans appel
 depuis 60 s, il est « hors ligne » (sauf pendant un rendu pris : « en cours »)."""
@@ -137,10 +149,10 @@ class RenderQueue:
     # --- entretien ---------------------------------------------------------------------
 
     def sweep(self) -> None:
-        """Expire les demandes en attente trop vieilles ; reprend les prises abandonnées."""
+        """Expire les demandes en attente trop vieilles ; reprend les prises sans nouvelles."""
         now = self.clock()
         expired: list[RenderRequest] = []
-        abandoned: list[RenderRequest] = []
+        lost: list[RenderRequest] = []
         with self.session() as db, db.begin():
             expired = list(
                 db.scalars(
@@ -150,32 +162,46 @@ class RenderQueue:
                 )
             )
             for row in expired:
-                row.state, row.finished_at = "expired", now
+                row.state, row.finished_at, row.lease_id = "expired", now, None
             stale = db.scalars(
                 select(RenderRequest).where(
-                    RenderRequest.state == "taken", RenderRequest.taken_at <= now - TAKE_TTL
+                    RenderRequest.state == "taken",
+                    or_(
+                        RenderRequest.taken_at <= now - TAKE_TTL,
+                        and_(
+                            RenderRequest.beat_at.is_not(None),
+                            RenderRequest.beat_at <= now - BEAT_LEASE,
+                        ),
+                    ),
                 )
             )
             for row in stale:
-                row.lease_id = None
-                if row.attempts >= MAX_ATTEMPTS:
-                    row.state, row.finished_at, row.error = "failed", now, "abandoned"
-                    abandoned.append(row)
-                elif aware(row.expires_at) <= now:
-                    row.state, row.finished_at = "expired", now
-                    expired.append(row)
-                else:
-                    row.state, row.taken_at = "pending", None
+                _take_back(row, now, expired, lost)
+        self._log_all(expired, lost)
+
+    def release_held(self) -> None:
+        """KAN-96 : le poste appelle `claim` libre, il n'a donc plus rien en main (un seul
+        poste, un rendu à la fois) : une demande encore prise est perdue, reprise aussitôt."""
+        now = self.clock()
+        expired: list[RenderRequest] = []
+        lost: list[RenderRequest] = []
+        with self.session() as db, db.begin():
+            for row in db.scalars(select(RenderRequest).where(RenderRequest.state == "taken")):
+                _take_back(row, now, expired, lost)
+        self._log_all(expired, lost)
+
+    def _log_all(self, expired: list[RenderRequest], lost: list[RenderRequest]) -> None:
         for row in expired:
             self._log("expired", row)
-        for row in abandoned:
+        for row in lost:
             self._log("failed", row)
 
     # --- côté poste --------------------------------------------------------------------
 
-    def claim(self) -> WorkerJob | None:
+    def claim(self, *, beats: bool = False) -> WorkerJob | None:
         """Prend la plus ancienne demande en attente d'un compte autorisé (comparer-et-poser :
-        une seule prise réussit, sur SQLite comme sur Postgres)."""
+        une seule prise réussit, sur SQLite comme sur Postgres). `beats` : le poste a annoncé
+        savoir battre, le bail court (`BEAT_LEASE`) vaut pour cette prise."""
         allowed = list(self.config.accounts)
         if not allowed:
             return None
@@ -209,6 +235,7 @@ class RenderQueue:
                     .values(
                         state="taken",
                         taken_at=now,
+                        beat_at=now if beats else None,
                         lease_id=lease,
                         attempts=RenderRequest.attempts + 1,
                     )
@@ -241,7 +268,22 @@ class RenderQueue:
             raise LeaseError
         return row
 
-    def complete(self, request_id: UUID, lease: UUID, result: WorkerResult) -> RenderRequest:
+    def deliverable(self, request_id: UUID, lease: UUID | None) -> RenderRequest:
+        """KAN-96 : la demande qu'un dépôt sous ce bail peut viser : prise, remise en attente
+        sans avoir été reprise (dépôt en retard), ou déjà faite sous ce bail (second dépôt) ;
+        LeaseError sinon."""
+        row = self.get(request_id)
+        if (
+            row is None
+            or lease is None
+            or row.lease_id != lease
+            or row.state not in ("taken", "pending", "done")
+        ):
+            raise LeaseError
+        return row
+
+    def renew(self, request_id: UUID, lease: UUID) -> None:
+        """KAN-96 : battement du poste pour sa prise (calcul ou envoi en cours)."""
         now = self.clock()
         with self.session() as db, db.begin():
             done = db.execute(
@@ -251,10 +293,26 @@ class RenderQueue:
                     RenderRequest.state == "taken",
                     RenderRequest.lease_id == lease,
                 )
+                .values(beat_at=now)
+            )
+            if getattr(done, "rowcount", 0) != 1:
+                raise LeaseError
+
+    def complete(self, request_id: UUID, lease: UUID, result: WorkerResult) -> RenderRequest:
+        """Le bail reste sur la demande faite : un second dépôt sous ce bail est reconnu."""
+        now = self.clock()
+        with self.session() as db, db.begin():
+            done = db.execute(
+                update(RenderRequest)
+                .where(
+                    RenderRequest.id == request_id,
+                    RenderRequest.state.in_(("taken", "pending")),
+                    RenderRequest.lease_id == lease,
+                )
                 .values(
                     state="done",
                     finished_at=now,
-                    lease_id=None,
+                    beat_at=None,
                     seconds=result.seconds,
                     vram_peak_mib=result.vram_peak_mib,
                     width=result.width,
@@ -367,6 +425,21 @@ class RenderQueue:
             self.journal.parent.mkdir(parents=True, exist_ok=True)
             with self.journal.open("a", encoding="utf-8") as handle:
                 handle.write(line)
+
+
+def _take_back(
+    row: RenderRequest, now: datetime, expired: list[RenderRequest], lost: list[RenderRequest]
+) -> None:
+    """Une prise sans nouvelles : en attente une fois (le bail reste, pour un dépôt en retard),
+    puis échec `lost` ; expirée si son attente est passée."""
+    if row.attempts >= MAX_ATTEMPTS:
+        row.state, row.finished_at, row.error, row.lease_id = "failed", now, "lost", None
+        lost.append(row)
+    elif aware(row.expires_at) <= now:
+        row.state, row.finished_at, row.lease_id = "expired", now, None
+        expired.append(row)
+    else:
+        row.state, row.taken_at, row.beat_at = "pending", None, None
 
 
 def variant_seed(request_id: UUID) -> int:

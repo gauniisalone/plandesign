@@ -40,7 +40,7 @@ from openplan.schemas.render_queue import MAX_IMAGE_BYTES
 WORKER_PREFIX = "/api/worker/"
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 WORKER_PATH = re.compile(
-    rf"/api/worker/(?:claim|jobs/{_UUID}/(?:files/(?:project|bake|camera)|result|fail))"
+    rf"/api/worker/(?:claim|jobs/{_UUID}/(?:files/(?:project|bake|camera)|result|fail|beat))"
 )
 """Les seuls chemins de l'API du poste (comparés en entier, sur le chemin décodé ET brut)."""
 WORKER_REFUSED = "jeton du poste de rendu requis"

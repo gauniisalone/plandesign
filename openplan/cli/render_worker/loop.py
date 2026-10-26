@@ -5,8 +5,12 @@ qui vaut battement de cœur ; un rendu à la fois.
   poste appelle quand même `claim` en `paused` ou `waiting` (il reste « en ligne ») sans rien
   prendre.
 - Temporisation (exigence de l'Infra, pour que fail2ban ne bannisse pas le domicile) :
-  401/403 → 1 min, puis 5 min, et 5 min ensuite ; 429, 5xx ou réseau → 15 s, 30 s, 60 s…
-  plafonné à 5 min. Jamais de boucle serrée. Un appel réussi remet les compteurs à zéro.
+  401/403 → 1 min, puis 5 min, et 5 min ensuite ; 429, 5xx ou réseau → 15 s, puis 30 s
+  (KAN-96 : plafond de 30 s, validé par l'Infra). Jamais de boucle serrée. Un appel réussi
+  remet les compteurs à zéro.
+- KAN-96 : pendant le calcul et l'envoi, un fil bat pour la prise (si le serveur l'a demandé),
+  et l'envoi coupé est réessayé avec la même image, sans recalcul, tant que la prise est à ce
+  poste (au plus `UPLOAD_FOR_S`).
 - Arrêt : fichier drapeau `worker.stop`, ou Ctrl+C (le calcul en cours est arrêté, la demande
   revient d'elle-même dans la file après le délai de reprise du serveur).
 """
@@ -17,11 +21,12 @@ import random
 import shutil
 import signal
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import FrameType
+from types import FrameType, TracebackType
 from typing import Literal
 
 from openplan.cli.render_worker import checks
@@ -46,7 +51,10 @@ POLL_MIN_S, POLL_MAX_S = 10.0, 15.0
 SAY_EVERY_S = 60.0
 """Une ligne au plus par minute pour dire que le poste attend (il passe son tour plus souvent)."""
 AUTH_BACKOFF_S = (60.0, 300.0)
-BUSY_BASE_S, BUSY_MAX_S = 15.0, 300.0
+BUSY_BASE_S, BUSY_MAX_S = 15.0, 30.0
+UPLOAD_FOR_S = 600.0
+"""KAN-96 : un envoi coupé est réessayé pendant 10 min au plus ; au-delà, la demande revient
+d'elle-même dans la file (bail du serveur)."""
 
 
 @dataclass
@@ -68,6 +76,50 @@ class Backoff:
         self.auth_failures = self.busy_failures = 0
 
 
+class Heartbeat:
+    """KAN-96 : bat pour une prise toutes les `every` secondes, dans un fil à part, le temps du
+    bloc (calcul et envoi). Une erreur passagère est ignorée (le battement suivant réessaie) ;
+    une prise perdue (404) est notée dans `lost`. `every` None : le serveur ne tient pas le bail,
+    rien ne bat."""
+
+    def __init__(self, client: WorkerClient, job: WorkerJob, every: float | None) -> None:
+        self.client = client
+        self.job = job
+        self.every = every
+        self.lost = threading.Event()
+        self.beats = 0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> Heartbeat:
+        if self.every is not None:
+            self._thread = threading.Thread(target=self._run, name="battement", daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        _type: type[BaseException] | None,
+        _value: BaseException | None,
+        _trace: TracebackType | None,
+    ) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+
+    def _run(self) -> None:
+        assert self.every is not None
+        while not self._stop.wait(self.every):
+            try:
+                self.client.beat(self.job)
+            except LeaseLostError:
+                self.lost.set()
+                return
+            except (ApiBusyError, ApiRefusedError, InvalidJobError):
+                continue
+            self.beats += 1
+
+
 @dataclass
 class Worker:
     client: WorkerClient
@@ -85,6 +137,8 @@ class Worker:
     rendered: int = 0
     said_at: float | None = None
     """Quand le poste a dit pour la dernière fois pourquoi il passe son tour."""
+    beat_every_s: float | None = None
+    """Cadence du battement imposée (tests) ; sinon celle annoncée par le serveur."""
 
     def __post_init__(self) -> None:
         if self.skip is None:
@@ -177,7 +231,12 @@ class Worker:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
-    def _process(self, job: WorkerJob, work: Path) -> float:  # noqa: PLR0911 - une sortie par issue
+    def _process(self, job: WorkerJob, work: Path) -> float:
+        every = self.beat_every_s or getattr(self.client, "beat_every_s", None)
+        with Heartbeat(self.client, job, every) as heart:
+            return self._render(job, work, heart)
+
+    def _render(self, job: WorkerJob, work: Path, heart: Heartbeat) -> float:  # noqa: PLR0911 - une sortie par issue
         short = str(job.request_id)[:8]
         self.say(f"Rendu {short} pris.")
         try:
@@ -198,7 +257,12 @@ class Worker:
                 height=outcome.height,
                 engine=outcome.engine,
             )
-            self.client.upload(job, result, image)
+            if not self._deliver(job, result, image, heart):
+                self.say(
+                    f"Rendu {short} : envoi impossible pour l'instant ; la demande reviendra "
+                    "dans la file."
+                )
+                return self.backoff.busy()
         except InvalidJobError:
             return self._fail(job, "invalid_input")
         except EngineFailedError as exc:
@@ -217,6 +281,28 @@ class Worker:
         self.rendered += 1
         self.say(f"Rendu {short} déposé ({outcome.seconds:.0f} s).")
         return self.jitter(POLL_MIN_S, POLL_MAX_S)
+
+    def _deliver(
+        self, job: WorkerJob, result: WorkerResult, image: bytes, heart: Heartbeat
+    ) -> bool:
+        """KAN-96 : dépose l'image ; un envoi coupé (réseau, 5xx, 429) est réessayé avec la même
+        image, sans recalcul, après le recul plafonné, tant que la prise est à ce poste et au
+        plus `UPLOAD_FOR_S`. Le serveur reconnaît un second dépôt du même rendu. False : on
+        laisse la demande au bail du serveur."""
+        short = str(job.request_id)[:8]
+        deadline = self.clock() + UPLOAD_FOR_S
+        while True:
+            try:
+                self.client.upload(job, result, image)
+            except ApiBusyError:
+                if heart.lost.is_set() or self.should_stop() or self.clock() >= deadline:
+                    return False
+                delay = self.backoff.busy()
+                self.say(f"Envoi du rendu {short} coupé : nouvel essai dans {delay:.0f} s.")
+                self.wait(delay)
+                continue
+            self.backoff.reset()
+            return True
 
     def _fail(self, job: WorkerJob, reason: str) -> float:
         self.say(f"Rendu {str(job.request_id)[:8]} échoué : {reason}.")
