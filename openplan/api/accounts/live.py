@@ -43,6 +43,7 @@ from openplan.api.access import SESSION_COOKIE, AuthUser
 from openplan.api.accounts.lease import leases_of
 from openplan.api.accounts.lease import message as lease_message
 from openplan.api.accounts.routes import service
+from openplan.api.accounts.service import AccountService
 
 log = logging.getLogger("openplan.live")
 router = APIRouter(tags=["présence"])
@@ -54,7 +55,9 @@ CLOSE_BAD_ORIGIN = 4403
 CLOSE_NOT_MEMBER = 4404
 CLOSE_TOO_CHATTY = 1008
 RECHECK_S = 30.0
-"""Revérification de la session et de l'appartenance de chaque connexion."""
+"""Revérification de la session et de l'appartenance de chaque connexion, toutes les 30 s de
+temps écoulé, que la connexion parle ou non (KAN-106 : le client pinge toutes les 25 s ; une
+revérification au silence ne tombait donc jamais pour un onglet ouvert)."""
 PALETTE = ("#e5484d", "#f76b15", "#ffc53d", "#46a758", "#12a594", "#0090ff", "#6e56cf", "#d6409f")
 MAX_SELECTION = 100
 MAX_ID_CHARS = 64
@@ -370,6 +373,30 @@ async def _incoming(
         await hub.presence(project_id, conn, message)
 
 
+async def _receive_until(socket: WebSocket, due: float) -> str | None:
+    """Le prochain message, ou None si la revérification (`due`) arrive d'abord."""
+    try:
+        return await asyncio.wait_for(
+            socket.receive_text(), timeout=max(0.0, due - time.monotonic())
+        )
+    except TimeoutError:
+        return None
+
+
+async def _refusal(
+    accounts: AccountService, raw: str, project_id: UUID | None, user_id: UUID
+) -> int | None:
+    """KAN-106 : le code de fermeture si la session (révoquée, expirée) ou, pour un projet,
+    l'appartenance ne tient plus ; None si la connexion peut continuer."""
+    if await run_in_threadpool(accounts.resolve_session, raw) is None:
+        return CLOSE_NO_SESSION
+    if project_id is not None and (
+        await run_in_threadpool(accounts.role_name, project_id, user_id) is None
+    ):
+        return CLOSE_NOT_MEMBER
+    return None
+
+
 @router.websocket("/ws/projects/{project_id}")
 async def project_live(socket: WebSocket, project_id: UUID) -> None:
     accounts = service(socket)
@@ -410,17 +437,17 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
     await hub.join(project_id, conn, socket, peer)
     recent: deque[float] = deque()
     raw = socket.cookies.get(SESSION_COOKIE, "")
+    due = time.monotonic() + RECHECK_S
     try:
         while True:
-            try:
-                text = await asyncio.wait_for(socket.receive_text(), timeout=RECHECK_S)
-            except TimeoutError:
-                if await run_in_threadpool(accounts.resolve_session, raw) is None:
-                    await socket.close(code=CLOSE_NO_SESSION)
+            text = await _receive_until(socket, due)
+            if time.monotonic() >= due:
+                refused = await _refusal(accounts, raw, project_id, user.id)
+                if refused is not None:
+                    await socket.close(code=refused)
                     break
-                if await run_in_threadpool(accounts.role_name, project_id, user.id) is None:
-                    await socket.close(code=CLOSE_NOT_MEMBER)
-                    break
+                due = time.monotonic() + RECHECK_S
+            if text is None:
                 continue
             now = time.monotonic()
             recent.append(now)
@@ -458,14 +485,17 @@ async def my_live(socket: WebSocket) -> None:
     hub.join_me(me, conn, socket)
     await socket.send_text(json.dumps({"type": "hello", "conn": conn}))
     recent: deque[float] = deque()
+    due = time.monotonic() + RECHECK_S
     try:
         while True:
-            try:
-                text = await asyncio.wait_for(socket.receive_text(), timeout=RECHECK_S)
-            except TimeoutError:
-                if await run_in_threadpool(accounts.resolve_session, raw) is None:
-                    await socket.close(code=CLOSE_NO_SESSION)
+            text = await _receive_until(socket, due)
+            if time.monotonic() >= due:
+                refused = await _refusal(accounts, raw, None, resolved.user.id)
+                if refused is not None:
+                    await socket.close(code=refused)
                     break
+                due = time.monotonic() + RECHECK_S
+            if text is None:
                 continue
             now = time.monotonic()
             recent.append(now)
