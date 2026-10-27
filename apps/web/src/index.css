@@ -5863,8 +5863,14 @@ button.link.home-empty-link {
   top: calc(min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 2.4);
 }
 
+/* KAN-98 : la taille du titre d'en-tête, une seule fois : ce qui se pose sous l'en-tête (la
+   consigne, la galerie des Rendus) en suit la hauteur, même quand les nodes la grandissent. */
+.board-item.kind-frame {
+  --head-font: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+}
+
 .board-frame-title.board-frame-head {
-  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+  font-size: var(--head-font);
   flex-wrap: nowrap;
   white-space: nowrap;
   display: flex;
@@ -5887,6 +5893,7 @@ button.link.home-empty-link {
 .board-item.kind-frame.role-inspirations,
 .board-item.kind-frame.role-renders {
   border-top: 3px solid var(--node-color, var(--line));
+  --head-font: min(calc(16px * max(1, var(--inv, 1))), 7cqw);
 }
 .board-item.kind-frame.role-photos {
   --node-color: var(--pd-volet-encre);
@@ -5900,7 +5907,6 @@ button.link.home-empty-link {
 .board-item.kind-frame.role-photos .board-frame-title.board-frame-head,
 .board-item.kind-frame.role-inspirations .board-frame-title.board-frame-head,
 .board-item.kind-frame.role-renders .board-frame-title.board-frame-head {
-  font-size: min(calc(16px * max(1, var(--inv, 1))), 7cqw);
   font-weight: 600;
   color: var(--text);
 }
@@ -8833,8 +8839,7 @@ textarea:focus-visible {
 .board-item.kind-frame:has(.board-frame-head) .board-frame-hint {
   /* Sous l'en-tête : sa ligne (1,2) et ses deux marges. */
   top: calc(
-    min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 1.2 + 2 *
-      min(calc(16px * max(1, var(--inv, 1))), 8cqw)
+    var(--head-font) * 1.2 + 2 * min(calc(16px * max(1, var(--inv, 1))), 8cqw)
   );
 }
 .board-plan-head {
@@ -8946,9 +8951,10 @@ button.link,
    taille constante à tout zoom comme la consigne du cadre (--inv). */
 .realistic-renders {
   position: absolute;
+  /* Sous l'en-tête des Rendus : sa ligne est celle de l'icône de réglage (1,6 em et deux
+     marges de 0,35 em, soit 2,3 em, plus haute que le texte) et ses deux marges. */
   inset: calc(
-      min(calc(13px * max(1, var(--inv, 1))), 6cqw) * 1.2 + 2 *
-        min(calc(16px * max(1, var(--inv, 1))), 8cqw)
+      var(--head-font) * 2.3 + 2 * min(calc(16px * max(1, var(--inv, 1))), 8cqw)
     )
     0 0;
   display: flex;
