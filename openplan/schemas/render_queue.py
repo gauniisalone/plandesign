@@ -113,11 +113,12 @@ class RealisticRequest(StrictModel):
     """KAN-91 (D5) : la photo dont la caméra estimée est la vue de ce rendu ; None pour un
     point de vue libre. L'avant/après avec cette photo est alors fidèle."""
     guided_by: list[str] | None = None
-    """KAN-97 : « Guidé par : … ». Les mots de style retenus par le poste, en français ; à
-    défaut (ancien poste), les noms des images d'inspiration (`guided_read` faux) ; [] : aucune
-    inspiration reliée ; None : rendu d'avant KAN-97."""
-    guided_read: bool = False
-    """Vrai quand `guided_by` est fait des mots que le poste a lus dans les images."""
+    """KAN-97 : « Guidé par : … ». Les mots de style retenus par le poste, en français, ou les
+    noms des images d'inspiration (voir `guided_kind`) ; [] : aucune inspiration reliée ; None :
+    rendu d'avant KAN-97."""
+    guided_kind: Literal["words", "unread", "no_style"] | None = None
+    """`words` : mots lus ; `unread` : noms des images, non lues par le poste (ancien poste,
+    SigLIP2 absent) ; `no_style` : noms des images, lues sans style net retenu."""
 
 
 class RealisticCreate(StrictModel):

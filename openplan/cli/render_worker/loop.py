@@ -65,6 +65,16 @@ BUSY_BASE_S, BUSY_MAX_S = 15.0, 30.0
 UPLOAD_FOR_S = 600.0
 """KAN-96 : un envoi coupé est réessayé pendant 10 min au plus ; au-delà, la demande revient
 d'elle-même dans la file (bail du serveur)."""
+STYLE_MODEL_MISSING = "SigLIP2 non installé : rendu sans mots."
+
+
+def style_model_ready() -> bool:
+    """KAN-97 : les poids de SigLIP2 sont-ils sur le poste (dossier des poids de Z-Image) ?"""
+    from openplan.adapters.neural.siglip import MODEL_ID
+    from openplan.adapters.neural.weights import is_installed
+    from openplan.pipeline.zimage_render import models_root
+
+    return is_installed(MODEL_ID, models_root())
 
 
 @dataclass
@@ -149,6 +159,8 @@ class Worker:
     """Quand le poste a dit pour la dernière fois pourquoi il passe son tour."""
     beat_every_s: float | None = None
     """Cadence du battement imposée (tests) ; sinon celle annoncée par le serveur."""
+    _said_no_style: bool = False
+    """KAN-97 : « SigLIP2 non installé » n'est dit qu'une fois par lancement du poste."""
 
     def __post_init__(self) -> None:
         if self.skip is None:
@@ -247,10 +259,16 @@ class Worker:
             return self._render(job, work, heart)
 
     def _fetch_style(self, job: WorkerJob, work: Path) -> bool:
-        """KAN-97 : les images de style de la demande, si le serveur sert « style » ; vrai
-        quand le poste doit renvoyer des mots (même aucun : « [] » dit qu'il a lu)."""
+        """KAN-97 : les images de style de la demande, si le serveur sert « style » et que le
+        poste sait les lire ; vrai quand le poste doit renvoyer ce qu'il a lu (des mots, ou []
+        si aucun style net). Sans SigLIP2, rien n'est téléchargé : la carte dit « non lues »."""
         served: frozenset[str] = getattr(self.client, "served", frozenset())
         if not job.style or STYLE not in served:
+            return False
+        if self.engine == "zimage" and not style_model_ready():
+            if not self._said_no_style:
+                self.say(STYLE_MODEL_MISSING)
+                self._said_no_style = True
             return False
         for index in range(len(job.style)):
             self.client.fetch_style(job, index, work / STYLE_DIR)
@@ -277,8 +295,13 @@ class Worker:
                 width=outcome.width,
                 height=outcome.height,
                 engine=outcome.engine,
-                # KAN-97 : les mots ne partent que vers un serveur qui sert « style ».
-                style_words=list(outcome.style_words or [])[:MAX_STYLE_WORDS] if styled else None,
+                # KAN-97 : les mots ne partent que vers un serveur qui sert « style », et
+                # seulement si le calcul a lu les images (None : SigLIP2 indisponible).
+                style_words=(
+                    list(outcome.style_words)[:MAX_STYLE_WORDS]
+                    if styled and outcome.style_words is not None
+                    else None
+                ),
             )
             if not self._deliver(job, result, image, heart):
                 self.say(

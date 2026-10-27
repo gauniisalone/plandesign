@@ -14,6 +14,7 @@ Contrat convenu avec le PO le 22 oct. 2026 :
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass, replace
@@ -125,7 +126,7 @@ def render_scene(
     """Image Z-Image de la vue `camera_path` de la scène `bake_path`, écrite dans `out_png`
     (taille de génération : grand côté 1 024, format de la caméra). KAN-97 : avec `style_dir`
     (images d'inspiration déposées par le poste), leurs mots de style entrent dans la
-    description ; SigLIP2 absent, le rendu se fait sans eux (`style_words` vide)."""
+    description ; SigLIP2 absent, le rendu se fait sans eux (`style_words` None : non lues)."""
     if prompt is None and project_path is None:
         msg = "render_scene : il faut le prompt, ou le projet pour le dériver de la scène"
         raise ValueError(msg)
@@ -147,8 +148,10 @@ def render_scene(
             try:
                 chosen = describe_style(images, words, root)
             except AdapterUnavailableError:
-                chosen = []
-            words = replace(words, style=list(chosen))
+                # Non lues (None), jamais « aucun style » ([]) : la carte dit « non lues ».
+                logging.getLogger(__name__).warning("SigLIP2 non installé : rendu sans mots.")
+                chosen = None
+            words = replace(words, style=list(chosen or []))
         prompt = finish_prompt(project, None, bake.level_id, scene=words, engine="zimage")
     width, height = z_size(camera.width_px, camera.height_px)
     guides = view_guides(bake, camera, (width, height))

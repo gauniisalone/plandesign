@@ -113,15 +113,18 @@ def note_words(store: ProjectStore, project_id: UUID, request_id: UUID, words: l
 def with_guidance(
     store: ProjectStore, project_id: UUID, public: RealisticRequest
 ) -> RealisticRequest:
-    """« Guidé par » : les mots lus par le poste, en français ; à défaut (ancien poste, ou
-    rendu pas encore fait), les noms des images notées ; [] sans inspiration ; rien pour une
-    demande d'avant KAN-97."""
+    """« Guidé par » : les mots lus par le poste, en français (`words`) ; images lues sans mot
+    retenu : leurs noms (`no_style`) ; pas lues (ancien poste, SigLIP2 absent, rendu pas encore
+    fait) : leurs noms (`unread`) ; [] sans inspiration ; rien pour une demande d'avant KAN-97."""
+    refs = references(store, project_id, public.id)
     words = _read(_sidecar(store, project_id, public.id, "words"))
-    if isinstance(words, list):
-        return public.model_copy(
-            update={"guided_by": french(str(w) for w in words), "guided_read": True}
-        )
-    names = references(store, project_id, public.id)
-    if names is None:
+    shown = french(str(w) for w in words) if isinstance(words, list) else []
+    if shown:
+        return public.model_copy(update={"guided_by": shown, "guided_kind": "words"})
+    if refs is None:
         return public
-    return public.model_copy(update={"guided_by": [r.label or "Image" for r in names]})
+    names = [r.label or "Image" for r in refs]
+    if not names:
+        return public.model_copy(update={"guided_by": []})
+    kind = "no_style" if isinstance(words, list) else "unread"
+    return public.model_copy(update={"guided_by": names, "guided_kind": kind})

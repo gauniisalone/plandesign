@@ -87,7 +87,7 @@ def _row(world: World) -> dict[str, Any]:
 def test_a_new_worker_reads_the_inspirations_and_the_card_says_its_words(world: World) -> None:
     _inspire(world)
     asked = world.ask()
-    assert asked["guided_by"] == ["salon-clair.png"] and asked["guided_read"] is False
+    assert asked["guided_by"] == ["salon-clair.png"] and asked["guided_kind"] == "unread"
     job, served = _claim(world, STYLED)
     assert served == "heartbeat+style"
     assert job["style"] == ["salon-clair.png"]
@@ -104,7 +104,20 @@ def test_a_new_worker_reads_the_inspirations_and_the_card_says_its_words(world: 
     assert out_of_range.status_code == 401, "hors des chemins du poste"
     _deposit(world, job, ["scandinavian", "bright"])
     row = _row(world)
-    assert row["guided_by"] == ["scandinave", "lumineux"] and row["guided_read"] is True
+    assert row["guided_by"] == ["scandinave", "lumineux"] and row["guided_kind"] == "words"
+
+
+def test_images_read_without_a_clear_style_are_named_never_without_inspiration(
+    world: World,
+) -> None:
+    """PO : lues mais aucun mot au-dessus du seuil ([]) : « Guidé par : <images> (aucun style
+    net retenu) », jamais « Sans inspiration »."""
+    _inspire(world)
+    world.ask()
+    job, _ = _claim(world, STYLED)
+    _deposit(world, job, [])
+    row = _row(world)
+    assert row["guided_by"] == ["salon-clair.png"] and row["guided_kind"] == "no_style"
 
 
 def test_the_style_route_is_guarded_by_the_lease_and_the_worker_token(world: World) -> None:
@@ -135,7 +148,7 @@ def test_an_old_worker_gets_nothing_new_and_the_card_names_the_images(world: Wor
     assert served == "heartbeat" and "style" not in job, "un ancien poste refuserait le champ"
     _deposit(world, job, None)
     row = _row(world)
-    assert row["guided_by"] == ["salon-clair.png"] and row["guided_read"] is False
+    assert row["guided_by"] == ["salon-clair.png"] and row["guided_kind"] == "unread"
 
 
 def test_without_inspiration_the_card_says_so(world: World) -> None:
@@ -163,7 +176,40 @@ def test_the_real_worker_fetches_the_images_and_sends_its_words(
     assert "style" in worker.client.served
     row = _row(world)
     assert row["state"] == "done"
-    assert row["guided_by"] == ["scandinave", "lumineux"] and row["guided_read"] is True
+    assert row["guided_by"] == ["scandinave", "lumineux"] and row["guided_kind"] == "words"
+
+
+def test_a_zimage_worker_without_siglip_renders_without_words_and_says_it_once(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PO : poids SigLIP2 absents sur un poste Z-Image : une seule ligne claire, aucune image
+    de style téléchargée, rendu sans mots ; la carte dit « non lues », sans erreur au client."""
+    from datetime import UTC, datetime
+    from uuid import UUID, uuid4
+
+    from openplan.cli.render_worker import loop
+    from openplan.schemas.render_queue import WorkerJob
+    from tests.accounts.test_kan89_worker_flow import _worker
+
+    _inspire(world)
+    world.ask()
+    worker, said = _worker(world, tmp_path)
+    monkeypatch.setattr(loop, "style_model_ready", lambda: False)
+    worker.engine = "zimage"
+    fetched: list[int] = []
+    worker.client.fetch_style = lambda job, k, folder: fetched.append(k)  # type: ignore[method-assign, assignment, return-value]
+    worker.client.served = frozenset({"style"})
+    job = WorkerJob(
+        request_id=UUID(_row(world)["id"]),
+        lease=uuid4(),
+        created_at=datetime(2026, 10, 27, tzinfo=UTC),
+        style=["salon-clair.png"],
+    )
+    assert worker._fetch_style(job, tmp_path) is False
+    assert worker._fetch_style(job, tmp_path) is False
+    assert fetched == [] and said.count(loop.STYLE_MODEL_MISSING) == 1
+    row = _row(world)
+    assert row["guided_kind"] == "unread" and row["guided_by"] == ["salon-clair.png"]
 
 
 def test_an_unknown_word_from_a_newer_worker_is_ignored(world: World) -> None:

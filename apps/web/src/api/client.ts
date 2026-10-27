@@ -444,16 +444,22 @@ export interface RealisticRequest {
   /** KAN-97 : mots de style lus par le poste (français), à défaut les noms des images
    * d'inspiration ; [] : sans inspiration ; null : rendu d'avant KAN-97. */
   guided_by?: string[] | null;
-  /** KAN-97 : vrai quand `guided_by` vient des images lues par le poste. */
-  guided_read?: boolean;
+  /** KAN-97 : `words` mots lus ; `unread` noms des images non lues par le poste ;
+   * `no_style` noms des images lues sans style net retenu. */
+  guided_kind?: "words" | "unread" | "no_style" | null;
 }
+
+const GUIDED_NOTE: Record<string, string> = {
+  unread: " (non lues par le poste)",
+  no_style: " (aucun style net retenu)",
+};
 
 /** KAN-97 : « Guidé par : … » d'un rendu, ou null s'il n'en dit rien (rendu ancien). */
 export function guidedLine(r: RealisticRequest): string | null {
   const g = r.guided_by;
   if (g == null) return null;
   if (g.length === 0) return "Sans inspiration";
-  return `Guidé par : ${g.join(", ")}${r.guided_read ? "" : " (non lues par le poste)"}`;
+  return `Guidé par : ${g.join(", ")}${GUIDED_NOTE[r.guided_kind ?? ""] ?? ""}`;
 }
 
 /** KAN-91 : une pastille de réaction (KAN-78) sur un rendu réaliste. */
