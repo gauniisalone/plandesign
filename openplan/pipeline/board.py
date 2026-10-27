@@ -28,6 +28,7 @@ from openplan.schemas.board import (
     MAX_ITEMS,
     Board,
     BoardItem,
+    BoardLink,
     BoardPatch,
     BoardRole,
     MediaKind,
@@ -586,13 +587,25 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
             added.move_into(item, "inspirations", FIXED_FRAMES["inspirations"])
     items = bl.with_membership(added.items)
     links = bl.auto_links(items, list(current.links), list(current.cut_links), first)
+    return _synced(current, items, links, kept_dismissed, fresh=fresh)
+
+
+def _synced(
+    current: Board,
+    items: list[BoardItem],
+    links: list[BoardLink],
+    dismissed: list[str],
+    *,
+    fresh: bool,
+) -> tuple[Board, bool]:
+    """Le tableau synchronisé et s'il a changé (KAN-93 : les retraits renommés comptent)."""
     changed = (
         fresh
         or items != list(current.items)
         or links != list(current.links)
-        or kept_dismissed != list(current.dismissed)
+        or dismissed != list(current.dismissed)
     )
-    update = {"items": items, "links": links, "dismissed": kept_dismissed}
+    update = {"items": items, "links": links, "dismissed": dismissed}
     return current.model_copy(update=update), changed
 
 
