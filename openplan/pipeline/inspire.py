@@ -101,7 +101,9 @@ def _stamp_font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
         except OSError:
             continue
     try:
-        return ImageFont.load_default(size=size)
+        # Sonar S930, faux positif : `size` existe depuis Pillow 10.1 (12.3 dans uv.lock) ;
+        # l'analyseur connaît une signature plus ancienne. Le repli ci-dessous la couvre.
+        return ImageFont.load_default(size=size)  # NOSONAR
     except TypeError:  # Pillow ancien : police par défaut sans taille
         return ImageFont.load_default()
 

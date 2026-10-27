@@ -515,7 +515,7 @@ export function BoardCanvas(props: Props) {
       board.items
         .filter((i) => i.ref)
         .map((i) => `${i.kind}:${i.ref}`)
-        .sort()
+        .sort((a, b) => a.localeCompare(b))
         .join("|"),
     [board.items],
   );

@@ -2517,9 +2517,10 @@ export function PlanCanvas({
               y: q.reduce((s, c) => s + c.y, 0) / q.length,
             };
           });
-          const middle = tops.length
-            ? tops.reduce((a, b) => (b.y < a.y ? b : a))
-            : null;
+          const middle = tops.reduce<(typeof tops)[number] | null>(
+            (a, b) => (a === null || b.y < a.y ? b : a),
+            null,
+          );
           return (
             <g
               key={id}

@@ -314,17 +314,43 @@ def generate(job: dict[str, Any], emb: Any) -> tuple[Any, dict[str, float]]:
     return image, stats
 
 
+TASK_FILES = ("control", "out", "result")
+"""Les fichiers de la tâche, tous dans son dossier (celui de `job.json`, créé par le parent)."""
+
+
+class OutsideTaskError(ValueError):
+    """Un chemin de la tâche sort de son dossier."""
+
+
+def confined(work: Path, raw: str) -> Path:
+    """KAN-108 (suite) : le chemin, résolu (liens symboliques suivis), s'il reste dans le dossier
+    de la tâche ; sinon une erreur, avant toute lecture ou écriture."""
+    base = os.path.realpath(work)
+    path = os.path.realpath(os.path.join(base, raw))
+    if os.path.commonpath([base, path]) != base:
+        msg = f"chemin hors du dossier de la tâche : {raw}"
+        raise OutsideTaskError(msg)
+    return Path(path)
+
+
+def task_paths(task: Path) -> tuple[dict[str, Any], dict[str, Path]]:
+    """La tâche écrite par le parent (zimage.py) et ses fichiers, confinés à son dossier."""
+    # Sonar S8707 : la tâche est écrite par le processus parent, dans son dossier temporaire.
+    job: dict[str, Any] = json.loads(task.read_text(encoding="utf-8"))  # NOSONAR
+    work = task.resolve().parent
+    return job, {key: confined(work, str(job[key])) for key in TASK_FILES}
+
+
 def main(argv: list[str]) -> int:
     block_network()
-    # Sonar S8707 et S2083, faux positifs : ce processus enfant lit la tâche écrite par son
-    # parent (zimage.py), avec les chemins de son dossier temporaire ; rien ne vient du dehors.
-    job = json.loads(Path(argv[1]).read_text(encoding="utf-8"))  # NOSONAR
+    job, files = task_paths(Path(argv[1]))
+    job = {**job, "control": str(files["control"])}
     dirs = {k: Path(v) for k, v in job["dirs"].items()}
     t0 = time.perf_counter()
     emb = encode(job["prompt"], dirs["base"], dirs["encoder"], job["encoder_file"])
     encode_s = time.perf_counter() - t0
     image, stats = generate(job, emb)
-    image.save(job["out"])
+    image.save(files["out"])
     result = {
         **stats,
         "encode_s": round(encode_s, 1),
@@ -332,7 +358,7 @@ def main(argv: list[str]) -> int:
         "duration_s": round(time.perf_counter() - t0, 1),
         "network_attempts": len(ATTEMPTS),
     }
-    Path(job["result"]).write_text(json.dumps(result), encoding="utf-8")  # NOSONAR (voir plus haut)
+    files["result"].write_text(json.dumps(result), encoding="utf-8")
     print(json.dumps(result), flush=True)
     return 0
 
