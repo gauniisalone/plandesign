@@ -420,22 +420,37 @@ test("KAN-93 : supprimer le premier plan, le suivant devient premier avec ses no
   await expect(cards).toHaveCount(1);
   await expect(renders).toHaveCount(1);
   await expect(photos).toHaveCount(2);
-  await expect(cards.locator(".board-item.kind-photo")).toHaveCount(1);
+  // Seule la photo du plan supprimé est hors node ; celle de l'étage reste dans le sien.
+  const offNode = board.locator(".board-item.kind-photo .board-offcard");
+  await expect(offNode).toHaveCount(1);
   await expect(feeds).toHaveCount(1);
   // Le Moodboard de départ guide toujours le node Rendus restant.
   await expect(guides).toHaveCount(1);
   await shot(page, "kan93-1-premier-plan-supprime");
 
   // Ctrl+Z : le premier plan revient à sa place, avec une carte Photos et une carte Rendus.
-  await goSpace(page, "plan");
+  // Le plan restant (l'étage) est vide : on y entre par « Tracer moi-même », comme
+  // l'utilisateur, et Ctrl+Z s'y fait comme pour les autres gestes du plan.
+  await plans.getByRole("button", { name: "Tracer moi-même" }).click();
+  await expectSpace(page, "plan");
   await page.keyboard.press("Control+z");
   await goSpace(page, "board");
   await expect(plans).toHaveCount(2, { timeout: 30_000 });
+  // À sa place : de nouveau le premier plan du projet (l'ordre des niveaux, pas des nodes).
+  const order = Object.keys(
+    (
+      (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+        levels: Record<string, unknown>;
+      }
+    ).levels,
+  );
+  expect(order[0]).toBe(Object.keys(before.levels)[0]);
   await expect(cards).toHaveCount(2);
   await expect(renders).toHaveCount(2);
   await expect(feeds).toHaveCount(2);
   await expect(guides).toHaveCount(2);
-  await expect(upstairs.locator(".board-item.kind-photo")).toHaveCount(1);
+  // Le node revenu est vide : la photo du plan supprimé reste hors node (comme avant KAN-93).
+  await expect(offNode).toHaveCount(1);
   expect(await measures()).toBe(2);
 });
 
