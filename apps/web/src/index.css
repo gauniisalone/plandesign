@@ -5880,6 +5880,37 @@ button.link.home-empty-link {
   text-overflow: ellipsis;
 }
 
+/* KAN-98 : les nodes (cartes reliées) : un filet de 3 px à la couleur de leur type en haut,
+   un titre de 16 px semi-gras à l'écran (jamais moins au dézoom), un compteur à côté.
+   Couleurs sans violet : Photos de la pièce bleu volet, Moodboard or, Rendus ocre. */
+.board-item.kind-frame.role-photos,
+.board-item.kind-frame.role-inspirations,
+.board-item.kind-frame.role-renders {
+  border-top: 3px solid var(--node-color, var(--line));
+}
+.board-item.kind-frame.role-photos {
+  --node-color: var(--pd-volet-encre);
+}
+.board-item.kind-frame.role-inspirations {
+  --node-color: #d4a32a;
+}
+.board-item.kind-frame.role-renders {
+  --node-color: var(--pd-ocre);
+}
+.board-item.kind-frame.role-photos .board-frame-title.board-frame-head,
+.board-item.kind-frame.role-inspirations .board-frame-title.board-frame-head,
+.board-item.kind-frame.role-renders .board-frame-title.board-frame-head {
+  font-size: min(calc(16px * max(1, var(--inv, 1))), 7cqw);
+  font-weight: 600;
+  color: var(--text);
+}
+.board-frame-count {
+  flex: none;
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+
 /* T4 : case du déclencheur (dans le compositeur depuis T7b). */
 .board-trigger-toggle {
   display: inline-flex;
@@ -6803,6 +6834,77 @@ button.link.home-empty-link {
 
 .board-bottom > * {
   pointer-events: auto;
+}
+
+/* KAN-98 : barre d'ajout fixe, en bas au centre (16 px du bord, 56 px de haut), même place et
+   même taille à tout zoom (hors du monde zoomé) ; entre la colonne d'outils et le zoom. La
+   barre de la sélection, le toast des liens et la case de contexte passent au-dessus d'elle.
+   Noms vérifiés libres : board-addbar*, type-plan|photos|moodboard|renders. */
+.board-addbar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 56px;
+  max-width: calc(100% - 2 * 180px);
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card, 12px);
+  box-shadow: 0 6px 18px color-mix(in oklab, var(--pd-encre) 18%, transparent);
+  overflow-x: auto;
+}
+.board-addbar-label {
+  padding: 0 8px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.board-addbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.board-addbar-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--text) 8%, transparent);
+}
+.board-addbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.board-addbar-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.board-addbar-btn.type-plan svg {
+  color: var(--pd-olive);
+}
+.board-addbar-btn.type-photos svg {
+  color: var(--pd-volet-encre);
+}
+.board-addbar-btn.type-moodboard svg {
+  color: #d4a32a;
+}
+.board-addbar-btn.type-renders svg {
+  color: var(--pd-ocre);
+}
+*:has(> .board-addbar) > .board-bottom {
+  bottom: 88px;
+}
+*:has(> .board-addbar) > .board-wire-toast {
+  bottom: 88px;
 }
 
 /* KAN-64 : le panneau de droite de l'espace de travail, en zones empilées : en haut

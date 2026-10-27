@@ -40,9 +40,13 @@ import {
   IconFrame,
   IconHand,
   IconLink,
+  IconMoodboardNode,
   IconNote,
   IconPencil,
+  IconPhotosNode,
+  IconPlanNode,
   IconPlus,
+  IconRendersNode,
   IconReact,
   IconRedo,
   IconSliders,
@@ -148,8 +152,12 @@ const DRAG_THRESHOLD_PX = 5;
 const WALLS_STAY =
   "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.";
 /** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
-const NEW_PLAN_GAP = 32;
-const NEW_PLAN_BOX = { w: 180, h: 48 };
+/** KAN-98 : une carte ajoutée par la barre, 25 % plus grande que celles d'avant (624 × 374) ;
+ *  les cartes déjà posées gardent leur taille. */
+const NEW_CARD = { w: 780, h: 468 };
+const NEW_CARD_GAP = 48;
+const PHOTOS_TITLE = "Photos de la pièce";
+const MOODBOARD_TITLE = "Moodboard";
 
 interface Props {
   project: Project;
@@ -312,7 +320,7 @@ function missingHint(role: string, caps: Capabilities): string | null {
 /** KAN-91 (retours MEP 14) : la confirmation dit ce qui part et ce qui reste. Le premier plan
  *  ne se supprime pas encore (ses cartes sont celles de départ) : le bouton le dit. */
 const FIRST_PLAN =
-  "Le premier plan du projet ne se supprime pas encore : ses cartes Photos et Rendus sont celles de départ.";
+  "Le premier plan du projet ne se supprime pas encore : ses nodes Photos de la pièce et Rendus sont ceux de départ.";
 
 function DeletePlanButton({
   name,
@@ -333,7 +341,7 @@ function DeletePlanButton({
       onClick={() => {
         if (
           window.confirm(
-            `Supprimer le plan « ${name} » ? Sa carte Photos et ses liens partent avec lui ; ses photos restent sur l'espace de travail, hors carte. Les autres plans ne changent pas. Ctrl+Z le rend.`,
+            `Supprimer le plan « ${name} » ? Son node Photos de la pièce et ses liens partent avec lui ; ses photos restent sur l'espace de travail, hors node. Les autres plans ne changent pas. Ctrl+Z le rend.`,
           )
         )
           onDelete();
@@ -481,35 +489,9 @@ export function BoardCanvas(props: Props) {
   useEffect(() => {
     itemsNow.current = board.items;
   }, [board.items]);
-  // « + Nouveau plan » : sous la dernière rangée Plan + Rendus, aligné sur les plans. Sa
-  // place compte dans le cadrage d'ensemble (une boîte approchée, le bouton garde sa taille
-  // à l'écran).
-  const rows = items.filter(
-    (i) => i.kind === "plan" || (i.kind === "frame" && i.role === "renders"),
-  );
-  const plans = rows.filter((i) => i.kind === "plan");
-  const newPlanAt =
-    !readOnly && props.onNewPlan && plans.length > 0
-      ? {
-          x: Math.min(...plans.map((i) => i.x)),
-          y: Math.max(...rows.map((i) => i.y + i.h)) + NEW_PLAN_GAP,
-          w: NEW_PLAN_BOX.w,
-          h: NEW_PLAN_BOX.h,
-        }
-      : null;
-  // KAN-91 : « Nouvelle carte Photos », sous la colonne de gauche (les cartes à gauche des
-  // plans).
-  const planLeft = plans.length ? Math.min(...plans.map((i) => i.x)) : null;
-  const leftColumn = items.filter(
-    (i) => i.frame === null && planLeft !== null && i.x + i.w <= planLeft,
-  );
-  const newPhotosAt =
-    !readOnly && planLeft !== null && leftColumn.length
-      ? {
-          x: Math.min(...leftColumn.map((i) => i.x)),
-          y: Math.max(...leftColumn.map((i) => i.y + i.h)) + NEW_PLAN_GAP,
-        }
-      : null;
+  // KAN-98 : plus de boutons « + Nouveau plan » ni « + Nouvelle carte… » posés dans la toile ;
+  // la barre d'ajout, fixe en bas au centre, les remplace.
+  const plans = items.filter((i) => i.kind === "plan");
   const byRun = useMemo(
     () => new Map(renders.map((r) => [r.run_id, r])),
     [renders],
@@ -642,11 +624,7 @@ export function BoardCanvas(props: Props) {
   const fit = (persist = true, subset?: BoardItem[]) => {
     const el = stage.current;
     const pool: { x: number; y: number; w: number; h: number }[] =
-      subset && subset.length > 0
-        ? subset
-        : newPlanAt
-          ? [...items, newPlanAt]
-          : items;
+      subset && subset.length > 0 ? subset : items;
     if (!el || pool.length === 0) return;
     const minX = Math.min(...pool.map((i) => i.x));
     const minY = Math.min(...pool.map((i) => i.y));
@@ -810,7 +788,7 @@ export function BoardCanvas(props: Props) {
         text ??= effect.text
           .replace(/^Déposer : /, "Déposée : ")
           .replace(/^Déplacer : /, "Déplacée : ")
-          .replace(/^Relâcher hors carte : /, "Hors carte : ");
+          .replace(/^Relâcher hors node : /, "Hors node : ");
       if (item.kind !== "photo" || !item.ref) continue;
       const left = plansFedBy(board, from?.id ?? null);
       const entered = plansFedBy(board, to?.id ?? null);
@@ -848,27 +826,46 @@ export function BoardCanvas(props: Props) {
     });
   };
 
-  /** KAN-91 : une carte Photos (ou Inspirations, retours de la MEP 14) vide, sans lien (`ref`
-   *  = son propre id : elle n'est la carte d'aucun plan, ni la carte Inspirations de départ,
-   *  tant qu'on ne la relie pas). */
+  /** KAN-98 : le compteur d'un node, à côté de son titre ; rien quand il est vide. */
+  const frameCount = (frame: BoardItem): string | null => {
+    const n = items.filter((i) => i.frame === frame.id).length;
+    if (n === 0) return null;
+    const noun = { photos: "photo", inspirations: "image", renders: "rendu" }[
+      frame.role ?? ""
+    ];
+    return noun ? `${n} ${noun}${n > 1 ? "s" : ""}` : null;
+  };
+  /** KAN-98 : le centre de la vue, en coordonnées du tableau (là où la barre d'ajout pose). */
+  const viewCentre = () => {
+    const rect = stage.current?.getBoundingClientRect();
+    return {
+      x: ((rect?.width ?? 0) / 2 - view.x) / view.zoom,
+      y: ((rect?.height ?? 0) / 2 - view.y) / view.zoom,
+    };
+  };
+  /** KAN-91, KAN-98 : une carte vide posée au centre de la vue. Photos ou Moodboard : sans lien
+   *  (`ref` = son propre id : elle n'est la carte d'aucun plan, ni le Moodboard de départ, tant
+   *  qu'on ne la relie pas) ; Rendus : celle d'un plan qui n'en a plus (`ref` = son niveau). */
   const addCard = (
-    role: "photos" | "inspirations",
+    role: "photos" | "inspirations" | "renders",
     text: string,
     hint: string,
+    ref?: string | null,
+    at?: { x: number; y: number },
   ) => {
-    if (!newPhotosAt) return;
     const id = uid();
+    const c = viewCentre();
     const card: BoardItem = {
       id,
       kind: "frame",
-      x: newPhotosAt.x,
-      y: newPhotosAt.y,
-      w: 624,
-      h: 374,
+      x: Math.round(at?.x ?? c.x - NEW_CARD.w / 2),
+      y: Math.round(at?.y ?? c.y - NEW_CARD.h / 2),
+      w: NEW_CARD.w,
+      h: NEW_CARD.h,
       z: Math.min(0, ...items.map((i) => i.z)) - 1,
       locked: false,
       frame: null,
-      ref: id,
+      ref: ref === undefined ? id : ref,
       text,
       role,
     };
@@ -879,15 +876,42 @@ export function BoardCanvas(props: Props) {
   const addPhotosCard = () =>
     addCard(
       "photos",
-      "Photos de la pièce",
-      "Nouvelle carte Photos, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
+      PHOTOS_TITLE,
+      "Nouveau node Photos de la pièce, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
     );
-  const addInspirationsCard = () =>
+  // KAN-98 : un nouveau Moodboard se pose au-dessus du node Rendus (celui du premier plan),
+  // dans la même colonne ; sans node Rendus, au centre de la vue.
+  const addInspirationsCard = () => {
+    const renders = items.filter((i) => i.kind === "frame" && i.role === "renders");
+    const under =
+      renders.find((r) => frameLevel(r) === firstLevelId) ?? renders[0];
     addCard(
       "inspirations",
-      "Inspirations",
-      "Nouvelle carte Inspirations, sans lien : tirez sa poignée « + » vers une ou plusieurs cartes Rendus pour que ses images guident leur allure.",
+      MOODBOARD_TITLE,
+      "Nouveau Moodboard, sans lien : tirez sa poignée « + » vers un ou plusieurs nodes Rendus pour que ses images guident leur allure.",
+      undefined,
+      under ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP } : undefined,
     );
+  };
+  // KAN-98 : un plan dont la carte Rendus a été retirée en retrouve une (une par niveau).
+  const rendered = new Set(
+    items
+      .filter((i) => i.kind === "frame" && i.role === "renders")
+      .map((f) => frameLevel(f)),
+  );
+  const unrendered = plans
+    .map((p) => p.ref)
+    .find((level): level is string => !!level && !rendered.has(level));
+  const addRendersCard = () => {
+    if (!unrendered) return;
+    const plan = plans.find((p) => p.ref === unrendered);
+    addCard(
+      "renders",
+      plan?.text ? `Rendus · ${plan.text}` : "Rendus",
+      "Nouveau node Rendus, relié à son plan.",
+      unrendered === firstLevelId ? null : unrendered,
+    );
+  };
 
   /** KAN-91 : la carte (plan, cadre Photos, Inspirations ou Rendus) sous un point. */
   const cardAt = (at: { x: number; y: number }, except: string) =>
@@ -1217,7 +1241,7 @@ export function BoardCanvas(props: Props) {
         for (const lid of fed) props.onPlanMembers(lid, [firstPhoto], []);
       else if (firstPhoto && cardRole(dropped) !== "photos")
         setToast({
-          text: "Photo posée hors carte : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
+          text: "Photo posée hors node : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
         });
     }
   };
@@ -2024,9 +2048,15 @@ export function BoardCanvas(props: Props) {
               ) : item.role ? (
                 // T7a : un nom long (« Rendus · Variante bureau ») se tronque sur une ligne,
                 // en entier dans l'infobulle.
-                <span className="board-frame-name" title={item.text}>
-                  {item.text}
-                </span>
+                <>
+                  <span className="board-frame-name" title={item.text}>
+                    {item.text}
+                  </span>
+                  {/* KAN-98 : le compteur à côté du titre (« 6 photos », « 4 images »). */}
+                  {frameCount(item) && (
+                    <span className="board-frame-count">{frameCount(item)}</span>
+                  )}
+                </>
               ) : (
                 item.text
               )}
@@ -2295,9 +2325,9 @@ export function BoardCanvas(props: Props) {
           <button
             type="button"
             onClick={toInspirations}
-            title="Comme un glisser dans la carte Inspirations : l'allure de cette image (matières, ambiance) guide les rendus reliés, pas sa géométrie"
+            title="Comme un glisser dans le Moodboard : l'allure de cette image (matières, ambiance) guide les rendus reliés, pas sa géométrie"
           >
-            Dans Inspirations
+            Dans le Moodboard
           </button>
         )}
         <button type="button" onClick={duplicate} title="Dupliquer (Ctrl+D)">
@@ -2474,7 +2504,7 @@ export function BoardCanvas(props: Props) {
               {item.reference && (
                 <span
                   className="board-reference"
-                  title="Dans une carte Inspirations : son allure guide les rendus reliés"
+                  title="Dans un Moodboard : son allure guide les rendus reliés"
                 >
                   Référence
                 </span>
@@ -2486,7 +2516,7 @@ export function BoardCanvas(props: Props) {
                   title={
                     item.kind === "photo"
                       ? "Glissez-la dans « Photos de la pièce » pour qu'elle serve au plan"
-                      : "Glissez-la dans « Inspirations » pour qu'elle guide un rendu"
+                      : "Glissez-la dans le Moodboard pour qu'elle guide un rendu"
                   }
                 >
                   {OFF_CARD}
@@ -2495,9 +2525,9 @@ export function BoardCanvas(props: Props) {
               {overlaps.has(item.id) && (
                 <span
                   className="board-overlap-tag"
-                  title="Cette carte en recouvre une autre : écartez-les pour que les liens restent lisibles"
+                  title="Ce node en recouvre un autre : écartez-les pour que les liens restent lisibles"
                 >
-                  recouvre une carte
+                  recouvre un node
                 </span>
               )}
               {item.locked && (
@@ -2560,42 +2590,6 @@ export function BoardCanvas(props: Props) {
               onEnter={hover.enter}
               onLeave={hover.leave}
             />
-          )}
-          {newPlanAt && (
-            <button
-              type="button"
-              className="board-new-plan"
-              style={{ left: newPlanAt.x, top: newPlanAt.y }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={props.onNewPlan}
-              title="Variante de ce plan, nouvel étage ou plan vide"
-            >
-              <IconPlus aria-hidden="true" /> Nouveau plan
-            </button>
-          )}
-          {newPhotosAt && (
-            <button
-              type="button"
-              className="board-new-plan board-new-photos"
-              style={{ left: newPhotosAt.x, top: newPhotosAt.y }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={addPhotosCard}
-              title="Une carte Photos vide, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent"
-            >
-              <IconPlus aria-hidden="true" /> Nouvelle carte Photos
-            </button>
-          )}
-          {newPhotosAt && (
-            <button
-              type="button"
-              className="board-new-plan board-new-photos board-new-insp"
-              style={{ left: newPhotosAt.x, top: newPhotosAt.y }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={addInspirationsCard}
-              title="Une carte Inspirations vide, sans lien : tirez sa poignée « + » vers une ou plusieurs cartes Rendus"
-            >
-              <IconPlus aria-hidden="true" /> Nouvelle carte Inspirations
-            </button>
           )}
           {marquee && (
             <div
@@ -2686,6 +2680,59 @@ export function BoardCanvas(props: Props) {
             onClose={() => setToast(null)}
             ms={TOAST_MS}
           />
+        )}
+        {!readOnly && (
+          // KAN-98 : barre d'ajout fixe, en bas au centre, même place et même taille à tout
+          // zoom ; un clic pose un node vide (Plan : la boîte « Nouveau plan »). Sans raccourci.
+          <div
+            className="board-addbar"
+            role="group"
+            aria-label="Ajouter"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="board-addbar-label" aria-hidden="true">
+              Ajouter
+            </span>
+            {props.onNewPlan && (
+              <button
+                type="button"
+                className="board-addbar-btn type-plan"
+                onClick={props.onNewPlan}
+                title="Plan : variante d'un plan, nouvel étage ou plan vide"
+              >
+                <IconPlanNode aria-hidden="true" /> Plan
+              </button>
+            )}
+            <button
+              type="button"
+              className="board-addbar-btn type-photos"
+              onClick={addPhotosCard}
+              title="Photos de la pièce : un node vide au centre de la vue (ou glissez-le où vous voulez)"
+            >
+              <IconPhotosNode aria-hidden="true" /> {PHOTOS_TITLE}
+            </button>
+            <button
+              type="button"
+              className="board-addbar-btn type-moodboard"
+              onClick={addInspirationsCard}
+              title="Moodboard : un node vide au-dessus du node Rendus ; ses images guident le style des rendus"
+            >
+              <IconMoodboardNode aria-hidden="true" /> {MOODBOARD_TITLE}
+            </button>
+            <button
+              type="button"
+              className="board-addbar-btn type-renders"
+              onClick={addRendersCard}
+              disabled={!unrendered}
+              title={
+                unrendered
+                  ? "Rendus : le node Rendus d'un plan qui n'en a plus"
+                  : "Rendus : chaque plan a déjà son node Rendus"
+              }
+            >
+              <IconRendersNode aria-hidden="true" /> Rendus
+            </button>
+          </div>
         )}
         <div
           className="board-zoom"

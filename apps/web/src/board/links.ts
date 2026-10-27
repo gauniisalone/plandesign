@@ -19,7 +19,7 @@ export const LINK_NAMES: Record<LinkKind, string> = {
 };
 
 export const NO_PLAN = "Reliez un plan pour rendre";
-export const OFF_CARD = "hors carte : non utilisée";
+export const OFF_CARD = "hors node : non utilisée";
 const NOT_FOR_PLAN = new Set(["file", "render", "contextual"]);
 
 export function cardRole(item: BoardItem | undefined | null): CardRole | null {
@@ -41,9 +41,9 @@ export function cardTitle(item: BoardItem | undefined | null): string {
   return (
     item.text ||
     (item.role === "photos"
-      ? "Photos"
+      ? "Photos de la pièce"
       : item.role === "inspirations"
-        ? "Inspirations"
+        ? "Moodboard"
         : "Rendus")
   );
 }
@@ -77,10 +77,10 @@ export function linkRefusal(
   if (!kind) {
     const s = cardRole(source);
     if (s === "photos")
-      return "Une carte Photos se relie à un plan : ses photos le construisent.";
+      return "Un node Photos de la pièce se relie à un plan : ses photos le construisent.";
     if (s === "inspirations")
-      return "Une carte Inspirations se relie à une carte Rendus : ses images en guident le style.";
-    return "Un plan se relie à une carte Rendus : il en donne la géométrie.";
+      return "Un Moodboard se relie à un node Rendus : ses images en guident le style.";
+    return "Un plan se relie à un node Rendus : il en donne la géométrie.";
   }
   const links = board.links ?? [];
   if (links.some((l) => l.source === source.id && l.target === target.id))
@@ -90,7 +90,7 @@ export function linkRefusal(
     if (taken) {
       const other = board.items.find((i) => i.id === taken.source);
       return kind === "feeds_plan"
-        ? `${cardTitle(target)} lit déjà la carte « ${cardTitle(other)} » : coupez ce lien d'abord.`
+        ? `${cardTitle(target)} lit déjà le node « ${cardTitle(other)} » : coupez ce lien d'abord.`
         : `« ${cardTitle(target)} » rend déjà ${cardTitle(other)} : coupez ce lien d'abord.`;
     }
   }
@@ -111,7 +111,7 @@ export function linkEffect(source: BoardItem, target: BoardItem): string {
  *  Photos trie : une inspiration (image jointe, rendu, variante) n'y entre pas. */
 export function accepts(card: BoardItem | null, item: BoardItem): string | null {
   if (cardRole(card) === "photos" && NOT_FOR_PLAN.has(item.kind))
-    return "Une inspiration ne construit pas le plan : seule une photo réelle de la pièce entre dans la carte Photos.";
+    return "Une inspiration ne construit pas le plan : seule une photo réelle de la pièce entre dans le node Photos de la pièce.";
   return null;
 }
 
@@ -147,7 +147,7 @@ export function targetsOf(board: Board, cardId: string | null): BoardItem[] {
 }
 
 const list = (cards: BoardItem[]) =>
-  cards.map((c) => cardTitle(c)).join(", ") || "aucune carte reliée";
+  cards.map((c) => cardTitle(c)).join(", ") || "aucun node relié";
 
 /** C3 : la phrase de dépôt d'une image, selon la carte quittée et la carte visée. */
 export function dropEffect(
@@ -181,7 +181,7 @@ export function dropEffect(
   const lost = targetsOf(board, from?.id ?? null);
   const verb = fromRole === "photos" ? "servira" : "guidera";
   return {
-    text: `Relâcher hors carte : ${what} ne ${verb} plus ${fromRole === "photos" ? "au " : ""}${list(lost)}`,
+    text: `Relâcher hors node : ${what} ne ${verb} plus ${fromRole === "photos" ? "au " : ""}${list(lost)}`,
     ok: true,
   };
 }

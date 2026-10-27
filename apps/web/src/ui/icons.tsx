@@ -267,6 +267,34 @@ export const IconPlan = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-98 : barre d'ajout. Plan (le plan), Photos de la pièce (un appareil), Moodboard
+ *  (trois images en mosaïque), Rendus (une image et une étincelle). */
+export const IconPlanNode = IconPlan;
+
+export const IconPhotosNode = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </Svg>
+);
+
+export const IconMoodboardNode = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="8" height="9" rx="1" />
+    <rect x="13" y="4" width="8" height="5" rx="1" />
+    <rect x="13" y="11" width="8" height="9" rx="1" />
+    <rect x="3" y="15" width="8" height="5" rx="1" />
+  </Svg>
+);
+
+export const IconRendersNode = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="6" width="14" height="14" rx="2" />
+    <path d="m3 16 4-4 3 3 3-3 4 4" />
+    <path d="M19 2v4M17 4h4" />
+  </Svg>
+);
+
 export const IconPlay = (p: IconProps) => (
   <Svg {...p}>
     <path d="m7 5 12 7-12 7V5z" />

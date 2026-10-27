@@ -57,24 +57,15 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
   const nav = page.getByRole("navigation", { name: "Espaces du projet" });
   await expect(nav.locator(".space-name")).toHaveText("Espace de travail");
 
-  // Retour d'augus (19 oct.) : « + Nouveau plan » est dans l'espace de travail, sous la
-  // dernière rangée Plan + Rendus, et plus dans la barre du haut.
+  // KAN-98 : « Plan » est dans la barre d'ajout, fixe en bas au centre (plus de bouton
+  // flottant sous les rangées), et toujours pas dans la barre du haut.
   await expect(
     page.locator(".topbar").getByRole("button", { name: /Nouveau plan/ }),
   ).toHaveCount(0);
-  const board = page.getByRole("region", { name: "Espace de travail" });
-  const open = board.getByRole("button", { name: "Nouveau plan" });
+  const open = page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name: "Plan", exact: true });
   await expect(open).toBeVisible();
-  const below = async () => {
-    const button = (await open.boundingBox())!;
-    const rows = await board
-      .locator(".board-item.kind-plan, .board-item.kind-frame.role-renders")
-      .evaluateAll((els) =>
-        Math.max(...els.map((e) => e.getBoundingClientRect().bottom)),
-      );
-    return button.y >= rows;
-  };
-  expect(await below()).toBe(true);
   // La petite fenêtre : deux champs, les trois sortes avec les mots d'augus, rien d'autre.
   await open.click();
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
@@ -114,9 +105,8 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
   await expect(
     frames.filter({ hasText: `Rendus · ${base!.name}` }),
   ).toHaveCount(1);
-  // Le bouton suit : toujours sous la dernière rangée.
+  // KAN-98 : la barre d'ajout ne bouge pas avec les rangées.
   await expect(open).toBeVisible();
-  expect(await below()).toBe(true);
   await page.screenshot({ path: path.join(SHOTS, "t7e_rangees.png") });
   if (process.env.E2E_CAPTURE_DIR)
     await page.screenshot({

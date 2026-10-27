@@ -67,11 +67,11 @@ test("rendu contextualisé : source, intention, prompt enrichi modifiable, éche
   await expect(panel).not.toContainText("Photo · Photo");
   const bar = page.getByRole("toolbar", { name: "Actions de la sélection" });
   await bar
-    .getByRole("button", { name: "Dans Inspirations", exact: true })
+    .getByRole("button", { name: "Dans le Moodboard", exact: true })
     .click();
   await expect(photo.locator(".board-reference")).toHaveText("Référence");
   await expect(
-    bar.getByRole("button", { name: "Dans Inspirations", exact: true }),
+    bar.getByRole("button", { name: "Dans le Moodboard", exact: true }),
   ).toHaveCount(0);
 
   // La photo comme source (A4 : sans vue 3D rendue, la photo telle quelle est la seule

@@ -189,17 +189,17 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   const view = (await board.boundingBox())!;
   await dragTo(page, photo, { x: view.x + 24, y: view.y + 24 }, async (p) => {
     await expect(p.locator(".board-drop-hint")).toContainText(
-      "Relâcher hors carte : cette photo ne servira plus au Plan",
+      "Relâcher hors node : cette photo ne servira plus au Plan",
     );
   });
   const toast = page.locator(".board-wire-toast");
-  await expect(toast).toContainText("Hors carte : cette photo ne servira plus");
+  await expect(toast).toContainText("Hors node : cette photo ne servira plus");
   // Le plan ne ment pas : la photo sortie retire sa caméra, pas les murs déjà construits.
   await expect(toast).toContainText(
     "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.",
   );
   await expect(photo.locator(".board-offcard")).toHaveText(
-    "hors carte : non utilisée",
+    "hors node : non utilisée",
   );
   await shot(page, "kan91-5-hors-carte");
   await toast.getByRole("button", { name: "Annuler" }).click();
@@ -214,7 +214,10 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
   const board = page.getByRole("region", { name: "Espace de travail" });
   const cards = board.locator(".board-item.kind-frame.role-photos");
   await expect(cards).toHaveCount(1);
-  await board.getByRole("button", { name: "Nouveau plan" }).click();
+  await page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name: "Plan", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await dialog.getByLabel("Nom").fill("Étage");
   await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
@@ -260,8 +263,11 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
       ]),
     );
 
-  // « Nouvelle carte Photos » : une carte vide, sans lien.
-  await board.getByRole("button", { name: "Nouvelle carte Photos" }).click();
+  // KAN-98 : « Photos de la pièce » dans la barre d'ajout : un node vide, sans lien.
+  await page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name: "Photos de la pièce", exact: true })
+    .click();
   await expect(cards).toHaveCount(3);
   await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
     2,
@@ -270,8 +276,10 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
 
 /** Un étage de plus, depuis l'espace de travail ; on y revient. */
 async function addStorey(page: Page) {
-  const board = page.getByRole("region", { name: "Espace de travail" });
-  await board.getByRole("button", { name: "Nouveau plan" }).click();
+  await page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name: "Plan", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await dialog.getByLabel("Nom").fill("Étage");
   await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
@@ -313,7 +321,7 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   await etage.getByRole("button", { name: "Supprimer le plan" }).click();
   await expect(plans).toHaveCount(1, { timeout: 30_000 });
   expect(asked).toContain(
-    "ses photos restent sur l'espace de travail, hors carte",
+    "ses photos restent sur l'espace de travail, hors node",
   );
   await expect(cards).toHaveCount(1);
   await expect(
@@ -321,7 +329,7 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   ).toHaveCount(1);
   await expect(photo).toHaveCount(1);
   await expect(photo.locator(".board-offcard")).toHaveText(
-    "hors carte : non utilisée",
+    "hors node : non utilisée",
   );
   await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
     1,
@@ -351,8 +359,9 @@ test("deux cartes Inspirations en N-N : elles entrent par la droite des Rendus, 
   await expect(insp).toHaveCount(1);
   // La carte de départ guide les deux cartes Rendus ; la nouvelle n'est reliée à rien.
   await expect(guides).toHaveCount(2);
-  await board
-    .getByRole("button", { name: "Nouvelle carte Inspirations" })
+  await page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name: "Moodboard", exact: true })
     .click();
   await expect(insp).toHaveCount(2);
   await expect(guides).toHaveCount(2);

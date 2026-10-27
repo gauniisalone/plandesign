@@ -1234,7 +1234,7 @@ test("KAN-58 : le journal d'activité, avec le détail des gestes, lu par un lec
     .click();
   const panel = kim.getByRole("region", { name: "Activité", exact: true });
   await expect(
-    panel.getByRole("button", { name: /Gilles a supprimé « Inspirations »/ }),
+    panel.getByRole("button", { name: /Gilles a supprimé « Moodboard »/ }),
   ).toBeVisible({ timeout: 10_000 });
   const added = panel.getByRole("button", {
     name: /Fanny a ajouté « Canapé »/,

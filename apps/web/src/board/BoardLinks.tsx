@@ -297,7 +297,7 @@ export function WireLayer({
           {drag.refused ??
             (drag.target
               ? linkEffect(drag.source, drag.target)
-              : "Relâchez sur une carte pour la relier")}
+              : "Relâchez sur un node pour le relier")}
         </div>
       )}
       {shown && !drag && (

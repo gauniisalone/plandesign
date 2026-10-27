@@ -38,7 +38,7 @@ def test_fixed_frames_exist_from_the_start_and_stay_removed(tmp_path: Path) -> N
     frames = {i["role"]: i for i in board["items"] if i["kind"] == "frame"}
     assert set(FIXED_FRAMES) <= set(frames)
     assert frames["photos"]["text"] == "Photos de la pièce"
-    assert frames["inspirations"]["text"] == "Inspirations"
+    assert frames["inspirations"]["text"] == "Moodboard"  # KAN-98
     # T4 : le cadre Rendus est là aussi, à droite du plan, à sa hauteur.
     plan = next(i for i in board["items"] if i["kind"] == "plan")
     assert frames["renders"]["text"] == "Rendus"

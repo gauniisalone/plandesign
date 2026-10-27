@@ -47,9 +47,16 @@ AUTO_KINDS = ("photo", "render", "plan", "file", "video", "pdf", "contextual")
 """Ce que le projet fournit : retiré à la main, noté dans `dismissed`."""
 FIXED_FRAMES: dict[str, str] = {
     "photos": "Photos de la pièce",
-    "inspirations": "Inspirations",
+    "inspirations": "Moodboard",
     "renders": "Rendus",
 }
+VARIANTS_TITLE = "Variantes"
+"""KAN-98 : le cadre des rendus contextualisés (A1, rôle `moodboard`), qui s'appelait
+« Moodboard » avant que ce nom passe aux inspirations."""
+OLD_INSPIRATIONS_TITLE = "Inspirations"
+"""KAN-98 : l'ancien titre par défaut du Moodboard ; un titre encore égal au défaut d'avant
+(« Inspirations », « Inspirations · <niveau> ») est renommé à la lecture, jamais un titre
+choisi par l'utilisateur."""
 """Cadres toujours présents sur un tableau (T2), même vides : les photos réelles de la pièce
 (elles font le plan) et les images d'ambiance (jointes, cochées Référence). Retirés à la
 main, ils ne reviennent pas (`dismissed` : `frame:<rôle>`)."""
@@ -66,6 +73,13 @@ départ (≈ 34 %). Les tableaux déjà posés gardent leur place."""
 CELL_W, CELL_H = 280.0, 190.0
 COLS = 2
 FRAME_W = PAD * 2 + COLS * CELL_W + (COLS - 1) * 16.0
+
+
+def cell_size(frame: BoardItem) -> tuple[float, float]:
+    """KAN-98 : la case d'une image dans un cadre remplit sa largeur (2 colonnes), au même
+    rapport que CELL_W × CELL_H ; un cadre de la largeur d'avant (FRAME_W) garde ses cases."""
+    width = max(CELL_W, (frame.w - PAD * 2 - (COLS - 1) * 16.0) / COLS)
+    return width, width * CELL_H / CELL_W
 NOTE_W, NOTE_H = 300.0, 170.0
 PLAN_X, PLAN_W, PLAN_H = FRAME_W + 2 * GAP, 900.0, 700.0
 FILE_W, FILE_H = 220.0, 72.0
@@ -428,6 +442,26 @@ def _join_files(
         added.into("files", "Fichiers", kind, mid, name)
 
 
+def _renamed_moodboards(items: list[BoardItem]) -> list[BoardItem]:
+    """KAN-98 : « Inspirations » devient « Moodboard », seulement pour un titre encore égal au
+    défaut d'avant (« Inspirations » ou « Inspirations · <suite> ») ; un titre choisi à la main
+    et les positions ne bougent pas. Un texte, pas un champ : le retour arrière le relit."""
+    old, new = OLD_INSPIRATIONS_TITLE, FIXED_FRAMES["inspirations"]
+    out: list[BoardItem] = []
+    for item in items:
+        text = item.text or ""
+        # Le cadre A1 libère d'abord le nom (renommé seulement s'il porte encore son défaut).
+        if item.kind == "frame" and item.role == "moodboard" and text == new:
+            item = item.model_copy(update={"text": VARIANTS_TITLE})
+        elif item.kind == "frame" and item.role == "inspirations":
+            if text == old:
+                item = item.model_copy(update={"text": new})
+            elif text.startswith(f"{old} · "):
+                item = item.model_copy(update={"text": new + text[len(old) :]})
+        out.append(item)
+    return out
+
+
 def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     board: Board | None, project: Project, runs_dir: Path, media: list[MediaRef] | None = None
 ) -> tuple[Board, bool]:
@@ -469,6 +503,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
         [i for i in items if i.id not in gone and i.frame not in gone], lids
     )
     items = _without_stray_files(items)
+    items = _renamed_moodboards(items)
 
     present = {_key(i) for i in items}
     added = _Adder(items)
@@ -514,10 +549,11 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
                 "inspiration",
             )
     _join_files(added, joined, media or [], dismissed)
-    # Rendus contextualisés (A1) : dans le cadre Moodboard, avec leur variante.
+    # Rendus contextualisés (A1) : dans le cadre Variantes (KAN-98 : « Moodboard » est
+    # désormais le nom des inspirations), avec leur variante.
     for ref, title in have.contextual:
         if f"contextual:{ref}" not in present | dismissed:
-            added.into("moodboard", "Moodboard", "contextual", ref, title)
+            added.into("moodboard", VARIANTS_TITLE, "contextual", ref, title)
 
     # KAN-91 : migration douce. Une image cochée « Référence » hors de toute carte métier (avant
     # les cartes reliées) entre dans la carte Inspirations : elle continue de guider les rendus,
@@ -740,13 +776,14 @@ class _Adder:
     ) -> None:
         frame = frame or self._frame(role, title)
         x, y, frame = self._slot(frame)
+        cell_w, cell_h = cell_size(frame)
         self.items.append(
             BoardItem(
                 kind=kind,  # type: ignore[arg-type]
                 x=x,
                 y=y,
-                w=CELL_W,
-                h=CELL_H,
+                w=cell_w,
+                h=cell_h,
                 frame=frame.id,
                 ref=ref,
                 text=text,
@@ -758,9 +795,10 @@ class _Adder:
         """La case libre suivante du cadre (il grandit d'une rangée s'il est plein)."""
         inside = sum(1 for i in self.items if i.frame == frame.id)
         row, col = divmod(inside, COLS)
-        x = frame.x + PAD + col * (CELL_W + 16.0)
-        y = frame.y + PAD_TOP + row * (CELL_H + 16.0)
-        need = PAD_TOP + PAD + (row + 1) * CELL_H + row * 16.0
+        cell_w, cell_h = cell_size(frame)
+        x = frame.x + PAD + col * (cell_w + 16.0)
+        y = frame.y + PAD_TOP + row * (cell_h + 16.0)
+        need = PAD_TOP + PAD + (row + 1) * cell_h + row * 16.0
         if frame.h < need:
             grown = frame.model_copy(update={"h": need})
             self._push_below(frame, need - frame.h)

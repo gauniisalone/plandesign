@@ -62,7 +62,7 @@ def card_title(item: BoardItem | None) -> str:
         return "?"
     if item.kind == "plan":
         return f"Plan · {item.text}" if item.text else "Plan"
-    return item.text or {"photos": "Photos", "inspirations": "Inspirations"}.get(
+    return item.text or {"photos": "Photos de la pièce", "inspirations": "Moodboard"}.get(
         item.role or "", "Rendus"
     )
 
