@@ -13,7 +13,7 @@ from tests.accounts.access_matrix import REFERENCE, build, render
 def test_the_access_matrix_matches_its_reference(tmp_path: Path, migrated_url: str) -> None:
     apps = build(tmp_path, migrated_url)
     current = render(apps)
-    apps["comptes"].state.accounts.engine.dispose()  # type: ignore[attr-defined]
+    apps["comptes"].state.accounts.engine.dispose()
     expected = REFERENCE.read_text(encoding="utf-8")
     if current != expected:
         diff = "".join(

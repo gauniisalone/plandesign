@@ -129,11 +129,11 @@ def rows(apps: dict[str, FastAPI]) -> list[dict[str, str]]:
                         strict=True,
                     )
                 )
-        for route in _websockets(list(app.routes)):
-            if ("WS", route.path) not in seen:
-                body, refused = _body(route.endpoint)
-                values = ("WS", route.path, label, "dans la route", "", body, refused)
-                seen[("WS", route.path)] = dict(zip(FIELDS, values, strict=True))
+        for socket in _websockets(list(app.routes)):
+            if ("WS", socket.path) not in seen:
+                body, refused = _body(socket.endpoint)
+                values = ("WS", socket.path, label, "dans la route", "", body, refused)
+                seen[("WS", socket.path)] = dict(zip(FIELDS, values, strict=True))
     kept = [seen[k] for k in sorted(seen, key=lambda k: (k[1], k[0]))]
     return [r for r in kept if r["chemin"].startswith(("/api", "/ws"))]
 
