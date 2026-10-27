@@ -2509,11 +2509,16 @@ export function PlanCanvas({
           const shift = moving
             ? `translate(${S(moving.current).x - S(moving.start).x} ${S(moving.current).y - S(moving.start).y})`
             : undefined;
-          const middle = t.beam.length
-            ? S({
-                x: t.beam.reduce((s, p) => s + p.x, 0) / t.beam.length,
-                y: t.beam.reduce((s, p) => s + p.y, 0) / t.beam.length,
-              })
+          // L'étiquette va à droite du poteau le plus haut à l'écran, loin du nom de la pièce.
+          const tops = t.posts.map((p) => {
+            const q = p.map(S);
+            return {
+              x: Math.max(...q.map((c) => c.x)),
+              y: q.reduce((s, c) => s + c.y, 0) / q.length,
+            };
+          });
+          const middle = tops.length
+            ? tops.reduce((a, b) => (b.y < a.y ? b : a))
             : null;
           return (
             <g
@@ -2538,8 +2543,8 @@ export function PlanCanvas({
               {selected && middle && t.beam_height != null && (
                 <text
                   className="plan-truss-label"
-                  x={middle.x}
-                  y={middle.y - 8}
+                  x={middle.x + 6}
+                  y={middle.y + 4}
                 >
                   poutre à {metres(t.beam_height)}
                 </text>

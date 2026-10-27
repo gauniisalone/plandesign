@@ -1865,13 +1865,15 @@ button.cta:hover:not(:disabled) {
   stroke-width: 1.5;
   stroke-dasharray: 8 3 2 3;
   cursor: move;
+  /* Toute la poutre se saisit, pas seulement son trait. */
+  pointer-events: all;
 }
 .plan .plan-truss.selected .plan-beam {
   stroke-width: 2.5;
 }
 .plan .plan-truss-label {
   font-size: 11px;
-  text-anchor: middle;
+  text-anchor: start;
   fill: var(--pd-encre);
   paint-order: stroke;
   stroke: var(--plan-room);

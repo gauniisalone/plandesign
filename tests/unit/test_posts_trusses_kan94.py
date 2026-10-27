@@ -277,6 +277,9 @@ def test_the_plan_gets_the_ridge_the_gables_and_the_computed_trusses() -> None:
     derived = compute_derived(level)
     assert derived.ridge is not None and derived.truss_blocked is None
     assert {g.wall_id for g in derived.ridge.gables} == {first.id, second.id}
+    # Deux pignons au même nom (ou sans nom) se distinguent par leur côté.
+    names = {g.name for g in derived.ridge.gables}
+    assert len(names) == 2, names
     shown = derived.trusses[truss.id]
     assert shown.problem is None and len(shown.posts) == 2 and len(shown.beam) == 4
     assert shown.beam_height == pytest.approx(2.0)

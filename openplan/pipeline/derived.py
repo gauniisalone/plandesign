@@ -35,7 +35,7 @@ from openplan.schemas.derived import (
     DerivedTruss,
     DerivedWall,
 )
-from openplan.schemas.elements import Post, Room, Stairs, Truss, Wall
+from openplan.schemas.elements import DOOR_KINDS, Opening, Post, Room, Stairs, Truss, Wall
 from openplan.schemas.scene import Level
 from openplan.validation.layout import clearance_at
 
@@ -127,14 +127,38 @@ def _ridge(level: Level, graph: WallGraph, ridge: Ridge | None) -> DerivedRidge 
         x, y = ridge.at(t)
         return Point2(x=x, y=y)
 
+    middle = at((ridge.t0 + ridge.t1) / 2.0)
+    found = _gables(level, graph, ridge)
+    given = [wall.name for wall, _ in found]
     return DerivedRidge(
         start=at(ridge.t0),
         end=at(ridge.t1),
         gables=[
-            DerivedGable(wall_id=wall.id, name=wall.name or "Pignon", face=at(face))
-            for wall, face in _gables(level, graph, ridge)
+            DerivedGable(
+                wall_id=wall.id,
+                name=(
+                    wall.name
+                    if wall.name and given.count(wall.name) == 1
+                    else _gable_name(level, wall, at(face), middle)
+                ),
+                face=at(face),
+            )
+            for wall, face in found
         ],
     )
+
+
+def _gable_name(level: Level, wall: Wall, face: Point2, middle: Point2) -> str:
+    """Un pignon sans nom propre (ou au même nom que l'autre), dit par son côté (le nord est en
+    haut du plan) et, s'il porte une porte, « mur de la porte » : la distance se lit
+    « 4,90 m depuis le mur de la porte »."""
+    door = any(
+        isinstance(e, Opening) and e.host_wall == wall.id and e.kind in DOOR_KINDS
+        for e in level.elements.values()
+    )
+    dx, dy = face.x - middle.x, face.y - middle.y
+    side = ("est" if dx > 0 else "ouest") if abs(dx) >= abs(dy) else ("nord" if dy > 0 else "sud")
+    return f"Mur de la porte ({side})" if door else f"{wall.name or 'Pignon'} {side}"
 
 
 def _truss(level: Level, graph: WallGraph, ridge: Ridge | None, truss: Truss) -> DerivedTruss:

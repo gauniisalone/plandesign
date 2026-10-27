@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createEmptyProject, goSpace, waitNoHeavyJob } from "./helpers";
+import {
+  createEmptyProject,
+  goSpace,
+  showPanel,
+  waitNoHeavyJob,
+} from "./helpers";
 
 /** KAN-94, lot L3 : poteaux et fermes intermédiaires dans le plan 2D, sur des combles créés
  *  par l'API (6 × 5 m, faîtage 3,20 m). Un poteau posé d'un clic (outil « Poteau »), glissé,
@@ -79,7 +84,7 @@ test("poteau en 2D : un clic le pose, glisser le déplace, Ctrl+Z le remet", asy
   await expect(post).toHaveCount(1, { timeout: 30_000 });
   const before = (await elements(page, id, level, "post"))[0]![1].position!;
 
-  await page.getByRole("button", { name: "Sélection" }).click();
+  await page.getByRole("button", { name: "Sélection", exact: true }).click();
   await drag(page, "polygon.plan-post", 50, 0);
   await expect
     .poll(
@@ -133,8 +138,12 @@ test("ferme intermédiaire en 2D : ajoutée, glissée le long du faîtage, écar
     Math.hypot(ux, uy);
   expect(across).toBeLessThan(0.01);
 
-  // Inspecteur : l'écartement des poteaux.
+  // Inspecteur (panneau fermé par défaut) : l'écartement des poteaux.
   await page.locator(".plan-truss .plan-beam").click();
+  await showPanel(page);
+  await expect(page.locator(".inspector h2").first()).toContainText(
+    "Ferme intermédiaire",
+  );
   const spacing = page.getByLabel("Écartement des poteaux");
   await spacing.fill("1.4");
   await spacing.press("Enter");
@@ -142,8 +151,22 @@ test("ferme intermédiaire en 2D : ajoutée, glissée le long du faîtage, écar
     .poll(async () => (await elements(page, id, level, "truss"))[0]![1].spacing)
     .toBe(1.4);
   await expect(page.locator(".plan-truss-label")).toContainText("poutre à");
-  if (process.env.E2E_CAPTURE_DIR)
+  // Les pignons sans nom se distinguent par leur côté (deux « Pignon » pareils, avant).
+  const options = await page
+    .getByLabel("Pignon de référence")
+    .locator("option")
+    .allTextContents();
+  expect(new Set(options).size).toBe(2);
+  if (process.env.E2E_CAPTURE_DIR) {
     await page.screenshot({
       path: `${process.env.E2E_CAPTURE_DIR}/kan94-2-ferme-2d.png`,
     });
+    // Capture 3D (rapport L3) : la ferme et un poteau en bois sous la charpente.
+    await page.getByRole("button", { name: "3D", exact: true }).click();
+    await page.locator("canvas").first().waitFor({ state: "visible" });
+    await page.waitForTimeout(4000);
+    await page.screenshot({
+      path: `${process.env.E2E_CAPTURE_DIR}/kan94-3-ferme-3d.png`,
+    });
+  }
 });
