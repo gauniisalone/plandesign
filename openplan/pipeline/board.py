@@ -84,6 +84,13 @@ def cell_size(frame: BoardItem) -> tuple[float, float]:
 
 NOTE_W, NOTE_H = 300.0, 170.0
 PLAN_X, PLAN_W, PLAN_H = FRAME_W + 2 * GAP, 900.0, 700.0
+NODE_W, NODE_H = 780.0, 468.0
+"""KAN-98 L2 : un espace de travail neuf pose des nodes plus grands (ceux de la barre d'ajout) :
+le Moodboard en haut, au-dessus de Rendus, puis la rangée Photos → Plan → Rendus. Un espace
+déjà posé garde ses tailles et ses places (« Ranger », KAN-100, viendra)."""
+WIDE_PLAN_X = NODE_W + 2 * GAP
+WIDE_ROW_Y = NODE_H + GAP
+LEGACY_NODE_H = PAD_TOP + PAD + CELL_H
 FILE_W, FILE_H = 220.0, 72.0
 INSPIRATION_DIR = "inspiration"
 
@@ -514,7 +521,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     items = _renamed_moodboards(items)
 
     present = {_key(i) for i in items}
-    added = _Adder(items)
+    added = _Adder(items, wide=fresh)
     first = have.plans[0][0] if have.plans else None
     for lid, name in have.plans:
         if f"plan:{lid}" not in present | dismissed:
@@ -616,12 +623,29 @@ def photo_into_card(board: Board, image_id: str, card_id: UUID) -> Board:
     return board.model_copy(update={"items": bl.with_membership(added.items)})
 
 
+def is_wide(items: list[BoardItem]) -> bool:
+    """KAN-98 L2 : l'espace a-t-il été posé en grand ? Un node fixe (Photos, Moodboard, Rendus ;
+    pas un node ajouté à la main, dont `ref` est son propre id) de la largeur neuve le dit."""
+    return any(
+        i.kind == "frame"
+        and i.role in ("photos", "inspirations", "renders")
+        and i.ref != str(i.id)
+        and i.w >= NODE_W - 1.0
+        for i in items
+    )
+
+
 class _Adder:
     """Pose les nouveaux éléments : dans leur cadre (créé au besoin, agrandi d'une rangée
     quand il est plein), la note sous les cadres, le plan à droite."""
 
-    def __init__(self, items: list[BoardItem]) -> None:
+    def __init__(self, items: list[BoardItem], *, wide: bool = False) -> None:
         self.items = items
+        # KAN-98 L2 : la pose en grand, pour un espace neuf ou déjà posé ainsi.
+        self.wide = wide or is_wide(items)
+        self.node_w = NODE_W if self.wide else FRAME_W
+        self.node_h = NODE_H if self.wide else LEGACY_NODE_H
+        self.plan_x = WIDE_PLAN_X if self.wide else PLAN_X
 
     def frame(self, role: BoardRole, title: str) -> None:
         """Un cadre nommé, créé s'il manque (T2 : cadres fixes, même vides)."""
@@ -651,13 +675,13 @@ class _Adder:
             right, top = plan.x + plan.w + GAP, plan.y
         else:
             plans = [i for i in self.items if i.kind == "plan"]
-            right = max((i.x + i.w for i in plans), default=PLAN_X + PLAN_W) + GAP
-            top = min((i.y for i in plans), default=0.0)
+            right = max((i.x + i.w for i in plans), default=self.plan_x + PLAN_W) + GAP
+            top = min((i.y for i in plans), default=WIDE_ROW_Y if self.wide else 0.0)
         frame = BoardItem(
             kind="frame",
             x=right,
             y=top,
-            w=FRAME_W,
+            w=self.node_w,
             h=PLAN_H,
             text=title,
             role="renders",
@@ -711,8 +735,8 @@ class _Adder:
             kind="frame",
             x=0.0,
             y=top,
-            w=FRAME_W,
-            h=PAD_TOP + PAD + CELL_H,
+            w=self.node_w,
+            h=self.node_h,
             text=title,
             role="photos",
             ref=level_id,
@@ -754,12 +778,20 @@ class _Adder:
         )
         if found is not None:
             return found
+        x, y = 0.0, self._left_bottom()
+        if self.wide and role == "inspirations":
+            # KAN-98 L2 : le Moodboard en haut, dans la colonne des Rendus, au-dessus d'eux.
+            x, y = self.plan_x + PLAN_W + GAP, 0.0
+        elif self.wide and role == "photos":
+            # Au début de la rangée du premier plan, sous la ligne du Moodboard.
+            plans = [i.y for i in self.items if i.kind == "plan"]
+            y = min(plans, default=WIDE_ROW_Y)
         frame = BoardItem(
             kind="frame",
-            x=0.0,
-            y=self._left_bottom(),
-            w=FRAME_W,
-            h=PAD_TOP + PAD + CELL_H,
+            x=x,
+            y=y,
+            w=self.node_w,
+            h=self.node_h,
             text=title,
             role=role,
             z=-1,
@@ -768,8 +800,9 @@ class _Adder:
         return frame
 
     def _left_bottom(self) -> float:
-        left = [i for i in self.items if i.x < PLAN_X - GAP and i.frame is None]
-        return max((i.y + i.h for i in left), default=-GAP) + GAP
+        left = [i for i in self.items if i.x < self.plan_x - GAP and i.frame is None]
+        default = (WIDE_ROW_Y if self.wide else 0.0) - GAP
+        return max((i.y + i.h for i in left), default=default) + GAP
 
     def into(
         self,
@@ -825,14 +858,16 @@ class _Adder:
         """Un cadre qui grandit pousse ce qui est posé dessous, dans la même colonne ; à droite
         de la colonne des cadres (T7e), les rangées suivantes entières (plan et ses rendus)."""
         bottom = frame.y + frame.h
-        right = frame.x >= PLAN_X - GAP
+        right = frame.x >= self.plan_x - GAP
+        # KAN-98 L2 : le Moodboard du haut pousse toutes les rangées dessous, Photos comprises.
+        top = self.wide and frame.role == "inspirations" and frame.y < WIDE_ROW_Y
         moved = {
             i.id
             for i in self.items
             if i.id != frame.id
             and i.frame is None
             and i.y >= bottom
-            and (i.x + i.w > PLAN_X - GAP if right else i.x < frame.x + frame.w)
+            and (top or (i.x + i.w > self.plan_x - GAP if right else i.x < frame.x + frame.w))
         }
         self.items[:] = [
             i.model_copy(update={"y": i.y + dy}) if i.id in moved or i.frame in moved else i
@@ -883,9 +918,11 @@ class _Adder:
         row = [
             i for i in self.items if i.kind == "plan" or (i.kind == "frame" and i.role == "renders")
         ]
-        y = max((i.y + i.h for i in row), default=-GAP) + GAP
+        # KAN-98 L2 : en grand, la première rangée commence sous la ligne du Moodboard.
+        start = (WIDE_ROW_Y if self.wide else 0.0) - GAP
+        y = max((i.y + i.h for i in row), default=start) + GAP
         self.items.append(
-            BoardItem(kind="plan", x=PLAN_X, y=y, w=PLAN_W, h=PLAN_H, ref=level_id, text=name)
+            BoardItem(kind="plan", x=self.plan_x, y=y, w=PLAN_W, h=PLAN_H, ref=level_id, text=name)
         )
 
 

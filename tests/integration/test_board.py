@@ -78,11 +78,13 @@ def test_first_layout_shows_photos_renders_and_plan(tmp_path: Path) -> None:
     frames = {i["role"]: i for i in board["items"] if i["kind"] == "frame"}
     photo = next(i for i in board["items"] if i["kind"] == "photo")
     assert photo["frame"] == frames["photos"]["id"]
-    # Maquette d'augus : Photos puis Inspirations à gauche, le plan au centre, Rendus à droite.
+    # KAN-98 L2 (décision d'augus du 26 oct., remplace la maquette du 16 oct.) : Photos à
+    # gauche, le plan au centre, Rendus à droite, et le Moodboard au-dessus de Rendus.
     plan = next(i for i in board["items"] if i["kind"] == "plan")
-    assert frames["photos"]["x"] == frames["inspirations"]["x"] == 0.0
-    assert frames["photos"]["y"] == 0.0
-    assert frames["inspirations"]["y"] > frames["photos"]["y"]
+    assert frames["photos"]["x"] == 0.0
+    assert frames["photos"]["y"] == plan["y"] == frames["renders"]["y"]
+    assert frames["inspirations"]["x"] == frames["renders"]["x"]
+    assert frames["inspirations"]["y"] + frames["inspirations"]["h"] < frames["renders"]["y"]
     assert frames["photos"]["x"] + frames["photos"]["w"] < plan["x"]
     assert frames["renders"]["x"] > plan["x"] + plan["w"]
     assert (store.project_dir(project.id) / "board.json").is_file()
@@ -109,7 +111,8 @@ def test_an_old_requirements_note_leaves_and_the_left_column_moves_up(tmp_path: 
     after = client.get(f"/api/projects/{project.id}/board").json()
     assert not any(i["kind"] == "requirements" for i in after["items"])
     frames = {i["role"]: i for i in after["items"] if i["kind"] == "frame"}
-    assert frames["photos"]["y"] == 0.0
+    start = next(i for i in board.items if i.kind == "frame" and i.role == "photos")
+    assert frames["photos"]["y"] == start.y, "remontée à sa place d'avant la note"
     photo = next(i for i in after["items"] if i["kind"] == "photo")
     assert frames["photos"]["y"] <= photo["y"] < frames["photos"]["y"] + frames["photos"]["h"]
 
