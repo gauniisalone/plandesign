@@ -6962,6 +6962,17 @@ button.link.home-empty-link {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* KAN-100 : « Ranger », séparé des quatre ajouts par un filet. Noms vérifiés libres :
+   board-addbar-sep, board-arrange. */
+.board-addbar-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 8px 4px;
+  background: var(--line);
+}
+.board-arrange svg {
+  color: var(--muted);
+}
 .board-addbar-btn svg {
   width: 20px;
   height: 20px;

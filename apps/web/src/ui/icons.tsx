@@ -295,6 +295,16 @@ export const IconRendersNode = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-100 : « Ranger » : trois colonnes alignées et une flèche de rangement. */
+export const IconArrange = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="5" height="7" rx="1" />
+    <rect x="10" y="4" width="5" height="7" rx="1" />
+    <rect x="17" y="4" width="4" height="7" rx="1" />
+    <path d="M3 17h18M17 14l3 3-3 3" />
+  </Svg>
+);
+
 export const IconPlay = (p: IconProps) => (
   <Svg {...p}>
     <path d="m7 5 12 7-12 7V5z" />

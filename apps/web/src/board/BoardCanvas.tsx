@@ -47,6 +47,7 @@ import {
   IconPlanNode,
   IconPlus,
   IconRendersNode,
+  IconArrange,
   IconReact,
   IconRedo,
   IconSliders,
@@ -71,6 +72,7 @@ import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
 import { overlapping } from "./wires";
 import { MAQUETTE_NODE_PX, TIER_NAMES, zoomTier } from "./tiers";
+import { arrange } from "./arrange";
 import {
   accepts,
   cardRole,
@@ -747,6 +749,22 @@ export function BoardCanvas(props: Props) {
   // ------------------------------------------------------------ gestes
   const commit = (next: BoardItem[]) => props.onCommit(next);
   const selection = items.filter((i) => selected.has(i.id));
+
+  // KAN-100 : « Ranger » : la pose de KAN-98 L2 pour les nodes reliés, en un seul geste
+  // (un pas d'historique, diffusé en direct). Vide : déjà rangé, le bouton est grisé.
+  const arranged = useMemo(
+    () => arrange(items, board.links ?? []),
+    [items, board.links],
+  );
+  const arrangeAll = () => {
+    if (!arranged.size) return;
+    commit(
+      items.map((i) => {
+        const box = arranged.get(i.id);
+        return box ? { ...i, ...box } : i;
+      }),
+    );
+  };
 
   const remove = () => {
     const planned = selection.filter((i) => i.kind === "plan");
@@ -2828,6 +2846,22 @@ export function BoardCanvas(props: Props) {
               }
             >
               <IconRendersNode aria-hidden="true" /> Rendus
+            </button>
+            {/* KAN-100 : « Ranger », séparé des ajouts par un filet ; un seul geste (un
+                Ctrl+Z, vu en direct), grisé quand tout est déjà rangé. */}
+            <span className="board-addbar-sep" aria-hidden="true" />
+            <button
+              type="button"
+              className="board-addbar-btn board-arrange"
+              onClick={arrangeAll}
+              disabled={arranged.size === 0}
+              title={
+                arranged.size
+                  ? "Ranger : les nodes reliés en colonnes, Photos de la pièce → Plan → Rendus, Moodboard au-dessus ; Ctrl+Z l'annule"
+                  : "Ranger : l'espace de travail est déjà rangé"
+              }
+            >
+              <IconArrange aria-hidden="true" /> Ranger
             </button>
           </div>
         )}

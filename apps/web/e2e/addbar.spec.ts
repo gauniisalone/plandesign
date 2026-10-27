@@ -43,7 +43,10 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
     "Photos de la pièce",
     "Moodboard",
     "Rendus",
+    // KAN-100 : « Ranger », après un filet ; grisé dans un espace neuf (déjà rangé).
+    "Ranger",
   ]);
+  await expect(bar.getByRole("button", { name: "Ranger" })).toBeDisabled();
   // Plus de boutons flottants dans la toile.
   await expect(board.locator(".board-new-plan")).toHaveCount(0);
   await expect(
