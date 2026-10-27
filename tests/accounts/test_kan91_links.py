@@ -103,7 +103,9 @@ def test_two_levels_each_photo_card_feeds_only_its_plan(tmp_path: Path, migrated
     image = sent.json()["image"]["id"]
     board = m["viewer"].get(f"/api/projects/{pid}/board").json()
     cards = {i["ref"]: i for i in board["items"] if i["kind"] == "frame" and i["role"] == "photos"}
-    assert set(cards) == {None, storey} and cards[storey]["text"] == "Photos de la pièce · Étage"
+    # KAN-93 : la carte du premier plan porte la `ref` de son plan, comme celle de l'étage.
+    first = next(iter(owner.get(f"/api/projects/{pid}").json()["levels"]))
+    assert set(cards) == {first, storey} and cards[storey]["text"] == "Photos de la pièce · Étage"
     photo = next(i for i in board["items"] if i.get("ref") == image)
     assert photo["frame"] == cards[storey]["id"]
     plans = {i["ref"]: i["id"] for i in board["items"] if i["kind"] == "plan"}

@@ -172,7 +172,7 @@ def test_board_has_one_row_per_plan_and_follows_undo(tmp_path: Path) -> None:
     frames = [i for i in board.items if i.kind == "frame" and i.role == "renders"]
     plans = {i.ref: i for i in board.items if i.kind == "plan"}
     assert len(frames) == 2 and set(plans) == {str(base.id), str(var)}
-    first = next(f for f in frames if f.ref is None)
+    first = next(f for f in frames if f.ref == str(base.id))  # KAN-93 : `ref` explicite
     second = next(f for f in frames if f.ref == str(var))
     assert first.text == f"Rendus · {base.name}" and second.text == "Rendus · Variante bureau"
     # Chaque cadre Rendus à droite de son plan, à sa hauteur ; la variante dessous.
@@ -186,7 +186,7 @@ def test_board_has_one_row_per_plan_and_follows_undo(tmp_path: Path) -> None:
     board2, changed = sync_board(board, undone, runs)
     assert changed
     frames2 = [i for i in board2.items if i.kind == "frame" and i.role == "renders"]
-    assert [f.ref for f in frames2] == [None] and frames2[0].text == "Rendus"
+    assert [f.ref for f in frames2] == [str(base.id)] and frames2[0].text == "Rendus"
     renders2 = {i.ref: i for i in board2.items if i.kind == "render"}
     assert renders2[other].frame == frames2[0].id and renders2[mine].frame == frames2[0].id
 
@@ -199,13 +199,14 @@ def test_each_plan_gets_its_own_photo_card_and_photos_stay_put(tmp_path: Path) -
     runs = tmp_path / "runs"
     board, _ = sync_board(None, project, runs)
     first = next(i for i in board.items if i.kind == "frame" and i.role == "photos")
-    assert first.ref is None and first.text == "Photos de la pièce"
+    assert first.ref == str(base.id) and first.text == "Photos de la pièce"
     after, storey = add_plan(project, NewPlan(name="Étage", kind="storey"))
     board2, changed = sync_board(board, after, runs)
     assert changed
     cards = {i.ref: i for i in board2.items if i.kind == "frame" and i.role == "photos"}
-    assert set(cards) == {None, str(storey)}
-    assert cards[None].id == first.id and cards[None].text == f"Photos de la pièce · {base.name}"
+    assert set(cards) == {str(base.id), str(storey)}
+    mine = cards[str(base.id)]
+    assert mine.id == first.id and mine.text == f"Photos de la pièce · {base.name}"
     assert cards[str(storey)].text == "Photos de la pièce · Étage"
     plans = {i.ref: i.id for i in board2.items if i.kind == "plan"}
     feeds = {(k.source, k.target) for k in board2.links if k.kind == "feeds_plan"}
@@ -230,19 +231,19 @@ def test_each_plan_gets_its_own_photo_card_and_photos_stay_put(tmp_path: Path) -
     # Ctrl+Z : le plan s'en va, sa carte vide aussi ; le titre de la première redevient court.
     undone, _ = sync_board(board2, history.undo(after), runs)
     left = [i for i in undone.items if i.kind == "frame" and i.role == "photos"]
-    assert [i.ref for i in left] == [None] and left[0].text == "Photos de la pièce"
+    assert [i.ref for i in left] == [str(base.id)] and left[0].text == "Photos de la pièce"
 
 
 def test_remove_plan_is_one_undoable_step_with_its_refusals() -> None:
-    """KAN-91 (retours MEP 14) : « Supprimer le plan ». Jamais le seul plan, ni le premier, ni
-    un étage dont dépendent des variantes ; un seul pas d'historique, Ctrl+Z le rend."""
+    """KAN-91 (retours MEP 14) : « Supprimer le plan ». Jamais le seul plan, ni un étage dont
+    dépendent des variantes ; un seul pas d'historique, Ctrl+Z le rend. KAN-93 : le premier
+    plan se supprime (voir test_kan93_first_plan)."""
     project = rect_room_project()
     base = only_level(project)
     with pytest.raises(PlanRefusedError, match="seul plan"):
         remove_plan(project, base.id)
     after, storey = add_plan(project, NewPlan(name="Étage", kind="storey"))
-    with pytest.raises(PlanRefusedError, match="premier plan"):
-        remove_plan(after, base.id)
+    assert list(remove_plan(after, base.id).levels) == [storey]
     with pytest.raises(PlanError):
         remove_plan(after, uuid4())
     with_variant, variant = add_plan(
@@ -301,5 +302,5 @@ def test_014_project_loads_with_every_level_a_storey() -> None:
     for level in data["levels"].values():
         level.pop("variant_of", None)
     loaded = load_project(data)
-    assert loaded.schema_version == SCHEMA_VERSION == "0.20.0"
+    assert loaded.schema_version == SCHEMA_VERSION == "0.21.0"
     assert all(lv.variant_of is None for lv in loaded.levels.values())

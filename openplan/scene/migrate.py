@@ -81,6 +81,15 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.20.0", "0.21.0")
+def _explicit_first_plan(data: dict[str, Any]) -> dict[str, Any]:
+    """0.21.0 (KAN-93) : les cartes Photos et Rendus du premier plan portent la `ref` de leur
+    plan dans `board.json` (migration faite à la lecture de l'espace de travail,
+    `board.explicit_first`) ; `project.json` ne change pas. Version montée pour qu'un retour
+    arrière vers 0.20.0 passe par la descente (qui leur retire cette `ref`)."""
+    return data
+
+
 @register("0.19.0", "0.20.0")
 def _posts_trusses(data: dict[str, Any]) -> dict[str, Any]:
     """0.20.0 (KAN-94) : poteaux (`post`) et fermes intermédiaires (`truss`) ; un projet 0.19.0

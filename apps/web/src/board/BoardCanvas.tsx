@@ -326,33 +326,57 @@ function missingHint(role: string, caps: Capabilities): string | null {
   return null;
 }
 
-/** KAN-91 (retours MEP 14) : la confirmation dit ce qui part et ce qui reste. Le premier plan
- *  ne se supprime pas encore (ses cartes sont celles de départ) : le bouton le dit. */
-const FIRST_PLAN =
-  "Le premier plan du projet ne se supprime pas encore : ses nodes Photos de la pièce et Rendus sont ceux de départ.";
+/** KAN-91 (retours MEP 14) : la confirmation dit ce qui part et ce qui reste. KAN-93 : le
+ *  premier plan se supprime aussi ; le plan suivant devient le premier, avec ses nodes. */
+function deletePlanQuestion(
+  name: string,
+  first: boolean,
+  measures: number,
+): string {
+  const next = first
+    ? " Le plan suivant devient le premier ; ses nodes restent les siens."
+    : " Les autres plans ne changent pas.";
+  // KAN-93 : rien ne disparaît sans être dit ; les mesures du plan partent avec lui.
+  const gone =
+    measures === 0
+      ? ""
+      : measures === 1
+        ? " Ce plan porte 1 mesure : elle sera retirée avec lui (Ctrl+Z la rend)."
+        : ` Ce plan porte ${measures} mesures : elles seront retirées avec lui (Ctrl+Z les rend).`;
+  return `Supprimer le plan « ${name} » ? Son node Photos de la pièce, son node Rendus et leurs liens partent avec lui ; ses photos restent sur l'espace de travail, hors node.${gone}${next} Ctrl+Z le rend.`;
+}
+
+/** KAN-93 : les mesures posées sur les murs ou les sommets d'un plan (le serveur retire les
+ *  mêmes avec lui). */
+function planMeasures(project: Project, levelId: string): number {
+  const level = project.levels[levelId];
+  if (!level) return 0;
+  return Object.values(project.measurements).filter(
+    (m) =>
+      (m.element_id !== null && m.element_id in level.elements) ||
+      (m.vertex_ids ?? []).some((v) => String(v) in level.vertices),
+  ).length;
+}
 
 function DeletePlanButton({
   name,
   first,
+  measures,
   onDelete,
 }: {
   name: string;
   first: boolean;
+  measures: number;
   onDelete: () => void;
 }) {
   return (
     <button
       type="button"
       className="board-plan-delete"
-      disabled={first}
-      title={first ? FIRST_PLAN : "Supprimer ce plan (Ctrl+Z le rend)"}
+      title="Supprimer ce plan (Ctrl+Z le rend)"
       onPointerDown={(e) => e.stopPropagation()}
       onClick={() => {
-        if (
-          window.confirm(
-            `Supprimer le plan « ${name} » ? Son node Photos de la pièce et ses liens partent avec lui ; ses photos restent sur l'espace de travail, hors node. Les autres plans ne changent pas. Ctrl+Z le rend.`,
-          )
-        )
+        if (window.confirm(deletePlanQuestion(name, first, measures)))
           onDelete();
       }}
     >
@@ -1870,6 +1894,7 @@ export function BoardCanvas(props: Props) {
                   <DeletePlanButton
                     name={level?.name ?? item.text}
                     first={Object.keys(project.levels)[0] === item.ref}
+                    measures={planMeasures(project, item.ref)}
                     onDelete={() => props.onDeletePlan?.(item.ref!)}
                   />
                 )}

@@ -33,10 +33,14 @@ from openplan.schemas.common import SCHEMA_VERSION
 DowngradeFn = Callable[[dict[str, Any]], int]
 """Modifie le projet en place ; renvoie le nombre de valeurs retirées."""
 
+BoardFn = Callable[[dict[str, Any], dict[str, Any]], int]
+"""Modifie le `board.json` en place, le projet (déjà descendu) sous les yeux (KAN-93 : l'ordre
+de ses niveaux dit quel plan est le premier) ; renvoie le nombre de valeurs retirées."""
+
 _DOWNGRADES: dict[str, tuple[str, DowngradeFn, str]] = {}
 """version de départ → (version d'arrivée, fonction, ce qui est perdu)."""
 
-_BOARD_DOWNGRADES: dict[str, DowngradeFn] = {}
+_BOARD_DOWNGRADES: dict[str, BoardFn] = {}
 """version de départ → fonction appliquée au `board.json` du projet (KAN-91), s'il existe."""
 
 MediaFn = Callable[[list[Any]], int]
@@ -60,7 +64,7 @@ def step(
     *,
     lost: str,
     removes: set[str],
-    board: DowngradeFn | None = None,
+    board: BoardFn | None = None,
     board_removes: set[str] | None = None,
     media: MediaFn | None = None,
     media_removes: set[str] | None = None,
@@ -86,7 +90,7 @@ def step(
     return decorator
 
 
-def _drop_board_links(board: dict[str, Any]) -> int:
+def _drop_board_links(board: dict[str, Any], _project: dict[str, Any]) -> int:
     removed = 0
     for key in ("links", "cut_links"):
         if key in board:
@@ -129,6 +133,47 @@ def _drop_element_types(data: dict[str, Any], types: set[str]) -> int:
         data["history"] = []
         data["history_cursor"] = 0
     return removed
+
+
+FIRST_PLAN_ROLES = ("photos", "renders")
+
+
+def _implicit_first(board: dict[str, Any], project: dict[str, Any]) -> int:
+    """KAN-93 : en 0.20.0, les cartes Photos et Rendus du premier plan sont celles sans `ref`.
+    Celles qui portent la `ref` du premier plan du projet (après une suppression du premier
+    plan : celle du plan devenu premier) la perdent ; une carte retirée à la main redevient
+    `frame:photos` ou `frame:renders`."""
+    levels = project.get("levels")
+    first = next(iter(levels), None) if isinstance(levels, dict) else None
+    if first is None:
+        return 0
+    removed = 0
+    for item in board.get("items") or []:
+        if (
+            isinstance(item, dict)
+            and item.get("kind") == "frame"
+            and item.get("role") in FIRST_PLAN_ROLES
+            and item.get("ref") == first
+        ):
+            item["ref"] = None
+            removed += 1
+    dismissed = board.get("dismissed")
+    if isinstance(dismissed, list):
+        back = {f"frame:{role}:{first}": f"frame:{role}" for role in FIRST_PLAN_ROLES}
+        board["dismissed"] = list(dict.fromkeys(back.get(d, d) for d in dismissed))
+    return removed
+
+
+@step(
+    "0.21.0",
+    "0.20.0",
+    lost="rien : les cartes Photos et Rendus du premier plan redeviennent celles sans `ref` "
+    "(la carte d'un premier plan supprimé est déjà partie avec lui)",
+    removes=set(),
+    board=_implicit_first,
+)
+def _explicit_first_only(data: dict[str, Any]) -> int:
+    return 0  # project.json n'a pas changé en 0.21.0 : seul board.json descend
 
 
 @step(
@@ -273,7 +318,7 @@ def downgrade_tree(root: Path, target: str, *, dry_run: bool = False) -> Downgra
                 board = json.loads(board_path.read_text(encoding="utf-8"))
                 for version in steps:
                     if version in _BOARD_DOWNGRADES:
-                        removed += _BOARD_DOWNGRADES[version](board)
+                        removed += _BOARD_DOWNGRADES[version](board, data)
             media, media_removed = _media_down(path.parent / MEDIA_INDEX, target)
         except (OSError, ValueError) as exc:
             report.errors.append((path, str(exc)[:200]))

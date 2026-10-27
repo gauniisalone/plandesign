@@ -34,12 +34,14 @@ PRODUCTIONS = [
     ("f6137ff", "0.19.0"),
     ("af6bf71", "0.19.0"),
     ("3909e9b", "0.19.0"),
+    ("31b1a4e", "0.20.0"),
 ]
 """Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0), MEP 13
 (22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91), MEP 15
 (25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92), MEP 16
 (f6137ff), le passage 16 (af6bf71) et la MEP 20 (3909e9b), schéma 0.19.0, d'avant les poteaux
-et fermes de KAN-94."""
+et fermes de KAN-94 ; le passage 20 (31b1a4e, MEP 21), schéma 0.20.0, d'avant le premier plan
+explicite de KAN-93."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
@@ -55,11 +57,12 @@ for pid in json.loads((d / "ids.json").read_text()):
     for suffix in ("", "/board", "/comments", "/activity"):
         out[pid[:8] + (suffix or "/")] = c.get(f"/api/projects/{pid}{suffix}").status_code
 out["cloche"] = c.get("/api/notifications").status_code
-cards = {}
+cards, renders = {}, {}
 for pid in json.loads((d / "ids.json").read_text()):
     items = c.get(f"/api/projects/{pid}/board").json()["items"]
     cards[pid] = sum(1 for i in items if i["kind"] == "frame" and i.get("role") == "photos")
-print(json.dumps({"statuts": out, "cartes_photos": cards}))
+    renders[pid] = sum(1 for i in items if i["kind"] == "frame" and i.get("role") == "renders")
+print(json.dumps({"statuts": out, "cartes_photos": cards, "cartes_rendus": renders}))
 """
 
 
@@ -148,8 +151,33 @@ def _write_with_the_new_code(data: Path) -> list[str]:
         )
     ids.append(str(_with_floor_zone(store)))
     ids.append(str(_with_posts_and_truss(store)))
+    ids.extend(_with_three_plans(client))
     (data / "ids.json").write_text(json.dumps(ids))
     return ids
+
+
+def _with_three_plans(client: TestClient) -> list[str]:
+    """KAN-93 : un projet à trois plans, et un autre à trois plans dont le premier est supprimé
+    (le plan suivant devient premier, ses cartes restent les siennes). Après descente, l'ancien
+    code doit y relire une carte Photos et une carte Rendus par plan, ni plus ni moins : une
+    `ref` restée sur les cartes du premier plan lui en ferait poser une deuxième."""
+    out = []
+    for name, drop_first in (("Trois plans", False), ("Premier plan supprimé", True)):
+        pid = client.post("/api/projects", json={"name": name}).json()["id"]
+        client.get(f"/api/projects/{pid}/board")
+        for storey in ("Étage", "Combles"):
+            sent = client.post(
+                f"/api/projects/{pid}/levels", json={"name": storey, "kind": "storey"}
+            )
+            assert sent.status_code in (200, 201), sent.text
+        client.get(f"/api/projects/{pid}/board")
+        if drop_first:
+            first = next(iter(client.get(f"/api/projects/{pid}").json()["levels"]))
+            gone = client.delete(f"/api/projects/{pid}/levels/{first}")
+            assert gone.status_code == 200, gone.text
+            client.get(f"/api/projects/{pid}/board")
+        out.append(pid)
+    return out
 
 
 def _with_posts_and_truss(store: Any) -> UUID:
@@ -218,5 +246,7 @@ def test_production_rereads_downgraded_projects_without_409_or_500(
     statuses = seen_out["statuts"]
     assert all(code == 200 for code in statuses.values()), statuses
     # Pour l'ancien code, les deux cartes Photos du projet à deux niveaux restent des cartes
-    # Photos (rôle « photos »), relues sans erreur.
-    assert sorted(seen_out["cartes_photos"].values()) == [1, 1, 1, 2], seen_out
+    # Photos (rôle « photos »), relues sans erreur. KAN-93 : trois plans, trois cartes ; le
+    # premier supprimé, deux (celles des deux plans restants, aucune en double).
+    assert sorted(seen_out["cartes_photos"].values()) == [1, 1, 1, 2, 2, 3], seen_out
+    assert sorted(seen_out["cartes_rendus"].values()) == [1, 1, 1, 2, 2, 3], seen_out

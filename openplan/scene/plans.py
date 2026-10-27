@@ -22,7 +22,7 @@ from pydantic import Field
 from openplan.scene import history
 from openplan.scene.history import USER_ACTOR
 from openplan.schemas.common import StrictModel
-from openplan.schemas.scene import Level, Project
+from openplan.schemas.scene import JsonPatch, Level, Measurement, Project
 
 PlanKind = Literal["variant", "storey", "empty"]
 PLAN_KIND_LABELS: dict[str, str] = {
@@ -115,10 +115,6 @@ def add_plan(project: Project, body: NewPlan, *, actor: str = USER_ACTOR) -> tup
 
 
 ONLY_PLAN = "C'est le seul plan du projet : il ne se supprime pas."
-FIRST_PLAN = (
-    "Le premier plan du projet ne se supprime pas encore : ses cartes Photos et Rendus sont "
-    "celles de départ. Supprimez les autres plans, ou videz celui-ci."
-)
 HAS_VARIANTS = "Cet étage a des variantes : supprimez d'abord ses variantes ({names})."
 
 
@@ -128,19 +124,56 @@ class PlanRefusedError(ValueError):
 
 def remove_plan(project: Project, level_id: UUID, *, actor: str = USER_ACTOR) -> Project:
     """KAN-91 (retours MEP 14), « Supprimer le plan » : un seul pas d'historique, Ctrl+Z le
-    rend. Jamais le seul plan ni le premier (ses cartes sont celles sans `ref`, ticket à part),
-    jamais un étage dont des variantes dépendent (elles deviendraient orphelines)."""
+    rend. Jamais le seul plan, jamais un étage dont des variantes dépendent (elles deviendraient
+    orphelines). KAN-93 : le premier plan aussi ; le plan suivant devient le premier (l'ordre
+    des niveaux est gardé, Ctrl+Z remet le plan à sa place)."""
     level = project.levels.get(level_id)
     if level is None:
         msg = f"plan inconnu : {level_id}"
         raise PlanError(msg)
     if len(project.levels) < 2:
         raise PlanRefusedError(ONLY_PLAN)
-    if next(iter(project.levels)) == level_id:
-        raise PlanRefusedError(FIRST_PLAN)
     variants = [lv.name for lv in project.levels.values() if lv.variant_of == level_id]
     if variants:
         raise PlanRefusedError(HAS_VARIANTS.format(names=", ".join(f"« {n} »" for n in variants)))
     levels = {lid: lv for lid, lv in project.levels.items() if lid != level_id}
-    after = project.model_copy(update={"levels": levels})
-    return history.commit(project, after, actor=actor, label=f"Supprimer le plan « {level.name} »")
+    after = project.model_copy(
+        update={"levels": levels, "measurements": _measurements_left(project, levels)}
+    )
+    done = history.commit(project, after, actor=actor, label=f"Supprimer le plan « {level.name} »")
+    if next(reversed(project.levels)) == level_id:
+        return done
+    return _in_place(done, project, after)
+
+
+def _measurements_left(project: Project, levels: dict[UUID, Level]) -> dict[UUID, Measurement]:
+    """KAN-93 : les mesures d'un plan supprimé (sur ses murs ou ses sommets) partent avec lui,
+    Ctrl+Z les rend ; une mesure sur une photo reste (les photos sont celles du projet)."""
+    elements = {eid for lv in levels.values() for eid in lv.elements}
+    vertices = {vid for lv in levels.values() for vid in lv.vertices}
+    return {
+        mid: m
+        for mid, m in project.measurements.items()
+        if (m.element_id is None or m.element_id in elements)
+        and all(v in vertices for v in m.vertex_ids or [])
+    }
+
+
+def _in_place(done: Project, before: Project, after: Project) -> Project:
+    """KAN-93 : un patch JSON rajoute une clé à la fin ; Ctrl+Z remettrait le plan supprimé
+    après les autres, et le premier plan ne serait plus le premier. Le pas d'historique
+    remplace donc les niveaux en entier, dans leur ordre, dans les deux sens."""
+    entry = done.history[-1]
+
+    def ordered(patch: JsonPatch, levels: Project) -> JsonPatch:
+        kept = [op for op in patch if not str(op.get("path", "")).startswith("/levels/")]
+        whole = history.content(levels)["levels"]
+        return [*kept, {"op": "replace", "path": "/levels", "value": whole}]
+
+    entry = entry.model_copy(
+        update={
+            "patch": ordered(entry.patch, after),
+            "inverse_patch": ordered(entry.inverse_patch, before),
+        }
+    )
+    return done.model_copy(update={"history": [*done.history[:-1], entry]})

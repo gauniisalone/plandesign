@@ -492,8 +492,9 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     joined = [(board_kind(m), str(m.id), m.name) for m in media or []]
     fresh = board is None
     current = board or Board()
-    items = list(current.items)
-    dismissed = set(current.dismissed)
+    first = have.plans[0][0] if have.plans else None
+    items, kept_dismissed = explicit_first(list(current.items), list(current.dismissed), first)
+    dismissed = set(kept_dismissed)
 
     # Un rendu refait remplace l'ancien, à la même place.
     for index, item in enumerate(items):
@@ -524,8 +525,7 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     items = _renamed_moodboards(items)
 
     present = {_key(i) for i in items}
-    added = _Adder(items, wide=fresh)
-    first = have.plans[0][0] if have.plans else None
+    added = _Adder(items, first, wide=fresh)
     for lid, name in have.plans:
         if f"plan:{lid}" not in present | dismissed:
             added.plan(lid, name)
@@ -537,17 +537,17 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
         added.lift(note)
     added.make_room_for_heads()
     # T2 : les cadres Photos de la pièce et Inspirations existent dès le départ, même vides.
+    # KAN-93 : la carte Photos de départ est celle du premier plan (`ref` = son niveau).
     for role, title in FIXED_FRAMES.items():
-        if role != "renders" and f"frame:{role}" not in present | dismissed:
+        key = f"frame:{role}:{first}" if role == "photos" and first else f"frame:{role}"
+        if role != "renders" and key not in present | dismissed:
             added.frame(role, title)  # type: ignore[arg-type]
-    # T7e : une rangée par plan, son cadre « Rendus · nom » à droite du plan ; le premier plan
-    # garde le cadre Rendus d'avant (un projet à un plan ne change pas).
+    # T7e : une rangée par plan, son cadre « Rendus · nom » à droite du plan.
     for lid, _ in have.plans:
-        key = "frame:renders" if lid == first else f"frame:renders:{lid}"
-        if key not in present | dismissed:
-            added.renders_frame(lid, renders_title(project, lid), first=lid == first)
+        if f"frame:renders:{lid}" not in present | dismissed:
+            added.renders_frame(lid, renders_title(project, lid))
         else:
-            added.retitle(lid, renders_title(project, lid), first=lid == first)
+            added.retitle(lid, renders_title(project, lid))
     added.photo_cards(project, [lid for lid, _ in have.plans], present | dismissed)
     for photo in have.photos:
         if f"photo:{photo}" not in present | dismissed:
@@ -555,11 +555,10 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
     for run, title in have.renders:
         if f"render:{run}" not in present | dismissed:
             into = have.render_levels.get(run, first)
-            added.into_renders(into, first, renders_title(project, into or ""), run, title)
+            added.into_renders(into, renders_title(project, into or ""), run, title)
     for run in have.inspirations:
         if f"render:{run}" not in present | dismissed:
             added.into_renders(
-                first,
                 first,
                 renders_title(project, first or ""),
                 run,
@@ -587,8 +586,41 @@ def sync_board(  # noqa: PLR0912 - une sorte d'élément par branche
             added.move_into(item, "inspirations", FIXED_FRAMES["inspirations"])
     items = bl.with_membership(added.items)
     links = bl.auto_links(items, list(current.links), list(current.cut_links), first)
-    changed = fresh or items != list(current.items) or links != list(current.links)
-    return current.model_copy(update={"items": items, "links": links}), changed
+    changed = (
+        fresh
+        or items != list(current.items)
+        or links != list(current.links)
+        or kept_dismissed != list(current.dismissed)
+    )
+    update = {"items": items, "links": links, "dismissed": kept_dismissed}
+    return current.model_copy(update=update), changed
+
+
+EXPLICIT_ROLES = ("photos", "renders")
+"""KAN-93 (0.21.0) : les cartes qui portent la `ref` de leur plan, celles du premier comprises."""
+
+
+def explicit_first(
+    items: list[BoardItem], dismissed: list[str], first: str | None
+) -> tuple[list[BoardItem], list[str]]:
+    """KAN-93 (0.21.0), migration à la lecture : la carte Photos et la carte Rendus du premier
+    plan étaient celles sans `ref` (T7e, KAN-91) ; elles reçoivent la `ref` de ce plan, comme
+    les cartes des autres plans. Le premier plan peut alors partir : ses cartes partent avec
+    lui, celles du plan suivant restent les siennes. Une carte retirée à la main le reste
+    (`frame:photos` devient `frame:photos:<niveau>`). Sans plan, rien ne change (la carte
+    Photos de départ attend le premier plan)."""
+    if first is None:
+        return items, dismissed
+    out = list(items)
+    for role in EXPLICIT_ROLES:
+        frames = [k for k, i in enumerate(out) if i.kind == "frame" and i.role == role]
+        if any(out[k].ref == first for k in frames):
+            continue
+        bare = next((k for k in frames if out[k].ref is None), None)
+        if bare is not None:
+            out[bare] = out[bare].model_copy(update={"ref": first})
+    renamed = {f"frame:{role}": f"frame:{role}:{first}" for role in EXPLICIT_ROLES}
+    return out, list(dict.fromkeys(renamed.get(d, d) for d in dismissed))
 
 
 def _without_gone_photo_cards(items: list[BoardItem], lids: set[str]) -> list[BoardItem]:
@@ -642,8 +674,12 @@ class _Adder:
     """Pose les nouveaux éléments : dans leur cadre (créé au besoin, agrandi d'une rangée
     quand il est plein), la note sous les cadres, le plan à droite."""
 
-    def __init__(self, items: list[BoardItem], *, wide: bool = False) -> None:
+    def __init__(
+        self, items: list[BoardItem], first: str | None = None, *, wide: bool = False
+    ) -> None:
         self.items = items
+        self.first = first
+        """KAN-93 : le premier plan ; sa carte Photos est celle où entre une photo nouvelle."""
         # KAN-98 L2 : la pose en grand, pour un espace neuf ou déjà posé ainsi.
         self.wide = wide or is_wide(items)
         self.node_w = NODE_W if self.wide else FRAME_W
@@ -656,23 +692,20 @@ class _Adder:
         """Un cadre nommé, créé s'il manque (T2 : cadres fixes, même vides)."""
         self._frame(role, title)
 
-    def _find_renders(self, level_id: str | None, *, first: bool) -> BoardItem | None:
-        """Le cadre Rendus d'un plan : `ref` = son niveau ; celui du premier plan peut être le
-        cadre d'avant T7e, sans `ref`."""
+    def _find_renders(self, level_id: str | None) -> BoardItem | None:
+        """Le cadre Rendus d'un plan : `ref` = son niveau (KAN-93 : le premier plan compris)."""
         return next(
             (
                 i
                 for i in self.items
-                if i.kind == "frame"
-                and i.role == "renders"
-                and (i.ref == level_id or (first and i.ref is None))
+                if i.kind == "frame" and i.role == "renders" and i.ref == level_id
             ),
             None,
         )
 
-    def renders_frame(self, level_id: str | None, title: str, *, first: bool) -> BoardItem:
+    def renders_frame(self, level_id: str | None, title: str) -> BoardItem:
         """T4 (maquette), T7e : le cadre Rendus d'un plan, à droite du plan, à sa hauteur."""
-        found = self._find_renders(level_id, first=first)
+        found = self._find_renders(level_id)
         if found is not None:
             return found
         plan = next((i for i in self.items if i.kind == "plan" and i.ref == level_id), None)
@@ -690,15 +723,15 @@ class _Adder:
             h=PLAN_H,
             text=title,
             role="renders",
-            ref=None if first else level_id,
+            ref=level_id,
             z=-1,
         )
         self.items.append(frame)
         return frame
 
-    def retitle(self, level_id: str | None, title: str, *, first: bool) -> None:
+    def retitle(self, level_id: str | None, title: str) -> None:
         """Le titre suit le nom du plan, tant qu'il est celui que le tableau a donné."""
-        found = self._find_renders(level_id, first=first)
+        found = self._find_renders(level_id)
         if found is None or found.text == title:
             return
         if found.text != FIXED_FRAMES["renders"] and not found.text.startswith(
@@ -710,23 +743,20 @@ class _Adder:
     def into_renders(
         self,
         level_id: str | None,
-        first: str | None,
         title: str,
         ref: str,
         text: str,
         item_role: BoardRole | None = None,
     ) -> None:
-        frame = self.renders_frame(level_id, title, first=level_id == first)
+        frame = self.renders_frame(level_id, title)
         self.into("renders", title, "render", ref, text, item_role, frame=frame)
 
     def photo_cards(self, project: Project, lids: list[str], known: set[str]) -> None:
-        """KAN-91 : une carte Photos par plan. Celle d'avant (sans `ref`) reste celle du premier
-        plan (le premier créé, comme la carte Rendus d'avant T7e) ; chaque autre plan reçoit la
+        """KAN-91 : une carte Photos par plan. Celle de départ est celle du premier plan (posée
+        en haut de la colonne de gauche avec les cadres fixes) ; chaque autre plan reçoit la
         sienne, vide, à gauche de sa rangée. Aucune photo ne change de carte."""
         for index, lid in enumerate(lids):
-            if index == 0:
-                self.retitle_photos(None, photos_title(project, lid))
-            elif f"frame:photos:{lid}" not in known:
+            if index > 0 and f"frame:photos:{lid}" not in known:
                 self.photos_frame(lid, photos_title(project, lid))
             else:
                 self.retitle_photos(lid, photos_title(project, lid))
@@ -768,16 +798,17 @@ class _Adder:
         self.items[self.items.index(found)] = found.model_copy(update={"text": title})
 
     def _frame(self, role: BoardRole, title: str) -> BoardItem:
-        # KAN-91 : la carte Photos fixe est celle sans `ref` (celle du premier plan) ; une
-        # photo nouvelle y entre, jamais dans la carte d'un autre plan. De même, la carte
-        # Inspirations fixe est celle sans `ref`, pas une carte ajoutée à la main.
+        # KAN-91 : une photo nouvelle entre dans la carte Photos du premier plan, jamais dans
+        # celle d'un autre plan (KAN-93 : `ref` = ce plan ; sans plan, la carte sans `ref`). La
+        # carte Inspirations fixe est celle sans `ref`, pas une carte ajoutée à la main.
+        wanted = self.first if role == "photos" else None
         found = next(
             (
                 i
                 for i in self.items
                 if i.kind == "frame"
                 and i.role == role
-                and (role not in ("photos", "inspirations") or i.ref is None)
+                and (role not in ("photos", "inspirations") or i.ref == wanted)
             ),
             None,
         )
@@ -799,6 +830,7 @@ class _Adder:
             h=self.node_h,
             text=title,
             role=role,
+            ref=wanted,
             z=-1,
         )
         self.items.append(frame)

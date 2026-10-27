@@ -231,17 +231,17 @@ def test_each_level_has_its_photo_card_and_feeds_only_its_plan(tmp_path: Path) -
     storey = made.json()["level_id"]
     board = w.board()
     cards = {i["ref"]: i for i in board["items"] if i["kind"] == "frame" and i["role"] == "photos"}
-    assert set(cards) == {None, storey}
+    assert set(cards) == {str(w.level), storey}  # KAN-93 : `ref` explicite au premier plan
     assert cards[storey]["text"] == "Photos de la pièce · Étage"
-    assert cards[None]["text"].startswith("Photos de la pièce · ")
+    assert cards[str(w.level)]["text"].startswith("Photos de la pièce · ")
     plans = {i["ref"]: i["id"] for i in board["items"] if i["kind"] == "plan"}
     feeds = {(k["source"], k["target"]) for k in board["links"] if k["kind"] == "feeds_plan"}
     assert feeds == {
-        (cards[None]["id"], plans[str(w.level)]),
+        (cards[str(w.level)]["id"], plans[str(w.level)]),
         (cards[storey]["id"], plans[storey]),
     }
     # L'ancienne photo reste dans la carte du premier plan.
-    assert w.item(board, old)["frame"] == cards[None]["id"]
+    assert w.item(board, old)["frame"] == cards[str(w.level)]["id"]
 
     r = w.client.post(
         f"/api/projects/{w.pid}/images",
@@ -266,8 +266,9 @@ def test_each_level_has_its_photo_card_and_feeds_only_its_plan(tmp_path: Path) -
 def test_delete_a_plan_cards_and_links_go_photos_stay_undo_brings_it_back(
     tmp_path: Path,
 ) -> None:
-    """Retours de la MEP 14 : « Supprimer le plan » par l'API ; 409 pour le premier plan ;
-    les photos de la carte de l'étage restent, hors carte ; Ctrl+Z rend le plan."""
+    """Retours de la MEP 14 : « Supprimer le plan » par l'API ; les photos de la carte de
+    l'étage restent, hors carte ; Ctrl+Z rend le plan (KAN-93 : le premier plan se supprime
+    aussi, voir test_kan93_first_plan_api)."""
     w = Local(tmp_path)
     storey = w.client.post(
         f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"}
@@ -278,8 +279,6 @@ def test_delete_a_plan_cards_and_links_go_photos_stay_undo_brings_it_back(
         files={"file": ("e.png", _png(), "image/png")},
     )
     upstairs = r.json()["image"]["id"]
-    first = w.client.delete(f"/api/projects/{w.pid}/levels/{w.level}")
-    assert first.status_code == 409 and "premier plan" in first.json()["detail"]
     assert w.client.delete(f"/api/projects/{w.pid}/levels/{uuid4()}").status_code == 404
     done = w.client.delete(f"/api/projects/{w.pid}/levels/{storey}")
     assert done.status_code == 200, done.text
@@ -339,7 +338,9 @@ def test_a_second_photo_link_to_a_level_is_refused_409(tmp_path: Path) -> None:
         f"/api/projects/{w.pid}/levels", json={"name": "Étage", "kind": "storey"}
     ).json()["level_id"]
     board = w.board()
-    first = next(i for i in board["items"] if i.get("role") == "photos" and i["ref"] is None)
+    first = next(
+        i for i in board["items"] if i.get("role") == "photos" and i["ref"] == str(w.level)
+    )
     plan2 = next(i for i in board["items"] if i["kind"] == "plan" and i["ref"] == storey)
     out = w.patch({"links_set": [_link(first["id"], plan2["id"])]})
     assert out.status_code == 409, out.text

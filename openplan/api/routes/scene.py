@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, HTTPException
 
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
+from openplan.pipeline import board as b
 from openplan.pipeline import journal
 from openplan.pipeline.derived import compute_derived
 from openplan.pipeline.editing import InvalidEditError, edit
@@ -23,6 +24,7 @@ from openplan.scene.ops import (
     UpdateElement,
 )
 from openplan.scene.plans import NewPlan, PlanError, PlanRefusedError, add_plan, remove_plan
+from openplan.scene.store import ProjectStore
 from openplan.schemas.common import StrictModel
 from openplan.schemas.derived import DerivedLevel
 from openplan.schemas.elements import Furniture
@@ -143,8 +145,10 @@ def new_plan(body: NewPlan, project: ProjectDep, store: StoreDep, actor: ActorDe
 def delete_plan(level_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep) -> Project:
     """KAN-91 (retours MEP 14), « Supprimer le plan » : un seul pas d'historique, annulable.
     L'espace de travail suit à sa lecture : la carte Rendus et la carte Photos du plan s'en
-    vont avec leurs liens, ses photos restent, hors carte. 409 pour le seul plan, le premier,
-    ou un étage qui a des variantes."""
+    vont avec leurs liens, ses photos restent, hors carte. 409 pour le seul plan ou un étage
+    qui a des variantes. KAN-93 : le premier plan aussi se supprime ; avant, l'espace de
+    travail est mis à jour avec le projet d'avant, pour que les cartes du premier plan portent
+    sa `ref` (un espace pas relu depuis 0.21.0 les donnerait sinon au plan suivant)."""
     with store.lock(project.id):
         fresh = store.load(project.id)
         try:
@@ -156,8 +160,19 @@ def delete_plan(level_id: UUID, project: ProjectDep, store: StoreDep, actor: Act
         report = validate_invariants(after)
         if not report.valid:
             raise InvalidEditError(report)
+        _explicit_board(store, fresh)
         store.save(after)
     return after
+
+
+def _explicit_board(store: ProjectStore, project: Project) -> None:
+    """KAN-93 : l'espace de travail à jour du projet `project` (sous son verrou, déjà pris)."""
+    project_dir = store.project_dir(project.id)
+    board, changed = b.sync_board(
+        b.load_board(project_dir), project, store.runs_dir(project.id), b.list_media(project_dir)
+    )
+    if changed:
+        b.save_board(project_dir, board)
 
 
 @router.post("/projects/{project_id}/undo")

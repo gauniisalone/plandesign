@@ -308,6 +308,6 @@ def test_settings_default_on_and_old_projects_load() -> None:
     data["schema_version"] = "0.5.0"
     data.pop("render")
     loaded = load_project(data)
-    assert loaded.schema_version == SCHEMA_VERSION == "0.20.0"
+    assert loaded.schema_version == SCHEMA_VERSION == "0.21.0"
     assert loaded.render.auto_path and loaded.render.auto_finish
     assert not math.isnan(ap.plan_estimate(loaded, only_level(loaded).id, "cuda", finish=True))

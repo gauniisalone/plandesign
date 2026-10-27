@@ -306,11 +306,11 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   const photo = board.locator(".board-item.kind-photo");
   await expect(photo).toHaveCount(1, { timeout: 60_000 });
 
-  // Le premier plan ne se supprime pas encore : le bouton le dit.
+  // KAN-93 : le premier plan se supprime aussi (voir le test suivant).
   const first = plans.filter({ hasNotText: "Étage" });
   await expect(
     first.getByRole("button", { name: "Supprimer le plan" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   // Refuser la confirmation ne change rien ; l'accepter supprime le plan.
   const etage = plans.filter({ hasText: "Étage" });
   page.once("dialog", (d) => void d.dismiss());
@@ -326,6 +326,7 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   expect(asked).toContain(
     "ses photos restent sur l'espace de travail, hors node",
   );
+  expect(asked).toContain("Les autres plans ne changent pas.");
   await expect(cards).toHaveCount(1);
   await expect(
     board.locator(".board-item.kind-frame.role-renders"),
@@ -348,6 +349,94 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
     2,
   );
+});
+
+test("KAN-93 : supprimer le premier plan, le suivant devient premier avec ses nodes, Ctrl+Z", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const id = await boardWithPlan(page, "Premier plan à supprimer");
+  const board = page.getByRole("region", { name: "Espace de travail" });
+  // Deux mesures sur les murs du premier plan : la confirmation doit les annoncer.
+  type Level = { elements: Record<string, { type: string }> };
+  const before = (await (
+    await page.request.get(`/api/projects/${id}`)
+  ).json()) as { levels: Record<string, Level> };
+  const walls = Object.entries(Object.values(before.levels)[0].elements)
+    .filter(([, e]) => e.type === "wall")
+    .map(([wid]) => wid);
+  expect(walls.length).toBeGreaterThan(1);
+  for (const wall of walls.slice(0, 2)) {
+    const sent = await page.request.post(`/api/projects/${id}/measurements`, {
+      data: { kind: "wall_length", value: 3.2, element_id: wall },
+    });
+    expect(sent.status()).toBe(201);
+  }
+  await page.reload();
+  await goSpace(page, "board");
+  await addStorey(page);
+  const plans = board.locator(".board-item.kind-plan");
+  const cards = board.locator(".board-item.kind-frame.role-photos");
+  const renders = board.locator(".board-item.kind-frame.role-renders");
+  const feeds = board.locator(".board-wire[data-kind=feeds_plan]");
+  const guides = board.locator(".board-wire[data-kind=guides_style]");
+  await expect(plans).toHaveCount(2);
+  await expect(cards).toHaveCount(2);
+  // Une photo dans la carte du premier plan, une dans celle de l'étage.
+  const firstCard = cards.filter({ hasNotText: "Étage" });
+  const upstairs = cards.filter({ hasText: "Photos de la pièce · Étage" });
+  await dropInto(page, firstCard, "rdc.png");
+  await dropInto(page, upstairs, "etage.png");
+  const photos = board.locator(".board-item.kind-photo");
+  await expect(photos).toHaveCount(2, { timeout: 60_000 });
+
+  let asked = "";
+  page.once("dialog", (d) => {
+    asked = d.message();
+    void d.accept();
+  });
+  await plans
+    .filter({ hasNotText: "Étage" })
+    .getByRole("button", { name: "Supprimer le plan" })
+    .click();
+  await expect(plans).toHaveCount(1, { timeout: 30_000 });
+  expect(asked).toContain(
+    "Le plan suivant devient le premier ; ses nodes restent les siens.",
+  );
+  expect(asked).toContain(
+    "Ce plan porte 2 mesures : elles seront retirées avec lui (Ctrl+Z les rend).",
+  );
+  const measures = async () =>
+    Object.keys(
+      (
+        (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+          measurements: Record<string, unknown>;
+        }
+      ).measurements,
+    ).length;
+  expect(await measures()).toBe(0);
+  // L'étage garde sa carte Photos (avec sa photo) et sa carte Rendus ; aucune en double.
+  await expect(plans).toContainText("Étage");
+  await expect(cards).toHaveCount(1);
+  await expect(renders).toHaveCount(1);
+  await expect(photos).toHaveCount(2);
+  await expect(cards.locator(".board-item.kind-photo")).toHaveCount(1);
+  await expect(feeds).toHaveCount(1);
+  // Le Moodboard de départ guide toujours le node Rendus restant.
+  await expect(guides).toHaveCount(1);
+  await shot(page, "kan93-1-premier-plan-supprime");
+
+  // Ctrl+Z : le premier plan revient à sa place, avec une carte Photos et une carte Rendus.
+  await goSpace(page, "plan");
+  await page.keyboard.press("Control+z");
+  await goSpace(page, "board");
+  await expect(plans).toHaveCount(2, { timeout: 30_000 });
+  await expect(cards).toHaveCount(2);
+  await expect(renders).toHaveCount(2);
+  await expect(feeds).toHaveCount(2);
+  await expect(guides).toHaveCount(2);
+  await expect(upstairs.locator(".board-item.kind-photo")).toHaveCount(1);
+  expect(await measures()).toBe(2);
 });
 
 test("deux Moodboards en N-N : ils entrent par le haut des Rendus, pastilles hors des nodes", async ({

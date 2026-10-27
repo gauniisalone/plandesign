@@ -26,10 +26,12 @@ SNAPSHOTS = [
     FIXTURES / "format_paths_a1c630f.json",
     FIXTURES / "format_paths_14e8870.json",
     FIXTURES / "format_paths_f6137ff.json",
+    FIXTURES / "format_paths_31b1a4e.json",
 ]
 """Instantanés des chemins de champs des productions (MEP 5, 3da4d52, schéma 0.16.0 ; MEP 13,
-a1c630f, schéma 0.17.0 ; MEP 15, 14e8870, schéma 0.18.0 ; MEP 16, f6137ff, schéma 0.19.0),
-produits par `python -m tests.format_paths` avec le code de chaque version en PYTHONPATH."""
+a1c630f, schéma 0.17.0 ; MEP 15, 14e8870, schéma 0.18.0 ; MEP 16, f6137ff, schéma 0.19.0 ;
+MEP 21, 31b1a4e, schéma 0.20.0), produits par `python -m tests.format_paths` avec le code de
+chaque version en PYTHONPATH."""
 TOLERATED: dict[str, dict[str, str]] = {
     "events.jsonl": {
         "": "une ligne d'un type ou d'un champ inconnu est ignorée par l'ancien code "
@@ -58,11 +60,11 @@ def _dump(project: Project) -> dict[str, object]:
 
 def test_the_step_removes_the_confidence_everywhere_and_is_idempotent() -> None:
     data = _dump(_with_confidence())
-    assert data["schema_version"] == SCHEMA_VERSION == "0.20.0"
+    assert data["schema_version"] == SCHEMA_VERSION == "0.21.0"
     down, removed, lost = downgrade_data(data, "0.16.0")
     assert down["schema_version"] == "0.16.0" and removed == 4  # la mesure et sa « previous »
-    assert "poteaux" in lost[0] and "zones de sol" in lost[1]
-    assert "liens" in lost[2] and "confiance" in lost[3]
+    assert "premier plan" in lost[0] and "poteaux" in lost[1] and "zones de sol" in lost[2]
+    assert "liens" in lost[3] and "confiance" in lost[4]
     text = json.dumps(down)
     assert "confidence" not in text
     again, removed_again, _ = downgrade_data(down, "0.16.0")
@@ -100,7 +102,7 @@ def test_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     project = store.save(_with_confidence())
     assert main(["downgrade", "--to", "0.16.0", "--dry-run", str(tmp_path)]) == 0
     assert "1 projet(s) à descendre" in capsys.readouterr().out
-    assert json.loads(project.read_text())["schema_version"] == "0.20.0"
+    assert json.loads(project.read_text())["schema_version"] == "0.21.0"
     assert main(["downgrade", "--to", "0.16.0", str(tmp_path)]) == 0
     assert json.loads(project.read_text())["schema_version"] == "0.16.0"
     assert main(["downgrade", "--to", "0.1.0", str(tmp_path)]) == 2
@@ -183,7 +185,7 @@ def test_floor_zones_go_down_to_0_18_with_the_undo_history_that_knew_them() -> N
     corners = [(1.0, 1.0), (2.0, 1.0), (2.0, 2.0), (1.0, 2.0)]
     zoned = apply_op(thick, level.id, AddFloorZone(polygon=[Point2(x=x, y=y) for x, y in corners]))
     down, removed, lost = downgrade_data(_dump(zoned), "0.18.0")
-    assert down["schema_version"] == "0.18.0" and "zones de sol" in lost[1]
+    assert down["schema_version"] == "0.18.0" and "zones de sol" in lost[2]
     text = json.dumps(down)
     assert "floor_zone" not in text and down["history"] == [] and down["history_cursor"] == 0
     assert removed == 1 + 2, "la zone et les deux pas d'historique"
@@ -209,7 +211,7 @@ def test_posts_and_trusses_go_down_to_0_19_with_the_undo_history_that_knew_them(
     near = Point2(x=truss.position.x + 0.3, y=truss.position.y + 0.3)  # type: ignore[attr-defined]
     built = apply_op(built, level.id, AddPost(position=near))
     down, removed, lost = downgrade_data(_dump(built), "0.19.0")
-    assert down["schema_version"] == "0.19.0" and "poteaux" in lost[0]
+    assert down["schema_version"] == "0.19.0" and "poteaux" in lost[1]
     text = json.dumps(down)
     assert '"post"' not in text and '"truss"' not in text
     assert down["history"] == [] and down["history_cursor"] == 0
