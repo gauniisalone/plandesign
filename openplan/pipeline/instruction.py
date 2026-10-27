@@ -24,6 +24,7 @@ from pydantic import Field, JsonValue, ValidationError
 
 from openplan.adapters.gateway import ModelGateway
 from openplan.adapters.protocols import LanguageModel, LlmMessage, LlmRequest
+from openplan.adapters.remote.fence import strip_fence
 from openplan.pipeline.assistant_phrases import SYNONYMS, fold
 from openplan.schemas.assistant import ROOM_TYPES
 from openplan.schemas.common import StrictModel
@@ -587,7 +588,6 @@ FINISH_NAMES = (
     "stone_rubble",
     "concrete_floor",
 )
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 class InstructionParseError(ValueError):
@@ -609,7 +609,7 @@ def instruction_prompt(text: str, categories: list[str]) -> str:
 
 def parse_translation(raw: str, categories: list[str]) -> Translation:
     """Le JSON du modèle, validé champ par champ : un champ invalide est écarté et dit."""
-    cleaned = _FENCE.sub("", raw.strip())
+    cleaned = strip_fence(raw)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start < 0 or end < start:
         msg = "réponse sans objet JSON"

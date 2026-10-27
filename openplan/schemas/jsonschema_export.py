@@ -56,7 +56,9 @@ def build_schema(model: type[BaseModel]) -> dict[str, object]:
 
 def export_json_schemas(out_dir: Path) -> list[Path]:
     """Écrit un fichier <nom>.schema.json par modèle exporté et renvoie les chemins."""
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Sonar S8707, faux positif : outil de développement (make web-types), le dossier de sortie
+    # est donné par le développeur.
+    out_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR
     written: list[Path] = []
     for name, model in EXPORTED.items():
         schema = build_schema(model)

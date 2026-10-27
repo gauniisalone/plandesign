@@ -2002,7 +2002,7 @@ export function BoardCanvas(props: Props) {
             >
               {editing === item.id ? (
                 <input
-                  autoFocus
+                  autoFocus // NOSONAR S9379 : renommage ouvert par l'utilisateur
                   aria-label="Nom du cadre"
                   defaultValue={item.text}
                   onPointerDown={(e) => e.stopPropagation()}

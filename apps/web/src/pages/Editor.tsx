@@ -152,7 +152,7 @@ const clampSide = (w: number) =>
 function loadSideWidth(): number | null {
   try {
     const raw = window.localStorage.getItem(SIDE_KEY);
-    const value = raw === null ? NaN : Number(raw);
+    const value = raw === null ? Number.NaN : Number(raw);
     return Number.isFinite(value) && value > 0 ? clampSide(value) : null;
   } catch {
     return null;

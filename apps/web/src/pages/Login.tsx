@@ -116,7 +116,7 @@ export function Login({
               autoComplete="name"
               maxLength={80}
               value={name}
-              autoFocus
+              autoFocus // NOSONAR S9379 : seul champ de l'étape « Votre nom »
               onChange={(e) => setName(e.target.value)}
             />
             <button type="submit" className="primary" disabled={busy}>
@@ -150,7 +150,7 @@ export function Login({
               required
               maxLength={320}
               value={email}
-              autoFocus
+              autoFocus // NOSONAR S9379 : seul champ de la page de connexion
               onChange={(e) => setEmail(e.target.value)}
             />
             {error && (
@@ -180,7 +180,7 @@ export function Login({
               maxLength={8}
               required
               value={code}
-              autoFocus
+              autoFocus // NOSONAR S9379 : le code attendu juste après l'envoi
               onChange={(e) => setCode(e.target.value)}
             />
             {error && (

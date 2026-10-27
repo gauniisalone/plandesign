@@ -123,7 +123,9 @@ def apply_scale(level: Level, factor: float) -> Level:  # noqa: PLR0912
     if factor <= 0.0:
         msg = "le facteur d'échelle doit être strictement positif"
         raise CalibrationError(msg)
-    if factor == 1.0:
+    # Sonar S1244 : égalité voulue, 1,0 exactement est « aucune échelle » (valeur donnée, jamais
+    # calculée) ; un facteur à peine différent de 1 est bien appliqué.
+    if factor == 1.0:  # NOSONAR
         return level
 
     def p2(p: Point2) -> Point2:

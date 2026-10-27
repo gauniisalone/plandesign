@@ -87,9 +87,10 @@ from openplan.scene.ops import OpError
 from openplan.scene.storage import DiskStorage
 from openplan.scene.store import ProjectNotFoundError, ProjectStore
 
-_DEV_ORIGINS = [
-    f"http://{host}:{port}" for host in ("127.0.0.1", "localhost") for port in (5173, 4173)
-]
+_DEV_HOSTS = ("127.0.0.1", "localhost")
+_DEV_PORTS = (5173, 4173)
+# Sonar S5332, faux positif : origines CORS du développement, en boucle locale et sans comptes.
+_DEV_ORIGINS = [f"http://{h}:{p}" for h in _DEV_HOSTS for p in _DEV_PORTS]  # NOSONAR
 
 
 __all__ = ["TokenMissingError", "WebBuildMissingError", "create_app"]

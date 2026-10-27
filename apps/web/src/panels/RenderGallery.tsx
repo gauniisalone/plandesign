@@ -476,7 +476,7 @@ function GalleryCard({
           <input
             aria-label={`Nouveau titre de « ${title} »`}
             value={draft}
-            autoFocus
+            autoFocus // NOSONAR S9379 : champ de renommage ouvert par l'utilisateur
             maxLength={80}
             placeholder={entry.camera_name}
             onChange={(e) => setDraft(e.target.value)}
@@ -525,7 +525,6 @@ function GalleryCard({
           <button
             type="button"
             className="danger"
-            autoFocus
             onClick={() => {
               setConfirming(false);
               onRemove();
@@ -533,7 +532,12 @@ function GalleryCard({
           >
             Supprimer
           </button>
-          <button type="button" onClick={() => setConfirming(false)}>
+          {/* KAN-108 : le focus va au choix sans risque (Entrée ne supprime pas par mégarde). */}
+          <button
+            type="button"
+            autoFocus // NOSONAR S9379 : confirmation qu'on vient d'ouvrir
+            onClick={() => setConfirming(false)}
+          >
             Garder
           </button>
         </div>
@@ -606,7 +610,13 @@ function CompareDialog({
   const src = (x: { pick: Pick; entry: RenderEntry }) =>
     renderApi.variantUrl(projectId, x.entry, x.pick.variant);
   return (
-    <div className="compare-backdrop" onClick={onClose}>
+    // Fond du dialogue : un clic dehors ferme, Échap aussi (écouteur plus haut) ; le dialogue
+    // lui-même porte le rôle et le focus.
+    <div // NOSONAR S6848 : fond cliquable voulu, le clavier ferme par Échap
+      className="compare-backdrop"
+      role="presentation"
+      onClick={onClose}
+    >
       <div
         className="compare-dialog"
         role="dialog"

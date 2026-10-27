@@ -153,7 +153,7 @@ export function ContextualCard({
         </span>
         {writing ? (
           <textarea
-            autoFocus
+            autoFocus // NOSONAR S9379 : note ouverte par l'utilisateur
             aria-label="Commentaire"
             rows={2}
             value={draft}

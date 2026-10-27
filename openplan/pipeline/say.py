@@ -141,15 +141,21 @@ def target_room(level: Level, context_id: UUID | None) -> Room | None:
 
 
 _CLAUSES = re.compile(
-    r"\s*(?:[;!?]|(?<!\d)\.|\.(?!\d)|,\s*(?:et|puis)\b|(?<!\d),|,(?!\d)|\bpuis\b)\s*"
+    # Sonar S8786 : texte borné à MAX_TEXT_CHARS dans clauses() avant le découpage ; test de durée
+    # dans test_kan108_regex.
+    r"\s*(?:[;!?]|(?<!\d)\.|\.(?!\d)|,\s*(?:et|puis)\b|(?<!\d),|,(?!\d)|\bpuis\b)\s*"  # NOSONAR
 )
 """Une virgule ou un point entre deux chiffres est décimal (« 1,20 m ») : pas une coupure."""
+MAX_TEXT_CHARS = 4000
+"""KAN-108 : au-delà, le texte n'est pas lu (les routes le bornent déjà à 500 ou 2 000
+caractères) ; la regex des propositions revient en arrière sur une longue suite d'espaces
+(Sonar S8786) : bornée ainsi, elle reste rapide quel que soit le texte."""
 
 
 def clauses(text: str) -> list[str]:
     """La phrase coupée en propositions (« lumière du soir, et enlève l'armoire » → deux) : les
     phrases simples lisent un geste par proposition, le verbe en tête."""
-    return [c for c in (part.strip() for part in _CLAUSES.split(text)) if c]
+    return [c for c in (part.strip() for part in _CLAUSES.split(text[:MAX_TEXT_CHARS])) if c]
 
 
 def understand_clauses(text: str, categories: list[str]) -> AssistantReply | None:

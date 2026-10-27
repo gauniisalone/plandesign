@@ -316,7 +316,9 @@ def generate(job: dict[str, Any], emb: Any) -> tuple[Any, dict[str, float]]:
 
 def main(argv: list[str]) -> int:
     block_network()
-    job = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+    # Sonar S8707 et S2083, faux positifs : ce processus enfant lit la tâche écrite par son
+    # parent (zimage.py), avec les chemins de son dossier temporaire ; rien ne vient du dehors.
+    job = json.loads(Path(argv[1]).read_text(encoding="utf-8"))  # NOSONAR
     dirs = {k: Path(v) for k, v in job["dirs"].items()}
     t0 = time.perf_counter()
     emb = encode(job["prompt"], dirs["base"], dirs["encoder"], job["encoder_file"])
@@ -330,7 +332,7 @@ def main(argv: list[str]) -> int:
         "duration_s": round(time.perf_counter() - t0, 1),
         "network_attempts": len(ATTEMPTS),
     }
-    Path(job["result"]).write_text(json.dumps(result), encoding="utf-8")
+    Path(job["result"]).write_text(json.dumps(result), encoding="utf-8")  # NOSONAR (voir plus haut)
     print(json.dumps(result), flush=True)
     return 0
 

@@ -9,13 +9,13 @@ absent ou illisible est une erreur (`AssistantParseError`), que l'appelant rées
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import Any, get_args
 
 from pydantic import ValidationError
 
 from openplan.adapters.protocols import LanguageModel, LlmMessage, LlmRequest, LlmResponse
+from openplan.adapters.remote.fence import strip_fence
 from openplan.adapters.remote.intention import _dimensions, numbers_in
 from openplan.schemas.assistant import (
     INTENT_LABELS,
@@ -96,7 +96,6 @@ Réponds exactement avec cette structure :
 }}
 Pas de position, pas de coordonnées, pas de dimension de pièce."""
 
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _POSITION_KEYS = frozenset({"position", "x", "y", "z", "yaw", "rotation", "placement", "pos"})
 MAX_INTENTS = 8
 WIDTH: Dimension = "width"
@@ -150,7 +149,7 @@ def parse_reply(  # noqa: PLR0912, PLR0915
     aliases: dict[str, str] | None = None,
 ) -> AssistantReply:
     """Extrait et valide le JSON du modèle ; le douteux est écarté avec son motif."""
-    cleaned = _FENCE.sub("", text.strip())
+    cleaned = strip_fence(text)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start < 0 or end < start:
         msg = "réponse sans objet JSON"

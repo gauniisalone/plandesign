@@ -67,12 +67,15 @@ def png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 def fake_render(camera_path: Path, out_png: Path) -> RenderOutcome:
+    # Sonar S8707, faux positifs (deux lignes) : chemins fixes du dossier de la tâche, choisis par
+    # le poste (sandbox.py), jamais par le serveur.
     started = time.perf_counter()
-    camera = RenderCamera.model_validate_json(camera_path.read_text(encoding="utf-8"))
+    raw = camera_path.read_text(encoding="utf-8")  # NOSONAR
+    camera = RenderCamera.model_validate_json(raw)
     scale = min(1.0, FAKE_LONG_SIDE / max(camera.width_px, camera.height_px))
     width = max(16, min(MAX_IMAGE_SIDE, round(camera.width_px * scale)))
     height = max(16, min(MAX_IMAGE_SIDE, round(camera.height_px * scale)))
-    out_png.write_bytes(png_bytes(width, height, (196, 170, 140)))
+    out_png.write_bytes(png_bytes(width, height, (196, 170, 140)))  # NOSONAR
     return RenderOutcome(
         seconds=time.perf_counter() - started,
         vram_peak_mib=0,

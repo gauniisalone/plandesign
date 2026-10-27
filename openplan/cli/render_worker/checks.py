@@ -16,7 +16,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-HEAVY_LOCK = Path("/tmp/pd-lourd.lock")
+# Sonar S5443, faux positif : le verrou commun de la machine n'est qu'ouvert en lecture pour un
+# essai flock ; rien n'y est écrit. Un tiers local ne peut que faire passer son tour au poste.
+HEAVY_LOCK = Path("/tmp/pd-lourd.lock")  # NOSONAR
 Runner = Callable[[Sequence[str]], tuple[int, str]]
 
 

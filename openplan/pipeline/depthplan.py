@@ -610,6 +610,9 @@ def propose_floorplan_from_depth(
     vertices: list[Vertex] = []
     walls: list[Wall] = []
     n = len(ring)
+    # Sonar S1244 : égalité voulue, 1,0 exactement est « échelle non recalée » (valeur par défaut,
+    # jamais calculée) ; tout autre facteur vient d'une mesure.
+    unscaled = scale == 1.0  # NOSONAR
     supports: list[WallObservation | None] = []
     for i in range(n):
         a, b = ring[i], ring[(i + 1) % n]
@@ -621,7 +624,7 @@ def propose_floorplan_from_depth(
                 position=point,
                 source=Source.ESTIMATED if touching else Source.INFERRED,
                 confidence=WALL_CONFIDENCE if touching else INFERRED_CONFIDENCE,
-                uncertainty=Uncertainty(sigma=_sigma(touching, scale != 1.0)),
+                uncertainty=Uncertainty(sigma=_sigma(touching, not unscaled)),
             )
         )
     for i in range(n):
@@ -636,7 +639,7 @@ def propose_floorplan_from_depth(
                 confidence=WALL_CONFIDENCE if support else INFERRED_CONFIDENCE,
                 uncertainty=Uncertainty(
                     sigma=(
-                        (SCALE_SIGMA * distance if scale == 1.0 else 0.05) + support.rms_m
+                        (SCALE_SIGMA * distance if unscaled else 0.05) + support.rms_m
                         if support
                         else None
                     )

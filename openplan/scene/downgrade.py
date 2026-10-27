@@ -323,5 +323,8 @@ def _steps(version: str, target: str) -> list[str]:
 
 def _write(path: Path, data: dict[str, Any] | list[Any]) -> None:
     tmp = path.with_name(path.name + ".downgrade.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    # Sonar S2083, faux positif : le fichier du projet est réécrit à son propre chemin, avec son
+    # contenu descendu de version ; aucun chemin n'est lu dans les données.
+    tmp.write_text(payload, encoding="utf-8")  # NOSONAR
     os.replace(tmp, path)

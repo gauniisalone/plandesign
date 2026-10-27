@@ -56,7 +56,9 @@ IP_WINDOW_S = 3600.0
 TOKEN_PURGE_AFTER = timedelta(hours=24)
 SESSION_TTL = timedelta(seconds=SESSION_MAX_AGE_S)
 SESSION_RENEW_EVERY = timedelta(hours=1)
-_EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s.][^@\s]*\.[^@\s]+$")
+# Sonar S8786 : le retour arrière du domaine reste négligeable, l'adresse est bornée à 254
+# caractères AVANT le match (checked_email) ; test de durée dans test_kan108_regex.
+_EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s.][^@\s]*\.[^@\s]+$")  # NOSONAR
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 MAX_NEXT = 512
 

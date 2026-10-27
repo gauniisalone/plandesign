@@ -24,6 +24,8 @@ DSN_ENV = "OPENPLAN_SENTRY_DSN"
 ENV_ENV = "OPENPLAN_ENV"
 SHA_ENV = "OPENPLAN_GIT_SHA"
 MAX_MESSAGE = 200
+MAX_SCRUB_CHARS = 4000
+"""Longueur lue par le nettoyage (le message envoyé est ensuite coupé à MAX_MESSAGE)."""
 TEST_MESSAGE = "erreur de test volontaire (openplan sentry-test)"
 
 _KEPT_HEADERS = frozenset({"user-agent"})
@@ -36,7 +38,9 @@ _state: dict[str, bool] = {"active": False}
 # Chemins : code de l'application gardé à partir de « openplan/ » ou du paquet installé ;
 # données d'un projet réduites à <projet> ; tout autre chemin personnel réduit à son nom de base
 # (sauf image : <image>).
-_IMAGE = r"[^\s/\\'\"«»]+\.(?:jpe?g|png|webp|heic|heif|gif|bmp|tiff?|avif)\b"
+# Sonar S8786 : texte borné à MAX_SCRUB_CHARS (_bounded) avant le nettoyage ; test de durée dans
+# test_kan108_regex.
+_IMAGE = r"[^\s/\\'\"«»]+\.(?:jpe?g|png|webp|heic|heif|gif|bmp|tiff?|avif)\b"  # NOSONAR
 _RE_IMAGE = re.compile(_IMAGE, re.IGNORECASE)
 _RE_APP_DATA = re.compile(r"/app/data/[^\s'\"«»]*")
 _RE_HOME = re.compile(r"(?:/home/|/Users/|/root/|[A-Za-z]:\\Users\\)[^\s'\"«»]*")
@@ -79,10 +83,21 @@ def _code_path(path: str) -> str:
     return base or "<chemin>"
 
 
+def _bounded(text: str) -> str:
+    """KAN-108 : au plus MAX_SCRUB_CHARS, coupé à un espace (un jeton coupé en deux ne serait
+    plus reconnu, donc plus masqué) ; sans espace dans cette longueur, rien n'est gardé. Les
+    regex du nettoyage reviennent en arrière sur un très long mot (Sonar S8786)."""
+    if len(text) <= MAX_SCRUB_CHARS:
+        return text
+    head = text[:MAX_SCRUB_CHARS]
+    cut = max(head.rfind(" "), head.rfind("\n"))
+    return head[:cut] + " …" if cut > 0 else "…"
+
+
 def scrub_text(text: str, *, quotes: bool = True) -> str:
     """Le texte sans chemin personnel, chemin de projet, image, jeton, identifiant ni adresse
     électronique ; avec `quotes`, sans texte cité non plus (consignes, noms de projet)."""
-    text = _RE_APP_DATA.sub("<projet>", text)
+    text = _RE_APP_DATA.sub("<projet>", _bounded(text))
     text = _RE_HOME.sub(lambda m: _code_path(m.group(0)), text)
     text = _RE_IMAGE.sub("<image>", text)
     text = _RE_BEARER.sub(lambda m: f"{m.group(1)} <masqué>", text)

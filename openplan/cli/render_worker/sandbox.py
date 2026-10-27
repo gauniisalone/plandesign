@@ -167,9 +167,14 @@ def read_seed(job_dir: Path) -> int | None:
     return int(text) if text.isdigit() and int(text) <= MAX_SEED else None
 
 
+def _answer(job_dir: Path, data: dict[str, object]) -> None:
+    # Sonar S8707, faux positif : l'enfant isolé (réseau bloqué) reçoit son dossier de tâche de
+    # son parent (Sandbox.run) et y écrit sous un nom fixe.
+    (job_dir / RESULT).write_text(json.dumps(data), encoding="utf-8")  # NOSONAR
+
+
 def child(job_dir: Path, engine: str) -> int:
     block_network()
-    out = job_dir / RESULT
     try:
         outcome = render(
             engine,
@@ -181,12 +186,12 @@ def child(job_dir: Path, engine: str) -> int:
             style_dir=style if (style := job_dir / STYLE_DIR).is_dir() else None,
         )
     except EngineFailedError as exc:
-        out.write_text(json.dumps({"ok": False, "reason": exc.reason}), encoding="utf-8")
+        _answer(job_dir, {"ok": False, "reason": exc.reason})
         return 1
     except Exception:
-        out.write_text(json.dumps({"ok": False, "reason": "engine_error"}), encoding="utf-8")
+        _answer(job_dir, {"ok": False, "reason": "engine_error"})
         return 1
-    out.write_text(json.dumps({"ok": True, "outcome": asdict(outcome)}), encoding="utf-8")
+    _answer(job_dir, {"ok": True, "outcome": asdict(outcome)})
     return 0
 
 

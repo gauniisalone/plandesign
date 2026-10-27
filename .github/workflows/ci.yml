@@ -75,17 +75,15 @@ jobs:
 
   # KAN-107 : SonarQube Cloud (organisation gauniisalone), après les tests, avec leur couverture.
   # Non bloquant au départ : le job peut échouer sans faire échouer la CI, et le scanner n'attend
-  # pas la porte qualité. Le jeton ne sert qu'ici, par secrets.SONAR_TOKEN ; une PR venue d'un
-  # fork ou de Dependabot n'a pas le secret : le job ne tourne pas. Ce que l'analyse envoie :
-  # voir sonar-project.properties (openplan/ et apps/web/src/ seulement, jamais data/).
+  # pas la porte qualité. Le jeton ne sert qu'ici, par secrets.SONAR_TOKEN. Ce que l'analyse
+  # envoie : voir sonar-project.properties (openplan/ et apps/web/src/ seulement, jamais data/).
   # Prérequis : l'analyse automatique de SonarQube Cloud coupée (les deux sont incompatibles).
+  # KAN-108 : seulement sur main (push) et à la demande (6,8 min sur le chemin critique : les PR
+  # n'attendent plus l'analyse) ; le cache du scanner (plugins, JRE) évite de les retélécharger.
   sonar:
     name: sonar (SonarQube Cloud, non bloquant)
     needs: [python, web]
-    if: >-
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -93,6 +91,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # historique complet : nouveau code et blame justes
+      - uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          # Une clé par run (le cache d'une clé n'est jamais réécrit), le plus récent restauré.
+          key: sonar-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: sonar-${{ runner.os }}-
       - uses: actions/download-artifact@v8
         with:
           name: coverage-python

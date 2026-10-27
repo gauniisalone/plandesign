@@ -153,12 +153,23 @@ _ADD_OPENING = re.compile(r"^(" + "|".join(_ADD_WORDS) + r"|perce|percer)\b")
 _QUESTION = re.compile(r"\?\s*$|^(quelle|quel|combien|est-ce|y a-t-il|peux-tu me dire)\b")
 _COUNT = {"un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5}
 _NUMBER = re.compile(r"\b(\d+)\b")
-_DIMENSION = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:x|×|par|sur)\s*(\d+(?:[.,]\d+)?)")
+# Sonar S8786 : texte borné à MAX_TEXT_CHARS dans fold() avant toute lecture ; test de durée dans
+# test_kan108_regex.
+_DIMENSION = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:x|×|par|sur)\s*(\d+(?:[.,]\d+)?)")  # NOSONAR
+
+
+_NAME_ROOM = r"^(appelle|nomme|renomme|baptise)\s+(la piece|cette piece|la)\s+(.+)$"  # NOSONAR
+MAX_TEXT_CHARS = 4000
+"""KAN-108 : au-delà, la phrase n'est pas lue (les routes la bornent déjà à 500 ou 2 000
+caractères). Plusieurs lectures de la phrase repliée reviennent en arrière sur une longue suite
+de chiffres ou de mots (Sonar S8786) : bornées ainsi, elles restent rapides."""
 
 
 def fold(text: str) -> str:
     text = "".join(
-        c for c in unicodedata.normalize("NFD", text.lower()) if unicodedata.category(c) != "Mn"
+        c
+        for c in unicodedata.normalize("NFD", text[:MAX_TEXT_CHARS].lower())
+        if unicodedata.category(c) != "Mn"
     )
     return re.sub(r"\s+", " ", text.replace("’", "'").replace("-moi", " moi")).strip()
 
@@ -488,7 +499,9 @@ def _plan_phrases(folded: str, categories: list[str]) -> AssistantReply | None: 
     if _is_opening_request(folded, categories):
         kind, leaves = _opening_kind(folded)
         target = None
-        m = re.search(r"\b(sur|dans|au|a)\s+(le mur|la cloison|le)?\s*(.+)$", folded)
+        # Sonar S8786 : texte borné à MAX_TEXT_CHARS dans fold() avant toute lecture ; test de durée
+        # dans test_kan108_regex.
+        m = re.search(r"\b(sur|dans|au|a)\s+(le mur|la cloison|le)?\s*(.+)$", folded)  # NOSONAR
         if m:
             target = m.group(3).strip(" .!")
         widths = [v for v in _metres(folded) if 0.4 <= v <= 4.0]
@@ -503,7 +516,9 @@ def _plan_phrases(folded: str, categories: list[str]) -> AssistantReply | None: 
                 )
             ]
         )
-    m = re.search(r"\b(le mur|la cloison)\s+(.*?)\s+(fait|mesure)\s+(.+)$", folded)
+    # Sonar S8786 : texte borné à MAX_TEXT_CHARS dans fold() avant toute lecture ; test de durée
+    # dans test_kan108_regex.
+    m = re.search(r"\b(le mur|la cloison)\s+(.*?)\s+(fait|mesure)\s+(.+)$", folded)  # NOSONAR
     if m:
         values = _metres(m.group(4))
         if values:
@@ -538,14 +553,18 @@ def _plan_phrases(folded: str, categories: list[str]) -> AssistantReply | None: 
             intents.append(AssistantIntent(kind="set_dimension", dimension="width", value_m=b))
         if intents:
             return AssistantReply(intents=intents)
-    m = re.match(r"^(appelle|nomme|renomme|baptise)\s+(la piece|cette piece|la)\s+(.+)$", folded)
+    # Sonar S8786 : texte borné à MAX_TEXT_CHARS dans fold() avant toute lecture ; test de durée
+    # dans test_kan108_regex.
+    m = re.match(_NAME_ROOM, folded)  # NOSONAR
     if m:
         return AssistantReply(
             intents=[
                 AssistantIntent(kind="name_room", name=m.group(3).strip(' .!«»"').capitalize())
             ]
         )
-    m = re.match(r"^(la piece|cette piece)\s+s['\s]?appelle\s+(.+)$", folded)
+    # Sonar S8786 : texte borné à MAX_TEXT_CHARS dans fold() avant toute lecture ; test de durée
+    # dans test_kan108_regex.
+    m = re.match(r"^(la piece|cette piece)\s+s['\s]?appelle\s+(.+)$", folded)  # NOSONAR
     if m:
         return AssistantReply(
             intents=[

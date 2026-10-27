@@ -287,7 +287,7 @@ function ProjectCard({
             className="home-rename"
             aria-label={`Nouveau nom de « ${p.name} »`}
             value={draft}
-            autoFocus
+            autoFocus // NOSONAR S9379 : renommage ouvert par l'utilisateur
             maxLength={200}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => void commit()}

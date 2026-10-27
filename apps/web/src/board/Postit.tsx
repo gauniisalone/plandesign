@@ -81,7 +81,7 @@ export function PostitBody({
         </span>
         {editing ? (
           <textarea
-            autoFocus
+            autoFocus // NOSONAR S9379 : texte d'un post-it qu'on vient d'ouvrir
             aria-label="Texte du post-it"
             defaultValue={item.text}
             style={style}

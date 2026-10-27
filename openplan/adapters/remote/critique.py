@@ -14,12 +14,12 @@ révisée que l'utilisateur relit.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
 from openplan.adapters.protocols import LanguageModel, LlmMessage, LlmRequest, LlmResponse
+from openplan.adapters.remote.fence import strip_fence
 from openplan.schemas.layout import (
     PLACE_LABELS,
     PLACE_OF,
@@ -71,7 +71,6 @@ Réponds exactement avec cette structure :
 }}
 Trois remarques au plus, la plus importante d'abord. Pas de position, pas de coordonnées."""
 
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _POSITION_KEYS = frozenset({"position", "x", "y", "z", "yaw", "rotation", "placement", "pos"})
 _ACTION_KINDS = frozenset({"move_near", "move_away", "remove"})
 MAX_REMARKS = 6
@@ -87,7 +86,7 @@ FurnitureRef = tuple[UUID, str]
 
 
 def _load_object(text: str) -> dict[str, Any]:
-    cleaned = _FENCE.sub("", text.strip())
+    cleaned = strip_fence(text)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start < 0 or end < start:
         msg = "réponse sans objet JSON"

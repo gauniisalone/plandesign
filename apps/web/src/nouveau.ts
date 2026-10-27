@@ -55,7 +55,7 @@ export function parseNouveau(query: string): SitePrefill | null {
   const surfaceText = (params.get("surface") ?? "").trim().replace(",", ".");
   const surface = /^\d{1,4}(\.\d{1,3})?$/.test(surfaceText)
     ? Math.round(Number(surfaceText) * 10) / 10
-    : NaN;
+    : Number.NaN;
   if (Number.isFinite(surface) && surface >= AREA_MIN && surface <= AREA_MAX)
     answers.area_m2 = surface;
   const description = (params.get("description") ?? "")

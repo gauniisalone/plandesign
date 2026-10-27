@@ -9,7 +9,6 @@ dimension renvoyée est une estimation non mesurée : score plafonné, source `e
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import Literal
 
@@ -24,6 +23,7 @@ from openplan.adapters.protocols import (
     LlmRequest,
     LlmResponse,
 )
+from openplan.adapters.remote.fence import strip_fence
 from openplan.adapters.remote.openai_compatible import MAX_IMAGE_SIDE
 from openplan.schemas.common import Confidence, StrictModel
 
@@ -57,8 +57,6 @@ USER_PROMPT = """Analyse cette photo d'une pièce et renvoie exactement cette st
 Les coordonnées de "box" sont des fractions de la largeur et de la hauteur de l'image,
 entre 0 et 1, coin haut-gauche puis bas-droit. Liste chaque mur visible, chaque porte et
 chaque fenêtre séparément."""
-
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 class VlmParseError(ValueError):
@@ -98,7 +96,7 @@ def parse_perception(text: str) -> VlmPerception:
     """Extrait et valide le JSON. Tolérant : un élément invalide est écarté (compté dans
     `dropped`), une pièce invalide devient la pièce par défaut ; seul un JSON absent ou
     illisible est une erreur."""
-    cleaned = _FENCE.sub("", text.strip())
+    cleaned = strip_fence(text)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start < 0 or end < start:
         msg = "réponse sans objet JSON"

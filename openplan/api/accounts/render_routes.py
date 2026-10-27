@@ -615,7 +615,9 @@ async def worker_result(
     # KAN-96 : un fichier par envoi, mis en place seulement si cet envoi fait le rendu ; deux
     # envois du même rendu en même temps (le poste réessaie) ne s'écrasent ni ne s'effacent.
     partial = target.with_suffix(f".{uuid4().hex}.part")
-    partial.write_bytes(data)
+    # Sonar S2083, faux positif : le chemin est fait de deux UUID (projet lu en base, demande
+    # typée UUID) et d'un uuid4 ; seul le contenu vient du poste (jeton, bail, PNG vérifié).
+    partial.write_bytes(data)  # NOSONAR
     try:
         done = queue.complete(request_id, lease, result)  # type: ignore[arg-type]
     except LeaseError as exc:

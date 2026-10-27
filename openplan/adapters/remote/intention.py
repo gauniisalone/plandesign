@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from openplan.adapters.protocols import LanguageModel, LlmMessage, LlmRequest, LlmResponse
+from openplan.adapters.remote.fence import strip_fence
 from openplan.schemas.layout import PLACE_LABELS, BriefItem, ItemDimensions, LayoutBrief
 from openplan.schemas.numbers import metres
 
@@ -53,7 +54,6 @@ Réponds exactement avec cette structure :
 }}
 Pas de position, pas de coordonnées, pas de dimension de pièce."""
 
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 _POSITION_KEYS = frozenset({"position", "x", "y", "z", "yaw", "rotation", "placement", "pos"})
 _ROOM_KEYS = frozenset({"room_width", "room_depth", "room_size", "room_dimensions", "room"})
@@ -109,7 +109,7 @@ def _dimensions(
 def parse_brief(text: str, categories: list[str], user_text: str) -> LayoutBrief:
     """Extrait et valide le JSON du modèle. Tolérant : chaque élément douteux est écarté avec
     son motif ; le JSON absent ou illisible lève `IntentionParseError`."""
-    cleaned = _FENCE.sub("", text.strip())
+    cleaned = strip_fence(text)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start < 0 or end < start:
         msg = "réponse sans objet JSON"
