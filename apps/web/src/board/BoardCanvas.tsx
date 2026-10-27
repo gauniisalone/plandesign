@@ -70,6 +70,7 @@ import { CLOSE_UP_TEXT, PHOTO_GUIDE_LINK, PhotoGuide } from "./PhotoGuide";
 import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
 import { overlapping } from "./wires";
+import { MAQUETTE_NODE_PX, TIER_NAMES, zoomTier } from "./tiers";
 import {
   accepts,
   cardRole,
@@ -138,6 +139,12 @@ const MIN_SIDE = 40;
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
 const FIT_MARGIN = 60;
+/** KAN-98 L2 : à l'ouverture (sans vue enregistrée), le node métier le plus étroit fait au
+ *  moins 360 px à l'écran (la largeur de la maquette A), sans dépasser 60 % ; quitte à ne
+ *  pas tout cadrer. « Tout voir » (Maj+1) montre toujours tout. */
+const OPEN_NODE_PX = MAQUETTE_NODE_PX;
+const OPEN_ZOOM_MAX = 0.6;
+const NODE_ROLES = ["photos", "inspirations", "renders"];
 /** Entrée dans le plan : marge autour du cadre et durée du zoom (B3). */
 const ENTER_MARGIN = 24;
 const ENTER_MS = 280;
@@ -519,6 +526,27 @@ export function BoardCanvas(props: Props) {
       .then(setContextual, () => setContextual([]));
   }, [project.id, refsKey]);
 
+  // KAN-98 L2 : le palier de dézoom (classes de la toile, affiché dans le zoom), lu sur la
+  // largeur à l'écran du node métier le plus étroit.
+  const nodeWidths = items
+    .filter((i) => i.kind === "frame" && i.role && NODE_ROLES.includes(i.role))
+    .map((i) => i.w);
+  const tier = zoomTier(
+    view.zoom,
+    nodeWidths.length ? Math.min(...nodeWidths) : undefined,
+  );
+
+  // KAN-98 L2 (PO) : quand le contenu dépasse à droite (ouverture au plancher sur un écran
+  // étroit, Rendus coupé), une ombre sur le bord droit dit qu'il y a de la suite.
+  const [moreRight, setMoreRight] = useState(false);
+  useEffect(() => {
+    const el = stage.current;
+    const right = items.length
+      ? Math.max(...items.map((i) => i.x + i.w)) * view.zoom + view.x
+      : 0;
+    setMoreRight(!!el && right > el.clientWidth + 4);
+  }, [items, view.zoom, view.x]);
+
   // Première ouverture : la vue cadre tout ce qui est posé.
   const fitted = useRef(false);
   useEffect(() => {
@@ -526,8 +554,9 @@ export function BoardCanvas(props: Props) {
     fitted.current = true;
     const v = board.view;
     if (v.x !== 0 || v.y !== 0 || v.zoom !== 1) return;
-    // Ce cadrage automatique n'est pas un geste : il n'est pas enregistré (B4).
-    fit(false);
+    // Ce cadrage automatique n'est pas un geste : il n'est pas enregistré (B4). KAN-98 L2 :
+    // avec le plancher d'ouverture.
+    fit(false, undefined, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -621,7 +650,7 @@ export function BoardCanvas(props: Props) {
   );
 
   /** Cadre la vue sur `subset` (sinon sur tout ce qui est posé). */
-  const fit = (persist = true, subset?: BoardItem[]) => {
+  const fit = (persist = true, subset?: BoardItem[], floor = false) => {
     const el = stage.current;
     const pool: { x: number; y: number; w: number; h: number }[] =
       subset && subset.length > 0 ? subset : items;
@@ -653,6 +682,24 @@ export function BoardCanvas(props: Props) {
       x: (rect.width - (maxX - minX) * zoom) / 2 - minX * zoom,
       y: (height - (maxY - minY) * zoom) / 2 - minY * zoom,
     };
+    // KAN-98 L2 : à l'ouverture, un plancher ; s'il l'emporte, la vue part du coin haut
+    // gauche du contenu, à droite de la colonne d'outils.
+    const nodes = items.filter(
+      (i) => i.kind === "frame" && i.role && NODE_ROLES.includes(i.role),
+    );
+    if (floor && !subset && nodes.length > 0) {
+      const narrow = Math.min(...nodes.map((i) => i.w));
+      const least = Math.min(OPEN_ZOOM_MAX, OPEN_NODE_PX / Math.max(1, narrow));
+      if (next.zoom < least) {
+        const rail = el.querySelector(".board-rail")?.getBoundingClientRect();
+        const left = rail
+          ? Math.max(FIT_MARGIN, rail.right - rect.left + 24)
+          : FIT_MARGIN;
+        next.zoom = least;
+        next.x = left - minX * least;
+        next.y = FIT_MARGIN - minY * least;
+      }
+    }
     if (persist) applyView(next);
     else setViewState(next);
   };
@@ -895,14 +942,28 @@ export function BoardCanvas(props: Props) {
     );
     const under =
       renders.find((r) => frameLevel(r) === firstLevelId) ?? renders[0];
+    // KAN-98 L2 : au-dessus de Rendus ; si la place est prise (le Moodboard de départ d'un
+    // espace neuf y est déjà), au-dessus encore, dans la même colonne.
+    let at = under
+      ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP }
+      : undefined;
+    const taken = (p: { x: number; y: number }) =>
+      items.some(
+        (i) =>
+          !i.frame &&
+          i.x < p.x + NEW_CARD.w &&
+          p.x < i.x + i.w &&
+          i.y < p.y + NEW_CARD.h &&
+          p.y < i.y + i.h,
+      );
+    for (let guard = 0; at && taken(at) && guard < 20; guard++)
+      at = { x: at.x, y: at.y - NEW_CARD.h - NEW_CARD_GAP };
     addCard(
       "inspirations",
       MOODBOARD_TITLE,
       "Nouveau Moodboard, sans lien : tirez sa poignée « + » vers un ou plusieurs nodes Rendus pour que ses images guident leur allure.",
       undefined,
-      under
-        ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP }
-        : undefined,
+      at,
     );
   };
   // KAN-98 : un plan dont la carte Rendus a été retirée en retrouve une (une par niveau).
@@ -1625,6 +1686,10 @@ export function BoardCanvas(props: Props) {
         e.preventDefault();
         toggleLock();
       } else if (mod && e.key === "0") {
+        e.preventDefault();
+        fit();
+      } else if (!mod && e.shiftKey && e.code === "Digit1") {
+        // KAN-98 L2 : Maj+1, « Tout voir » (le seul raccourci voulu par augus).
         e.preventDefault();
         fit();
       } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -2462,7 +2527,7 @@ export function BoardCanvas(props: Props) {
       />
       <div
         ref={stage}
-        className={`board-stage tool-${tool}${drag?.kind === "pan" ? " panning" : ""}`}
+        className={`board-stage tool-${tool} tier-${tier}${drag?.kind === "pan" ? " panning" : ""}`}
         data-world="1"
         onPointerDown={onStageDown}
         onPointerMove={(e) => {
@@ -2500,7 +2565,7 @@ export function BoardCanvas(props: Props) {
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${closeUp && item.kind === "photo" && item.ref === closeUp.imageId ? " photo-closeup" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${closeUp && item.kind === "photo" && item.ref === closeUp.imageId ? " photo-closeup" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}${item.frame ? " in-node" : ""}`}
               style={{
                 left: item.x,
                 top: item.y,
@@ -2748,6 +2813,7 @@ export function BoardCanvas(props: Props) {
             </button>
           </div>
         )}
+        {moreRight && <div className="board-more-right" aria-hidden="true" />}
         <div
           className="board-zoom"
           role="group"
@@ -2761,14 +2827,9 @@ export function BoardCanvas(props: Props) {
           >
             −
           </button>
-          <button
-            type="button"
-            className="link"
-            onClick={() => fit()}
-            title="Tout voir (Ctrl+0)"
-          >
-            {Math.round(view.zoom * 100)} %
-          </button>
+          <span className="board-zoom-level" data-tier={tier}>
+            {Math.round(view.zoom * 100)} % · {TIER_NAMES[tier]}
+          </span>
           <button
             type="button"
             className="icon"
@@ -2776,6 +2837,14 @@ export function BoardCanvas(props: Props) {
             onClick={() => zoomAt(1.2)}
           >
             +
+          </button>
+          <button
+            type="button"
+            className="link board-zoom-all"
+            onClick={() => fit()}
+            title="Tout voir (Maj+1)"
+          >
+            Tout voir <kbd>Maj+1</kbd>
           </button>
         </div>
 

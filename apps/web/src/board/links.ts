@@ -18,6 +18,13 @@ export const LINK_NAMES: Record<LinkKind, string> = {
   renders_view: "Plan → rendu",
 };
 
+/** KAN-98 L2 : l'étiquette posée sur le fil (maquette A), en 12 px à l'écran. */
+export const LINK_LABELS: Record<LinkKind, string> = {
+  feeds_plan: "construit le plan",
+  guides_style: "guide le style",
+  renders_view: "rendu de",
+};
+
 export const NO_PLAN = "Reliez un plan pour rendre";
 export const OFF_CARD = "hors node : non utilisée";
 const NOT_FOR_PLAN = new Set(["file", "render", "contextual"]);

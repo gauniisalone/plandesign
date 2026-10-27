@@ -151,6 +151,9 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   test.setTimeout(180_000);
   await boardWithPlan(page, "Cartes métier");
   const board = page.getByRole("region", { name: "Espace de travail" });
+  // KAN-98 L2 : l'ouverture se fait au plancher ; le Moodboard (en haut à droite) peut être
+  // hors de la vue : « Tout voir » (Maj+1) montre tout.
+  await page.keyboard.press("Shift+Digit1");
   const photos = board.locator(".board-item.kind-frame.role-photos");
   const inspirations = board.locator(
     ".board-item.kind-frame.role-inspirations",
@@ -449,11 +452,18 @@ test("deux Moodboards en N-N : ils entrent par le haut des Rendus, pastilles hor
           b.bottom <= c.top ||
           b.top >= c.bottom,
       ).toBe(true);
-  // KAN-98 : au cadrage de l'ouverture, la barre d'ajout ne couvre aucun node.
+  // KAN-98 : après « Tout voir » (Maj+1), la barre d'ajout ne couvre aucun node. (L2 :
+  // l'ouverture se fait au plancher et peut ne pas tout montrer.)
+  await page.keyboard.press("Shift+Digit1");
+  const boxes2 = await board
+    .locator(".board-item.kind-frame, .board-item.kind-plan")
+    .evaluateAll((fs) =>
+      fs.map((f) => f.getBoundingClientRect().toJSON() as DOMRect),
+    );
   const bar = (await page
     .getByRole("group", { name: "Ajouter" })
     .boundingBox())!;
-  for (const c of boxes)
+  for (const c of boxes2)
     expect(
       c.bottom <= bar.y ||
         c.top >= bar.y + bar.height ||

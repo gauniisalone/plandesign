@@ -6780,6 +6780,78 @@ button.link.home-empty-link {
   border: 1px solid var(--line);
   border-radius: var(--r-control);
 }
+/* KAN-98 L2 (PO) : de la suite à droite (Rendus coupé à l'ouverture sur un écran étroit) :
+   une ombre sur le bord droit, sans texte. Nom vérifié libre : board-more-right. */
+.board-more-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 56px;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(
+    to left,
+    color-mix(in oklab, var(--text) 16%, transparent),
+    transparent
+  );
+}
+/* KAN-98 L2 : le zoom dit son palier (« 45 % · vignettes ») ; « Tout voir » et Maj+1. Noms
+   vérifiés libres : board-zoom-level, board-zoom-all. */
+/* Deux lignes (le zoom, puis « Tout voir ») : le groupe reste étroit et ne touche pas la
+   barre d'ajout, même sur l'écran d'augus (1411 px, panneau ouvert). */
+.board-zoom:has(.board-zoom-all) {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 172px;
+}
+.board-zoom-level {
+  padding: 0 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.board-zoom-all {
+  flex-basis: 100%;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.board-zoom-all kbd {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* KAN-98 L2 : paliers de dézoom (classes tier-* de la toile, lues sur la largeur à l'écran du
+   node le plus étroit). Vignettes : titre gardé à 14 px, compteurs, consignes et « auto »
+   masqués. Titres : tuiles pleines à la couleur du type, titre 15 px et compteur 14 px, sans
+   contenu ni étiquette de lien. */
+.board-stage.tier-thumbs .board-item.kind-frame.role-photos,
+.board-stage.tier-thumbs .board-item.kind-frame.role-inspirations,
+.board-stage.tier-thumbs .board-item.kind-frame.role-renders {
+  --head-font: min(calc(14px * max(1, var(--inv, 1))), 7cqw);
+}
+.board-stage.tier-thumbs .board-frame-count,
+.board-stage.tier-thumbs .board-frame-hint,
+.board-stage.tier-thumbs .board-wire-auto,
+.board-stage.tier-titles .board-frame-hint,
+.board-stage.tier-titles .board-wire-auto,
+.board-stage.tier-titles .board-wire-label,
+.board-stage.tier-titles .board-item.in-node {
+  display: none;
+}
+.board-stage.tier-titles .board-item.kind-frame.role-photos,
+.board-stage.tier-titles .board-item.kind-frame.role-inspirations,
+.board-stage.tier-titles .board-item.kind-frame.role-renders {
+  --head-font: min(calc(15px * max(1, var(--inv, 1))), 9cqw);
+  background: color-mix(in oklab, var(--node-color) 28%, var(--panel));
+}
+.board-stage.tier-titles .board-frame-count {
+  font-size: calc(14 / 15 * 1em);
+}
 
 /* B4 : état réel de l'enregistrement, dans la barre du haut, pour tout l'atelier. */
 .topbar .save-state {
@@ -7895,10 +7967,11 @@ button.link.home-empty-link {
 .board-wire {
   --wire: var(--pd-volet-encre);
 }
+/* KAN-98 L2 : un fil prend la couleur de son node de départ ; le Moodboard est en or. */
 .board-wire.wire-style,
 .board-wire-ghost.wire-style,
 marker.wire-style {
-  --wire: var(--pd-tuile);
+  --wire: #d4a32a;
 }
 .board-wire.wire-view,
 .board-wire-ghost.wire-view,
@@ -7957,6 +8030,37 @@ marker.wire-feeds,
 .board-wire-auto {
   fill: var(--muted);
   font-size: 10px;
+}
+/* KAN-98 L2 : ports de 12 px pleins, à la couleur du type de leur node (Photos de la pièce
+   bleu volet, Plan olive, Moodboard or, Rendus ocre) ; l'étiquette du fil en 12 px, détachée
+   du fond par un liseré. Noms vérifiés libres : board-wire-end, board-wire-label, port-*. */
+.board-wire-start,
+.board-wire-end {
+  fill: var(--port, var(--wire));
+  stroke: var(--surface);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.board-wire .port-photos {
+  --port: var(--pd-volet-encre);
+}
+.board-wire .port-plan {
+  --port: var(--pd-olive);
+}
+.board-wire .port-inspirations {
+  --port: #d4a32a;
+}
+.board-wire .port-renders {
+  --port: var(--pd-ocre);
+}
+.board-wire-label {
+  fill: var(--text);
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 .board-wire-ghost path {
   stroke-dasharray: 6 6;

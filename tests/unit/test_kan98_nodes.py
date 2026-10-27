@@ -10,10 +10,11 @@ from pathlib import Path
 from openplan.pipeline.board import (
     CELL_H,
     CELL_W,
+    COL_GAP,
     FRAME_W,
-    GAP,
     NODE_H,
     NODE_W,
+    ROW_GAP,
     VARIANTS_TITLE,
     _renamed_moodboards,
     cell_size,
@@ -86,14 +87,16 @@ def _nodes(board: Board) -> dict[str, BoardItem]:
 
 
 def test_a_new_workspace_is_laid_out_wide_moodboard_above_renders(tmp_path: Path) -> None:
-    """KAN-98 L2 : Moodboard en haut, au-dessus de Rendus (même colonne, 48 d'écart), puis la
-    rangée Photos → Plan → Rendus ; Photos, Moodboard et Rendus en 780 de large."""
+    """KAN-98 L2 : Moodboard en haut, au-dessus de Rendus (même colonne, 160 d'écart), puis la
+    rangée Photos → Plan → Rendus (240 entre colonnes, la place d'une étiquette de fil) ;
+    Photos, Moodboard et Rendus en 780 de large."""
     board, _ = sync_board(None, rect_room_project(), tmp_path / "runs")
     n = _nodes(board)
     mood, renders, photos, plan = n["inspirations"], n["renders"], n["photos"], n["plan"]
     assert (photos.w, mood.w, renders.w) == (NODE_W, NODE_W, NODE_W)
     assert (photos.h, mood.h) == (NODE_H, NODE_H)
-    assert mood.x == renders.x and renders.y - (mood.y + mood.h) == GAP
+    assert mood.x == renders.x and renders.y - (mood.y + mood.h) == ROW_GAP
+    assert plan.x - (photos.x + photos.w) == COL_GAP == renders.x - (plan.x + plan.w)
     assert photos.y == plan.y == renders.y
     assert photos.x + photos.w < plan.x < plan.x + plan.w < renders.x
     # Les 4 nodes sont reliés dès le départ (liens automatiques).
@@ -115,7 +118,7 @@ def test_a_second_plan_opens_a_wide_row_below(tmp_path: Path) -> None:
     board2, _ = sync_board(board, after, runs)
     plans = {i.ref: i for i in board2.items if i.kind == "plan"}
     first, second = plans[str(only_level(project).id)], plans[str(storey)]
-    assert second.x == first.x and second.y >= first.y + first.h + GAP
+    assert second.x == first.x and second.y >= first.y + first.h + ROW_GAP
     card = next(i for i in board2.items if i.role == "photos" and i.ref == str(storey))
     rendus = next(i for i in board2.items if i.role == "renders" and i.ref == str(storey))
     assert (card.w, rendus.w) == (NODE_W, NODE_W)

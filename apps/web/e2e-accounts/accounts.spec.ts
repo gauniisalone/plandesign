@@ -1039,7 +1039,9 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
   expect(onPlan).not.toBeNull();
   await shot(owner, "17-commentaire-recu");
 
-  // Puis une épingle libre, dans un coin vide (on dézoome pour en laisser un).
+  // Puis une épingle libre, dans un coin vide (on dézoome pour en laisser un ; KAN-98 L2 :
+  // depuis « Tout voir », l'ouverture se faisant au plancher).
+  await commenter.keyboard.press("Shift+Digit1");
   for (let i = 0; i < 3; i++) await commenter.keyboard.press("-");
   await pinAt(
     box.x + box.width - 140,
@@ -1282,8 +1284,8 @@ test("KAN-43 : une vue par personne, lecteur compris, retrouvée au rechargement
       ).json()) as { token: string }
     ).token;
   const [asEditor, asViewer] = [await invite("editor"), await invite("viewer")];
-  const zoomOf = (p: Page) =>
-    p.getByRole("button", { name: /^\d+ %$/ }).textContent();
+  // KAN-98 L2 : le zoom se lit dans le groupe du zoom (« 46 % · détail »).
+  const zoomOf = (p: Page) => p.locator(".board-zoom-level").textContent();
   const viewSaved = (p: Page) =>
     p.waitForResponse(
       (r) =>

@@ -131,13 +131,16 @@ export async function goSpace(page: Page, space: Space): Promise<void> {
     const views = page.getByRole("group", { name: "Vue" });
     if (now === "source")
       await page.getByRole("button", { name: /Ajouter une source/ }).click();
-    else if ((space === "plan" || space === "3d") && now === "board")
+    else if ((space === "plan" || space === "3d") && now === "board") {
+      // KAN-98 L2 : la vue peut ne pas tout montrer (ouverture au plancher, cadrage sur les
+      // Rendus) ; « Tout voir » (Maj+1) d'abord, comme on le ferait.
+      await page.keyboard.press("Shift+Digit1");
       await page
         .getByRole("region", { name: "Espace de travail" })
         .locator(".board-item.kind-plan .board-plan-head button")
         .first()
         .click();
-    else if (space === "3d" && now === "plan")
+    } else if (space === "3d" && now === "plan")
       await views.getByRole("button", { name: "3D", exact: true }).click();
     else if (space === "plan" && now === "3d")
       await views.getByRole("button", { name: "Plan", exact: true }).click();

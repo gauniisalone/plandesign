@@ -21,8 +21,44 @@ import {
   linkEffect,
   linkKind,
   linkRefusal,
+  LINK_LABELS,
   LINK_NAMES,
 } from "./links";
+
+/** KAN-98 L2 : où poser l'étiquette d'un fil (12 px à l'écran) : au-dessus de la pastille,
+ *  sinon à sa droite, sinon dessous ; la première place qui ne touche aucun node. Aucune :
+ *  l'étiquette s'efface, et revient quand on zoome. Largeur estimée d'un caractère : 0,53 em
+ *  (Outfit en 12 px : « construit le plan » mesure environ 95 px). */
+function labelPlace(
+  text: string,
+  mid: Point,
+  badge: number,
+  scale: number,
+  cards: BoardItem[],
+): { x: number; y: number; anchor: "middle" | "start" } | null {
+  const w = text.length * 6.4 * scale;
+  const h = 14 * scale;
+  const r = 17 * badge;
+  const spots = [
+    { x: mid.x, y: mid.y - r - 4 * scale, anchor: "middle" as const },
+    { x: mid.x + r + 4 * scale, y: mid.y + h / 3, anchor: "start" as const },
+    // Dessous : sous le « auto » de la pastille.
+    { x: mid.x, y: mid.y + r + 12 * badge + h, anchor: "middle" as const },
+  ];
+  for (const s of spots) {
+    const left = s.anchor === "middle" ? s.x - w / 2 : s.x;
+    const top = s.y - h;
+    const clear = !cards.some(
+      (c) =>
+        left < c.x + c.w &&
+        c.x < left + w &&
+        top < c.y + c.h &&
+        c.y < top + h + 4 * scale,
+    );
+    if (clear) return s;
+  }
+  return null;
+}
 import { route, wireEnds, type Point, type WireEnds } from "./wires";
 
 const KIND_CLASS: Record<LinkKind, string> = {
@@ -193,12 +229,13 @@ export function WireLayer({
           );
         })}
         {links.map(({ l, s, t }) => {
-          const a = ends.get(l.id)!.a;
+          const { a, b } = ends.get(l.id)!;
           const { d, mid: m, room } = routes.get(l.id)!;
           // La pastille (et « auto » dessous, ≈ 34 unités) tient dans la place libre : jamais
           // par-dessus une carte, quitte à se faire plus petite entre deux cartes serrées.
           const badge = Math.min(scale, room / 34);
           const cls = KIND_CLASS[l.kind];
+          const label = labelPlace(LINK_LABELS[l.kind], m, badge, scale, cards);
           return (
             <g
               key={l.id}
@@ -208,12 +245,30 @@ export function WireLayer({
               data-entry={ends.get(l.id)!.bSide}
             >
               <path d={d} markerEnd={`url(#${cls}-arrow)`} />
+              {/* KAN-98 L2 : ports de 12 px à la couleur du type de chaque bout. */}
               <circle
                 cx={a.x}
                 cy={a.y}
-                r={5 * scale}
-                className="board-wire-start"
+                r={6 * scale}
+                className={`board-wire-start port-${cardRole(s) ?? "plan"}`}
               />
+              <circle
+                cx={b.x}
+                cy={b.y}
+                r={6 * scale}
+                className={`board-wire-end port-${cardRole(t) ?? "plan"}`}
+              />
+              {label && (
+                <text
+                  className="board-wire-label"
+                  x={label.x}
+                  y={label.y}
+                  fontSize={12 * scale}
+                  textAnchor={label.anchor}
+                >
+                  {LINK_LABELS[l.kind]}
+                </text>
+              )}
               <g
                 className="board-wire-badge"
                 transform={`translate(${m.x} ${m.y}) scale(${badge})`}

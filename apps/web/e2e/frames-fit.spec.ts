@@ -66,13 +66,15 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
 });
 
 /** KAN-64 (MH5), qui remplace KAN-22 : le compositeur est dans le panneau de droite ; le
- *  cadrage de départ tient compte du panneau ouvert : tous les cadres sont visibles en entier
- *  dans la partie libre de l'espace de travail, à gauche du panneau, à 150 % comme à 100 %. */
+ *  cadrage tient compte du panneau ouvert : tous les cadres sont visibles en entier dans la
+ *  partie libre de l'espace de travail, à gauche du panneau, à 150 % comme à 100 %. KAN-98 L2
+ *  (PO, 27 oct.) : l'ouverture se fait au plancher (nodes de 360 px) et peut ne pas tout
+ *  montrer ; c'est « Tout voir » (Maj+1) qui cadre tout. */
 for (const [label, size] of [
   ["150 %", null],
   ["100 %", { width: 1280, height: 800 }],
 ] as const) {
-  test(`cadrage de départ à ${label} : tout est visible à gauche du panneau ouvert`, async ({
+  test(`Tout voir à ${label} : tout est visible à gauche du panneau ouvert`, async ({
     page,
   }) => {
     if (size) await page.setViewportSize(size);
@@ -83,6 +85,7 @@ for (const [label, size] of [
       exact: true,
     });
     await expect(composer).toBeVisible();
+    await page.keyboard.press("Shift+Digit1");
     const stage = (await page.locator(".board-stage").boundingBox())!;
     const side = (await page.locator(".side .side-card").boundingBox())!;
     expect(
