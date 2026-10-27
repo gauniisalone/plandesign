@@ -22,8 +22,11 @@ Le formulaire de l'accueil n'est pas un `<form>` : il ne s'envoie pas.
 ## Fenêtre « Se connecter » (B1d-b) — derrière une option de build
 
 Désactivée par défaut, donc en production tant qu'augus n'a pas décrété le MVP : sans
-l'option, `dist/` est identique octet pour octet à la sortie d'avant (405a364), et
-`check-dist` refuse tout script, toute mention de l'app et les fichiers de la fenêtre.
+l'option, `check-dist` refuse tout script, toute mention de l'app et les fichiers de la
+fenêtre. L'empreinte de `dist/` sans option est versionnée dans `expected-dist.sha256`
+(KAN-109 ; avant, la référence était la sortie de 405a364) : `scripts/dist-hash.sh --check`
+la compare à chaque passage ; une modification voulue du site met ce fichier à jour dans le
+même commit.
 
 ```sh
 PUBLIC_LOGIN_WINDOW=1 npm run build                       # app : https://app.plandesign.fr
