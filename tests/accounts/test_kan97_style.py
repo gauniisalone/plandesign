@@ -107,6 +107,27 @@ def test_a_new_worker_reads_the_inspirations_and_the_card_says_its_words(world: 
     assert row["guided_by"] == ["scandinave", "lumineux"] and row["guided_read"] is True
 
 
+def test_the_style_route_is_guarded_by_the_lease_and_the_worker_token(world: World) -> None:
+    """Infra : 404 avec un autre bail, 404 une fois la demande terminée, 401 sans jeton du
+    poste (seul cas vérifié en production ; le jeton n'est jamais touché)."""
+    from uuid import uuid4
+
+    _inspire(world)
+    world.ask()
+    job, _ = _claim(world, STYLED)
+    url = f"/api/worker/jobs/{job['request_id']}/style/0"
+    own = {**WORKER, "X-Render-Lease": job["lease"]}
+    assert world.worker.get(url, headers=own).status_code == 200
+    other = {**WORKER, "X-Render-Lease": str(uuid4())}
+    assert world.worker.get(url, headers=other).status_code == 404
+    assert world.worker.get(url, headers={"X-Render-Lease": job["lease"]}).status_code == 401
+    assert world.client.get(url, headers={"X-Render-Lease": job["lease"]}).status_code == 401, (
+        "une session ne remplace pas le jeton du poste"
+    )
+    _deposit(world, job, ["scandinavian"])
+    assert world.worker.get(url, headers=own).status_code == 404, "demande terminée"
+
+
 def test_an_old_worker_gets_nothing_new_and_the_card_names_the_images(world: World) -> None:
     _inspire(world)
     world.ask()
