@@ -9,6 +9,7 @@ après l'événement."""
 
 from __future__ import annotations
 
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -145,3 +146,107 @@ def test_my_channel_that_pings_is_closed_in_time(
         code, elapsed = _ping_for(hers, RECHECK_S * 4)
     assert code == CLOSE_NO_SESSION, (event, code)
     _in_time(refused, at, code, elapsed)
+
+
+def _pong_within(ws: Any, seconds: float) -> bool:
+    """Un ping et son pong, attendu au plus `seconds` (un message perdu ne bloque pas le test)."""
+    ws.send_text(PING)
+    got: list[Any] = []
+    reader = threading.Thread(target=lambda: got.append(ws.receive_json()), daemon=True)
+    reader.start()
+    reader.join(seconds)
+    return got == [{"type": "pong"}]
+
+
+@pytest.mark.parametrize("channel", ["projet", "compte"])
+def test_a_message_arriving_with_the_recheck_is_never_lost(
+    tmp_path: Path, migrated_url: str, monkeypatch: pytest.MonkeyPatch, channel: str
+) -> None:
+    """Passage 20 : une lecture annulée par l'échéance de la revérification perdait le message
+    qui arrivait au même instant (client de test), et le test attendait sans fin. Revérification
+    à chaque milliseconde : la coïncidence tombe à coup sûr en 1 500 pings (limite de débit
+    levée : à 20 messages par seconde, le serveur fermerait au 21e)."""
+    monkeypatch.setattr(live, "RECHECK_S", 0.001)
+    monkeypatch.setattr(live, "MAX_MESSAGES_PER_S", 10**6)
+
+    async def accepted(*_: Any) -> int | None:
+        return None
+
+    monkeypatch.setattr(live, "_refusal", accepted)
+    _owner, guest, _service, pid = _team(tmp_path, migrated_url)
+    with _ws(guest, pid) if channel == "projet" else _me_ws(guest) as ws:
+        ws.receive_json()
+        lost = next((i for i in range(1500) if not _pong_within(ws, 2.0)), None)
+        assert lost is None, f"pong perdu au ping {lost}"
+
+
+@pytest.fixture
+def reads(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Chaque tâche de lecture laissée en attente d'un tour à l'autre (échéance passée)."""
+    seen: list[Any] = []
+    until = live._Receiver.until
+
+    async def noted(self: Any, due: float) -> str | None:
+        text = await until(self, due)
+        if self.pending is not None and self.pending not in seen:
+            seen.append(self.pending)
+        return text
+
+    monkeypatch.setattr(live._Receiver, "until", noted)
+    return seen
+
+
+def _all_done(tasks: list[Any], seconds: float = 1.0) -> bool:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if all(t.done() for t in tasks):
+            return True
+        time.sleep(0.01)
+    return all(t.done() for t in tasks)
+
+
+@pytest.mark.parametrize("channel", ["projet", "compte"])
+def test_no_read_survives_a_server_close(
+    tmp_path: Path,
+    migrated_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    reads: list[Any],
+    channel: str,
+) -> None:
+    """Le serveur ferme (session refusée à la revérification) pendant qu'une lecture attend :
+    elle est arrêtée tout de suite, sans attendre que le client parle ou parte."""
+    monkeypatch.setattr(live, "RECHECK_S", 0.05)
+
+    async def revoked(*_: Any) -> int | None:
+        return CLOSE_NO_SESSION
+
+    monkeypatch.setattr(live, "_refusal", revoked)
+    _owner, guest, _service, pid = _team(tmp_path, migrated_url)
+    with _ws(guest, pid) if channel == "projet" else _me_ws(guest) as ws:
+        ws.receive_json()
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == CLOSE_NO_SESSION
+        assert reads, "aucune lecture en attente : le test ne prouve rien"
+        # Le client est encore là, muet : aucune lecture orpheline côté serveur.
+        assert _all_done(reads), "lecture orpheline après la fermeture"
+
+
+@pytest.mark.parametrize("channel", ["projet", "compte"])
+def test_no_read_survives_a_client_close(
+    tmp_path: Path,
+    migrated_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    reads: list[Any],
+    channel: str,
+) -> None:
+    """Le client part pendant qu'une lecture attend : rien ne reste derrière."""
+    monkeypatch.setattr(live, "RECHECK_S", 0.05)
+    _owner, guest, _service, pid = _team(tmp_path, migrated_url)
+    with _ws(guest, pid) if channel == "projet" else _me_ws(guest) as ws:
+        ws.receive_json()
+        time.sleep(0.2)  # quelques échéances : la même lecture reste en attente
+        assert _pong_within(ws, 2.0)
+        time.sleep(0.2)
+    assert reads
+    assert _all_done(reads), "lecture orpheline après le départ du client"

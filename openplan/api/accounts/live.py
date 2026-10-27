@@ -36,6 +36,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 from uuid import UUID
 
+from anyio import CancelScope
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
 
@@ -373,14 +374,36 @@ async def _incoming(
         await hub.presence(project_id, conn, message)
 
 
-async def _receive_until(socket: WebSocket, due: float) -> str | None:
-    """Le prochain message, ou None si la revérification (`due`) arrive d'abord."""
-    try:
-        return await asyncio.wait_for(
-            socket.receive_text(), timeout=max(0.0, due - time.monotonic())
-        )
-    except TimeoutError:
-        return None
+class _Receiver:
+    """La lecture des messages d'une connexion, jamais annulée par la revérification : à
+    l'échéance, la lecture en cours continue au tour suivant. Une lecture annulée au moment où
+    son message arrive le perd avec le client de test de Starlette (blocage du passage 20) ;
+    uvicorn, lui, le garde, mais on ne dépend pas du transport."""
+
+    def __init__(self, socket: WebSocket) -> None:
+        self.socket = socket
+        self.pending: asyncio.Task[str] | None = None
+
+    async def until(self, due: float) -> str | None:
+        """Le prochain message, ou None si la revérification (`due`) arrive d'abord."""
+        if self.pending is None:
+            self.pending = asyncio.ensure_future(self.socket.receive_text())
+        done, _ = await asyncio.wait({self.pending}, timeout=max(0.0, due - time.monotonic()))
+        if not done:
+            return None
+        task, self.pending = self.pending, None
+        return task.result()
+
+    def stop(self) -> None:
+        """À la fermeture : la lecture en cours est abandonnée, son erreur éventuelle lue."""
+        task, self.pending = self.pending, None
+        if task is None:
+            return
+        if task.done():
+            if not task.cancelled():
+                task.exception()
+        else:
+            task.cancel()
 
 
 async def _refusal(
@@ -438,9 +461,10 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
     recent: deque[float] = deque()
     raw = socket.cookies.get(SESSION_COOKIE, "")
     due = time.monotonic() + RECHECK_S
+    receiver = _Receiver(socket)
     try:
         while True:
-            text = await _receive_until(socket, due)
+            text = await receiver.until(due)
             if time.monotonic() >= due:
                 refused = await _refusal(accounts, raw, project_id, user.id)
                 if refused is not None:
@@ -461,7 +485,12 @@ async def project_live(socket: WebSocket, project_id: UUID) -> None:
         # Fermée par le client, ou par le serveur (membre retiré, session révoquée).
         pass
     finally:
-        await _left(socket.app, hub, project_id, conn, peer.user_id)
+        receiver.stop()
+        # Même si la tâche est annulée pendant la fermeture (le client de test annule juste
+        # après avoir fermé ; arrêt du serveur), le départ est annoncé et les baux rendus
+        # (blocage du passage 20). Borné : chaque envoi de `_left` part en 5 s au plus.
+        with CancelScope(shield=True):
+            await _left(socket.app, hub, project_id, conn, peer.user_id)
 
 
 @router.websocket("/ws/me")
@@ -486,9 +515,10 @@ async def my_live(socket: WebSocket) -> None:
     await socket.send_text(json.dumps({"type": "hello", "conn": conn}))
     recent: deque[float] = deque()
     due = time.monotonic() + RECHECK_S
+    receiver = _Receiver(socket)
     try:
         while True:
-            text = await _receive_until(socket, due)
+            text = await receiver.until(due)
             if time.monotonic() >= due:
                 refused = await _refusal(accounts, raw, None, resolved.user.id)
                 if refused is not None:
@@ -509,6 +539,7 @@ async def my_live(socket: WebSocket) -> None:
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        receiver.stop()
         hub.leave_me(me, conn)
 
 
