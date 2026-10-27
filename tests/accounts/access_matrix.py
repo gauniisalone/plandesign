@@ -75,7 +75,9 @@ def _links(key: tuple[str, str]) -> str:
         out.append("place (413)")
     if path.startswith("/api/worker/"):
         sample = path.replace("{request_id}", "00000000-0000-0000-0000-000000000000")
-        exact = WORKER_PATH.fullmatch(sample.replace("{name}", "bake")) is not None
+        # Exemples de valeurs des paramètres : un fichier (`{name}`), une image de style (KAN-97).
+        sample = sample.replace("{name}", "bake").replace("{index}", "0")
+        exact = WORKER_PATH.fullmatch(sample) is not None
         out.append("porte du poste" if exact else "HORS porte du poste")
     if path in RATE_LIMITED:
         out.append("débit 1 / 5 s (429)")

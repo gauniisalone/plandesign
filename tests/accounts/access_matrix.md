@@ -5,7 +5,7 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-204 routes ; par règle : admin 3, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 82, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 5.
+205 routes ; par règle : admin 3, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 82, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -211,5 +211,6 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/worker/jobs/{request_id}/fail | comptes | worker | porte du poste |  | 404 |
 | GET | /api/worker/jobs/{request_id}/files/{name} | comptes | worker | porte du poste |  | 404 410 413 |
 | POST | /api/worker/jobs/{request_id}/result | comptes | worker | porte du poste |  | 404 410 413 |
+| GET | /api/worker/jobs/{request_id}/style/{index} | comptes | worker | porte du poste |  | 404 410 |
 | WS | /ws/me | comptes | dans la route |  |  |  |
 | WS | /ws/projects/{project_id} | comptes | dans la route |  |  |  |
