@@ -385,5 +385,15 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
         app.state.accounts.engine, settings.realistic, settings.data_dir
     )
     app.include_router(render_router, dependencies=guarded)
+    # KAN-109 : back-office d'augus : audience du site (journal de Caddy, IP déjà tronquée,
+    # monté en lecture seule) et santé technique (mesurée dans l'app).
+    from openplan.api.accounts.admin_routes import install_metrics
+    from openplan.api.accounts.admin_routes import router as admin_router
+    from openplan.api.accounts.audience import SiteAudience
+
+    app.state.metrics = install_metrics(app)
+    app.state.audience = SiteAudience(app.state.accounts.engine, settings.access_log_dir)
+    app.state.audience.start()
+    app.include_router(admin_router, prefix="/api", dependencies=guarded)
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)

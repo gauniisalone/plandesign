@@ -699,6 +699,12 @@ def _serve(args: argparse.Namespace) -> int:
     return 0
 
 
+ACCESS_LOG = False
+"""KAN-109 (RGPD, Infra) : uvicorn n'écrit pas de journal d'accès : il mettait les IP réelles
+des clients dans les journaux Docker, sans borne de durée, alors que Caddy journalise déjà.
+Le journal d'erreurs d'uvicorn reste ; le journal d'accès propre de l'app (`security.py`,
+sans IP) aussi."""
+
 WS_PING_INTERVAL_S = 30.0
 WS_PING_TIMEOUT_S = 90.0
 """Connexion lente (MEP 14, 25 oct.) : avec les valeurs par défaut d'uvicorn (ping toutes les
@@ -722,6 +728,7 @@ def _run_server(
             reload=True,
             ws_ping_interval=WS_PING_INTERVAL_S,
             ws_ping_timeout=WS_PING_TIMEOUT_S,
+            access_log=ACCESS_LOG,
         )
     else:
         uvicorn.run(
@@ -730,6 +737,7 @@ def _run_server(
             port=settings.port,
             ws_ping_interval=WS_PING_INTERVAL_S,
             ws_ping_timeout=WS_PING_TIMEOUT_S,
+            access_log=ACCESS_LOG,
         )
 
 

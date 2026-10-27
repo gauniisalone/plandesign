@@ -250,6 +250,9 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/invitations/{invitation_id}/accept"): "user",
     ("POST", "/api/invitations/{invitation_id}/decline"): "user",
     ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
+    # KAN-109 : back-office d'augus (audience du site, santé technique).
+    ("GET", "/api/admin/audience"): "admin",
+    ("GET", "/api/admin/health"): "admin",
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",
     ("POST", "/api/projects"): "user",

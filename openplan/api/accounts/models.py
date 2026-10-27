@@ -11,6 +11,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -239,3 +240,79 @@ class RenderWorker(Base):
     name: Mapped[str] = mapped_column(String(32), primary_key=True)
     last_seen_at: Mapped[datetime] = mapped_column(_utc())
     state: Mapped[str] = mapped_column(String(16))
+
+
+# --- KAN-109 : audience du site public (agrégats par jour, aucune donnée personnelle) -------
+
+
+class SiteDay(Base):
+    """Une ligne par jour (UTC) : vues de pages de plandesign.fr, visiteurs uniques (figés au
+    jour clos), arrivées par www (301), robots, erreurs, appareils."""
+
+    __tablename__ = "site_days"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    """AAAA-MM-JJ (UTC)."""
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    visitors: Mapped[int] = mapped_column(Integer, default=0)
+    www: Mapped[int] = mapped_column(Integer, default=0)
+    bots: Mapped[int] = mapped_column(Integer, default=0)
+    errors_4xx: Mapped[int] = mapped_column(Integer, default=0)
+    errors_5xx: Mapped[int] = mapped_column(Integer, default=0)
+    mobile: Mapped[int] = mapped_column(Integer, default=0)
+    tablet: Mapped[int] = mapped_column(Integer, default=0)
+    desktop: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SiteDayPage(Base):
+    """Vues par page (chemin sans la requête) et par jour."""
+
+    __tablename__ = "site_day_pages"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    path: Mapped[str] = mapped_column(String(300), primary_key=True)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SiteDaySource(Base):
+    """Vues par source et par jour : le DOMAINE du référent (jamais son chemin) ou
+    `utm:<utm_source>`."""
+
+    __tablename__ = "site_day_sources"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    source: Mapped[str] = mapped_column(String(200), primary_key=True)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SiteVisitor(Base):
+    """Empreintes du jour (sel du jour, IP déjà tronquée par Caddy, User-Agent) : servent
+    seulement à compter les visiteurs uniques ; effacées avec le sel sous 48 h."""
+
+    __tablename__ = "site_visitors"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+
+class SiteSalt(Base):
+    """Sel aléatoire d'un jour ; effacé avec les empreintes de ce jour (48 h au plus)."""
+
+    __tablename__ = "site_salts"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    salt: Mapped[str] = mapped_column(String(64))
+
+
+class AccessLogCursor(Base):
+    """Où en est la lecture d'un fichier du journal : le courant par inode et position, un
+    fichier tourné (.gz) une fois lu (`done`)."""
+
+    __tablename__ = "access_log_cursors"
+
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    inode: Mapped[int] = mapped_column(BigInteger, default=0)
+    position: Mapped[int] = mapped_column(BigInteger, default=0)
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    first_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    """Premier jour lu dans ce fichier (« depuis le JJ/MM » du back-office)."""

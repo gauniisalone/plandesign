@@ -116,6 +116,10 @@ class Settings:
     les comptes seulement : le mode local n'a pas de limite."""
     realistic: RealisticConfig = field(default_factory=RealisticConfig)
     """KAN-89 : rendus réalistes calculés par le poste d'augus (voir `realistic_config`)."""
+    access_log_dir: Path | None = None
+    """OPENPLAN_ACCESS_LOG_DIR (KAN-109) : dossier du journal d'accès du SITE public, écrit par
+    Caddy avec l'IP déjà tronquée (/24, /48) et monté en lecture seule ; l'audience du
+    back-office en est tirée. Absent : pas d'audience (« journal du site non branché »)."""
 
     @property
     def local_only(self) -> bool:
@@ -172,6 +176,9 @@ class Settings:
             contact_to=merged.get("OPENPLAN_CONTACT_TO", "").strip() or None,
             quota_mb=parse_quota(merged.get("OPENPLAN_QUOTA_MB")),
             realistic=RealisticConfig.from_env(merged),
+            access_log_dir=Path(merged["OPENPLAN_ACCESS_LOG_DIR"])
+            if merged.get("OPENPLAN_ACCESS_LOG_DIR", "").strip()
+            else None,
         )
 
     @property
