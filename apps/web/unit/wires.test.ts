@@ -39,32 +39,36 @@ function points(d: string): Point[] {
   return out;
 }
 
-test("un port d'entrée par sorte : le plan à gauche des Rendus, l'inspiration à droite", () => {
+test("un port d'entrée par sorte : le plan à gauche des Rendus, le Moodboard en haut (KAN-98)", () => {
   assert.equal(entrySide("renders_view"), "left");
   assert.equal(entrySide("feeds_plan"), "left");
-  assert.equal(entrySide("guides_style"), "right");
+  assert.equal(entrySide("guides_style"), "top");
   const ends = wireEnds(wires);
   assert.equal(ends.get("v")!.b.x, renders.x);
-  assert.equal(ends.get("g")!.b.x, renders.x + renders.w);
-  assert.equal(ends.get("g")!.bSide, "right");
+  assert.equal(ends.get("g")!.b.y, renders.y);
+  assert.equal(ends.get("g")!.bSide, "top");
+  assert.ok(
+    ends.get("g")!.b.x > renders.x &&
+      ends.get("g")!.b.x < renders.x + renders.w,
+  );
   assert.equal(ends.get("f")!.b.x, plan.x);
 });
 
-test("deux inspirations vers la même carte Rendus arrivent à deux hauteurs différentes", () => {
-  const other: Rect = { id: "insp2", x: 0, y: 844, w: 624, h: 374 };
+test("deux Moodboards vers le même node Rendus arrivent en haut, à deux abscisses différentes", () => {
+  const other: Rect = { id: "insp2", x: 2400, y: -500, w: 624, h: 374 };
   const ends = wireEnds([
     ...wires,
     { id: "g2", kind: "guides_style", s: other, t: renders },
   ]);
   const a = ends.get("g")!.b;
   const b = ends.get("g2")!.b;
-  assert.equal(a.x, b.x);
-  assert.notEqual(a.y, b.y);
-  // Dans l'ordre des sources : la plus haute arrive plus haut, les fils ne se croisent pas.
-  assert.ok(a.y < b.y);
+  assert.equal(a.y, b.y);
+  assert.notEqual(a.x, b.x);
+  // Dans l'ordre des sources : la plus à gauche arrive plus à gauche (pas de croisement).
+  assert.ok(a.x < b.x);
 });
 
-test("le fil d'inspiration contourne le plan et les Rendus, sans passer dessous", () => {
+test("un Moodboard posé à gauche contourne le plan et descend sur le haut des Rendus", () => {
   const ends = wireEnds(wires).get("g")!;
   const r = route(ends, cards, { skip: ["insp", "renders"] });
   const pts = points(r.d);
@@ -72,10 +76,54 @@ test("le fil d'inspiration contourne le plan et les Rendus, sans passer dessous"
   for (const p of pts.slice(1, -1))
     for (const c of cards)
       assert.ok(!inside(p, c), `${JSON.stringify(p)} dans ${c.id}`);
-  // Il revient devant le bord droit des Rendus et y entre vers la gauche.
+  // Il arrive d'au-dessus, à la verticale de son port.
   const last = pts[pts.length - 1]!;
   assert.deepEqual(last, ends.b);
-  assert.ok(pts[pts.length - 2]!.x > last.x);
+  const before = pts[pts.length - 2]!;
+  assert.ok(before.y < last.y && Math.abs(before.x - last.x) < 1e-6);
+});
+
+test("KAN-98 : un Moodboard au-dessus des Rendus part par son bas, courbe directe", () => {
+  const mood: Rect = { id: "mood", x: 1668, y: -516, w: 780, h: 468 };
+  const ends = wireEnds([
+    { id: "m", kind: "guides_style", s: mood, t: renders },
+  ]).get("m")!;
+  assert.equal(ends.aSide, "bottom");
+  assert.equal(ends.a.y, mood.y + mood.h);
+  assert.equal(ends.b.y, renders.y);
+  const r = route(ends, [mood, plan, renders], { skip: ["mood", "renders"] });
+  assert.ok(r.d.includes(" C "), "courbe directe");
+  for (const c of [mood, plan, renders])
+    assert.ok(!inside(r.mid, c), `pastille dans ${c.id}`);
+});
+
+test("KAN-98 : vers les Rendus du dessous, le fil du Moodboard ne traverse pas ceux du dessus", () => {
+  // Deux plans en rangées (écart de 48), le Moodboard ajouté posé 48 au-dessus des Rendus du
+  // premier et relié aux deux : le second fil passe par un couloir, jamais sous une carte.
+  const top: Rect = { id: "r1", x: 1668, y: 0, w: 624, h: 700 };
+  const low: Rect = { id: "r2", x: 1668, y: 748, w: 624, h: 700 };
+  const plan2: Rect = { id: "plan2", x: 720, y: 748, w: 900, h: 700 };
+  const mood: Rect = { id: "mood", x: 1668, y: -516, w: 780, h: 468 };
+  const all = [mood, plan, plan2, top, low];
+  const ends = wireEnds([
+    { id: "a", kind: "guides_style", s: mood, t: top },
+    { id: "b", kind: "guides_style", s: mood, t: low },
+    { id: "v1", kind: "renders_view", s: plan, t: top },
+    { id: "v2", kind: "renders_view", s: plan2, t: low },
+  ]);
+  const e = ends.get("b")!;
+  const pts = points(route(e, all, { skip: ["mood", "r2"] }).d);
+  // Chaque segment, échantillonné : hors de toute carte (hors ses deux bouts, sur les bords).
+  for (let i = 1; i < pts.length; i++)
+    for (let k = 0; k <= 20; k++) {
+      const p = {
+        x: pts[i - 1]!.x + ((pts[i]!.x - pts[i - 1]!.x) * k) / 20,
+        y: pts[i - 1]!.y + ((pts[i]!.y - pts[i - 1]!.y) * k) / 20,
+      };
+      for (const c of all)
+        assert.ok(!inside(p, c), `${JSON.stringify(p)} dans ${c.id}`);
+    }
+  assert.deepEqual(pts[pts.length - 1], e.b);
 });
 
 test("la pastille n'est jamais sur une carte, même cartes serrées", () => {

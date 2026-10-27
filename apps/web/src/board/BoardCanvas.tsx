@@ -150,7 +150,7 @@ const READ_ONLY_NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
 const TOAST_MS = 6000;
 const DRAG_THRESHOLD_PX = 5;
 const WALLS_STAY =
-  "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.";
+  "Les murs déjà construits restent ; refaites le plan depuis les photos du node pour repartir de zéro.";
 /** « + Nouveau plan » sous la dernière rangée : écart, et boîte approchée pour le cadrage. */
 /** KAN-98 : une carte ajoutée par la barre, 25 % plus grande que celles d'avant (624 × 374) ;
  *  les cartes déjà posées gardent leur taille. */
@@ -631,9 +631,14 @@ export function BoardCanvas(props: Props) {
     const maxX = Math.max(...pool.map((i) => i.x + i.w));
     const maxY = Math.max(...pool.map((i) => i.y + i.h));
     const rect = el.getBoundingClientRect();
-    // T7b : le compositeur ouvert couvre le bas du tableau ; on cadre au-dessus de lui.
+    // T7b : le compositeur ouvert couvre le bas du tableau ; on cadre au-dessus de lui. KAN-98 :
+    // la barre d'ajout aussi (aucun node dessous à l'ouverture).
     const composer = el.querySelector(".board-composer");
-    const reserve = composer ? composer.getBoundingClientRect().height + 16 : 0;
+    const addbar = el.querySelector(".board-addbar")?.getBoundingClientRect();
+    const reserve = Math.max(
+      composer ? composer.getBoundingClientRect().height + 16 : 0,
+      addbar ? rect.bottom - addbar.top + 8 - FIT_MARGIN : 0,
+    );
     const height = Math.max(200, rect.height - reserve);
     const zoom = Math.max(
       ZOOM_MIN,
@@ -830,9 +835,12 @@ export function BoardCanvas(props: Props) {
   const frameCount = (frame: BoardItem): string | null => {
     const n = items.filter((i) => i.frame === frame.id).length;
     if (n === 0) return null;
-    const noun = { photos: "photo", inspirations: "image", renders: "rendu" }[
-      frame.role ?? ""
-    ];
+    const nouns: Record<string, string> = {
+      photos: "photo",
+      inspirations: "image",
+      renders: "rendu",
+    };
+    const noun = nouns[frame.role ?? ""];
     return noun ? `${n} ${noun}${n > 1 ? "s" : ""}` : null;
   };
   /** KAN-98 : le centre de la vue, en coordonnées du tableau (là où la barre d'ajout pose). */
@@ -882,7 +890,9 @@ export function BoardCanvas(props: Props) {
   // KAN-98 : un nouveau Moodboard se pose au-dessus du node Rendus (celui du premier plan),
   // dans la même colonne ; sans node Rendus, au centre de la vue.
   const addInspirationsCard = () => {
-    const renders = items.filter((i) => i.kind === "frame" && i.role === "renders");
+    const renders = items.filter(
+      (i) => i.kind === "frame" && i.role === "renders",
+    );
     const under =
       renders.find((r) => frameLevel(r) === firstLevelId) ?? renders[0];
     addCard(
@@ -890,7 +900,9 @@ export function BoardCanvas(props: Props) {
       MOODBOARD_TITLE,
       "Nouveau Moodboard, sans lien : tirez sa poignée « + » vers un ou plusieurs nodes Rendus pour que ses images guident leur allure.",
       undefined,
-      under ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP } : undefined,
+      under
+        ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP }
+        : undefined,
     );
   };
   // KAN-98 : un plan dont la carte Rendus a été retirée en retrouve une (une par niveau).
@@ -2054,7 +2066,9 @@ export function BoardCanvas(props: Props) {
                   </span>
                   {/* KAN-98 : le compteur à côté du titre (« 6 photos », « 4 images »). */}
                   {frameCount(item) && (
-                    <span className="board-frame-count">{frameCount(item)}</span>
+                    <span className="board-frame-count">
+                      {frameCount(item)}
+                    </span>
                   )}
                 </>
               ) : (

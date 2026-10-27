@@ -104,7 +104,7 @@ test("liens posés tout seuls : bandeau, survol, couper puis annuler, coupure ga
   const badge = wire("feeds_plan").locator(".board-wire-badge");
   await badge.hover();
   await expect(page.getByRole("tooltip")).toContainText(
-    "La photo de cette carte construit Plan",
+    "La photo de ce node construit Plan",
   );
   await expect(page.getByRole("tooltip")).toContainText(
     "modifiable par tous les éditeurs du projet",
@@ -179,7 +179,7 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   );
   await expect(
     page.getByText(
-      /seule une photo réelle de la pièce entre dans la carte Photos/,
+      /seule une photo réelle de la pièce entre dans le node Photos de la pièce/,
     ),
   ).toBeVisible();
   await expect(inspiration).toHaveClass(/reference/);
@@ -196,7 +196,7 @@ test("glisser dans une carte, hors d'une carte, refus expliqué, pastille hors c
   await expect(toast).toContainText("Hors node : cette photo ne servira plus");
   // Le plan ne ment pas : la photo sortie retire sa caméra, pas les murs déjà construits.
   await expect(toast).toContainText(
-    "Les murs déjà construits restent ; refaites le plan depuis les photos de la carte pour repartir de zéro.",
+    "Les murs déjà construits restent ; refaites le plan depuis les photos du node pour repartir de zéro.",
   );
   await expect(photo.locator(".board-offcard")).toHaveText(
     "hors node : non utilisée",
@@ -347,7 +347,7 @@ test("supprimer un plan : confirmation, sa carte part, ses photos restent hors c
   );
 });
 
-test("deux cartes Inspirations en N-N : elles entrent par la droite des Rendus, pastilles hors des cartes", async ({
+test("deux Moodboards en N-N : ils entrent par le haut des Rendus, pastilles hors des nodes", async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -402,12 +402,15 @@ test("deux cartes Inspirations en N-N : elles entrent par la droite des Rendus, 
   expect(tied.status()).toBe(200);
   await page.reload();
   await expect(guides).toHaveCount(4, { timeout: 30_000 });
-  await expect(board.locator(".board-wire[data-entry=right]")).toHaveCount(4);
+  // KAN-98 L1b : le Moodboard guide le style par le HAUT du node Rendus.
+  await expect(
+    board.locator(".board-wire[data-kind=guides_style][data-entry=top]"),
+  ).toHaveCount(4);
   await expect(
     board.locator(".board-wire[data-kind=renders_view][data-entry=left]"),
   ).toHaveCount(2);
 
-  // Chaque inspiration arrive sur le bord droit de sa carte Rendus, à sa propre hauteur.
+  // Chaque Moodboard arrive sur le bord haut de son node Rendus, à sa propre abscisse.
   const ends = await guides.evaluateAll((gs) =>
     gs.map((g) => {
       const n = g
@@ -417,17 +420,15 @@ test("deux cartes Inspirations en N-N : elles entrent par la droite des Rendus, 
       return [Number(n[n.length - 2]), Number(n[n.length - 1])];
     }),
   );
-  const edges = await board
+  const tops = await board
     .locator(".board-item.kind-frame.role-renders")
     .evaluateAll((fs) =>
-      fs.map((f) => {
-        const s = (f as HTMLElement).style;
-        return parseFloat(s.left) + parseFloat(s.width);
-      }),
+      fs.map((f) => parseFloat((f as HTMLElement).style.top)),
     );
-  for (const [x] of ends)
-    expect(edges.some((e) => Math.abs(e - x!) < 1)).toBe(true);
+  for (const [, y] of ends)
+    expect(tops.some((t) => Math.abs(t - y!) < 1)).toBe(true);
   expect(new Set(ends.map(([x, y]) => `${x}:${y}`)).size).toBe(4);
+  await shot(page, "kan98-deux-moodboards");
 
   // Aucune pastille sur une carte (plan, Photos, Inspirations, Rendus).
   const badges = await board
@@ -448,5 +449,16 @@ test("deux cartes Inspirations en N-N : elles entrent par la droite des Rendus, 
           b.bottom <= c.top ||
           b.top >= c.bottom,
       ).toBe(true);
+  // KAN-98 : au cadrage de l'ouverture, la barre d'ajout ne couvre aucun node.
+  const bar = (await page
+    .getByRole("group", { name: "Ajouter" })
+    .boundingBox())!;
+  for (const c of boxes)
+    expect(
+      c.bottom <= bar.y ||
+        c.top >= bar.y + bar.height ||
+        c.right <= bar.x ||
+        c.left >= bar.x + bar.width,
+    ).toBe(true);
   await shot(page, "kan91-8-inspirations-nn");
 });

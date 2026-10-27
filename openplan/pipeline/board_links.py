@@ -34,7 +34,7 @@ OUTPUT_ROLES = ("renders", "moodboard")
 IMAGE_KINDS = ("photo", "render", "contextual", "file")
 """Ce qui peut être membre d'une carte Inspirations (une image jointe est un `file`)."""
 NO_PLAN = "Reliez un plan pour rendre"
-OFF_CARD = "hors carte : non utilisée"
+OFF_CARD = "hors node : non utilisée"
 
 
 class LinkError(ValueError):
@@ -80,16 +80,16 @@ def refusal(source: BoardItem | None, target: BoardItem | None) -> str:
     """Pourquoi deux cartes ne se relient pas, en une phrase."""
     s = card_role(source)
     if source is None or target is None:
-        return "lien refusé : une des deux cartes n'existe plus"
+        return "lien refusé : un des deux nodes n'existe plus"
     if source.id == target.id:
-        return "lien refusé : une carte ne se relie pas à elle-même"
+        return "lien refusé : un node ne se relie pas à lui-même"
     if s == "photos":
-        return "une carte Photos se relie à un plan : ses photos le construisent"
+        return "un node Photos de la pièce se relie à un plan : ses photos le construisent"
     if s == "inspirations":
-        return "une carte Inspirations se relie à une carte Rendus : ses images en guident le style"
+        return "un Moodboard se relie à un node Rendus : ses images en guident le style"
     if s == "plan":
-        return "un plan se relie à une carte Rendus : il en donne la géométrie"
-    return "seules les cartes Photos, Inspirations et les plans tirent un lien"
+        return "un plan se relie à un node Rendus : il en donne la géométrie"
+    return "seuls les nodes Photos de la pièce, les Moodboards et les plans tirent un lien"
 
 
 def is_member(item: BoardItem, items: dict[UUID, BoardItem], role: CardRole) -> bool:
@@ -107,7 +107,7 @@ def accepts(card: BoardItem | None, item: BoardItem) -> str | None:
     if card_role(card) == "photos" and item.kind in NOT_FOR_PLAN:
         return (
             "une inspiration ne construit pas le plan : seule une photo réelle de la pièce "
-            "entre dans la carte Photos"
+            "entre dans le node Photos de la pièce"
         )
     return None
 
@@ -154,13 +154,13 @@ def _unique(links: list[BoardLink], items: dict[UUID, BoardItem]) -> None:
             target = card_title(items.get(link.target))
             if link.kind == "feeds_plan":
                 msg = (
-                    f"{target} lit déjà la carte « {card_title(other)} » : coupez ce lien "
-                    "d'abord (un plan se construit depuis une seule carte Photos)"
+                    f"{target} lit déjà le node « {card_title(other)} » : coupez ce lien "
+                    "d'abord (un plan se construit depuis un seul node Photos de la pièce)"
                 )
             else:
                 msg = (
                     f"« {target} » rend déjà {card_title(other)} : coupez ce lien d'abord "
-                    "(une carte Rendus rend un seul plan)"
+                    "(un node Rendus rend un seul plan)"
                 )
             raise LinkError(msg, status=409)
         seen[key] = link
@@ -385,22 +385,20 @@ def link_sentence(board: Board, link: BoardLink) -> str:
         n = len(inputs.photos)
         if n == 0:
             return (
-                f"Aucune photo dans cette carte : {card_title(target)} ne se construit pas depuis "
-                "des photos. Les photos hors carte ne comptent pas."
+                f"Aucune photo dans ce node : {card_title(target)} ne se construit pas depuis "
+                "des photos. Les photos hors node ne comptent pas."
             )
         what = (
-            "La photo de cette carte construit"
+            "La photo de ce node construit"
             if n == 1
-            else (f"Les {n} photos de cette carte construisent")
+            else (f"Les {n} photos de ce node construisent")
         )
-        return f"{what} {card_title(target)}. Les photos hors carte ne comptent pas."
+        return f"{what} {card_title(target)}. Les photos hors node ne comptent pas."
     if link.kind == "guides_style":
         n = sum(1 for i in inputs.inspirations if i.card == link.source)
         rendu = card_title(target)
         if n == 0:
-            return f"Aucune image dans cette carte : style par défaut pour {rendu}."
-        what = (
-            "L’image de cette carte guide" if n == 1 else (f"Les {n} images de cette carte guident")
-        )
-        return f"{what} le style de {rendu}. Les images hors carte ne comptent pas."
+            return f"Aucune image dans ce node : style par défaut pour {rendu}."
+        what = "L’image de ce node guide" if n == 1 else (f"Les {n} images de ce node guident")
+        return f"{what} le style de {rendu}. Les images hors node ne comptent pas."
     return f"{card_title(source)} donne la géométrie de {card_title(target)}."

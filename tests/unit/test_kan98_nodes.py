@@ -17,7 +17,15 @@ from openplan.schemas.board import BoardItem
 
 
 def _frame(role: str, text: str, **kw: float) -> BoardItem:
-    return BoardItem(kind="frame", role=role, text=text, x=kw.get("x", 0.0), y=10.0, w=kw.get("w", FRAME_W), h=374.0)  # type: ignore[arg-type]
+    return BoardItem(
+        kind="frame",
+        role=role,
+        text=text,
+        x=kw.get("x", 0.0),
+        y=10.0,
+        w=kw.get("w", FRAME_W),
+        h=374.0,
+    )  # type: ignore[arg-type]
 
 
 def test_default_titles_become_moodboard_user_titles_and_places_stay() -> None:

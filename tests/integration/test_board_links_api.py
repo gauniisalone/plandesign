@@ -92,7 +92,7 @@ def test_links_are_checked_and_a_cut_is_remembered(tmp_path: Path) -> None:
     }  # fmt: skip
     assert w.patch({"set": [second]}).status_code == 200
     taken = w.patch({"links_set": [_link(second["id"], plan["id"])]})
-    assert taken.status_code == 409 and "lit déjà la carte" in taken.json()["detail"]
+    assert taken.status_code == 409 and "lit déjà le node" in taken.json()["detail"]
     # Couper puis relire : le lien automatique ne revient pas.
     feeds = next(k for k in board["links"] if k["kind"] == "feeds_plan")
     cut = w.patch({"links_delete": [feeds["id"]]})
@@ -204,7 +204,7 @@ def test_the_hover_sentence_and_unknown_cards(tmp_path: Path) -> None:
     board = w.board()
     feeds = next(k for k in board["links"] if k["kind"] == "feeds_plan")
     summary = w.client.get(f"/api/projects/{w.pid}/board/links/{feeds['id']}").json()
-    assert summary["sentence"].startswith("La photo de cette carte construit Plan")
+    assert summary["sentence"].startswith("La photo de ce node construit Plan")
     assert summary["auto"] is True and "éditeurs" in summary["rights"]
     assert w.client.get(f"/api/projects/{w.pid}/board/links/{uuid4()}").status_code == 404
     assert w.client.get(f"/api/projects/{w.pid}/board/inputs/{uuid4()}").status_code == 404

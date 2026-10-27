@@ -66,11 +66,20 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
   const moods = board.locator(".board-item.kind-frame.role-inspirations");
   await expect(moods).toHaveCount(1);
   await expect(moods.first()).toContainText("Moodboard");
+  const start = (await moods.first().boundingBox())!;
   await bar.getByRole("button", { name: "Moodboard", exact: true }).click();
   await expect(moods).toHaveCount(2);
   const renders = board.locator(".board-item.kind-frame.role-renders").first();
   const r = (await renders.boundingBox())!;
-  const added = (await moods.last().boundingBox())!;
+  // Le nouveau : celui qui n'est pas à la place du Moodboard de départ (l'ordre du DOM ne
+  // le dit pas).
+  const boxes = await Promise.all(
+    (await moods.all()).map(async (m) => (await m.boundingBox())!),
+  );
+  const added = boxes.find(
+    (b) => Math.abs(b.x - start.x) > 1 || Math.abs(b.y - start.y) > 1,
+  )!;
+  expect(added).toBeDefined();
   expect(added.y + added.height).toBeLessThanOrEqual(r.y + 1);
   expect(Math.abs(added.x - r.x)).toBeLessThan(2);
 
@@ -85,7 +94,10 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
   // Rendus : chaque plan a déjà le sien : grisé, la raison dans l'infobulle.
   const rendus = bar.getByRole("button", { name: "Rendus", exact: true });
   await expect(rendus).toBeDisabled();
-  await expect(rendus).toHaveAttribute("title", /chaque plan a déjà son node Rendus/);
+  await expect(rendus).toHaveAttribute(
+    "title",
+    /chaque plan a déjà son node Rendus/,
+  );
 
   // Plan : la boîte « Nouveau plan » existante.
   await bar.getByRole("button", { name: "Plan", exact: true }).click();

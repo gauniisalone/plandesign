@@ -166,7 +166,10 @@ def _submit(
                 depth = None
         run = fuse_members(store, project_id, level_id, depth, progress, force=force)
         if run is None:
-            msg = "il faut au moins deux photos dans la carte Photos reliée à un plan estimé"
+            msg = (
+                "il faut au moins deux photos dans le node Photos de la pièce relié à un plan "
+                "estimé"
+            )
             raise DetectionError(msg)
         progress("Plan recoupé" if run.applied else "Recoupement non appliqué")
         return run

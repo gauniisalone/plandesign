@@ -91,7 +91,9 @@ def test_the_kind_of_a_link_comes_from_its_two_cards() -> None:
 def test_cards_that_do_not_link_are_refused_with_a_reason() -> None:
     s = Scene()
     bad = BoardLink(source=s.photos.id, target=s.renders.id, kind="feeds_plan")
-    with pytest.raises(bl.LinkError, match="une carte Photos se relie à un plan") as caught:
+    with pytest.raises(
+        bl.LinkError, match="un node Photos de la pièce se relie à un plan"
+    ) as caught:
         bl.written_links(s.board(), s.items, [bad], [], "user", NOW)
     assert caught.value.status == 422
 
@@ -102,7 +104,7 @@ def test_a_plan_reads_a_single_photo_card_409() -> None:
     items = [*s.items, other]
     second = BoardLink(source=other.id, target=s.plan.id, kind="feeds_plan")
     board = Board(items=items, links=[s.feeds()])
-    with pytest.raises(bl.LinkError, match="lit déjà la carte") as caught:
+    with pytest.raises(bl.LinkError, match="lit déjà le node") as caught:
         bl.written_links(board, items, [second], [], "user", NOW)
     assert caught.value.status == 409
 
@@ -227,12 +229,11 @@ def test_the_hover_sentence_counts_what_will_be_read() -> None:
     s = Scene()
     board = s.board(s.feeds(), s.view(), s.guides(s.insp_a))
     assert bl.link_sentence(board, s.feeds()) == (
-        "Les 2 photos de cette carte construisent Plan · RDC. "
-        "Les photos hors carte ne comptent pas."
+        "Les 2 photos de ce node construisent Plan · RDC. Les photos hors node ne comptent pas."
     )
     guide = next(k for k in board.links if k.kind == "guides_style")
     assert bl.link_sentence(board, guide).startswith(
-        "L’image de cette carte guide le style de Rendus · A"
+        "L’image de ce node guide le style de Rendus · A"
     )
     assert bl.link_sentence(board, s.view()) == "Plan · RDC donne la géométrie de Rendus · A."
 

@@ -336,6 +336,7 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
         ".strip",
         ".render-strip",
         ".board-bottom",
+        ".board-addbar",
       ]) {
         const box = stage.querySelector(sel)?.getBoundingClientRect();
         if (box && over(box))
@@ -351,18 +352,32 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     };
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
-    for (const sel of [
-      ".palette",
-      ".viewbar-wrap",
-      ".bottombar",
-      ".strip",
-      ".render-strip",
-      ".board-bottom",
-    ]) {
-      const el = stage.querySelector(sel);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
+    const watch = () => {
+      for (const sel of [
+        ".palette",
+        ".viewbar-wrap",
+        ".bottombar",
+        ".strip",
+        ".render-strip",
+        ".board-bottom",
+        ".board-addbar",
+      ]) {
+        const el = stage.querySelector(sel);
+        if (el) observer.observe(el);
+      }
+    };
+    watch();
+    // KAN-98 : l'espace de travail arrive après sa lecture (barre d'ajout comprise) : on
+    // mesure à nouveau quand il entre dans la scène.
+    const mounted = new MutationObserver(() => {
+      watch();
+      measure();
+    });
+    mounted.observe(stage, { childList: true });
+    return () => {
+      observer.disconnect();
+      mounted.disconnect();
+    };
   }, [viewMode, step, projectReady, hasRenders]);
   const [measure, setMeasure] = useState<{ a: Point2; b: Point2 } | null>(null);
   const [viewFrom, setViewFrom] = useState<{

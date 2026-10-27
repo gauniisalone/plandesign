@@ -239,8 +239,8 @@ def assess(
                 key="shape",
                 label="combles lus sur une seule photo",
                 error=ATTIC_SINGLE_ERROR,
-                advice="pente lue sur une seule photo : ajoutez à la carte Photos une photo de "
-                "biais vers un versant",
+                advice="pente lue sur une seule photo : ajoutez au node Photos de la pièce une "
+                "photo de biais vers un versant",
             )
         )
     if not focal_from_vps:

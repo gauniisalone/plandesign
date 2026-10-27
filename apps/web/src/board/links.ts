@@ -71,8 +71,7 @@ export function linkRefusal(
   source: BoardItem,
   target: BoardItem,
 ): string | null {
-  if (source.id === target.id)
-    return "Une carte ne se relie pas à elle-même.";
+  if (source.id === target.id) return "Un node ne se relie pas à lui-même.";
   const kind = linkKind(source, target);
   if (!kind) {
     const s = cardRole(source);
@@ -109,7 +108,10 @@ export function linkEffect(source: BoardItem, target: BoardItem): string {
 
 /** C3 : null si `item` peut entrer dans `card`, sinon la raison du refus. Seule la carte
  *  Photos trie : une inspiration (image jointe, rendu, variante) n'y entre pas. */
-export function accepts(card: BoardItem | null, item: BoardItem): string | null {
+export function accepts(
+  card: BoardItem | null,
+  item: BoardItem,
+): string | null {
   if (cardRole(card) === "photos" && NOT_FOR_PLAN.has(item.kind))
     return "Une inspiration ne construit pas le plan : seule une photo réelle de la pièce entre dans le node Photos de la pièce.";
   return null;
@@ -159,7 +161,12 @@ export function dropEffect(
   const fromRole = cardRole(from);
   const toRole = cardRole(to);
   if ((from?.id ?? null) === (to?.id ?? null)) return null;
-  if (fromRole !== "photos" && fromRole !== "inspirations" && toRole !== "photos" && toRole !== "inspirations")
+  if (
+    fromRole !== "photos" &&
+    fromRole !== "inspirations" &&
+    toRole !== "photos" &&
+    toRole !== "inspirations"
+  )
     return null;
   const refused = accepts(to, item);
   if (refused) return { text: refused, ok: false };
@@ -171,7 +178,8 @@ export function dropEffect(
     };
   if (toRole === "inspirations") {
     const now = targetsOf(board, to?.id ?? null);
-    const before = fromRole === "inspirations" ? targetsOf(board, from?.id ?? null) : [];
+    const before =
+      fromRole === "inspirations" ? targetsOf(board, from?.id ?? null) : [];
     const lost = before.filter((b) => !now.some((n) => n.id === b.id));
     const verb = fromRole === "inspirations" ? "Déplacer" : "Déposer";
     const tail = lost.length ? ` et ne guidera plus ${list(lost)}` : "";
@@ -236,7 +244,10 @@ export function styleImages(
   );
 }
 
-export function newLink(source: BoardItem, target: BoardItem): BoardLink | null {
+export function newLink(
+  source: BoardItem,
+  target: BoardItem,
+): BoardLink | null {
   const kind = linkKind(source, target);
   if (!kind) return null;
   const id =

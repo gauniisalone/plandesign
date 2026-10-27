@@ -614,7 +614,7 @@ def fuse_attic(  # noqa: PLR0911, PLR0912, PLR0915
     if axial_only:
         notices.append(
             "Aucune photo de biais : la pente vient de photos prises dans l'axe du faîtage, peu "
-            "sûre. Ajoutez à la carte Photos une photo de biais vers un versant."
+            "sûre. Ajoutez au node Photos de la pièce une photo de biais vers un versant."
         )
     if any(r.close_up for r in readings):
         notices.append(

@@ -80,6 +80,8 @@ def cell_size(frame: BoardItem) -> tuple[float, float]:
     rapport que CELL_W × CELL_H ; un cadre de la largeur d'avant (FRAME_W) garde ses cases."""
     width = max(CELL_W, (frame.w - PAD * 2 - (COLS - 1) * 16.0) / COLS)
     return width, width * CELL_H / CELL_W
+
+
 NOTE_W, NOTE_H = 300.0, 170.0
 PLAN_X, PLAN_W, PLAN_H = FRAME_W + 2 * GAP, 900.0, 700.0
 FILE_W, FILE_H = 220.0, 72.0
@@ -447,18 +449,24 @@ def _renamed_moodboards(items: list[BoardItem]) -> list[BoardItem]:
     défaut d'avant (« Inspirations » ou « Inspirations · <suite> ») ; un titre choisi à la main
     et les positions ne bougent pas. Un texte, pas un champ : le retour arrière le relit."""
     old, new = OLD_INSPIRATIONS_TITLE, FIXED_FRAMES["inspirations"]
+
+    def renamed(item: BoardItem) -> str | None:
+        text = item.text or ""
+        if item.kind != "frame":
+            return None
+        # Le cadre A1 libère d'abord le nom (renommé seulement s'il porte encore son défaut).
+        if item.role == "moodboard" and text == new:
+            return VARIANTS_TITLE
+        if item.role == "inspirations" and text == old:
+            return new
+        if item.role == "inspirations" and text.startswith(f"{old} · "):
+            return new + text[len(old) :]
+        return None
+
     out: list[BoardItem] = []
     for item in items:
-        text = item.text or ""
-        # Le cadre A1 libère d'abord le nom (renommé seulement s'il porte encore son défaut).
-        if item.kind == "frame" and item.role == "moodboard" and text == new:
-            item = item.model_copy(update={"text": VARIANTS_TITLE})
-        elif item.kind == "frame" and item.role == "inspirations":
-            if text == old:
-                item = item.model_copy(update={"text": new})
-            elif text.startswith(f"{old} · "):
-                item = item.model_copy(update={"text": new + text[len(old) :]})
-        out.append(item)
+        text = renamed(item)
+        out.append(item if text is None else item.model_copy(update={"text": text}))
     return out
 
 

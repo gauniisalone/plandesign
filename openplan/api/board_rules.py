@@ -16,12 +16,12 @@ from openplan.schemas.board import Board
 from openplan.schemas.scene import Project
 
 NOT_A_MEMBER = (
-    "Cette photo n'est pas dans la carte Photos reliée à ce plan : glissez-la dans la carte pour "
-    "qu'elle serve au plan (une photo hors carte n'est jamais utilisée)."
+    "Cette photo n'est pas dans le node Photos de la pièce relié à ce plan : glissez-la dans le "
+    "node pour qu'elle serve au plan (une photo hors node n'est jamais utilisée)."
 )
 NO_PHOTO_CARD = (
-    "Aucune carte Photos n'est reliée à ce plan : tirez un lien depuis une carte Photos pour que "
-    "ses photos le construisent."
+    "Aucun node Photos de la pièce n'est relié à ce plan : tirez un lien depuis un node Photos "
+    "de la pièce pour que ses photos le construisent."
 )
 
 
