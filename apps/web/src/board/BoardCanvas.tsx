@@ -541,10 +541,16 @@ export function BoardCanvas(props: Props) {
   const [moreRight, setMoreRight] = useState(false);
   useEffect(() => {
     const el = stage.current;
+    if (!el) return;
     const right = items.length
       ? Math.max(...items.map((i) => i.x + i.w)) * view.zoom + view.x
       : 0;
-    setMoreRight(!!el && right > el.clientWidth + 4);
+    // La toile s'élargit quand le panneau de droite se ferme : on relit sa largeur.
+    const check = () => setMoreRight(right > el.clientWidth + 4);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [items, view.zoom, view.x]);
 
   // Première ouverture : la vue cadre tout ce qui est posé.
@@ -555,7 +561,7 @@ export function BoardCanvas(props: Props) {
     const v = board.view;
     if (v.x !== 0 || v.y !== 0 || v.zoom !== 1) return;
     // Ce cadrage automatique n'est pas un geste : il n'est pas enregistré (B4). KAN-98 L2 :
-    // avec le plancher d'ouverture.
+    // avec le plancher d'ouverture (le panneau de droite reste ouvert d'office, KAN-64).
     fit(false, undefined, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -662,8 +668,13 @@ export function BoardCanvas(props: Props) {
     const rect = el.getBoundingClientRect();
     // T7b : le compositeur ouvert couvre le bas du tableau ; on cadre au-dessus de lui. KAN-98 :
     // la barre d'ajout aussi (aucun node dessous à l'ouverture).
+    // La barre d'ajout et la colonne d'outils sont posées à côté de la toile (pas dedans) : on
+    // les cherche dans le même conteneur.
+    const scope = el.parentElement ?? el;
     const composer = el.querySelector(".board-composer");
-    const addbar = el.querySelector(".board-addbar")?.getBoundingClientRect();
+    const addbar = scope
+      .querySelector(".board-addbar")
+      ?.getBoundingClientRect();
     const reserve = Math.max(
       composer ? composer.getBoundingClientRect().height + 16 : 0,
       addbar ? rect.bottom - addbar.top + 8 - FIT_MARGIN : 0,
@@ -683,15 +694,22 @@ export function BoardCanvas(props: Props) {
       y: (height - (maxY - minY) * zoom) / 2 - minY * zoom,
     };
     // KAN-98 L2 : à l'ouverture, un plancher ; s'il l'emporte, la vue part du coin haut
-    // gauche du contenu, à droite de la colonne d'outils.
+    // gauche du contenu, à droite de la colonne d'outils (≥ colonne + 24 px), et le contenu
+    // reste au-dessus de la barre d'ajout (le plancher cède s'il le faut, en hauteur).
     const nodes = items.filter(
       (i) => i.kind === "frame" && i.role && NODE_ROLES.includes(i.role),
     );
     if (floor && !subset && nodes.length > 0) {
       const narrow = Math.min(...nodes.map((i) => i.w));
-      const least = Math.min(OPEN_ZOOM_MAX, OPEN_NODE_PX / Math.max(1, narrow));
+      const least = Math.min(
+        OPEN_ZOOM_MAX,
+        OPEN_NODE_PX / Math.max(1, narrow),
+        (height - 2 * FIT_MARGIN) / Math.max(1, maxY - minY),
+      );
       if (next.zoom < least) {
-        const rail = el.querySelector(".board-rail")?.getBoundingClientRect();
+        const rail = scope
+          .querySelector(".board-rail:not([hidden])")
+          ?.getBoundingClientRect();
         const left = rail
           ? Math.max(FIT_MARGIN, rail.right - rect.left + 24)
           : FIT_MARGIN;

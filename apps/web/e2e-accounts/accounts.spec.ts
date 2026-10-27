@@ -1027,10 +1027,15 @@ test("KAN-51 : commenter à plusieurs, le commentateur commente sans modifier, l
 
   // Jules pose une épingle au centre, sur le cadre Plan vide (et ses boutons) : elle est
   // attachée au cadre ; Iris la voit en moins de 2 s.
+  // KAN-98 L2 : l'ouverture s'ancre en haut à gauche ; on vise le centre du cadre Plan.
   const box = (await commenter.locator(".board-stage").boundingBox())!;
+  const planBox = (await commenter
+    .locator(".board-item.kind-plan")
+    .first()
+    .boundingBox())!;
   await pinAt(
-    box.x + box.width / 2,
-    box.y + box.height / 2,
+    planBox.x + planBox.width / 2,
+    planBox.y + planBox.height / 2,
     "Et si on ouvrait ce mur ?",
   );
   const seen = owner.getByRole("button", { name: "Commentaire de Jules" });

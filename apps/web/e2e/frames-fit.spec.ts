@@ -30,6 +30,15 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
   await createEmptyProject(page, "Cadres à 150 %");
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
+  // KAN-98 L2 : sur un écran si petit, l'ouverture tient au-dessus de la barre d'ajout et
+  // tombe au palier « vignettes » (consignes masquées) ; on zoome jusqu'au détail, là où
+  // les consignes se montrent et ne doivent pas déborder.
+  const zoom = page.getByRole("group", { name: "Zoom de l'espace de travail" });
+  for (let k = 0; k < 8; k++) {
+    if ((await zoom.textContent())?.includes("détail")) break;
+    await zoom.getByRole("button", { name: "Zoomer", exact: true }).click();
+  }
+  await expect(zoom).toContainText("· détail");
 
   for (const [role, text] of [
     ["photos", "Déposez vos photos"],

@@ -140,14 +140,46 @@ test("L2 : ouverture en grand, Moodboard au-dessus de Rendus, étiquettes, ports
   page,
 }) => {
   test.setTimeout(120_000);
-  // La fenêtre d'augus (dernière capture : 1411 × 796, panneau ouvert).
+  // La fenêtre d'augus (dernière capture : 1411 × 796).
   await page.setViewportSize({ width: 1411, height: 796 });
   await boardWithPlan(page);
   const board = page.getByRole("region", { name: "Espace de travail" });
   const node = (role: string) =>
     board.locator(`.board-item.kind-frame.role-${role}`).first();
-  // Sur cet écran, Rendus est coupé à l'ouverture : une ombre au bord droit le dit.
-  await expect(page.locator(".board-more-right")).toBeVisible();
+  const panelButton = (open: boolean) =>
+    page.getByRole("button", {
+      name: open ? "Masquer le panneau" : "Afficher le panneau",
+    });
+  // KAN-64 : le panneau de droite est ouvert d'office (PO, option a du 27 oct.).
+  await expect(panelButton(true)).toBeVisible();
+  // Aucun node sous la colonne d'outils ni sous la barre d'ajout à l'ouverture.
+  const rail = (await page
+    .getByRole("toolbar", { name: "Outils de l'espace de travail" })
+    .boundingBox())!;
+  const bar = (await page
+    .getByRole("group", { name: "Ajouter" })
+    .boundingBox())!;
+  const stage = (await page.locator(".board-stage").boundingBox())!;
+  const nodes = await board
+    .locator(".board-item.kind-frame, .board-item.kind-plan")
+    .evaluateAll((fs) =>
+      fs.map((f) => f.getBoundingClientRect().toJSON() as DOMRect),
+    );
+  const apart = (
+    c: DOMRect,
+    r: { x: number; y: number; width: number; height: number },
+  ) =>
+    c.right <= r.x ||
+    c.left >= r.x + r.width ||
+    c.bottom <= r.y ||
+    c.top >= r.y + r.height;
+  for (const c of nodes) {
+    expect(apart(c, rail), "node sous la colonne d'outils").toBe(true);
+    expect(apart(c, bar), "node sous la barre d'ajout").toBe(true);
+  }
+  // L'ombre du bord droit dit exactement s'il reste de la suite à droite.
+  const cut = nodes.some((c) => c.right > stage.x + stage.width + 1);
+  await expect(page.locator(".board-more-right")).toHaveCount(cut ? 1 : 0);
   if (process.env.E2E_CAPTURE_DIR)
     await page.screenshot({
       path: path.join(process.env.E2E_CAPTURE_DIR, "kan98-l2-1411x796.png"),
@@ -155,7 +187,7 @@ test("L2 : ouverture en grand, Moodboard au-dessus de Rendus, étiquettes, ports
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.reload();
   await expect(node("renders")).toBeVisible({ timeout: 30_000 });
-  // En 1920 × 1080, tout tient à l'ouverture : plus d'ombre.
+  // En 1920 × 1080, tout tient à l'ouverture, panneau ouvert : plus d'ombre.
   await expect(page.locator(".board-more-right")).toHaveCount(0);
   if (process.env.E2E_CAPTURE_DIR)
     await page.screenshot({
@@ -213,5 +245,19 @@ test("L2 : ouverture en grand, Moodboard au-dessus de Rendus, étiquettes, ports
   if (process.env.E2E_CAPTURE_DIR)
     await page.screenshot({
       path: path.join(process.env.E2E_CAPTURE_DIR, "kan98-l2-titres.png"),
+    });
+
+  // Plus de place d'un clic (notes de MEP) : le panneau se ferme par son bouton, la toile
+  // s'élargit ; Maj+1 montre alors tout, plus grand.
+  await panelButton(true).click();
+  await expect(panelButton(false)).toBeVisible();
+  await page.keyboard.press("Shift+Digit1");
+  await expect(page.locator(".board-more-right")).toHaveCount(0);
+  if (process.env.E2E_CAPTURE_DIR)
+    await page.screenshot({
+      path: path.join(
+        process.env.E2E_CAPTURE_DIR,
+        "kan98-l2-1411x796-sans-panneau.png",
+      ),
     });
 });
