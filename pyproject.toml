@@ -146,6 +146,9 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --cov=openplan --cov-report=term-missing"
+# Un test bloqué plus de 10 min écrit la pile de tous ses fils (faulthandler, intégré à pytest) :
+# le passage 20 du 27 oct. s'est figé dans un test WebSocket sans laisser de trace.
+faulthandler_timeout = 600
 markers = [
   "blender: nécessite le binaire Blender (ignoré s'il est absent)",
   "slow: test long (modèles, rendu)",
