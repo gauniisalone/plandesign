@@ -72,7 +72,7 @@ VOCABULARY: tuple[StyleWord, ...] = (
     StyleWord("navy blue accents", "touches de bleu nuit", "palette", ("navy blue",)),
     StyleWord("monochrome", "monochrome", "palette"),
     StyleWord("indoor plants", "plantes", "touch"),
-    StyleWord("framed artwork", "tableaux encadrés", "touch"),
+    StyleWord("framed artwork", "cadres aux murs", "touch"),
     StyleWord("layered rugs", "tapis superposés", "touch"),
     StyleWord("vintage decor", "objets chinés", "touch"),
 )
