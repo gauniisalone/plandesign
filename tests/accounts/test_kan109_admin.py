@@ -220,8 +220,16 @@ def test_api_metrics_count_5xx_and_latency_over_24_hours() -> None:
 
 
 @pytest.mark.parametrize("reload", [False, True])
-def test_uvicorn_runs_without_access_log(monkeypatch: pytest.MonkeyPatch, reload: bool) -> None:
-    """RGPD (Infra) : uvicorn n'écrit plus les IP des clients dans les journaux Docker."""
+@pytest.mark.parametrize(("value", "logged"), [(None, False), ("0", False), ("1", True)])
+def test_uvicorn_runs_without_access_log_unless_asked(
+    monkeypatch: pytest.MonkeyPatch, reload: bool, value: str | None, logged: bool
+) -> None:
+    """RGPD (Infra) : uvicorn n'écrit plus les IP des clients dans les journaux Docker ;
+    seuls les serveurs jetables des e2e le rallument (garde des 500 des passages)."""
+    if value is None:
+        monkeypatch.delenv(cli.ACCESS_LOG_VAR, raising=False)
+    else:
+        monkeypatch.setenv(cli.ACCESS_LOG_VAR, value)
     seen: dict[str, object] = {}
     monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: seen.update(kw))
     cli._run_server(
@@ -229,4 +237,4 @@ def test_uvicorn_runs_without_access_log(monkeypatch: pytest.MonkeyPatch, reload
         Settings(),
         lambda **_: None,  # type: ignore[arg-type,return-value]
     )
-    assert seen["access_log"] is False
+    assert seen["access_log"] is logged

@@ -575,6 +575,44 @@ export const authApi = {
     request<{ used_bytes: number; quota_bytes: number | null }>("/auth/usage"),
 };
 
+/** KAN-109 : le back-office d'augus (administrateur seulement). */
+export interface AudienceDay {
+  day: string;
+  views: number;
+  visitors: number;
+  www: number;
+  bots: number;
+  errors_4xx: number;
+  errors_5xx: number;
+}
+export interface Audience {
+  /** Journal du site branché (OPENPLAN_ACCESS_LOG_DIR) ; faux : rien à lire. */
+  connected: boolean;
+  /** Premier jour lu dans le journal (AAAA-MM-JJ) ; null : aucune donnée encore. */
+  since: string | null;
+  days: AudienceDay[];
+  devices: { mobile: number; tablet: number; desktop: number };
+  pages: { path: string; views: number }[];
+  sources: { source: string; views: number }[];
+}
+export interface Health {
+  version: string;
+  api: {
+    since: string;
+    requests: number;
+    errors_5xx: number;
+    p50_ms: number | null;
+    p95_ms: number | null;
+  };
+  worker: string;
+  disk: { total: number; used: number; free: number; data: number };
+}
+export const adminApi = {
+  audience: (days: 7 | 30 | 90) =>
+    request<Audience>(`/admin/audience?days=${days}`),
+  health: () => request<Health>("/admin/health"),
+};
+
 /** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 413) ; connue
  *  pour un projet dont je suis propriétaire, jamais pour celui d'un autre (sa place reste à
  *  lui). Sert à prévenir AVANT d'envoyer un fichier trop gros, pas après un long envoi. */

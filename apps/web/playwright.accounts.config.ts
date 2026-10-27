@@ -22,6 +22,12 @@ const env = [
   // KAN-12 : une place d'un Mo par compte, pour éprouver le refus (aucun autre test ici
   // n'envoie de fichier).
   "OPENPLAN_QUOTA_MB=1",
+  // KAN-109 : le journal d'accès d'uvicorn, coupé en production (RGPD), rallumé pour ce
+  // serveur jetable : le garde des passages y cherche les réponses 500.
+  "OPENPLAN_UVICORN_ACCESS_LOG=1",
+  // KAN-109 : le journal du site (écrit par le test du back-office), lu chaque seconde.
+  `OPENPLAN_ACCESS_LOG_DIR=${dir}/access-log`,
+  "OPENPLAN_ACCESS_LOG_INTERVAL_S=1",
 ].join(" ");
 
 export default defineConfig({

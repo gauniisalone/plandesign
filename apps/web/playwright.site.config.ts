@@ -23,6 +23,8 @@ const env = [
   "OPENPLAN_ADMIN_EMAIL=admin@example.org",
   `OPENPLAN_PUBLIC_URL=http://localhost:${webPort}`,
   `OPENPLAN_SITE_ORIGIN=http://localhost:${sitePort}`,
+  // KAN-109 : journal d'accès d'uvicorn rallumé pour ce serveur jetable (garde des 500).
+  "OPENPLAN_UVICORN_ACCESS_LOG=1",
 ].join(" ");
 
 export default defineConfig({

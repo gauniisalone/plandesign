@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import secrets
 import sys
 from collections.abc import Callable
@@ -650,8 +651,6 @@ def default_web_dir() -> Path:
 
 
 def _serve(args: argparse.Namespace) -> int:
-    import os
-
     from openplan.api.app import WebBuildMissingError, create_app
 
     base = Settings.from_env()
@@ -699,11 +698,18 @@ def _serve(args: argparse.Namespace) -> int:
     return 0
 
 
-ACCESS_LOG = False
-"""KAN-109 (RGPD, Infra) : uvicorn n'écrit pas de journal d'accès : il mettait les IP réelles
-des clients dans les journaux Docker, sans borne de durée, alors que Caddy journalise déjà.
-Le journal d'erreurs d'uvicorn reste ; le journal d'accès propre de l'app (`security.py`,
-sans IP) aussi."""
+ACCESS_LOG_VAR = "OPENPLAN_UVICORN_ACCESS_LOG"
+"""KAN-109 (RGPD, Infra) : par défaut, uvicorn n'écrit pas de journal d'accès : il mettait
+les IP réelles des clients dans les journaux Docker, sans borne de durée, alors que Caddy
+journalise déjà. Le journal d'erreurs d'uvicorn reste ; le journal d'accès propre de l'app
+(`security.py`, sans IP) aussi. Seuls les serveurs jetables des e2e (boucle locale) le
+rallument (`OPENPLAN_UVICORN_ACCESS_LOG=1`) : le garde des passages y cherche les réponses
+500 ; la production ne le pose jamais."""
+
+
+def _access_log() -> bool:
+    return os.environ.get(ACCESS_LOG_VAR, "").strip() == "1"
+
 
 WS_PING_INTERVAL_S = 30.0
 WS_PING_TIMEOUT_S = 90.0
@@ -728,7 +734,7 @@ def _run_server(
             reload=True,
             ws_ping_interval=WS_PING_INTERVAL_S,
             ws_ping_timeout=WS_PING_TIMEOUT_S,
-            access_log=ACCESS_LOG,
+            access_log=_access_log(),
         )
     else:
         uvicorn.run(
@@ -737,7 +743,7 @@ def _run_server(
             port=settings.port,
             ws_ping_interval=WS_PING_INTERVAL_S,
             ws_ping_timeout=WS_PING_TIMEOUT_S,
-            access_log=ACCESS_LOG,
+            access_log=_access_log(),
         )
 
 

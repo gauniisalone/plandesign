@@ -27,7 +27,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cd ../.. && OPENPLAN_DOTENV= uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
+      command: `cd ../.. && OPENPLAN_DOTENV= OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
       timeout: 60_000,

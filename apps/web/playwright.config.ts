@@ -30,7 +30,7 @@ export default defineConfig({
       // OPENPLAN_DOTENV vide : le .env personnel (clé d'API distante) n'est pas lu par ce serveur jetable.
       // OPENPLAN_AUTO_PATH=0 : les projets des tests ne lancent pas le chemin automatique
       // (rendus Blender) ; le test du chemin l'active pour son projet.
-      command: `cd ../.. && OPENPLAN_DOTENV= OPENPLAN_AUTO_PATH=0 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
+      command: `cd ../.. && OPENPLAN_DOTENV= OPENPLAN_AUTO_PATH=0 OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
       // Journal d'accès d'uvicorn (sortie standard) gardé dans le journal des e2e : une

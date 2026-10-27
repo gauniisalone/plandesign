@@ -46,6 +46,12 @@ export function AccountSection() {
           )}
         </div>
       )}
+      {account.me.is_admin && (
+        // KAN-109 : le back-office, pour l'administrateur seulement.
+        <a className="account-admin" href="#/admin">
+          Back-office
+        </a>
+      )}
       <div className="account-actions">
         <button
           type="button"

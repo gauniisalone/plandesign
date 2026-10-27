@@ -33,7 +33,14 @@ import { LOGIN_WINDOW } from "../config";
 
     <h2>Ce site</h2>
     <ul>
-      <li>Aucun cookie, aucune mesure d'audience, aucun traceur publicitaire, aucun appel à un service tiers : les polices et les images sont servies par nos propres serveurs.</li>
+      <li>Aucun cookie, aucun traceur publicitaire, aucun appel à un service tiers : les polices et les images sont servies par nos propres serveurs.</li>
+      <li>
+        Mesure d'audience, sans cookie ni script : nos journaux techniques comptent les pages vues, le site d'où vous
+        arrivez (son nom de domaine seulement) et le type d'appareil. Votre adresse IP est tronquée avant d'être
+        écrite ; pour compter les visiteurs d'une journée, une empreinte de cette adresse tronquée et du navigateur est
+        calculée avec une clé du jour, puis effacée avec cette clé sous 48 heures. Il ne reste que des totaux par jour,
+        sans donnée personnelle.
+      </li>
       {LOGIN_WINDOW ? (
         <li>
           Le formulaire « Décrivez le projet » n'est pas conservé par ce site : après la connexion, votre description
@@ -84,13 +91,14 @@ import { LOGIN_WINDOW } from "../config";
         Données d'un compte supprimé : effacées du service dès la suppression ; elles peuvent subsister dans les
         sauvegardes chiffrées jusqu'à 6 mois, puis sont effacées.
       </li>
-      <li>Mesure d'audience : aucune.</li>
+      <li>Mesure d'audience : empreintes du jour effacées sous 48 heures ; totaux par jour, sans donnée personnelle, gardés 25 mois.</li>
     </ul>
 
     <h2>Base légale</h2>
     <p>
       L'exécution du service que vous demandez (compte et projets), votre consentement (assistant externe) et notre
-      intérêt légitime à sécuriser le service (journaux techniques et rapports d'erreur).
+      intérêt légitime à sécuriser le service et à mesurer sa fréquentation (journaux techniques, rapports d'erreur et
+      mesure d'audience sans cookie).
     </p>
 
     <h2>Vos droits</h2>

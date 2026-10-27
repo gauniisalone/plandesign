@@ -392,7 +392,11 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     from openplan.api.accounts.audience import SiteAudience
 
     app.state.metrics = install_metrics(app)
-    app.state.audience = SiteAudience(app.state.accounts.engine, settings.access_log_dir)
+    app.state.audience = SiteAudience(
+        app.state.accounts.engine,
+        settings.access_log_dir,
+        interval_s=settings.access_log_interval_s,
+    )
     app.state.audience.start()
     app.include_router(admin_router, prefix="/api", dependencies=guarded)
     if settings.mailer == "fake":

@@ -3862,6 +3862,108 @@ input:disabled {
   font-weight: 600;
 }
 
+/* KAN-109 : back-office de l'administrateur (audience du site, santé technique). Noms
+   vérifiés libres : admin, admin-*, account-admin. */
+.admin-title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.admin-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4, 16px);
+  width: min(1100px, 100%);
+  margin: 24px auto;
+  padding: 0 16px;
+}
+.admin-card {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+}
+.admin-card h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.admin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.admin-periods {
+  display: inline-flex;
+  gap: 4px;
+}
+.admin-periods button[aria-pressed="true"] {
+  border-color: var(--text);
+  font-weight: 600;
+}
+.admin-note,
+.admin-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+.admin-empty {
+  margin: 24px auto;
+  text-align: center;
+}
+.admin-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.admin-totals dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.admin-totals dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.admin-chart {
+  display: block;
+  width: 100%;
+  height: 140px;
+  fill: var(--pd-olive);
+}
+.admin-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.admin-table caption {
+  margin-bottom: 4px;
+  text-align: left;
+  font-weight: 600;
+}
+.admin-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.admin-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.account-admin {
+  display: inline-block;
+  margin: 4px 0 8px;
+}
+
 /* Squelette du démarrage, le temps de lire /api/health : jamais de page blanche. */
 .boot-wait {
   margin: 48px auto 0;

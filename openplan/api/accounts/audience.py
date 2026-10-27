@@ -239,10 +239,12 @@ class SiteAudience:
         engine: Engine,
         log_dir: Path | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        interval_s: int = INTERVAL_S,
     ) -> None:
         self.sessions = sessionmaker(engine, expire_on_commit=False)
         self.log_dir = log_dir
         self.clock = clock
+        self.interval_s = interval_s
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -412,7 +414,7 @@ class SiteAudience:
                     self.ingest()
                 except Exception:
                     log.exception("audience du site : lecture du journal en échec")
-                self._stop.wait(INTERVAL_S)
+                self._stop.wait(self.interval_s)
 
         self._thread = threading.Thread(target=loop, name="site-audience", daemon=True)
         self._thread.start()

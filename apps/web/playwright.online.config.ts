@@ -33,6 +33,8 @@ const env = [
   `OPENPLAN_MATERIALS_DIR=${dir}/materials`,
   `OPENPLAN_RENDER_ACCOUNTS=${RENDER_ACCOUNT.id}`,
   `OPENPLAN_WORKER_TOKEN_SHA256=${workerHash}`,
+  // KAN-109 : journal d'accès d'uvicorn rallumé pour ce serveur jetable (garde des 500).
+  "OPENPLAN_UVICORN_ACCESS_LOG=1",
 ].join(" ");
 
 export default defineConfig({

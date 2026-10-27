@@ -120,6 +120,9 @@ class Settings:
     """OPENPLAN_ACCESS_LOG_DIR (KAN-109) : dossier du journal d'accès du SITE public, écrit par
     Caddy avec l'IP déjà tronquée (/24, /48) et monté en lecture seule ; l'audience du
     back-office en est tirée. Absent : pas d'audience (« journal du site non branché »)."""
+    access_log_interval_s: int = 300
+    """OPENPLAN_ACCESS_LOG_INTERVAL_S : intervalle de lecture de ce journal (5 min ; les e2e le
+    raccourcissent)."""
 
     @property
     def local_only(self) -> bool:
@@ -179,6 +182,7 @@ class Settings:
             access_log_dir=Path(merged["OPENPLAN_ACCESS_LOG_DIR"])
             if merged.get("OPENPLAN_ACCESS_LOG_DIR", "").strip()
             else None,
+            access_log_interval_s=max(1, int(merged.get("OPENPLAN_ACCESS_LOG_INTERVAL_S") or 300)),
         )
 
     @property

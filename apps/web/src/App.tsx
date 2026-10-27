@@ -6,6 +6,7 @@ import {
   type Me,
 } from "./api/client";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
+import { Admin } from "./pages/Admin";
 import { Editor } from "./pages/Editor";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
@@ -24,6 +25,8 @@ interface Route {
   nouveau: string | null;
   /** `#/invitation/<jeton>` (B1e) : le jeton d'un lien d'invitation ; null hors de cette route. */
   invitation: string | null;
+  /** `#/admin` (KAN-109) : le back-office de l'administrateur. */
+  admin?: boolean;
 }
 
 /** `#/projects/<id>` ouvre l'atelier ; `#/projects/<id>/import` l'ouvre sur « Ajouter une
@@ -31,6 +34,14 @@ interface Route {
  *  depuis le site ; `#/invitation/<jeton>` ouvre un lien d'invitation (B1e). */
 function routeFromHash(): Route {
   const hash = window.location.hash;
+  if (hash === "#/admin")
+    return {
+      projectId: null,
+      step: undefined,
+      nouveau: null,
+      invitation: null,
+      admin: true,
+    };
   const nouveau = hash.match(/^#\/nouveau(?:\?(.*))?$/);
   if (nouveau)
     return {
@@ -179,6 +190,8 @@ export function App() {
           onOpen={open}
           onHome={home}
         />
+      ) : route.admin ? (
+        <Admin onHome={home} />
       ) : route.nouveau !== null ? (
         <NewFromSite query={route.nouveau} onOpen={open} />
       ) : route.projectId ? (
