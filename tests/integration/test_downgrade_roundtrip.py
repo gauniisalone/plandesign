@@ -33,11 +33,13 @@ PRODUCTIONS = [
     ("14e8870", "0.18.0"),
     ("f6137ff", "0.19.0"),
     ("af6bf71", "0.19.0"),
+    ("3909e9b", "0.19.0"),
 ]
 """Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0), MEP 13
 (22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91), MEP 15
 (25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92), MEP 16
-(f6137ff) et le passage 16 (af6bf71), schéma 0.19.0, d'avant les poteaux et fermes de KAN-94."""
+(f6137ff), le passage 16 (af6bf71) et la MEP 20 (3909e9b), schéma 0.19.0, d'avant les poteaux
+et fermes de KAN-94."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
