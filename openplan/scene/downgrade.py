@@ -135,6 +135,30 @@ def _drop_element_types(data: dict[str, Any], types: set[str]) -> int:
     return removed
 
 
+def _drop_media_source(media: list[Any]) -> int:
+    """KAN-98 L3 : `source_url` (le lien collé d'où vient une image) ; l'ancienne application
+    relit l'index des fichiers joints avec un modèle strict. L'image reste."""
+    removed = 0
+    for ref in media:
+        if isinstance(ref, dict) and "source_url" in ref:
+            del ref["source_url"]
+            removed += 1
+    return removed
+
+
+@step(
+    "0.22.0",
+    "0.21.0",
+    lost="la source des images collées par un lien (l'adresse montrée au survol) ; les images "
+    "restent",
+    removes=set(),
+    media=_drop_media_source,
+    media_removes={".source_url"},
+)
+def _media_source_only(data: dict[str, Any]) -> int:
+    return 0  # project.json n'a pas changé en 0.22.0 : seul media/index.json descend
+
+
 FIRST_PLAN_ROLES = ("photos", "renders")
 
 

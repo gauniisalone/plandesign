@@ -2445,6 +2445,8 @@ export interface MediaRef {
   thumb?: string | null;
   /** Envoyé par l'espace de travail, qui pose lui-même sa carte (25 oct.). */
   placed?: boolean;
+  /** KAN-98 L3 : le lien collé d'où vient l'image (montré au survol). */
+  source_url?: string | null;
 }
 
 /** KAN-51 : un point de l'espace de travail ; sur un élément, `at` est relatif à son coin et
@@ -2677,6 +2679,13 @@ export const boardApi = {
       body,
     });
   },
+  /** KAN-98 L3 : l'image d'un lien collé (ou l'image d'aperçu de sa page), récupérée par le
+   *  serveur sous sa garde ; la carte est posée par l'espace de travail. */
+  fromLink: (pid: string, url: string) =>
+    request<MediaRef>(`/projects/${pid}/media/link?placed=true`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
   mediaUrl: (pid: string, mediaId: string) =>
     `${BASE}/projects/${pid}/media/${mediaId}/file`,
   mediaThumbUrl: (pid: string, mediaId: string) =>

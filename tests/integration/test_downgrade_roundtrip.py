@@ -35,13 +35,15 @@ PRODUCTIONS = [
     ("af6bf71", "0.19.0"),
     ("3909e9b", "0.19.0"),
     ("31b1a4e", "0.20.0"),
+    ("70774b2", "0.21.0"),
 ]
 """Les versions vers lesquelles on revient : MEP 5 (21 oct. 2026, schéma 0.16.0), MEP 13
 (22 oct. 2026, schéma 0.17.0, la production d'avant les cartes reliées de KAN-91), MEP 15
 (25 oct. 2026, schéma 0.18.0, la production d'avant les zones de sol de KAN-92), MEP 16
 (f6137ff), le passage 16 (af6bf71) et la MEP 20 (3909e9b), schéma 0.19.0, d'avant les poteaux
 et fermes de KAN-94 ; le passage 20 (31b1a4e, MEP 21), schéma 0.20.0, d'avant le premier plan
-explicite de KAN-93."""
+explicite de KAN-93 ; le passage 26 (70774b2, MEP 28), schéma 0.21.0, d'avant le lien collé
+de KAN-98 L3."""
 REPO = Path(__file__).parents[2]
 
 OLD_READER = r"""
@@ -142,6 +144,14 @@ def _write_with_the_new_code(data: Path) -> list[str]:
         files={"file": ("note.txt", b"bonjour", "text/plain")},
     )
     assert sent.status_code == 201, sent.text
+    # KAN-98 L3 : une image collée par un lien garde ce lien (`source_url`, schéma 0.22.0), dans
+    # le même index ; la route passe par le réseau, l'entrée est donc écrite par son chemin.
+    from openplan.pipeline.board import add_media
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    add_media(
+        store.project_dir(UUID(pid2)), png, "salon.png", source_url="https://exemple.fr/salon"
+    )
     ids.append(pid2)
     if "reaction" in event_schema.EventType.__args__:  # type: ignore[attr-defined]
         ProjectEvents(store.project_dir(__import__("uuid").UUID(pid2))).append(

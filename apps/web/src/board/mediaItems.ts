@@ -42,6 +42,33 @@ export function hostOf(url: string): string {
   }
 }
 
+/** Le `src` de la première image d'un morceau de HTML, lu par un document inerte (rien n'est
+ *  chargé ni exécuté). */
+function imageSrc(html: string): string | null {
+  if (!html || typeof DOMParser === "undefined") return null;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.querySelector("img[src]")?.getAttribute("src") ?? null;
+}
+
+/** KAN-98 L3 : l'adresse d'image d'un glisser-déposer depuis une autre page : l'image du
+ *  HTML glissé d'abord (le navigateur y met l'image elle-même), puis la liste d'adresses,
+ *  puis le texte ; null si rien d'utilisable. */
+export function droppedLink(
+  data: { getData: (type: string) => string },
+  srcOf: (html: string) => string | null = imageSrc,
+): string | null {
+  const fromHtml = srcOf(data.getData("text/html"));
+  const image = fromHtml ? linkFrom(fromHtml) : null;
+  if (image) return image;
+  const list = data
+    .getData("text/uri-list")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith("#"));
+  const fromList = list ? linkFrom(list) : null;
+  return fromList ?? linkFrom(data.getData("text/plain"));
+}
+
 /** Le thème réellement affiché : choisi dans Réglages (`data-theme`), sinon celui du
  *  système ; suivi en direct. */
 export function useDarkTheme(): boolean {

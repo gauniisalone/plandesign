@@ -81,6 +81,14 @@ def load_project(data: dict[str, Any]) -> Project:
     return Project.model_validate(migrate(data))
 
 
+@register("0.21.0", "0.22.0")
+def _media_source(data: dict[str, Any]) -> dict[str, Any]:
+    """0.22.0 (KAN-98 L3) : une image récupérée d'après un lien collé garde ce lien
+    (`source_url`, dans `media/index.json`) ; `project.json` ne change pas. Version montée pour
+    qu'un retour arrière vers 0.21.0 passe par la descente (qui retire ce champ)."""
+    return data
+
+
 @register("0.20.0", "0.21.0")
 def _explicit_first_plan(data: dict[str, Any]) -> dict[str, Any]:
     """0.21.0 (KAN-93) : les cartes Photos et Rendus du premier plan portent la `ref` de leur

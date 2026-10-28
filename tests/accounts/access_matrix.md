@@ -5,7 +5,7 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-208 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 82, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
+209 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 83, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -159,6 +159,7 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | DELETE | /api/projects/{project_id}/measurements/{measurement_id} | local+comptes | membre ≥ editor |  |  |  |
 | GET | /api/projects/{project_id}/media | local+comptes | membre ≥ viewer |  |  |  |
 | POST | /api/projects/{project_id}/media | local+comptes | membre ≥ editor | place (413) |  | 413 |
+| POST | /api/projects/{project_id}/media/link | local+comptes | membre ≥ editor |  |  | 429 |
 | DELETE | /api/projects/{project_id}/media/{media_id} | local+comptes | membre ≥ editor |  |  | 404 |
 | GET | /api/projects/{project_id}/media/{media_id}/file | local+comptes | membre ≥ viewer |  |  | 404 |
 | GET | /api/projects/{project_id}/media/{media_id}/thumb | local+comptes | membre ≥ viewer |  |  | 404 |

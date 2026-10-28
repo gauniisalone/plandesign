@@ -4,12 +4,16 @@ courantes, montrées)."""
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
+from pydantic import Field
 
+from openplan.adapters.remote import link_fetch
 from openplan.api import change_events
 from openplan.api.access import accounts_of, usage_event
 from openplan.api.board_rules import board_now
@@ -17,11 +21,12 @@ from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import role_of
+from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
 from openplan.pipeline.board_views import ViewStore, bounded
-from openplan.schemas.board import Board, BoardPatch, BoardView, MediaRef
+from openplan.schemas.board import MAX_URL, Board, BoardPatch, BoardView, MediaRef
 from openplan.schemas.common import StrictModel
 
 router = APIRouter(tags=["board"])
@@ -299,6 +304,69 @@ async def media_upload(
     except MediaError as exc:
         too_big = len(data) > b.max_bytes(b.media_kind_of(b.media_type_of(data[:64])))
         raise HTTPException(status_code=413 if too_big else 400, detail=str(exc)) from exc
+
+
+class LinkIn(StrictModel):
+    """KAN-98 L3 : un lien collé (une image ou une page qui a une image d'aperçu)."""
+
+    url: str = Field(min_length=1, max_length=MAX_URL)
+
+
+LINK_LIMIT = 10
+LINK_WINDOW_S = 60.0
+"""10 liens par minute et par compte (accord du PO, 28 oct.) : la route ne sert pas à sonder
+des sites en série."""
+
+
+def _link_limiter(request: Request) -> SlidingWindowLimiter:
+    limiter: SlidingWindowLimiter | None = getattr(request.app.state, "link_limiter", None)
+    if limiter is None:
+        limiter = SlidingWindowLimiter(LINK_LIMIT, LINK_WINDOW_S)
+        request.app.state.link_limiter = limiter
+    return limiter
+
+
+def _link_name(image_url: str, media_type: str) -> str:
+    """Le nom du fichier gardé : la fin de l'adresse de l'image, avec l'extension de son type
+    réel (« salon%20bleu.webp » donne « salon-bleu.png » pour un PNG)."""
+    stem = Path(unquote(urlsplit(image_url).path)).stem
+    stem = re.sub(r"[^\w.-]+", "-", stem).strip("-.")[:80] or "image-du-lien"
+    return f"{stem}.{media_type.removeprefix('image/').replace('jpeg', 'jpg')}"
+
+
+@router.post("/projects/{project_id}/media/link", status_code=201)
+def media_link(
+    body: LinkIn,
+    project: ProjectDep,
+    store: StoreDep,
+    actor: ActorDep,
+    request: Request,
+    placed: bool = False,
+) -> MediaRef:
+    """KAN-98 L3 : l'image d'un lien collé, récupérée par le serveur sous la garde anti-SSRF
+    (`adapters.remote.link_fetch`) ; une page donne son image d'aperçu. L'image suit ensuite
+    le chemin d'un fichier envoyé (place du propriétaire, stockage) et garde son lien
+    (`source_url`). Route synchrone : le réseau attend dans un fil, pas dans la boucle."""
+    if not _link_limiter(request).allow(author_of(actor)):
+        raise HTTPException(
+            status_code=429, detail="Trop de liens collés d'un coup : réessayez dans une minute."
+        )
+    try:
+        got = link_fetch.fetch_link_image(body.url)
+        media_type = b.checked_link_image(got.data)
+    except link_fetch.LinkError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    except MediaError as exc:
+        raise HTTPException(status_code=422, detail=f"Image refusée : {exc}.") from exc
+    source = got.page_url or got.image_url
+    with store.lock(project.id):
+        return b.add_media(
+            store.project_dir(project.id),
+            got.data,
+            _link_name(got.image_url, media_type),
+            placed=placed,
+            source_url=source,
+        )
 
 
 @router.get("/projects/{project_id}/media/{media_id}/thumb")

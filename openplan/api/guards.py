@@ -102,6 +102,8 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("DELETE", P + "/reactions/{item_id}/{key}"): C,
     ("GET", P + "/media"): V,
     ("POST", P + "/media"): E,
+    # KAN-98 L3 : un lien collé, récupéré par le serveur (garde anti-SSRF) : éditeur.
+    ("POST", P + "/media/link"): E,
     ("GET", P + "/media/{media_id}/thumb"): V,
     ("GET", P + "/media/{media_id}/file"): V,
     ("DELETE", P + "/media/{media_id}"): E,

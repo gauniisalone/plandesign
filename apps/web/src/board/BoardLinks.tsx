@@ -450,23 +450,28 @@ export function WireBanner({
   );
 }
 
-/** Un bandeau avec « Annuler » (lien coupé, image déposée) ; il se retire seul. */
+/** Un bandeau avec « Annuler » (lien coupé, image déposée) ; il se retire seul, sauf à
+ *  `ms` = 0 (une attente en cours, que la suite remplace). `bar` : une barre qui se vide
+ *  pendant `ms` (KAN-98 L3, collage ajouté). */
 export function WireToast({
   text,
   onUndo,
   onClose,
   ms = 6000,
+  bar = false,
 }: {
   text: string;
   onUndo?: () => void;
   onClose: () => void;
   ms?: number;
+  bar?: boolean;
 }) {
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
   }, [onClose]);
   useEffect(() => {
+    if (ms <= 0) return;
     const t = window.setTimeout(() => close.current(), ms);
     return () => window.clearTimeout(t);
   }, [text, ms]);
@@ -477,6 +482,14 @@ export function WireToast({
         <button type="button" onClick={onUndo}>
           Annuler
         </button>
+      )}
+      {bar && ms > 0 && (
+        <span
+          key={text}
+          className="board-wire-toast-bar"
+          aria-hidden="true"
+          style={{ animationDuration: `${ms}ms` }}
+        />
       )}
     </div>
   );

@@ -199,3 +199,6 @@ class MediaRef(StrictModel):
     le fichier a été déposé) : la synchronisation ne le range jamais dans « Fichiers ». Sans
     cela, une lecture du tableau entre l'envoi et l'écriture de la carte en faisait une copie
     dans un cadre « Fichiers » créé exprès (25 oct.). Faux : joint par l'API (C1)."""
+    source_url: str | None = Field(default=None, max_length=MAX_URL)
+    """KAN-98 L3 : le lien collé d'où vient l'image (la page, si l'image est son aperçu),
+    récupéré par le serveur ; montré au survol, le domaine en clair. Aucun : fichier envoyé."""

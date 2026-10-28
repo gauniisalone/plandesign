@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   api,
+  ApiError,
   boardApi,
   inspirationApi,
   renderApi,
@@ -101,12 +102,14 @@ import { useHoveredItem, type ReactionsController } from "./useReactions";
 import { pinPlace, type CommentsController } from "./useComments";
 import { usePresence, type Peer, type PresenceOut } from "../state/live";
 import {
+  droppedLink,
   hostOf,
   linkFrom,
   MEDIA_SIZE,
   mediaItemKind,
   useDarkTheme,
 } from "./mediaItems";
+import { PasteMenu, type PasteChoice } from "./PasteMenu";
 
 /** Tableau du projet (B2, maquette validée par augus le 13 oct.) : un espace libre type
  *  Figma/Miro où sont posés les photos, la note de la demande, les rendus, le plan et les
@@ -165,6 +168,8 @@ const READ_ONLY_NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
 /** KAN-91 : durée du bandeau « Annuler » (dépôt, lien coupé) et délai avant le recalcul du
  *  plan dont les photos ont changé. */
 const TOAST_MS = 6000;
+/** KAN-98 L3 (maquette C1) : « Ajouté au Moodboard · Annuler », 3 s. */
+const PASTE_TOAST_MS = 3000;
 const DRAG_THRESHOLD_PX = 5;
 const WALLS_STAY =
   "Les murs déjà construits restent ; refaites le plan depuis les photos du node pour repartir de zéro.";
@@ -529,7 +534,22 @@ export function BoardCanvas(props: Props) {
   const [toast, setToast] = useState<{
     text: string;
     undo?: () => void;
+    /** KAN-98 L3 : un collage ajouté (3 s, avec la barre qui se vide) ; 0 : une attente,
+     *  sans fin (la récupération d'un lien). */
+    ms?: number;
   } | null>(null);
+  /** KAN-98 L3 (C2) : un collage sans node choisi : le mini-menu, ce qu'il colle, où. */
+  const [pasteMenu, setPasteMenu] = useState<{
+    x: number;
+    y: number;
+    at: { x: number; y: number };
+    files: File[];
+    url: string | null;
+    preview: string | null;
+    choices: PasteChoice[];
+  } | null>(null);
+  /** Dernière position du pointeur sur l'espace de travail (le mini-menu s'y ouvre). */
+  const pointer = useRef<{ x: number; y: number } | null>(null);
   const [dropHint, setDropHint] = useState<{
     frame: string | null;
     text: string;
@@ -1429,12 +1449,12 @@ export function BoardCanvas(props: Props) {
     files: File[],
     at: { x: number; y: number },
     into?: BoardItem,
-  ) => {
+  ): Promise<number> => {
     // KAN-50 : passage commun du dépôt, du collage et des sélecteurs de fichiers ; un lecteur
     // n'envoie rien (le serveur refuserait de toute façon).
     if (readOnly) {
       setMessage(READ_ONLY_NOTICE);
-      return;
+      return 0;
     }
     const added: BoardItem[] = [];
     let changed: Project | null = null;
@@ -1541,6 +1561,164 @@ export function BoardCanvas(props: Props) {
           text: "Photo posée hors node : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
         });
     }
+    return added.length;
+  };
+
+  // ------------------------------------------------------------ KAN-98 L3 : coller
+  /** Le node où entre un collage : celui choisi, ou le node de l'élément choisi, s'il reçoit
+   *  des images (Photos de la pièce, Moodboard) ; sinon aucun (le mini-menu demande). */
+  const pasteTarget = (): BoardItem | null => {
+    if (selected.size !== 1) return null;
+    const one = items.find((i) => selected.has(i.id));
+    const node =
+      one?.kind === "frame"
+        ? one
+        : one?.frame
+          ? items.find((i) => i.id === one.frame)
+          : undefined;
+    const role = cardRole(node);
+    return node && (role === "photos" || role === "inspirations") ? node : null;
+  };
+
+  /** Le node d'un choix du mini-menu : Photos de la pièce du plan ouvert, ou le Moodboard. */
+  const nodeFor = (choice: PasteChoice): BoardItem | null => {
+    if (choice === "moodboard")
+      return items.find((i) => cardRole(i) === "inspirations") ?? null;
+    if (choice !== "photos") return null;
+    const level = props.activeLevelId ?? firstLevelId;
+    const photos = items.filter((i) => cardRole(i) === "photos");
+    return photos.find((i) => i.ref === level) ?? photos[0] ?? null;
+  };
+
+  const pasted = (target: BoardItem, n: number) => {
+    if (n <= 0) return;
+    const into =
+      cardRole(target) === "inspirations"
+        ? `au ${MOODBOARD_TITLE}`
+        : `à ${PHOTOS_TITLE}`;
+    setToast({
+      text: n > 1 ? `${n} images ajoutées ${into}` : `Ajouté ${into}`,
+      undo: () => {
+        props.onUndo();
+        setToast(null);
+      },
+      ms: PASTE_TOAST_MS,
+    });
+  };
+
+  /** L'image d'un lien, récupérée par le serveur, entre dans le Moodboard ; une page sans
+   *  image devient une carte lien dans ce node, et le message le dit. */
+  const pasteLink = async (url: string, target: BoardItem) => {
+    if (readOnly) {
+      setMessage(READ_ONLY_NOTICE);
+      return;
+    }
+    setMessage(null);
+    setToast({ text: `Récupération de l'image sur ${hostOf(url)}…`, ms: 0 });
+    try {
+      const ref = await boardApi.fromLink(project.id, url);
+      setMedia((m) => [...m, ref]);
+      const now = itemsNow.current;
+      const node = now.find((i) => i.id === target.id) ?? target;
+      const inside = now.filter((i) => i.frame === node.id).length;
+      const placed = placeInFrame(node, inside, [280, 190]);
+      const item: BoardItem = {
+        id: uid(),
+        kind: "file",
+        x: placed.x,
+        y: placed.y,
+        w: 280,
+        h: 190,
+        z: 1,
+        locked: false,
+        frame: node.id,
+        ref: ref.id,
+        text: ref.name,
+        role: null,
+        reference: cardRole(node) === "inspirations",
+      };
+      commit([...now.map((i) => (i.id === node.id ? placed.frame : i)), item]);
+      setSelected(new Set([item.id]));
+      pasted(node, 1);
+    } catch (e) {
+      setToast(null);
+      // Une page sans image utilisable (aucun aperçu, image refusée) : le lien reste, en
+      // carte lien dans ce node, et le message dit pourquoi.
+      if (e instanceof ApiError && e.status === 422) {
+        addLink(url, "", centre(), target);
+        setMessage(e.message);
+      } else {
+        setMessage(
+          `Lien non ajouté : ${e instanceof ApiError ? e.message : String(e)}`,
+        );
+      }
+    }
+  };
+
+  /** Un collage ou un dépôt d'images ou de lien : dans le node visé s'il y en a un, sinon le
+   *  mini-menu au pointeur (C2). Un fichier qui n'est pas une image garde l'ancien chemin. */
+  const routePaste = (
+    what: { files: File[]; url: string | null },
+    at: { x: number; y: number },
+    client: { x: number; y: number },
+    target: BoardItem | null,
+  ) => {
+    if (readOnly) {
+      setMessage(READ_ONLY_NOTICE);
+      return;
+    }
+    const images = what.files.filter((f) => PHOTO_TYPES.includes(f.type));
+    if (what.files.length && images.length !== what.files.length) {
+      void importFiles(what.files, at, target ?? undefined);
+      return;
+    }
+    // Un lien n'entre que dans le Moodboard (son image n'est pas une photo du projet) : un
+    // autre node choisi fait ouvrir le mini-menu.
+    const into =
+      target && what.url && cardRole(target) !== "inspirations" ? null : target;
+    if (into) {
+      if (what.url) void pasteLink(what.url, into);
+      else void importFiles(images, at, into).then((n) => pasted(into, n));
+      return;
+    }
+    const choices: PasteChoice[] = what.url
+      ? ["moodboard", "link"]
+      : ["photos", "moodboard"];
+    const available = choices.filter((c) => c === "link" || nodeFor(c));
+    if (!available.some((c) => c !== "link")) {
+      // Aucun node pour le recevoir : comme avant L3, posé au centre de la vue.
+      if (what.url) addLink(what.url, "", at);
+      else void importFiles(images, at);
+      return;
+    }
+    const first = images[0];
+    setPasteMenu({
+      ...client,
+      at,
+      files: images,
+      url: what.url,
+      preview: first ? URL.createObjectURL(first) : null,
+      choices: available,
+    });
+  };
+
+  const closePasteMenu = () =>
+    setPasteMenu((m) => {
+      if (m?.preview) URL.revokeObjectURL(m.preview);
+      return null;
+    });
+
+  const onPastePick = (choice: PasteChoice) => {
+    const menu = pasteMenu;
+    closePasteMenu();
+    if (!menu) return;
+    if (choice === "link" && menu.url) {
+      addLink(menu.url, "", menu.at);
+      return;
+    }
+    const node = nodeFor(choice);
+    if (!node) return;
+    routePaste({ files: menu.files, url: menu.url }, menu.at, menu, node);
   };
 
   /** T7a : « Importer » (cadre vide) ou « + » (cadre rempli) : le sélecteur de fichiers du
@@ -1945,13 +2123,16 @@ export function BoardCanvas(props: Props) {
       if (typing(e.target)) return;
       const files = Array.from(e.clipboardData?.files ?? []);
       const rect = stage.current?.getBoundingClientRect();
-      const at = toWorld(
-        (rect?.left ?? 0) + (rect?.width ?? 0) / 2,
-        (rect?.top ?? 0) + (rect?.height ?? 0) / 2,
-      );
+      const middle = {
+        x: (rect?.left ?? 0) + (rect?.width ?? 0) / 2,
+        y: (rect?.top ?? 0) + (rect?.height ?? 0) / 2,
+      };
+      const at = toWorld(middle.x, middle.y);
+      // KAN-98 L3 : le mini-menu s'ouvre au pointeur (au centre s'il n'est pas sur l'espace).
+      const client = pointer.current ?? middle;
       if (files.length) {
         e.preventDefault();
-        void importFiles(files, at);
+        routePaste({ files, url: null }, at, client, pasteTarget());
         return;
       }
       const text = e.clipboardData?.getData("text/plain")?.trim();
@@ -1963,7 +2144,7 @@ export function BoardCanvas(props: Props) {
           return;
         }
         const url = linkFrom(text);
-        if (url) addLink(url, "", at);
+        if (url) routePaste({ files: [], url }, at, client, pasteTarget());
         else addNote(at.x, at.y, text.slice(0, 4000));
       }
     };
@@ -2186,6 +2367,20 @@ export function BoardCanvas(props: Props) {
                 missing="image indisponible"
               />
               <span className="board-caption">{item.text}</span>
+              {ref.source_url && (
+                // KAN-98 L3 : la source d'une image collée par un lien, au survol : le
+                // domaine en clair, l'adresse complète en infobulle, ouverte dans un onglet.
+                <a
+                  className="board-source"
+                  href={ref.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={ref.source_url}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {hostOf(ref.source_url)} ↗
+                </a>
+              )}
             </>
           );
         return (
@@ -2756,6 +2951,7 @@ export function BoardCanvas(props: Props) {
         data-world="1"
         onPointerDown={onStageDown}
         onPointerMove={(e) => {
+          pointer.current = { x: e.clientX, y: e.clientY };
           props.presence?.cursor(toWorld(e.clientX, e.clientY));
           onMove(e);
         }}
@@ -2766,14 +2962,33 @@ export function BoardCanvas(props: Props) {
         onPointerUp={onUp}
         onWheel={onWheel}
         onDragOver={(e) => {
-          if (Array.from(e.dataTransfer.types).includes("Files"))
+          const types = Array.from(e.dataTransfer.types);
+          // KAN-98 L3 : une image glissée depuis une autre page arrive en adresse (ou HTML).
+          if (
+            ["Files", "text/uri-list", "text/html"].some((t) =>
+              types.includes(t),
+            )
+          )
             e.preventDefault();
         }}
         onDrop={(e) => {
           const files = Array.from(e.dataTransfer.files);
-          if (!files.length) return;
+          const at = toWorld(e.clientX, e.clientY);
+          if (files.length) {
+            e.preventDefault();
+            void importFiles(files, at);
+            return;
+          }
+          const url = droppedLink(e.dataTransfer);
+          if (!url) return;
           e.preventDefault();
-          void importFiles(files, toWorld(e.clientX, e.clientY));
+          const node = frameAt(at);
+          routePaste(
+            { files: [], url },
+            at,
+            { x: e.clientX, y: e.clientY },
+            cardRole(node) === "inspirations" ? node : null,
+          );
         }}
       >
         <div
@@ -3012,7 +3227,20 @@ export function BoardCanvas(props: Props) {
             text={toast.text}
             onUndo={readOnly ? undefined : toast.undo}
             onClose={() => setToast(null)}
-            ms={TOAST_MS}
+            ms={toast.ms ?? TOAST_MS}
+            bar={toast.ms === PASTE_TOAST_MS}
+          />
+        )}
+        {pasteMenu && (
+          <PasteMenu
+            x={pasteMenu.x}
+            y={pasteMenu.y}
+            count={pasteMenu.files.length}
+            link={pasteMenu.url !== null}
+            preview={pasteMenu.preview}
+            choices={pasteMenu.choices}
+            onPick={onPastePick}
+            onCancel={closePasteMenu}
           />
         )}
         {!readOnly && (

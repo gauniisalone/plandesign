@@ -411,12 +411,17 @@ test("KAN-77 (MH10) : Ajouter un lien dans Inspirations, Importer un plan, colle
   await page.getByRole("button", { name: /Ajouter une source/ }).click();
   await goSpace(page, "board");
 
-  // Coller une adresse marche toujours (sans bouton).
+  // Coller une adresse marche toujours (sans bouton). KAN-98 L3 : rien de choisi, le
+  // mini-menu demande où la mettre ; « Lien seul » pose la carte lien, comme avant.
   await page.evaluate(() => {
     const dt = new DataTransfer();
     dt.setData("text/plain", "https://www.exemple.fr/tapis");
     window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt }));
   });
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: /Lien seul/ })
+    .click();
   await expect(
     region.locator(".board-item.kind-link", { hasText: "www.exemple.fr" }),
   ).toHaveCount(2);

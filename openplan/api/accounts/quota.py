@@ -35,6 +35,11 @@ UPLOADS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 """Envois : refusés si la place utilisée plus le corps reçu dépasserait la limite."""
+LINKS: frozenset[tuple[str, str]] = frozenset({("POST", P + "/media/link")})
+"""KAN-98 L3 : une image d'un lien collé ; le corps reçu n'est que l'adresse, la place
+réservée est donc la taille la plus grande permise pour cette image."""
+LINK_RESERVE = 10 * MB
+"""Comme `link_fetch.MAX_IMAGE_BYTES` (l'API ne lit pas l'adaptateur réseau ici)."""
 LAUNCHES: frozenset[tuple[str, str]] = frozenset(
     ("POST", route)
     for route in (
@@ -109,7 +114,7 @@ def guard_space(
 ) -> None:
     """Appelée par la garde des routes (comptes actifs) : envoi ou calcul refusé (413) quand
     la place du propriétaire du projet serait dépassée."""
-    if key not in UPLOADS and key not in LAUNCHES:
+    if key not in UPLOADS and key not in LAUNCHES and key not in LINKS:
         return
     limit = quota_bytes(request)
     if limit is None:
@@ -123,6 +128,8 @@ def guard_space(
             incoming = max(0, int(request.headers.get("content-length", "0")))
         except ValueError:
             incoming = 0
+    elif key in LINKS:
+        incoming = min(LINK_RESERVE, limit)
     else:
         # Un calcul ne connaît pas d'avance la taille de ce qu'il écrira : on lui réserve
         # LAUNCH_RESERVE, pour qu'il ne dépasse jamais la limite en cours de route.

@@ -35,7 +35,7 @@ from openplan.schemas.board import (
     MediaRef,
 )
 from openplan.schemas.comments import CommentPoint
-from openplan.schemas.common import now_utc
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, now_utc
 from openplan.schemas.scene import Project
 
 BOARD_FILE = "board.json"
@@ -1055,7 +1055,44 @@ def _pdf_thumb(pdf: Path, out: Path) -> bool:
         return False
 
 
-def add_media(project_dir: Path, data: bytes, name: str, *, placed: bool = False) -> MediaRef:
+LINK_IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp")
+MAX_LINK_PIXELS = 40_000_000
+"""KAN-98 L3 : au-delà (8000 × 5000), une image d'un lien est refusée avant d'être décodée
+(bombe de décompression)."""
+
+
+def checked_link_image(data: bytes) -> str:
+    """KAN-98 L3 : l'image récupérée d'après un lien, contrôlée par son contenu (jamais par
+    l'en-tête du site) : un format courant, lisible par Pillow, de taille raisonnable."""
+    media_type = media_type_of(data)
+    if media_type not in LINK_IMAGE_TYPES:
+        msg = "ce lien ne donne pas une image JPEG, PNG ou WebP"
+        raise MediaError(msg)
+    from PIL import Image
+
+    try:
+        # KAN-113 : seuls les décodeurs JPEG, PNG et WebP sont essayés.
+        with Image.open(io.BytesIO(data), formats=DECODED_IMAGE_FORMATS) as image:
+            if image.width * image.height > MAX_LINK_PIXELS:
+                msg = "image trop grande en pixels"
+                raise MediaError(msg)
+            image.verify()
+    except MediaError:
+        raise
+    except Exception as exc:  # Pillow : format abîmé, bombe, tronquée…
+        msg = "image illisible"
+        raise MediaError(msg) from exc
+    return media_type
+
+
+def add_media(
+    project_dir: Path,
+    data: bytes,
+    name: str,
+    *,
+    placed: bool = False,
+    source_url: str | None = None,
+) -> MediaRef:
     if not data:
         msg = "fichier vide"
         raise MediaError(msg)
@@ -1072,7 +1109,13 @@ def add_media(project_dir: Path, data: bytes, name: str, *, placed: bool = False
     suffix = Path(safe).suffix.lower()
     suffix = suffix if re.fullmatch(r"\.[a-z0-9]{1,10}", suffix) else ""
     ref = MediaRef(
-        name=safe, media_type=media_type, size=len(data), path="", kind=kind, placed=placed
+        name=safe,
+        media_type=media_type,
+        size=len(data),
+        path="",
+        kind=kind,
+        placed=placed,
+        source_url=source_url,
     )
     relative = f"{MEDIA_DIR}/{ref.id}{suffix}"
     ref = ref.model_copy(update={"path": relative})

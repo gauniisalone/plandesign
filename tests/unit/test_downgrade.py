@@ -27,11 +27,12 @@ SNAPSHOTS = [
     FIXTURES / "format_paths_14e8870.json",
     FIXTURES / "format_paths_f6137ff.json",
     FIXTURES / "format_paths_31b1a4e.json",
+    FIXTURES / "format_paths_70774b2.json",
 ]
 """Instantanés des chemins de champs des productions (MEP 5, 3da4d52, schéma 0.16.0 ; MEP 13,
 a1c630f, schéma 0.17.0 ; MEP 15, 14e8870, schéma 0.18.0 ; MEP 16, f6137ff, schéma 0.19.0 ;
-MEP 21, 31b1a4e, schéma 0.20.0), produits par `python -m tests.format_paths` avec le code de
-chaque version en PYTHONPATH."""
+MEP 21, 31b1a4e, schéma 0.20.0 ; MEP 28, 70774b2, schéma 0.21.0), produits par
+`python -m tests.format_paths` avec le code de chaque version en PYTHONPATH."""
 TOLERATED: dict[str, dict[str, str]] = {
     "events.jsonl": {
         "": "une ligne d'un type ou d'un champ inconnu est ignorée par l'ancien code "
@@ -60,11 +61,11 @@ def _dump(project: Project) -> dict[str, object]:
 
 def test_the_step_removes_the_confidence_everywhere_and_is_idempotent() -> None:
     data = _dump(_with_confidence())
-    assert data["schema_version"] == SCHEMA_VERSION == "0.21.0"
+    assert data["schema_version"] == SCHEMA_VERSION == "0.22.0"
     down, removed, lost = downgrade_data(data, "0.16.0")
     assert down["schema_version"] == "0.16.0" and removed == 4  # la mesure et sa « previous »
-    assert "premier plan" in lost[0] and "poteaux" in lost[1] and "zones de sol" in lost[2]
-    assert "liens" in lost[3] and "confiance" in lost[4]
+    assert "images collées" in lost[0] and "premier plan" in lost[1] and "poteaux" in lost[2]
+    assert "zones de sol" in lost[3] and "liens" in lost[4] and "confiance" in lost[5]
     text = json.dumps(down)
     assert "confidence" not in text
     again, removed_again, _ = downgrade_data(down, "0.16.0")
@@ -102,7 +103,7 @@ def test_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     project = store.save(_with_confidence())
     assert main(["downgrade", "--to", "0.16.0", "--dry-run", str(tmp_path)]) == 0
     assert "1 projet(s) à descendre" in capsys.readouterr().out
-    assert json.loads(project.read_text())["schema_version"] == "0.21.0"
+    assert json.loads(project.read_text())["schema_version"] == "0.22.0"
     assert main(["downgrade", "--to", "0.16.0", str(tmp_path)]) == 0
     assert json.loads(project.read_text())["schema_version"] == "0.16.0"
     assert main(["downgrade", "--to", "0.1.0", str(tmp_path)]) == 2
@@ -164,6 +165,36 @@ def test_the_media_index_loses_placed_even_when_project_json_was_not_rewritten(
     assert again.changed == [] and again.unchanged == 1
 
 
+def test_a_pasted_link_source_goes_down_to_0_21_and_the_image_stays(tmp_path: Path) -> None:
+    """KAN-98 L3 : 0.22.0 → 0.21.0 retire `source_url` de `media/index.json` (relu par un
+    modèle strict) ; l'image et le reste de son entrée restent, un fichier envoyé ne bouge
+    pas, et `project.json` ne perd rien d'autre que sa version."""
+    from openplan.pipeline.board import add_media, list_media
+
+    store = ProjectStore(tmp_path / "projects")
+    path = store.save(new_project("Moodboard"))
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    linked = add_media(path.parent, png, "salon.png", source_url="https://exemple.fr/salon")
+    sent = add_media(path.parent, b"bonjour", "note.txt")
+    before = json.loads(path.read_text())
+    dry = downgrade_tree(tmp_path, "0.21.0", dry_run=True)
+    # Deux : l'entrée du fichier envoyé porte aussi la clé (`null`), que l'ancien modèle
+    # strict refuserait de même.
+    assert len(dry.changed) == 1 and dry.removed == 2 and not dry.errors
+    assert "source_url" in (path.parent / "media" / "index.json").read_text(), "--dry-run"
+    done = downgrade_tree(tmp_path, "0.21.0")
+    assert done.removed == 2 and not done.errors
+    entries = json.loads((path.parent / "media" / "index.json").read_text())
+    assert all("source_url" not in e for e in entries)
+    assert [e["id"] for e in entries] == [str(linked.id), str(sent.id)]
+    assert (path.parent / linked.path).read_bytes() == png, "l'image reste"
+    after = json.loads(path.read_text())
+    assert after["schema_version"] == "0.21.0"
+    assert {**after, "schema_version": "0.22.0"} == before
+    assert downgrade_tree(tmp_path, "0.21.0").changed == []
+    assert [m.source_url for m in list_media(path.parent)] == [None, None], "relu en 0.22.0"
+
+
 def test_floor_zones_go_down_to_0_18_with_the_undo_history_that_knew_them() -> None:
     """KAN-92 : 0.19.0 → 0.18.0 retire les zones de sol ; l'historique d'annulation d'un projet
     qui en avait est vidé (un Ctrl+Z les ferait revenir dans l'ancienne application). Un projet
@@ -185,7 +216,7 @@ def test_floor_zones_go_down_to_0_18_with_the_undo_history_that_knew_them() -> N
     corners = [(1.0, 1.0), (2.0, 1.0), (2.0, 2.0), (1.0, 2.0)]
     zoned = apply_op(thick, level.id, AddFloorZone(polygon=[Point2(x=x, y=y) for x, y in corners]))
     down, removed, lost = downgrade_data(_dump(zoned), "0.18.0")
-    assert down["schema_version"] == "0.18.0" and "zones de sol" in lost[2]
+    assert down["schema_version"] == "0.18.0" and "zones de sol" in lost[3]
     text = json.dumps(down)
     assert "floor_zone" not in text and down["history"] == [] and down["history_cursor"] == 0
     assert removed == 1 + 2, "la zone et les deux pas d'historique"
@@ -211,7 +242,7 @@ def test_posts_and_trusses_go_down_to_0_19_with_the_undo_history_that_knew_them(
     near = Point2(x=truss.position.x + 0.3, y=truss.position.y + 0.3)  # type: ignore[attr-defined]
     built = apply_op(built, level.id, AddPost(position=near))
     down, removed, lost = downgrade_data(_dump(built), "0.19.0")
-    assert down["schema_version"] == "0.19.0" and "poteaux" in lost[1]
+    assert down["schema_version"] == "0.19.0" and "poteaux" in lost[2]
     text = json.dumps(down)
     assert '"post"' not in text and '"truss"' not in text
     assert down["history"] == [] and down["history_cursor"] == 0
