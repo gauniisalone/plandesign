@@ -1,0 +1,219 @@
+# .github/workflows/e2e.yml : tests de bout en bout Playwright dans la CI (KAN-112, 28 oct. 2026).
+# Phase 1 : NON BLOQUANT. Le robot de MEP et deploy.yml ne lisent que le workflow « ci » ; celui-ci
+# mesure (3 à 5 runs) et révèle les tests instables, corrigés dans le code, jamais par des relances
+# (retries 0, comme en local). Phase 2, sur go du PO : ces jobs entrent dans ci.yml.
+# Restent en local, sur créneau : les tests qui demandent les poids ou le GPU (ils sautent seuls
+# ici, avec leur raison, et le bilan les liste) et e2e-audit (captures).
+# Aucun secret : aucun `secrets.*` ici, OPENPLAN_DOTENV vide dans les configs, mailer console,
+# jeton du poste = constante de test. Artefacts seulement en cas d'échec (dépôt public : rien que
+# les fixtures du dépôt), gardés 3 jours.
+name: e2e
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "*.md", "data/**"]
+  pull_request:
+    paths-ignore: ["docs/**", "*.md", "data/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Mêmes extras que le job python de ci.yml : `uv run` (appelé par les configs) synchronise sans
+  # retirer les paquets en trop, donc le serveur jetable trouve fastapi (extra api) et les comptes.
+  UV_EXTRAS: --extra api --extra vision --extra ai --extra monitoring --extra comptes
+
+jobs:
+  e2e:
+    name: e2e ${{ matrix.suite }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: base, config: playwright.config.ts, shard: 1/3 }
+          - { suite: base, config: playwright.config.ts, shard: 2/3 }
+          - { suite: base, config: playwright.config.ts, shard: 3/3 }
+          - { suite: comptes, config: playwright.accounts.config.ts, postgres: true }
+          - { suite: online, config: playwright.online.config.ts }
+          - { suite: site, config: playwright.site.config.ts, site: true }
+    services:
+      # Comptes seulement (parité avec la prod) ; online et site restent en SQLite.
+      # Base et mot de passe jetables : la base vit le temps du job, ce n'est pas un secret.
+      postgres:
+        image: ${{ matrix.postgres && 'postgres:16.15-alpine' || '' }}
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: comptes
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U e2e -d comptes" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Lu par playwright.accounts.config.ts (SQLite sans elle). Vide pour les autres suites.
+      E2E_DATABASE_URL: ${{ matrix.postgres && 'postgresql://e2e:e2e@127.0.0.1:5432/comptes' || '' }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/rapport.json
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/site/package-lock.json
+      - uses: astral-sh/setup-uv@v10.3.0   # pas de tag flottant v10 chez setup-uv
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen $UV_EXTRAS
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/web
+      - if: matrix.site
+        run: npm ci --no-audit --no-fund
+        working-directory: apps/site
+
+      # Navigateur : chromium seul, gardé en cache par version exacte de @playwright/test.
+      - id: pw
+        working-directory: apps/web
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+      - id: pw-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: apps/web
+
+      # Gardes du site AVANT les tests (le serveur de e2e-site reconstruit dist/ pour le local).
+      # 1) le build de production, AVEC l'option (décision d'augus du 28 oct.), et check-dist ;
+      # 2) l'empreinte versionnée : expected-dist.sha256 décrit le build indiqué par
+      #    EMPREINTE_AVEC_OPTION (à passer à "1" dans le commit qui change ce fichier).
+      - if: matrix.site
+        name: Site de production (avec l'option) et check-dist
+        working-directory: apps/site
+        env:
+          PUBLIC_LOGIN_WINDOW: "1"
+        run: npm run build
+      - if: matrix.site
+        name: Empreinte du site
+        working-directory: apps/site
+        env:
+          EMPREINTE_AVEC_OPTION: "0"
+        run: |
+          [ "$EMPREINTE_AVEC_OPTION" = 1 ] || PUBLIC_LOGIN_WINDOW= npm run build
+          scripts/dist-hash.sh --check
+
+      - name: Tests (${{ matrix.config }})
+        working-directory: apps/web
+        run: |
+          rm -rf .e2e-data
+          set -o pipefail
+          npx playwright test -c ${{ matrix.config }} ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }} \
+            --reporter=list,json 2>&1 | tee "$GITHUB_WORKSPACE/sortie.log"
+
+      # Garde des passages, reprise telle quelle de commit29 (texte de Features, 28 oct.) : sur les
+      # seules lignes [WebServer] de la sortie de CE job (le rapport ne contient pas la sortie des
+      # serveurs), moins les exceptions de e2e-allow.txt, aucune trace ni réponse 500, même si tous
+      # les tests sont verts. Le « " 500 » d'uvicorn n'existe que grâce à
+      # OPENPLAN_UVICORN_ACCESS_LOG=1 posé par les configs (jamais en production).
+      - name: "Garde : aucune trace ni 500"
+        if: always()
+        env:
+          E2ELOG: sortie.log
+          ALLOW: e2e-allow.txt
+        run: |
+          [ -f "$E2ELOG" ] || { echo "pas de sortie : tests non lancés"; exit 1; }
+          SERVER=$(grep -E "^\[WebServer\]" "$E2ELOG" || true)
+          if [ -f "$ALLOW" ] && grep -q -v -E '^\s*(#|$)' "$ALLOW"; then
+            SERVER=$(printf '%s\n' "$SERVER" | grep -v -E -f <(grep -v -E '^\s*(#|$)' "$ALLOW") || true)
+          fi
+          n=$(printf '%s\n' "$SERVER" | grep -c . || true)
+          echo "lignes serveur lues : $n"
+          # Garde aveugle (stdout plus en « pipe », journal d'accès coupé…) = échec, pas un vert muet.
+          [ "$n" -gt 0 ] || { echo "aucune ligne [WebServer] : la garde ne voit rien"; exit 1; }
+          printf '%s\n' "$SERVER" | grep -c -E '" [0-9]{3} ' | sed 's/^/lignes d accès uvicorn : /' || true
+          if printf '%s\n' "$SERVER" | grep -q -E "Traceback|Exception in ASGI|\" 500 |500 Internal Server Error"; then
+            printf '%s\n' "$SERVER" | grep -n -E -A 40 "Traceback|Exception in ASGI|\" 500 " | tail -45
+            exit 1
+          fi
+
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rapport-${{ matrix.suite }}${{ matrix.shard && format('-{0}', strategy.job-index) || '' }}
+          path: rapport.json
+          retention-days: 3
+          if-no-files-found: ignore
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: echec-${{ matrix.suite }}-${{ strategy.job-index }}
+          path: |
+            apps/web/test-results*/
+            sortie.log
+          retention-days: 3
+          if-no-files-found: ignore
+
+  bilan:
+    name: bilan (réussis, échecs, SAUTÉS et leur raison)
+    needs: [e2e]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: rapport-*
+          path: rapports
+      - name: Résumé du run
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          tot = {"passed": 0, "failed": 0, "timedOut": 0, "skipped": 0, "flaky": 0}
+          sautes, lents, echecs = [], [], []
+          def specs(suite, chemin=""):
+              for s in suite.get("specs", []):
+                  yield s, suite.get("file", chemin)
+              for sub in suite.get("suites", []):
+                  yield from specs(sub, suite.get("file", chemin))
+          for f in sorted(pathlib.Path("rapports").glob("*/rapport.json")):
+              nom = f.parent.name.removeprefix("rapport-")
+              r = json.loads(f.read_text())
+              for top in r.get("suites", []):
+                  for s, fichier in specs(top):
+                      for t in s.get("tests", []):
+                          res = t.get("results") or [{}]
+                          st = res[-1].get("status", "skipped")
+                          tot[st] = tot.get(st, 0) + 1
+                          titre = f"{fichier} › {s['title']}"
+                          if st == "skipped":
+                              raison = "; ".join(a.get("description", "") for a in t.get("annotations", []) if a.get("type") == "skip") or "sans raison"
+                              sautes.append((nom, titre, raison))
+                          elif st in ("failed", "timedOut"):
+                              echecs.append((nom, titre, st))
+                          lents.append((sum(x.get("duration", 0) for x in res) / 1000, nom, titre))
+          print("## e2e (KAN-112, phase 1 non bloquante)\n")
+          print(" | ".join(f"{k} : {v}" for k, v in tot.items()) + "\n")
+          if echecs:
+              print("### Échecs\n"); [print(f"- `{n}` {t} ({s})") for n, t, s in echecs]; print()
+          print(f"### Tests SAUTÉS ({len(sautes)}), à passer en local sur créneau\n")
+          [print(f"- `{n}` {t} : {r}") for n, t, r in sautes]
+          print("\n### Les 10 plus lents\n")
+          [print(f"- {d:.0f} s `{n}` {t}") for d, n, t in sorted(lents, reverse=True)[:10]]
+          EOF
+      - name: Échec si un job e2e a échoué
+        if: needs.e2e.result != 'success'
+        run: |
+          echo "jobs e2e : ${{ needs.e2e.result }}"
+          exit 1

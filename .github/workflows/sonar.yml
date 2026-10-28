@@ -1,0 +1,64 @@
+# .github/workflows/sonar.yml : SonarQube Cloud HORS du workflow « ci » (KAN-112, 28 oct. 2026).
+# Dans ci.yml, l'analyse ajoutait ≈ 7 min après python : le run « ci », seul lu par le robot de MEP
+# et deploy.yml, se conclut maintenant sans l'attendre. Toujours non bloquant.
+# Lancé après chaque run « ci » réussi d'un push sur main de CE dépôt (jamais pour une PR, ni pour
+# une branche de fork : le jeton SONAR_TOKEN ne voit jamais de code non fusionné). Il reprend les
+# rapports de couverture de ce run (artefacts coverage-python et coverage-web, gardés 1 jour).
+# Le jeton ne sert qu'ici, par secrets.SONAR_TOKEN. Ce que l'analyse envoie : voir
+# sonar-project.properties (openplan/ et apps/web/src/ seulement, jamais data/). Le scanner n'attend
+# pas la porte qualité. Prérequis : l'analyse automatique de SonarQube Cloud reste coupée.
+# workflow_run ne part que de la version de ce fichier sur la branche par défaut : il agit après
+# sa fusion dans main, pas avant.
+name: sonar
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: sonar
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read   # lire les artefacts du run « ci »
+
+jobs:
+  sonar:
+    name: sonar (SonarQube Cloud, non bloquant)
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0   # historique complet : nouveau code et blame justes
+      - uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          # Une clé par run (le cache d'une clé n'est jamais réécrit), le plus récent restauré.
+          key: sonar-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: sonar-${{ runner.os }}-
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-python
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-web
+          path: apps/web
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: SonarSource/sonarqube-scan-action@v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # L'analyse porte sur le commit du run « ci », pas sur la tête de main au moment du lancement.
+          args: >
+            -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }}
