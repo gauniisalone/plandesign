@@ -21,6 +21,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from openplan.schemas.bake import Bake, RenderCamera
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.render_queue import (
     BEAT_EVERY_S,
     CAPABILITIES_HEADER,
@@ -189,7 +190,7 @@ class WorkerClient:
         from PIL import Image, UnidentifiedImageError
 
         try:
-            with Image.open(BytesIO(bytes(body))) as img:
+            with Image.open(BytesIO(bytes(body)), formats=DECODED_IMAGE_FORMATS) as img:
                 img.verify()
         except (OSError, UnidentifiedImageError, ValueError):
             return None

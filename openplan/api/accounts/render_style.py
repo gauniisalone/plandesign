@@ -20,6 +20,7 @@ from openplan.api.board_rules import style_references
 from openplan.pipeline.contextual import ContextualError, ContextualReference, reference_path
 from openplan.pipeline.style_words import french
 from openplan.scene.store import ProjectStore
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.render_queue import (
     MAX_STYLE_IMAGE_BYTES,
     MAX_STYLE_IMAGES,
@@ -94,7 +95,7 @@ def style_image(
     project_dir = store.project_dir(project.id)
     try:
         path = reference_path(project, project_dir, store.runs_dir(project.id), refs[index])
-        with Image.open(path) as img:
+        with Image.open(path, formats=DECODED_IMAGE_FORMATS) as img:
             rgb = img.convert("RGB")
             rgb.thumbnail((STYLE_IMAGE_SIDE, STYLE_IMAGE_SIDE))
             out = io.BytesIO()

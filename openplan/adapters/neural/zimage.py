@@ -49,6 +49,7 @@ from openplan.adapters.protocols import (
     GeneratedImage,
     InspirationRequest,
 )
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 
 BASE_ID = "z_image_turbo@1.0"
 BASE_SENTINEL = "vae/diffusion_pytorch_model.safetensors"
@@ -322,7 +323,7 @@ class ZImageFinisher:
             if result.get("network_attempts"):
                 msg = "rendu Z-Image refusé : une connexion réseau a été tentée pendant le calcul"
                 raise AdapterUnavailableError(msg)
-            with Image.open(work / "out.png") as img:
+            with Image.open(work / "out.png", formats=DECODED_IMAGE_FORMATS) as img:
                 out = img.convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
             return GeneratedImage(
                 pixels=np.asarray(out, dtype=np.uint8),

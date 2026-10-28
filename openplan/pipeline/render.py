@@ -28,7 +28,7 @@ from openplan.pipeline.inspire import InspirationEntry, read_inspiration
 from openplan.pipeline.layouts import LayoutProposal
 from openplan.scene.ops import AddCamera
 from openplan.schemas.bake import RenderCamera
-from openplan.schemas.common import Point2, Point3, StrictModel
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, Point2, Point3, StrictModel
 from openplan.schemas.derived import DerivedRoof
 from openplan.schemas.elements import (
     DOOR_KINDS,
@@ -529,7 +529,7 @@ def auto_exposed(
         section=section,
         section_keep_above=section_keep_above,
     )
-    with Image.open(out / "preview.png") as img:
+    with Image.open(out / "preview.png", formats=DECODED_IMAGE_FORMATS) as img:
         gray = img.convert("L")
         mean = sum(i * n for i, n in enumerate(gray.histogram())) / max(1, gray.width * gray.height)
     exposure = float(light.get("exposure", 0.0)) + exposure_correction(mean)

@@ -289,7 +289,8 @@ def generate(job: dict[str, Any], emb: Any) -> tuple[Any, dict[str, float]]:
     pipe.set_progress_bar_config(disable=True)
     torch.cuda.synchronize()
     load_s = time.perf_counter() - t0
-    control = Image.open(job["control"]).convert("RGB")
+    # KAN-113 : comme openplan.schemas.common.DECODED_IMAGE_FORMATS (script autonome).
+    control = Image.open(job["control"], formats=("JPEG", "PNG", "WEBP")).convert("RGB")
     torch.cuda.reset_peak_memory_stats()
     t1 = time.perf_counter()
     generator = torch.Generator(device="cuda").manual_seed(int(job["seed"]))

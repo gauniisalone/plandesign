@@ -43,7 +43,7 @@ from openplan.pipeline.attic import AtticEstimate, Estimate, analyse_attic, resc
 from openplan.pipeline.confidence import EstimateConfidence, ScaleSource, assess
 from openplan.pipeline.depthplan import observe_room
 from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
-from openplan.schemas.common import StrictModel
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, StrictModel
 from openplan.schemas.numbers import decimal, metres
 
 Float = NDArray[np.float64]
@@ -278,7 +278,7 @@ def ruler_length(
 def _load(path: Path) -> ImageArray:
     from PIL import Image, ImageOps
 
-    with Image.open(path) as raw:
+    with Image.open(path, formats=DECODED_IMAGE_FORMATS) as raw:
         rgb = np.asarray((ImageOps.exif_transpose(raw) or raw).convert("RGB"), dtype=np.uint8)
     return ImageArray(image_id=uuid4(), pixels=np.ascontiguousarray(rgb))
 

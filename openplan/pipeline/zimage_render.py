@@ -35,6 +35,7 @@ from openplan.pipeline.scene_prompt import SceneWords, scene_words
 from openplan.pipeline.style_words import MAX_IMAGES
 from openplan.scene.migrate import load_project
 from openplan.schemas.bake import Bake, RenderCamera
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 
 DEFAULT_SEED = 1234
 """Graine de l'essai KAN-84b."""
@@ -74,7 +75,7 @@ def style_images(style_dir: Path | None) -> list[ImageArray]:
         if path.suffix.lower() not in STYLE_SUFFIXES or len(out) >= MAX_IMAGES:
             continue
         try:
-            with Image.open(path) as img:
+            with Image.open(path, formats=DECODED_IMAGE_FORMATS) as img:
                 pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
         except (OSError, UnidentifiedImageError, ValueError):
             continue

@@ -31,7 +31,7 @@ from openplan.pipeline.finish import (
     render_level,
 )
 from openplan.pipeline.scene_prompt import load_scene_words
-from openplan.schemas.common import Source, StrictModel
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, Source, StrictModel
 from openplan.schemas.scene import Project
 
 INSPIRATION = "inspiration.png"
@@ -146,7 +146,7 @@ def inspire_render(
         else (INSPIRATION, INSPIRATION_SIDECAR, LABEL)
     )
 
-    with Image.open(render_dir / "preview.png") as img:
+    with Image.open(render_dir / "preview.png", formats=DECODED_IMAGE_FORMATS) as img:
         pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
     depth_npy = render_dir / "depth_z.npy"
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None

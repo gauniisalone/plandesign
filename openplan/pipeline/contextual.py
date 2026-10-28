@@ -56,7 +56,7 @@ from openplan.pipeline.instruction import (
 )
 from openplan.pipeline.intention import _room_of
 from openplan.pipeline.render import list_renders
-from openplan.schemas.common import Source, StrictModel
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, Source, StrictModel
 from openplan.schemas.elements import Furniture, Opening, OpeningKind, Radiator, Room, Wall
 from openplan.schemas.intent import DesignIntent
 from openplan.schemas.numbers import area, decimal, metres
@@ -601,7 +601,7 @@ def _source_pixels(
     if not (render_dir / "preview.png").is_file():
         msg = f"aucun rendu pour cette vue : {source.id} (rendez-la d'abord)"
         raise ContextualError(msg)
-    with Image.open(render_dir / "preview.png") as img:
+    with Image.open(render_dir / "preview.png", formats=DECODED_IMAGE_FORMATS) as img:
         pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
     depth_npy = render_dir / "depth_z.npy"
     depth = depth_control(np.load(depth_npy)) if depth_npy.is_file() else None
@@ -647,6 +647,10 @@ def reference_path(
     if media is None or media.kind != "image":
         msg = f"référence : fichier joint introuvable ou pas une image ({ref})"
         raise ContextualError(msg)
+    # KAN-113 : un fichier joint est gardé tel quel ; seuls JPEG, PNG et WebP sont décodés.
+    if media.media_type.removeprefix("image/").upper() not in DECODED_IMAGE_FORMATS:
+        msg = f"référence : image {media.name} au format non pris en charge (JPEG, PNG ou WebP)"
+        raise ContextualError(msg)
     return project_dir / media.path
 
 
@@ -661,12 +665,17 @@ def check_references(
 def _reference_pixels(
     project: Project, project_dir: Path, runs_dir: Path, references: list[ContextualReference]
 ) -> list[np.ndarray]:
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
 
     out: list[np.ndarray] = []
     for reference in references:
-        with Image.open(reference_path(project, project_dir, runs_dir, reference)) as img:
-            out.append(np.asarray(img.convert("RGB"), dtype=np.uint8))
+        path = reference_path(project, project_dir, runs_dir, reference)
+        try:
+            with Image.open(path, formats=DECODED_IMAGE_FORMATS) as img:
+                out.append(np.asarray(img.convert("RGB"), dtype=np.uint8))
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+            msg = f"référence illisible ({reference.ref}) : JPEG, PNG ou WebP seulement"
+            raise ContextualError(msg) from exc
     return out
 
 

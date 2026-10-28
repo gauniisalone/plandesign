@@ -15,6 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 SCHEMA_VERSION = "0.21.0"
 
+DECODED_IMAGE_FORMATS = ("JPEG", "PNG", "WEBP")
+"""KAN-113 : les seuls formats que Pillow décode (`Image.open(…, formats=…)`, partout). Aucun
+autre décodeur (SPIDER, TIFF, EPS, GIF…) n'est jamais essayé, même pour un fichier renommé
+en .jpg : la surface d'attaque des décodeurs de Pillow s'arrête à ces trois-là."""
+
 Meters = Annotated[float, Field(ge=0.0)]
 """Longueur en mètres, jamais négative."""
 

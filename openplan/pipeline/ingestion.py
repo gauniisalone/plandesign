@@ -18,7 +18,7 @@ import numpy as np
 
 from openplan.adapters.protocols import ImageArray
 from openplan.pipeline.quality import assess_quality, quality_warnings
-from openplan.schemas.common import now_utc
+from openplan.schemas.common import DECODED_IMAGE_FORMATS, now_utc
 from openplan.schemas.scene import ImageRef, Project
 
 if TYPE_CHECKING:
@@ -60,7 +60,9 @@ def import_image(
     from PIL import Image, ImageOps, UnidentifiedImageError
 
     try:
-        with Image.open(io.BytesIO(data)) as raw:
+        # KAN-113 : seuls les décodeurs JPEG, PNG et WebP sont essayés, AVANT tout autre
+        # contrôle ; un autre format, même renommé en .jpg, n'atteint jamais son décodeur.
+        with Image.open(io.BytesIO(data), formats=DECODED_IMAGE_FORMATS) as raw:
             fmt = raw.format or ""
             if fmt not in FORMATS:
                 msg = f"format non pris en charge : {fmt or 'inconnu'} ({original_name or '?'})"
@@ -69,7 +71,14 @@ def import_image(
             oriented = ImageOps.exif_transpose(raw) or raw
             rgb = oriented.convert("RGB")
             stored = _reencode(rgb, fmt) if project.privacy.strip_exif else data
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+    except UnidentifiedImageError as exc:
+        # Pillow ne dit plus quel autre format c'était : son décodeur n'a pas été essayé.
+        msg = (
+            f"image illisible ou format non pris en charge ({original_name or '?'}) : "
+            "JPEG, PNG ou WebP seulement"
+        )
+        raise IngestionError(msg) from exc
+    except (OSError, Image.DecompressionBombError) as exc:
         msg = f"image illisible ({original_name or '?'}) : {exc}"
         raise IngestionError(msg) from exc
 
@@ -117,7 +126,7 @@ def refresh_thumbnail(project: Project, project_dir: Path) -> None:
     for ref in project.images.values():
         source = project_dir / ref.path
         if source.is_file():
-            with Image.open(source) as raw:
+            with Image.open(source, formats=DECODED_IMAGE_FORMATS) as raw:
                 write_thumbnail(project_dir, ImageOps.exif_transpose(raw) or raw)
             return
     if path.is_file():
@@ -132,7 +141,7 @@ def load_image(project_dir: Path, ref: ImageRef) -> ImageArray:
     if not path.is_file():
         msg = f"fichier image absent : {ref.path}"
         raise ImageNotFoundError(msg)
-    with Image.open(path) as raw:
+    with Image.open(path, formats=DECODED_IMAGE_FORMATS) as raw:
         oriented = ImageOps.exif_transpose(raw) or raw
         pixels = np.asarray(oriented.convert("RGB"), dtype=np.uint8)
     return ImageArray(image_id=ref.id, pixels=pixels, focal_35mm=ref.focal_35mm)

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from openplan.pipeline.export import SvgTheme, render_svg
 from openplan.pipeline.gallery import GalleryEntry, gallery
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.elements import Wall
 from openplan.schemas.scene import Project
 
@@ -69,7 +70,7 @@ def _render_cover(project_dir: Path, runs_dir: Path, entry: GalleryEntry, varian
     out_dir.mkdir(parents=True, exist_ok=True)
     for old in out_dir.glob("*.webp"):
         old.unlink(missing_ok=True)
-    with Image.open(source) as img:
+    with Image.open(source, formats=DECODED_IMAGE_FORMATS) as img:
         rgb = img.convert("RGB")
         height = max(1, round(rgb.height * COVER_WIDTH / rgb.width))
         rgb.resize((COVER_WIDTH, height), Image.Resampling.LANCZOS).save(

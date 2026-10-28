@@ -104,7 +104,8 @@ def test_import_png_and_rejections(project: Project, tmp_path: Path) -> None:
         import_image(after, tmp_path, b"pas une image du tout")
     bmp = io.BytesIO()
     Image.new("RGB", (8, 8)).save(bmp, format="BMP")
-    with pytest.raises(IngestionError, match="format non pris en charge : BMP"):
+    # KAN-113 : le décodeur BMP n'est plus essayé, le message ne nomme donc plus le format.
+    with pytest.raises(IngestionError, match=r"format non pris en charge \(x\.bmp\) : JPEG"):
         import_image(after, tmp_path, bmp.getvalue(), original_name="x.bmp")
     with pytest.raises(IngestionError, match="volumineux"):
         import_image(after, tmp_path, b"\0" * (50 * 1024 * 1024 + 1))

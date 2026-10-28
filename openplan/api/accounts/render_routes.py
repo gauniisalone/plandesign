@@ -57,6 +57,7 @@ from openplan.pipeline.reactions import ReactionStore
 from openplan.pipeline.render import NoCameraError, camera_view
 from openplan.pipeline.scene3d import bake_level
 from openplan.scene.store import ProjectNotFoundError, ProjectStore
+from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.elements import Camera
 from openplan.schemas.events import ProjectEvent
 from openplan.schemas.reactions import EMOJI, Reaction, ReactionKey
@@ -305,7 +306,7 @@ def set_realistic_cover(project_id: UUID, request_id: UUID, request: Request) ->
     with store.lock(project_id):
         project = _load(store, project_id)
         try:
-            with Image.open(source) as img:
+            with Image.open(source, formats=DECODED_IMAGE_FORMATS) as img:
                 rgb = img.convert("RGB")
                 height = max(1, round(rgb.height * COVER_WIDTH / rgb.width))
                 rgb.resize((COVER_WIDTH, height), Image.Resampling.LANCZOS).save(
