@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { gotoApp } from "../e2e/app-ready";
+import { expectHomeSettingsWhole } from "./settings-check";
 
 /** KAN-109 L1 : le back-office d'augus. L'administrateur voit l'audience du site, tirée d'un
  *  journal de test au format de Caddy (IP déjà tronquée, adresses de documentation), et la
@@ -107,6 +108,11 @@ test("KAN-109 : l'administrateur voit l'audience et la santé ; un membre, non",
   await expect(health).toContainText("Version déployée");
   await expect(health).toContainText("Poste de rendu");
   await shot(admin, "kan109-back-office");
+  // KAN-110 : ses Réglages de l'accueil, avec « Back-office », s'ouvrent entiers (même
+  // session : l'adresse de l'administrateur a déjà épuisé ses 3 codes par 15 min).
+  await gotoApp(admin, "/");
+  await expect(admin.locator(".boards")).toBeVisible();
+  await expectHomeSettingsWhole(admin, true);
 
   // Un membre qui n'est pas administrateur : ni la page, ni l'API.
   const marie = await person(browser, "198.51.100.192");
