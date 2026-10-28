@@ -13,7 +13,7 @@ import { LOGIN_WINDOW } from "../config";
   <article class="wrap prose">
     <h1>Confidentialité</h1>
     {LOGIN_WINDOW ? (
-      <p class="updated">Dernière mise à jour : 18 octobre 2026</p>
+      <p class="updated">Dernière mise à jour : 28 octobre 2026</p>
     ) : (
     <p class="updated">Dernière mise à jour : 16 octobre 2026</p>
     )}
@@ -52,10 +52,17 @@ import { LOGIN_WINDOW } from "../config";
         que vous y saisissez n'est transmis ni conservé.
       </li>
       )}
+      {LOGIN_WINDOW ? (
+        <li>
+          Pour la sécurité et le diagnostic, le serveur de l'application consigne des journaux techniques (adresse IP,
+          date, page demandée, navigateur) ; ceux de ce site n'enregistrent que l'adresse IP tronquée.
+        </li>
+      ) : (
       <li>
         Comme tout serveur web, le nôtre consigne des journaux techniques (adresse IP, date, page demandée, navigateur)
         pour la sécurité et le diagnostic.
       </li>
+      )}
     </ul>
 
     {LOGIN_WINDOW ? (
@@ -97,13 +104,14 @@ import { LOGIN_WINDOW } from "../config";
         sauvegardes chiffrées jusqu'à 6 mois, puis sont effacées.
       </li>
       <li>Mesure d'audience : empreintes du jour effacées sous 48 heures ; totaux par jour, sans donnée personnelle, gardés 25 mois.</li>
+      <li>Mesure de l'usage : événements effacés avec le compte, et au plus tard après 13 mois.</li>
     </ul>
 
     <h2>Base légale</h2>
     <p>
       L'exécution du service que vous demandez (compte et projets), votre consentement (assistant externe) et notre
-      intérêt légitime à sécuriser le service et à mesurer sa fréquentation (journaux techniques, rapports d'erreur et
-      mesure d'audience sans cookie).
+      intérêt légitime à sécuriser le service, à mesurer sa fréquentation et à l'améliorer (journaux techniques,
+      rapports d'erreur, mesure d'audience sans cookie et mesure de l'usage sous pseudonyme).
     </p>
 
     <h2>Vos droits</h2>

@@ -109,7 +109,7 @@ jobs:
         name: Empreinte du site
         working-directory: apps/site
         env:
-          EMPREINTE_AVEC_OPTION: "0"
+          EMPREINTE_AVEC_OPTION: "1"
         run: |
           [ "$EMPREINTE_AVEC_OPTION" = 1 ] || PUBLIC_LOGIN_WINDOW= npm run build
           scripts/dist-hash.sh --check

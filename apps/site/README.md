@@ -21,12 +21,14 @@ Le formulaire de l'accueil n'est pas un `<form>` : il ne s'envoie pas.
 
 ## Fenêtre « Se connecter » (B1d-b) — derrière une option de build
 
-Désactivée par défaut, donc en production tant qu'augus n'a pas décrété le MVP : sans
+Désactivée par défaut dans le code ; la production est construite AVEC l'option depuis
+l'ouverture du MVP (19 oct.), fixée dans `deploy-site.yml` depuis KAN-109 (28 oct.) : le
+formulaire de contact est le moyen d'exercer ses droits, suppression du compte comprise. Sans
 l'option, `check-dist` refuse tout script, toute mention de l'app et les fichiers de la
-fenêtre. L'empreinte de `dist/` sans option est versionnée dans `expected-dist.sha256`
-(KAN-109 ; avant, la référence était la sortie de 405a364) : `scripts/dist-hash.sh --check`
-la compare à chaque passage ; une modification voulue du site met ce fichier à jour dans le
-même commit.
+fenêtre. L'empreinte de `dist/` du build de production (AVEC l'option, origine de l'app par
+défaut) est versionnée dans `expected-dist.sha256` (KAN-109 ; avant, la référence était la
+sortie de 405a364) : `scripts/dist-hash.sh --check` la compare à chaque passage ; une
+modification voulue du site met ce fichier à jour dans le même commit.
 
 ```sh
 PUBLIC_LOGIN_WINDOW=1 npm run build                       # app : https://app.plandesign.fr

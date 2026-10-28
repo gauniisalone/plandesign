@@ -46,9 +46,11 @@ jobs:
       - name: Construire (check-dist compris)
         working-directory: apps/site
         env:
-          # Fenêtre « Se connecter » : variable de dépôt SITE_LOGIN_WINDOW=1 (ouverture du MVP, 19 oct.) ;
-          # la supprimer et relancer deploy-site rend le site sans fenêtre.
-          PUBLIC_LOGIN_WINDOW: ${{ vars.SITE_LOGIN_WINDOW }}
+          # Fenêtre « Se connecter » et formulaire de contact : toujours en production (KAN-109,
+          # décision d'augus du 28 oct.) ; c'est le moyen de contact RGPD (suppression de compte).
+          # Fixée ici, plus par la variable de dépôt SITE_LOGIN_WINDOW. check-dist vérifie la sortie
+          # AVEC l'option (npm run build l'enchaîne).
+          PUBLIC_LOGIN_WINDOW: "1"
         run: |
           npm ci --no-audit --no-fund
           npm run build
@@ -73,6 +75,15 @@ jobs:
           h=$(curl -s -D - -o page.html --max-time 15 https://plandesign.fr/ | tr -d '\r')
           echo "$h" | grep -qi '^content-security-policy:' || { echo "CSP absente"; exit 1; }
           grep -o '<title>[^<]*' page.html | tee -a "$GITHUB_STEP_SUMMARY"
+          for p in /login.js /contact.js /contact/ /confidentialite/; do
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://plandesign.fr$p")
+            echo "$p $c" | tee -a "$GITHUB_STEP_SUMMARY"; [ "$c" = 200 ] || exit 1
+          done
+          # Le formulaire appelle l'app : l'app doit accepter l'origine du site (préflight CORS).
+          curl -s -o /dev/null -D - --max-time 15 -X OPTIONS https://app.plandesign.fr/api/contact \
+               -H 'Origin: https://plandesign.fr' -H 'Access-Control-Request-Method: POST' \
+            | tr -d '\r' | grep -qi '^access-control-allow-origin: https://plandesign.fr$' \
+            || { echo "préflight /api/contact refusé pour https://plandesign.fr"; exit 1; }
       - name: Nettoyage de la clé
         if: always()
         run: rm -f ~/.ssh/deploy_key

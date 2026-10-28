@@ -5,6 +5,9 @@
 # (expected-dist.sha256), relue à chaque passage. Toute modification voulue du site met ce
 # fichier à jour dans le même commit ; une modification non voulue fait échouer le passage.
 #
+# L'empreinte attendue est celle du build de production : PUBLIC_LOGIN_WINDOW=1, origine de
+# l'app par défaut (KAN-109, 28 oct.).
+#
 # Usage : scripts/dist-hash.sh            → affiche l'empreinte de dist/
 #         scripts/dist-hash.sh --check    → compare avec expected-dist.sha256 (code 1 sinon)
 set -euo pipefail
