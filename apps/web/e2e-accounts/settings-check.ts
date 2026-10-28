@@ -19,28 +19,38 @@ export async function expectHomeSettingsWhole(
     await gear.click();
     const panel = page.getByRole("dialog", { name: "Réglages" });
     await expect(panel).toBeVisible();
-    // Tout le contenu se voit sans défiler (avec le bug : 0 px utile, le reste en défilement).
-    const fit = await panel.evaluate((el) => ({
-      scroll: el.scrollHeight,
-      client: el.clientHeight,
-    }));
-    expect(fit.client).toBeGreaterThan(100);
-    expect(fit.scroll).toBeLessThanOrEqual(fit.client + 1);
-    const box = await panel.boundingBox();
-    const g = await gear.boundingBox();
-    expect(box && g).toBeTruthy();
-    if (!box || !g) return;
-    expect(box.y).toBeGreaterThanOrEqual(g.y + g.height);
-    expect(box.y + box.height).toBeLessThanOrEqual(size.height + 1);
-    expect(box.x).toBeGreaterThan(size.width / 2);
-    expect(box.x + box.width).toBeLessThanOrEqual(size.width + 1);
-    // Le compte se lit dans la boîte, sans la faire défiler.
     const out = panel.getByRole("button", { name: "Me déconnecter partout" });
     await expect(out).toBeVisible();
-    const o = await out.boundingBox();
-    expect(o).not.toBeNull();
-    if (!o) return;
-    expect(o.y + o.height).toBeLessThanOrEqual(box.y + box.height + 1);
+    // Une seule mesure, prise d'un coup dans la page : la section Compte charge sa place
+    // disque après l'ouverture, le panneau grandit alors (deux mesures séparées se
+    // contrediraient). Relue jusqu'à stabilité ; avec le bug, 0 px utile pour toujours.
+    const g = await gear.boundingBox();
+    const gearBottom = g ? g.y + g.height : 0;
+    await expect
+      .poll(() =>
+        panel.evaluate((el, below) => {
+          const r = el.getBoundingClientRect();
+          const button = [...el.querySelectorAll("button")].find(
+            (b) => b.textContent?.trim() === "Me déconnecter partout",
+          );
+          const o = button?.getBoundingClientRect();
+          return {
+            whole:
+              el.scrollHeight <= el.clientHeight + 1 && el.clientHeight > 100,
+            underGear: r.top >= below,
+            onScreen: r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1,
+            right: r.left > innerWidth / 2,
+            accountInside: !!o && o.bottom <= r.bottom + 1,
+          };
+        }, gearBottom),
+      )
+      .toEqual({
+        whole: true,
+        underGear: true,
+        onScreen: true,
+        right: true,
+        accountInside: true,
+      });
     const backOffice = panel.getByRole("link", { name: "Back-office" });
     if (admin) await expect(backOffice).toBeVisible();
     else await expect(backOffice).toHaveCount(0);
