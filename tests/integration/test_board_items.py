@@ -79,10 +79,18 @@ def test_delete_frees_children_and_remembers_what_the_project_provides(tmp_path:
     out = client.patch(
         f"/api/projects/{pid}/board/items", json={"delete": [photos["id"], str(uuid4())]}
     ).json()
-    assert "frame:photos" in out["dismissed"]
+    # KAN-93 : le node Photos du premier plan porte la ref de son plan, sa clé de retrait aussi.
+    first = next(iter(client.get(f"/api/projects/{pid}").json()["levels"]))
+    assert photos["ref"] == first
+    assert f"frame:photos:{first}" in out["dismissed"]
     items = _items(client, pid)
     assert photos["id"] not in items  # le cadre fixe retiré ne revient pas
     assert items[child["id"]]["frame"] is None
+    # Une écriture de plus relance la synchronisation : le node retiré ne revient toujours pas.
+    _patch(client, pid, {"set": [_note("Après", x=600)]})
+    again = _items(client, pid)
+    assert photos["id"] not in again
+    assert not any(i["kind"] == "frame" and i.get("role") == "photos" for i in again.values())
 
 
 def _photo(ref: str, x: float = 0.0) -> dict[str, Any]:
