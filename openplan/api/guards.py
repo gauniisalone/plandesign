@@ -253,6 +253,7 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # KAN-109 : back-office d'augus (audience du site, santé technique).
     ("GET", "/api/admin/audience"): "admin",
     ("GET", "/api/admin/health"): "admin",
+    ("GET", "/api/admin/usage"): "admin",  # KAN-109 L2 : indicateurs d'usage (agrégats)
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",
     ("POST", "/api/projects"): "user",
@@ -371,6 +372,7 @@ def route_guard(request: Request) -> None:
         guard_plan_write(request, key, user)
         # KAN-12 : un envoi ou un calcul qui dépasserait la place du propriétaire : 413.
         guard_space(request, accounts, key, user)
+        _mark_active(request, user.id)
         return
     policy = GLOBAL_ROUTES.get(key)
     if policy == "public":
@@ -385,6 +387,17 @@ def route_guard(request: Request) -> None:
     user = signed_in_user(request)
     if policy == "admin" and not user.is_admin:
         raise HTTPException(status_code=403, detail="réservé à un administrateur")
+    _mark_active(request, user.id)
+
+
+def _mark_active(request: Request, user_id: UUID) -> None:
+    """KAN-109 L2 : la personne a utilisé l'application aujourd'hui (au plus un « active » par
+    jour et par compte ; cache en mémoire)."""
+    from openplan.api.accounts.events import EventLog
+
+    events = getattr(request.app.state, "events", None)
+    if isinstance(events, EventLog):
+        events.active(user_id)
 
 
 # --- liste et création des projets --------------------------------------------------

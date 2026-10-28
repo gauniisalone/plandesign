@@ -32,6 +32,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from openplan.api.access import AuthUser, accounts_of, signed_in_user
+from openplan.api.accounts.events import cause_code, emit_from
 from openplan.api.accounts.models import RenderRequest as RenderRow
 from openplan.api.accounts.quota import LAUNCH_RESERVE, full, quota_bytes, used_bytes
 from openplan.api.accounts.render_queue import (
@@ -417,7 +418,7 @@ def _create(
     # KAN-91 (D2) : la carte Rendus de ce niveau doit avoir un plan relié, sinon 409
     # « Reliez un plan pour rendre ». Ses inspirations (C1) remplacent les images cochées
     # « Référence ».
-    render_inputs(project, store, level_id)
+    inputs = render_inputs(project, store, level_id)
     photo = photo_cameras(project).get(camera_id)
     queue = queue_of(request)
     for row in queue.list_for(user.id, project_id):
@@ -442,6 +443,9 @@ def _create(
     # KAN-97 : les images de style du moment du clic, lues plus tard par le poste.
     with contextlib.suppress(OSError):
         note_references(store, project, level_id, row.id)
+    # KAN-109 L2 : une demande de rendu (value 1 : guidée par au moins une inspiration).
+    guided = 1 if inputs is not None and inputs.inspirations else 0
+    emit_from(request, "render_requested", user.id, project_id, guided)
     return with_guidance(store, project_id, public_request(row, False, photo))
 
 
@@ -634,6 +638,15 @@ async def worker_result(
             note_words(store, row.project_id, request_id, result.style_words)
     queue.beat("idle")
     _announce_done(request, done)
+    # KAN-109 L2 : un rendu fait (value : durée de calcul annoncée par le poste, en s).
+    seconds = getattr(done, "seconds", None)
+    emit_from(
+        request,
+        "render_done",
+        done.user_id,
+        done.project_id,
+        None if seconds is None else round(seconds),
+    )
     return public_request(done, True)
 
 
@@ -673,4 +686,8 @@ def worker_fail(
     except LeaseError as exc:
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
     queue.beat("idle")
+    # KAN-109 L2 : un rendu en échec, avec sa cause codée (vram, refused, other).
+    row = queue.get(request_id)
+    if row is not None:
+        emit_from(request, "render_failed", row.user_id, row.project_id, cause_code(body.reason))
     return Response(status_code=204)

@@ -91,6 +91,8 @@ class RenderQueue:
         self.clock = clock
         self.journal = None if journal_dir is None else journal_dir / JOURNAL
         self._journal_lock = threading.Lock()
+        self.on_lost: Callable[[RenderRequest], None] | None = None
+        """KAN-109 L2 : appelé pour chaque rendu perdu (posé par l'application)."""
 
     def session(self) -> Session:
         return self.sessions()
@@ -195,6 +197,9 @@ class RenderQueue:
             self._log("expired", row)
         for row in lost:
             self._log("failed", row)
+            # KAN-109 L2 : un rendu perdu (sans nouvelles du poste) compte comme un échec.
+            if self.on_lost is not None:
+                self.on_lost(row)
 
     # --- côté poste --------------------------------------------------------------------
 

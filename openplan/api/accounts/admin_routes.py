@@ -142,6 +142,25 @@ def admin_audience(
     return summary
 
 
+@router.get("/admin/usage")
+def admin_usage(
+    request: Request,
+    admin: AdminDep,
+    weeks: Annotated[int, Query(ge=1, le=26)] = 12,
+) -> dict[str, object]:
+    """KAN-109 L2 : indicateurs d'usage de l'application par semaine (agrégats seulement ;
+    comptes administrateurs exclus ; pseudonymisés ; 13 mois)."""
+    del admin
+    from sqlalchemy import select
+
+    from openplan.api.accounts.models import User
+
+    with request.app.state.accounts.session() as db:
+        admins = list(db.scalars(select(User.id).where(User.is_admin)))
+    usage: dict[str, object] = request.app.state.events.usage(weeks, admins)
+    return usage
+
+
 @router.get("/admin/health")
 def admin_health(request: Request, admin: AdminDep) -> dict[str, object]:
     """Santé technique : version, démarrage, poste, 5xx et latence sur 24 h, disque."""

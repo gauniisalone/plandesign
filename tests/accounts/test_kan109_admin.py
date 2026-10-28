@@ -85,7 +85,7 @@ def test_migration_kan109_goes_up_and_down(db_url: str) -> None:
     from sqlalchemy import inspect
 
     engine = make_engine(db_url)
-    upgrade(engine)
+    upgrade(engine, "kan109_0008")
     assert current_revision(engine) == "kan109_0008"
     before = set(inspect(engine).get_table_names())
     assert before >= AUDIENCE_TABLES
@@ -94,7 +94,7 @@ def test_migration_kan109_goes_up_and_down(db_url: str) -> None:
     after = set(inspect(engine).get_table_names())
     assert not after & AUDIENCE_TABLES
     assert after == before - AUDIENCE_TABLES, "rien d'autre ne part"
-    upgrade(engine)
+    upgrade(engine, "kan109_0008")
     assert current_revision(engine) == "kan109_0008"
     assert set(inspect(engine).get_table_names()) == before
     engine.dispose()

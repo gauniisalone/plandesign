@@ -11,7 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 
 from openplan.api import change_events
-from openplan.api.access import accounts_of
+from openplan.api.access import accounts_of, usage_event
 from openplan.api.board_rules import board_now
 from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
@@ -161,6 +161,15 @@ def patch_board_items(
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         saved = b.save_board(project_dir, after)
         _journal(request, project_dir, project.id, actor, before, saved)
+        # KAN-109 L2 : un Moodboard relié à la main à un node Rendus (un lien nouveau).
+        had = {(k.source, k.target) for k in (before.links if before else [])}
+        for link in saved.links:
+            if (
+                link.kind == "guides_style"
+                and not link.auto
+                and (link.source, link.target) not in had
+            ):
+                usage_event(request, "moodboard_linked", project.id)
         return _mine(request, actor, project_dir, saved)
 
 

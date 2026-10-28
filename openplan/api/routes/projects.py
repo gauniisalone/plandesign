@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request, Response
 from pydantic import Field
 
 from openplan.adapters.gateway import ModelGateway
+from openplan.api.access import usage_event
 from openplan.api.deps import LanguageModelDep, ProjectDep, SettingsDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import forget_project, register_project, role_of, visible_summaries
@@ -67,6 +68,7 @@ def create_project(
         project = project.model_copy(update={"privacy": privacy})
     register_project(request, project.id, project.name)
     store.save(project)
+    usage_event(request, "project_created", project.id)
     return project
 
 
@@ -187,6 +189,7 @@ def programme_route(
     project: ProjectDep,
     store: StoreDep,
     model: LanguageModelDep,
+    request: Request,
 ) -> ProgrammeResult:
     """Un logement décrit (« un T3 de 60 m², deux chambres… », ou les réponses guidées) →
     plan généré par découpage, en un pas d'historique attribué au pipeline ; une pièce seule
@@ -210,6 +213,7 @@ def programme_route(
                 current, level_id, reading.programme, actor=PROGRAMME_ACTOR
             )
             store.save(after)
+            usage_event(request, "plan_built", project.id, 0)
             return ProgrammeResult(
                 kind="generated",
                 project=after,
@@ -222,6 +226,7 @@ def programme_route(
         if area is not None:
             after = starter_plan(current, level_id, area, actor=STARTER_ACTOR)
             store.save(after)
+            usage_event(request, "plan_built", project.id, 0)
             return ProgrammeResult(kind="starter", project=after)
     return ProgrammeResult(kind="none", project=current)
 

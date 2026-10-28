@@ -6,6 +6,7 @@ import {
   type Health,
 } from "../api/client";
 import { APP_NAME } from "../brand";
+import { AdminUsage } from "./AdminUsage";
 import { useAccount } from "../state/account";
 import { IconPlan } from "../ui/icons";
 
@@ -218,6 +219,8 @@ export function Admin({ onHome }: { onHome: () => void }) {
               </>
             ) : null}
           </section>
+
+          <AdminUsage />
 
           <section className="admin-card" aria-label="Santé technique">
             <h2>Santé technique</h2>

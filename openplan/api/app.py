@@ -399,5 +399,14 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     )
     app.state.audience.start()
     app.include_router(admin_router, prefix="/api", dependencies=guarded)
+    # KAN-109 L2 : événements d'usage pseudonymisés (clé dans data/events.secret).
+    from openplan.api.accounts.events import EventLog, cause_code, load_secret
+
+    events = EventLog(app.state.accounts.engine, load_secret(settings.data_dir))
+    app.state.events = events
+    events.start()
+    app.state.render_queue.on_lost = lambda row: events.emit(
+        "render_failed", row.user_id, row.project_id, cause_code("lost")
+    )
     if settings.mailer == "fake":
         app.include_router(test_router, prefix="/api", dependencies=guarded)

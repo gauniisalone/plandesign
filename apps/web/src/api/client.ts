@@ -607,10 +607,40 @@ export interface Health {
   worker: string;
   disk: { total: number; used: number; free: number; data: number };
 }
+/** KAN-109 L2 : indicateurs d'usage d'une semaine (agrégats ; null : trop peu de comptes). */
+export interface UsageWeek {
+  week: string;
+  signups: number;
+  activation: { cohort: number; plan: number | null; render: number | null };
+  first_render_hours: number | null;
+  renders: {
+    requested: number;
+    done: number;
+    failed: number;
+    success: number | null;
+    causes: { lost: number; vram: number; refused: number; other: number };
+    median_seconds: number | null;
+  };
+  retention: { cohort: number; d7: number | null; d30: number | null };
+  usage: {
+    projects: number;
+    plans_per_project: number | null;
+    renders_per_project: number | null;
+    guided: number | null;
+    moodboards_linked: number;
+  };
+  active: { weekly: number; daily_mean: number };
+  site: { visits: number; signups: number };
+}
+export interface Usage {
+  weeks: UsageWeek[];
+  since: string | null;
+}
 export const adminApi = {
   audience: (days: 7 | 30 | 90) =>
     request<Audience>(`/admin/audience?days=${days}`),
   health: () => request<Health>("/admin/health"),
+  usage: (weeks = 12) => request<Usage>(`/admin/usage?weeks=${weeks}`),
 };
 
 /** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 413) ; connue

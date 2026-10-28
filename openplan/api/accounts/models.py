@@ -316,3 +316,24 @@ class AccessLogCursor(Base):
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     first_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
     """Premier jour lu dans ce fichier (« depuis le JJ/MM » du back-office)."""
+
+
+class Event(Base):
+    """KAN-109 L2 : un événement d'usage de l'application, sans contenu. `actor` et `project`
+    sont des pseudonymes (HMAC avec la clé de `data/events.secret`), jamais des identifiants ;
+    `value` ne porte qu'un nombre (durée, nombre de photos, cause d'échec codée). Effacés avec
+    le compte, et au plus tard après 13 mois."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    at: Mapped[datetime] = mapped_column(_utc())
+    name: Mapped[str] = mapped_column(String(32))
+    actor: Mapped[str] = mapped_column(String(32))
+    project: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_events_name_at", "name", "at"),
+        Index("ix_events_actor_at", "actor", "at"),
+    )

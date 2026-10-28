@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from pydantic import Field
 
 from openplan.api.access import SignedInDep
+from openplan.api.accounts.events import emit_from
 from openplan.api.accounts.mail import invitation_message
 from openplan.api.accounts.routes import announce_join, service
 from openplan.api.accounts.service import AccountService, InvalidEmailError, checked_email
@@ -116,6 +117,7 @@ def create_invitation(
     project_id: UUID, body: InvitationCreate, request: Request, user: SignedInDep
 ) -> InvitationCreated:
     pending, token = service(request).create_invitation(project_id, body.role, body.days, user.id)
+    emit_from(request, "invite_sent", user.id, project_id)  # KAN-109 L2
     return InvitationCreated(**_out(pending).model_dump(), token=token)
 
 
@@ -138,6 +140,7 @@ def invite_by_email(
         done = accounts.invite_by_email(project_id, address, body.role, user.id)
     except InviteQuotaError as exc:
         raise HTTPException(status_code=429, detail=INVITE_QUOTA) from exc
+    emit_from(request, "invite_sent", user.id, project_id)  # KAN-109 L2
     if done.invitee is not None:
         from openplan.api.accounts.live import hub_of
 

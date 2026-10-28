@@ -13,6 +13,7 @@ from openplan.adapters.protocols import (
     RoomElementDetector,
 )
 from openplan.adapters.registry import resolve_device
+from openplan.api.access import usage_event
 from openplan.api.board_rules import require_plan_photo
 from openplan.api.deps import (
     ActorDep,
@@ -169,10 +170,14 @@ def autoplan(
             fused = fuse_members(store, project_id, level_id, depth, progress)
         except DetectionError:
             fused = None  # le plan de cette photo reste enregistré ; recoupement à relancer
+        photos = 1
         if fused is not None:  # appliqué ou non, ce qu'il en est est dit
             if fused.applied:
                 after = fused.project
+                photos = max(1, len(fused.fusion.photos) if fused.fusion else 1)
             run = run.model_copy(update={"notices": [*run.notices, *fused.notices]})
+        # KAN-109 L2 : un plan construit (value : nombre de photos lues).
+        usage_event(request, "plan_built", project_id, photos)
         progress("Plan prêt")
         return AutoPlanResult(run=run.model_copy(update={"project": after}), report=report)
 

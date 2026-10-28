@@ -89,6 +89,21 @@ def signed_in_user(request: Request) -> AuthUser:
     return user
 
 
+def usage_event(
+    request: Request, name: str, project_id: UUID | None = None, value: int | None = None
+) -> None:
+    """KAN-109 L2 : un événement d'usage de la personne connectée (comptes actifs seulement ;
+    rien en mode local ; ne bloque jamais la requête)."""
+    if accounts_of(request) is None:
+        return
+    user = optional_user(request)
+    if user is None:
+        return
+    from openplan.api.accounts.events import emit_from
+
+    emit_from(request, name, user.id, project_id, value)
+
+
 def admin_user(request: Request) -> AuthUser:
     user = signed_in_user(request)
     if not user.is_admin:

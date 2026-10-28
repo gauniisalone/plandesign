@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, UploadFile
+from fastapi import APIRouter, Query, Request, UploadFile
 
+from openplan.api.access import usage_event
 from openplan.api.deps import ProjectDep, StoreDep
 from openplan.api.routes.scene import EditResult, _result
 from openplan.pipeline.editing import InvalidEditError
@@ -70,7 +71,7 @@ def import_plan_preview_image(
 
 @router.post("/projects/{project_id}/levels/{level_id}/import-plan")
 def import_plan_apply(
-    level_id: UUID, body: PlanApplyBody, project: ProjectDep, store: StoreDep
+    level_id: UUID, body: PlanApplyBody, project: ProjectDep, store: StoreDep, request: Request
 ) -> EditResult:
     """Les segments retenus deviennent des murs `observed` du niveau (vide), un seul commit,
     annulable ; invariants vérifiés."""
@@ -79,4 +80,5 @@ def import_plan_apply(
     if not report.valid:
         raise InvalidEditError(report)
     store.save(after)
+    usage_event(request, "plan_built", project.id, 0)  # KAN-109 L2 : plan importé
     return _result(after, level_id, report)

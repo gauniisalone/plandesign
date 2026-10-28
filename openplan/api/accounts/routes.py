@@ -257,6 +257,7 @@ def login_verify_page(
         text = REFUSAL_TEXT[exc.reason]
         return _code_step(email, safe_next(next), f"Connexion impossible : {text}", 400)
     claim_invitations(request, user)
+    record_login(request, user)
     response = RedirectResponse(next_path, status_code=303)
     set_session_cookie(response, raw)
     return response
@@ -274,6 +275,7 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
         status = 403 if exc.reason is LoginRefusal.CLOSED else 400
         raise HTTPException(status_code=status, detail=REFUSAL_TEXT[exc.reason]) from exc
     claim_invitations(request, user)
+    record_login(request, user)
     set_session_cookie(response, raw)
     return Me(
         id=user.id,
@@ -299,8 +301,21 @@ def accept_invitation(body: AcceptBody, request: Request, user: SignedInDep) -> 
     return Accepted(project_id=project_id, role=role)
 
 
+def record_login(request: Request, user: AuthUser) -> None:
+    """KAN-109 L2 : un compte créé à cette connexion, puis la connexion elle-même."""
+    from openplan.api.accounts.events import emit_from
+
+    if user.first_login:
+        emit_from(request, "account_created", user.id)
+    emit_from(request, "signed_in", user.id)
+
+
 def announce_join(request: Request, project_id: UUID, user_id: UUID) -> None:
-    """KAN-52 : « X a rejoint le projet », pour les autres membres."""
+    """KAN-52 : « X a rejoint le projet », pour les autres membres. KAN-109 L2 : une
+    invitation acceptée."""
+    from openplan.api.accounts.events import emit_from
+
+    emit_from(request, "invite_accepted", user_id, project_id)
     store = request.app.state.store
     if store.exists(project_id):
         ProjectEvents(store.project_dir(project_id)).append(

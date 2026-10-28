@@ -98,6 +98,11 @@ test("KAN-109 : l'administrateur voit l'audience et la santé ; un membre, non",
   await expect(audience).toContainText("Robots écartés1");
   await expect(audience).toContainText("example.org");
   await expect(audience).toContainText("/tarifs");
+  // KAN-109 L2 : l'usage de l'application, en agrégats ; administrateurs exclus.
+  const usage = admin.getByRole("region", { name: "Usage de l'application" });
+  await expect(usage).toContainText("Comptes administrateurs exclus");
+  await expect(usage).toContainText("Activation : 1er plan sous 7 j");
+  await expect(usage).toContainText("après l'ouverture");
   const health = admin.getByRole("region", { name: "Santé technique" });
   await expect(health).toContainText("Version déployée");
   await expect(health).toContainText("Poste de rendu");
