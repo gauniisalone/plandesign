@@ -21,22 +21,36 @@ async function shot(page: Page, name: string): Promise<void> {
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
 }
 
-async function signIn(page: Page, email: string): Promise<void> {
-  await gotoApp(page, "/");
+/** Le dernier code envoyé à cette adresse par le serveur de test, ou "" s'il n'y en a pas. */
+async function lastCode(page: Page, email: string): Promise<string> {
+  const r = await page.request.get(
+    `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
+  );
+  return r.ok() ? ((await r.json()) as { code: string }).code : "";
+}
+
+/** Demande un code sur la page de connexion ouverte et rend le code NEUF. Le code part après
+ *  la réponse (tâche de fond) ; la suite a pu déjà en envoyer un à cette adresse, que le
+ *  serveur de test rendrait sinon tant que le nouveau n'est pas parti (KAN-110 : on n'a
+ *  qu'un ordre de passage chanceux, que des e2e en parallèle ne garderaient pas). */
+async function requestCode(page: Page, email: string): Promise<string> {
+  const before = await lastCode(page, email);
   await page.getByLabel("Adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
-  // Le code part après la réponse (tâche de fond) : on attend qu'il soit arrivé.
   let code = "";
   await expect
     .poll(async () => {
-      const r = await page.request.get(
-        `/api/test/mail/last-code?email=${encodeURIComponent(email)}`,
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
+      code = await lastCode(page, email);
+      return code !== before ? code : "";
     })
     .toMatch(/^\d{6}$/);
+  return code;
+}
+
+async function signIn(page: Page, email: string): Promise<void> {
+  await gotoApp(page, "/");
+  const code = await requestCode(page, email);
   await page.getByLabel("Code à 6 chiffres").fill(code);
   await page.getByRole("button", { name: "Se connecter" }).click();
   await passNameStep(page);
@@ -337,20 +351,7 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
   ).toBeVisible();
   await expect(guest.getByText("Grenier partagé")).toHaveCount(0);
   await shot(guest, "7-invite-connexion");
-  await guest.getByLabel("Adresse e-mail").fill("lea@example.org");
-  await guest.getByRole("button", { name: "Recevoir un code" }).click();
-  // Le code part après la réponse : on attend l'étape du code, puis qu'il soit arrivé.
-  await expect(guest.getByText("un code vient de partir")).toBeVisible();
-  let code = "";
-  await expect
-    .poll(async () => {
-      const r = await guest.request.get(
-        "/api/test/mail/last-code?email=lea@example.org",
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
-    })
-    .toMatch(/^\d{6}$/);
+  const code = await requestCode(guest, "lea@example.org");
   await guest.getByLabel("Code à 6 chiffres").fill(code);
   await guest.getByRole("button", { name: "Se connecter" }).click();
   await passNameStep(guest);
@@ -397,20 +398,9 @@ test("B2a : présence, puis coupure, reconnexion et resynchronisation", async ({
     sockets.push(ws);
   });
   await owner.goto("/");
-  await owner.getByLabel("Adresse e-mail").fill("alice@example.org");
-  await owner.getByRole("button", { name: "Recevoir un code" }).click();
-  await expect(owner.getByText("un code vient de partir")).toBeVisible();
-  let code = "";
-  await expect
-    .poll(async () => {
-      const r = await owner.request.get(
-        "/api/test/mail/last-code?email=alice@example.org",
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
-    })
-    .toMatch(/^\d{6}$/);
-  await owner.getByLabel("Code à 6 chiffres").fill(code);
+  await owner
+    .getByLabel("Code à 6 chiffres")
+    .fill(await requestCode(owner, "alice@example.org"));
   await owner.getByRole("button", { name: "Se connecter" }).click();
   await passNameStep(owner, "Alice");
   const origin = { Origin: new URL(owner.url()).origin };
@@ -429,19 +419,9 @@ test("B2a : présence, puis coupure, reconnexion et resynchronisation", async ({
   // L'invité arrive par le lien, se nomme ; chacun voit l'avatar de l'autre.
   const guest = await person(browser, "198.51.100.32");
   await guest.goto(`/#/invitation/${token}`);
-  await guest.getByLabel("Adresse e-mail").fill("bruno@example.org");
-  await guest.getByRole("button", { name: "Recevoir un code" }).click();
-  await expect(guest.getByText("un code vient de partir")).toBeVisible();
-  await expect
-    .poll(async () => {
-      const r = await guest.request.get(
-        "/api/test/mail/last-code?email=bruno@example.org",
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
-    })
-    .toMatch(/^\d{6}$/);
-  await guest.getByLabel("Code à 6 chiffres").fill(code);
+  await guest
+    .getByLabel("Code à 6 chiffres")
+    .fill(await requestCode(guest, "bruno@example.org"));
   await guest.getByRole("button", { name: "Se connecter" }).click();
   await passNameStep(guest, "Bruno");
   await expect(guest.locator(".editor")).toBeVisible({ timeout: 30_000 });
@@ -487,19 +467,7 @@ test("B2a : présence, puis coupure, reconnexion et resynchronisation", async ({
 
 /** B2b : connexion sur la page de connexion déjà ouverte, avec un nom. */
 async function signInHere(page: Page, email: string, name: string) {
-  await page.getByLabel("Adresse e-mail").fill(email);
-  await page.getByRole("button", { name: "Recevoir un code" }).click();
-  await expect(page.getByText("un code vient de partir")).toBeVisible();
-  let code = "";
-  await expect
-    .poll(async () => {
-      const r = await page.request.get(
-        `/api/test/mail/last-code?email=${email}`,
-      );
-      code = r.ok() ? ((await r.json()) as { code: string }).code : "";
-      return code;
-    })
-    .toMatch(/^\d{6}$/);
+  const code = await requestCode(page, email);
   await page.getByLabel("Code à 6 chiffres").fill(code);
   await page.getByRole("button", { name: "Se connecter" }).click();
   await passNameStep(page, name);
