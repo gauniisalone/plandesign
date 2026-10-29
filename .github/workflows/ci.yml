@@ -25,7 +25,9 @@ jobs:
   python:
     name: python (import-linter, ruff, mypy, pytest)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 29 oct. 2026 : 15 -> 25 min. pytest (1584 tests) a atteint 100 % puis le job a été coupé à
+    # 15 min pendant l'écriture de coverage.xml (ci de 70774b2) ; à découper en 2 jobs (KAN-112).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0   # pas de tag flottant v10 chez setup-uv
