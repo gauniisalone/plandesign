@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, goSpace } from "./helpers";
+import { canRender, createEmptyProject, goSpace, NO_RENDER } from "./helpers";
 
 /** File d'attente : une photo déposée pendant un calcul attend son tour au lieu d'être
  *  refusée ; le cadre Rendus le dit en une ligne, avec « Annuler ». Le serveur est simulé
@@ -15,6 +15,8 @@ const QUEUED = "En attente : démarre dès que le calcul en cours se termine";
 test("file d'attente : « En attente » dans le cadre Rendus, puis Annuler", async ({
   page,
 }) => {
+  // Sans rendus, le cadre Rendus dit « Blender n'est pas installé » au lieu de la file.
+  test.skip(!(await canRender(page)), NO_RENDER);
   const jobId = "00000000-0000-4000-8000-0000000000f1";
   let status: "queued" | "cancelled" = "queued";
   const job = () => ({

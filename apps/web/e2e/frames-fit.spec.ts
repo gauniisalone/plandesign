@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { createEmptyProject, goSpace } from "./helpers";
+import { canRender, createEmptyProject, goSpace } from "./helpers";
 
 /** T7d1 (retour d'augus, 16 oct.) : aucun contenu ne déborde d'un cadre vide, même avec le
  *  navigateur zoomé à 150 % (1280 × 800 vus comme 853 × 533 px CSS), en thème sombre ; les
@@ -40,10 +40,15 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
   }
   await expect(zoom).toContainText("· détail");
 
+  // KAN-112 : sans Blender (CI), le cadre Rendus dit pourquoi, en une ligne plus longue :
+  // elle doit tenir aussi, le test garde donc sa mesure au lieu de sauter.
+  const rendersHint = (await canRender(page))
+    ? "Les rendus apparaîtront ici"
+    : "Rendus réalistes : Blender n'est pas installé";
   for (const [role, text] of [
     ["photos", "Déposez vos photos"],
     ["inspirations", "Déposez vos images d'ambiance"],
-    ["renders", "Les rendus apparaîtront ici"],
+    ["renders", rendersHint],
   ] as const) {
     const frame = board.locator(`.board-item.kind-frame.role-${role}`);
     const hint = frame.locator(".board-frame-hint");

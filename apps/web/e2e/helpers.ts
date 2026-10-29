@@ -35,6 +35,17 @@ export async function hasWeights(page: Page, ids: string[]): Promise<boolean> {
   return ids.every((id) => weights.has(id));
 }
 
+/** KAN-112 : ce serveur fait-il des rendus réalistes ? Même règle que l'application
+ *  (`capabilities.ts` : Blender présent). La CI GitHub n'a ni Blender ni poids : les tests qui
+ *  attendent un rendu y sautent, avec leur raison, au lieu d'attendre 280 s ; ici, ils tournent. */
+export async function canRender(page: Page): Promise<boolean> {
+  const r = await page.request.get("/api/health");
+  if (!r.ok()) return false;
+  const body = (await r.json()) as { blender?: boolean };
+  return Boolean(body.blender);
+}
+export const NO_RENDER = "rendus réalistes : Blender absent sur ce serveur (CI)";
+
 /** T7d1 (isolation des e2e lourds, PO du 18 oct.) : à la fin d'un test qui lance le chemin
  *  automatique, attendre que le serveur n'ait plus de tâche lourde, ni en cours ni en
  *  attente : le test suivant ne démarre pas derrière le calcul du précédent. */

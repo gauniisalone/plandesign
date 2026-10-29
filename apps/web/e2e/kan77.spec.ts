@@ -178,7 +178,11 @@ for (const scheme of ["light", "dark"] as const) {
     );
 
     // MH1, MH9 : couleurs du site, Outfit chargée et utilisée, aucune requête externe.
-    const generate = page.getByRole("button", { name: "Générer maintenant" });
+    // KAN-112 : le bouton principal du compositeur, par son titre : « Générer maintenant »
+    // avec Blender, « Générer le plan » sans (CI), même style.
+    const generate = page.getByRole("button", {
+      name: /^Générer (maintenant|le plan)$/,
+    }).and(page.getByTitle(/^Plan s'il manque/));
     expect(
       await generate.evaluate((e) => getComputedStyle(e).backgroundColor),
     ).toBe("rgb(166, 58, 46)");

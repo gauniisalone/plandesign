@@ -6,7 +6,9 @@ import { VitePWA } from "vite-plugin-pwa";
 
 /** KAN-79 : onnxruntime-web (profondeur dans le navigateur) servi par le front sous /ort/,
  *  jamais par un CDN. Copié de node_modules au démarrage du dev et du build (dossier
- *  public/ort ignoré par git), exclu du précache de la PWA (~28 Mo, chargé à la demande). */
+ *  public/ort ignoré par git), exclu du précache de la PWA (~28 Mo, chargé à la demande).
+ *  KAN-112 : la copie se fait dans `config()`, avant que Vite ne lise public/ : dans un
+ *  checkout propre (CI), buildStart arrivait trop tard pour le serveur de dev. */
 const ORT_FILES = [
   // Le module WebGPU (avec repli WASM) de la 1.30 charge la variante « asyncify ».
   "ort.webgpu.min.mjs",
@@ -18,7 +20,7 @@ function ortStatic(): Plugin {
   const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
   return {
     name: "plandesign-ort",
-    buildStart() {
+    config() {
       const from = here("./node_modules/onnxruntime-web/dist/");
       const to = here("./public/ort/");
       mkdirSync(to, { recursive: true });
@@ -118,6 +120,24 @@ export default defineConfig({
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: false,
         ws: true,
+        // KAN-112 : un onglet fermé pendant l'écriture (EPIPE, ECONNRESET) n'est pas une
+        // erreur ; toute autre erreur du proxy reste écrite par Vite (API injoignable…).
+        // Vite pose son propre « error » APRÈS `configure` : un simple écouteur ne le tait
+        // pas ; on filtre donc l'événement avant lui, et on ferme la socket comme il le fait.
+        configure: (proxy) => {
+          const emit = proxy.emit.bind(proxy) as (
+            event: string,
+            ...args: unknown[]
+          ) => boolean;
+          proxy.emit = ((event: string, ...args: unknown[]) => {
+            const code = (args[0] as NodeJS.ErrnoException | undefined)?.code;
+            if (event === "error" && (code === "EPIPE" || code === "ECONNRESET")) {
+              (args[2] as { end?: () => void } | undefined)?.end?.();
+              return true;
+            }
+            return emit(event, ...args);
+          }) as typeof proxy.emit;
+        },
       },
     },
   },

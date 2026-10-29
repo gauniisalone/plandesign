@@ -261,8 +261,12 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
       .getByRole("button", { name: "Ouvrir le compositeur" })
       .or(page.getByRole("region", { name: "Compositeur", exact: true })),
   ).toBeVisible({ timeout: 30_000 });
+  // KAN-112 : le bouton du plan vide, par son titre ; sans Blender (CI), celui du compositeur
+  // s'appelle aussi « Générer le plan ».
   await expect(
-    page.getByRole("button", { name: "Générer le plan" }),
+    page
+      .getByRole("button", { name: "Générer le plan" })
+      .and(page.getByTitle(/^D'après les photos de la pièce/)),
   ).toBeVisible();
   await expect(
     page.getByRole("toolbar", { name: "Outils de l'espace de travail" }),
@@ -282,9 +286,8 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
   await expect(
     page.getByRole("region", { name: "Compositeur", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Générer le plan" }),
-  ).toHaveCount(0);
+  // Aucun bouton « Générer… » pour un lecteur, avec ou sans Blender (« maintenant », « le plan »).
+  await expect(page.getByRole("button", { name: /^Générer/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Nouveau plan/ })).toHaveCount(
     0,
   );

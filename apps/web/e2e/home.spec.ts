@@ -1,7 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  canRender,
   expectSpace,
   goSpace,
+  NO_RENDER,
   openRendersPane,
   waitNoHeavyJob,
 } from "./helpers";
@@ -351,6 +353,7 @@ test("L3 sur le tableau : un logement décrit → plan généré, pièces nommé
 test("L3 sur le tableau : logement décrit → chemin automatique → vues réparties et respect de la demande", async ({
   page,
 }) => {
+  test.skip(!(await canRender(page)), NO_RENDER);
   test.setTimeout(300_000);
   await withAutoPath(page);
   const card = await newBoard(page);
@@ -386,6 +389,7 @@ test("L2 sur le tableau : questions guidées et plan DXF → Vos rendus avec le 
   page,
 }) => {
   test.skip(!existsSync(PLAN_DXF), "fixture plan_rect.dxf absente");
+  test.skip(!(await canRender(page)), NO_RENDER);
   test.setTimeout(300_000);
   await withAutoPath(page);
   const card = await newBoard(page);

@@ -1,7 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createEmptyProject, goSpace, waitNoHeavyJob } from "./helpers";
+import {
+  canRender,
+  createEmptyProject,
+  goSpace,
+  NO_RENDER,
+  waitNoHeavyJob,
+} from "./helpers";
 
 // T7d1 : isolation des e2e lourds : aucun test ne commence tant que le serveur calcule
 // encore pour le précédent (même s'il a échoué).
@@ -55,6 +61,7 @@ async function metrics(page: Page, id: string) {
 test("déclencheur : au dépôt (0 geste) ou « Générer maintenant » (1 geste)", async ({
   page,
 }) => {
+  test.skip(!(await canRender(page)), NO_RENDER);
   test.setTimeout(300_000);
   const outside: string[] = [];
   page.on("request", (r) => {

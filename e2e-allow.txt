@@ -1,0 +1,7 @@
+# Exceptions de la garde des journaux de serveur e2e (commit29 en local, e2e.yml en CI, KAN-112).
+# La garde lit les lignes « [WebServer] » de la sortie des e2e et échoue sur
+#   Traceback|Exception in ASGI|" 500 |500 Internal Server Error
+# même si tous les tests passent. Une ligne de ce fichier = une expression régulière étendue
+# (grep -E) ; une ligne de serveur qui y correspond est retirée avant la recherche.
+# Chaque exception porte, au-dessus, un commentaire « # » : quel test, et pourquoi.
+# Lignes vides et commentaires ignorés. Aucune exception aujourd'hui.

@@ -796,7 +796,10 @@ test("importer un plan DXF : murs observés tout de suite, correction des calque
   await expect(viewpoint.locator(".thumb-3d img")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(/Périphérique|Blender n'est pas/)).toBeVisible();
+  // KAN-112 : sans Blender, le cadre Rendus le dit aussi ; une mention visible suffit.
+  await expect(
+    page.getByText(/Périphérique|Blender n'est pas/).first(),
+  ).toBeVisible();
   const blender = (await (await page.request.get("/api/blender")).json()) as {
     available: boolean;
   };

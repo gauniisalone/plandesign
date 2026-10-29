@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
+  canRender,
   createEmptyProject,
+  NO_RENDER,
   expectSpace,
   goSpace,
   openRendersPane,
@@ -30,6 +32,7 @@ test("zéro geste : déposer un plan, voir la progression, arriver sur les rendu
   page,
 }) => {
   test.skip(!existsSync(PLAN_DXF), "fixture plan_rect.dxf absente");
+  test.skip(!(await canRender(page)), NO_RENDER);
   test.setTimeout(300_000);
   await gotoApp(page, "/");
   await createEmptyProject(page, "E2E zéro geste");

@@ -11,10 +11,14 @@ import { defineConfig } from "@playwright/test";
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
 const dir = "apps/web/.e2e-accounts";
+// KAN-112 : la CI pose E2E_DATABASE_URL (Postgres neuf par job) ; vide ou absente, la base
+// SQLite jetable d'avant. La migration se fait au lancement dans les deux cas.
+const databaseUrl =
+  process.env.E2E_DATABASE_URL?.trim() || `sqlite:///${dir}/comptes.db`;
 const env = [
   "OPENPLAN_DOTENV=",
   "OPENPLAN_AUTO_PATH=0",
-  `OPENPLAN_DATABASE_URL=sqlite:///${dir}/comptes.db`,
+  `OPENPLAN_DATABASE_URL='${databaseUrl.replaceAll("'", "")}'`,
   "OPENPLAN_MAILER=fake",
   "OPENPLAN_SIGNUP=open",
   "OPENPLAN_ADMIN_EMAIL=admin@example.org",
