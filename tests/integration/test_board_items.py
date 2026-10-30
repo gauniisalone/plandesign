@@ -70,6 +70,27 @@ def test_on_the_same_item_the_last_write_wins(tmp_path: Path) -> None:
     assert _items(client, pid)[note["id"]]["text"] == "Bruno"
 
 
+def test_a_plan_node_without_its_level_is_not_recreated(tmp_path: Path) -> None:
+    """KAN-111 : le node d'un plan annulé juste avant (Ctrl+Z) n'est pas recréé par un geste
+    arrivé après ; le node d'un plan qui existe se déplace comme avant."""
+    client, pid = _client(tmp_path)
+    plan = next(
+        i for i in client.get(f"/api/projects/{pid}/board").json()["items"] if i["kind"] == "plan"
+    )
+    ghost = {**plan, "id": str(uuid4()), "ref": str(uuid4()), "x": 5000}
+    out = client.patch(
+        f"/api/projects/{pid}/board/items", json={"set": [ghost, {**plan, "x": 1234}]}
+    )
+    assert out.status_code == 200
+    items = _items(client, pid)
+    assert ghost["id"] not in items
+    assert items[plan["id"]]["x"] == 1234
+    # Le fantôme seul : rien n'est écrit, sans erreur.
+    alone = client.patch(f"/api/projects/{pid}/board/items", json={"set": [ghost]})
+    assert alone.status_code == 200
+    assert ghost["id"] not in _items(client, pid)
+
+
 def test_delete_frees_children_and_remembers_what_the_project_provides(tmp_path: Path) -> None:
     client, pid = _client(tmp_path)
     board = client.get(f"/api/projects/{pid}/board").json()

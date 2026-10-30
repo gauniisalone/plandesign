@@ -141,6 +141,12 @@ def patch_board_items(
     deux personnes qui déplacent deux cartes différentes ne se gênent plus, et rien n'est
     refusé en 409. Le serveur horodate chaque élément écrit et note son acteur."""
     project_dir = store.project_dir(project.id)
+    # KAN-111 : le node d'un plan qui n'existe plus (annulé juste avant que ce geste n'arrive)
+    # n'est pas recréé : il serait un node fantôme jusqu'à la relecture suivante.
+    levels = {str(lid) for lid in project.levels}
+    body = body.model_copy(
+        update={"set": [i for i in body.set if i.kind != "plan" or i.ref in levels]}
+    )
     with store.lock(project.id):
         before = b.load_board(project_dir)
         # KAN-43 : la vue envoyée (onglets d'avant KAN-43) est la mienne, pas celle du projet.
