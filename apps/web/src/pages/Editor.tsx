@@ -87,6 +87,7 @@ import { useProject } from "../state/useProject";
 import { BoardCanvas } from "../board/BoardCanvas";
 import { ContextualPanel, type ContextualPick } from "../board/ContextualPanel";
 import { useBoard } from "../board/useBoard";
+import { freeSpot } from "../board/arrange";
 import { planPhotos, styleImages } from "../board/links";
 import { IconClose } from "../ui/icons";
 import {
@@ -462,6 +463,41 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     : undefined;
   const fusion = level ? fusionOf(level) : null;
   const [newPlanOpen, setNewPlanOpen] = useState(false);
+  /** KAN-111 : un Plan lâché depuis la barre d'ajout : le coin visé, puis, une fois le plan
+   *  créé, son niveau et ce coin, jusqu'à ce que son node arrive dans l'espace de travail. */
+  const newPlanAt = useRef<{ x: number; y: number } | null>(null);
+  const placePlan = useRef<{ lid: string; at: { x: number; y: number } } | null>(
+    null,
+  );
+  // Le node Plan arrive avec la relecture du tableau (le serveur le pose en bout de grille) :
+  // il va au coin visé, sur la place libre la plus proche ; le plan lui-même ne s'annule pas
+  // par Ctrl+Z, ce déplacement n'entre donc pas dans l'historique.
+  const boardNow = board.board;
+  const boardCommit = board.commit;
+  const levelIds = state.project ? Object.keys(state.project.levels).join("|") : "";
+  useEffect(() => {
+    const wanted = placePlan.current;
+    const current = boardNow;
+    if (!wanted || !current) return;
+    const node = current.items.find(
+      (i) => i.kind === "plan" && i.ref === wanted.lid,
+    );
+    if (!node) return;
+    placePlan.current = null;
+    // Plan déjà retiré (Ctrl+Z juste après sa création) : on ne repose pas son node.
+    if (!levelIds.split("|").includes(wanted.lid)) return;
+    const others = current.items.filter((i) => i.id !== node.id);
+    const box = freeSpot(
+      { x: wanted.at.x, y: wanted.at.y, w: node.w, h: node.h },
+      others,
+    );
+    boardCommit(
+      current.items.map((i) =>
+        i.id === node.id ? { ...i, x: box.x, y: box.y } : i,
+      ),
+      false,
+    );
+  }, [boardNow, boardCommit, levelIds]);
 
   // B2d (KAN-11) : bail d'édition du plan ouvert. Tenu par un autre membre : bandeau, plan
   // en lecture (outils grisés) et « Demander la main » ; « Prendre la main » seulement
@@ -1482,7 +1518,14 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               activeLevelId={level.id}
               onOpenLevel={actions.openLevel}
-              onNewPlan={readOnly ? undefined : () => setNewPlanOpen(true)}
+              onNewPlan={
+                readOnly
+                  ? undefined
+                  : (at) => {
+                      newPlanAt.current = at ?? null;
+                      setNewPlanOpen(true);
+                    }
+              }
               onDeletePlan={
                 readOnly ? undefined : (lid) => void actions.deletePlan(lid)
               }
@@ -1742,10 +1785,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
           {newPlanOpen && (
             <NewPlanDialog
               busy={state.busy}
-              onClose={() => setNewPlanOpen(false)}
+              onClose={() => {
+                // KAN-111 : boîte annulée, rien n'est posé.
+                newPlanAt.current = null;
+                setNewPlanOpen(false);
+              }}
               onCreate={(body) => {
                 void actions.newPlan(body).then((lid) => {
                   if (!lid) return;
+                  if (newPlanAt.current)
+                    placePlan.current = { lid, at: newPlanAt.current };
+                  newPlanAt.current = null;
                   setNewPlanOpen(false);
                   // T7e : le plan créé s'ouvre, prêt à être tracé ou retouché.
                   journalApi.ui(projectId, "tab_changed", "board>plan");

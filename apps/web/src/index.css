@@ -6515,13 +6515,13 @@ input:disabled {
   align-items: center;
   gap: 4px;
   height: 56px;
-  max-width: calc(100% - 2 * 180px);
   padding: 0 10px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   box-shadow: 0 6px 18px color-mix(in oklab, var(--pd-encre) 18%, transparent);
-  overflow-x: auto;
+  /* KAN-111 : jamais de barre de défilement ; trop étroite, elle passe en icônes seules. */
+  overflow: visible;
 }
 .board-addbar-label {
   padding: 0 8px 0 4px;
@@ -6578,6 +6578,92 @@ input:disabled {
 }
 *:has(> .board-addbar) > .board-bottom {
   bottom: 88px;
+}
+
+/* KAN-111 : ajout par glisser-déposer. Noms vérifiés libres : board-add-ghost(-title),
+   board-add-target, board-add-relink, board-addbar-hint, board-addbar-text, .compact,
+   .dragging, .board-zoom.lifted. */
+.board-addbar-btn {
+  touch-action: none;
+  cursor: grab;
+}
+.board-addbar-btn.board-arrange {
+  cursor: pointer;
+}
+.board-addbar-btn.dragging {
+  cursor: grabbing;
+  background: color-mix(in oklab, var(--text) 8%, transparent);
+}
+.board-addbar.compact .board-addbar-label,
+.board-addbar.compact .board-addbar-text {
+  display: none;
+}
+.board-addbar.compact .board-addbar-btn {
+  position: relative;
+  padding: 0 10px;
+}
+/* Icônes seules : le libellé en bulle au survol et au focus. */
+.board-addbar.compact .board-addbar-btn:is(:hover, :focus-visible)::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: var(--r-control);
+  background: var(--pd-encre);
+  color: var(--pd-papier, #fff);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.board-addbar-hint {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: var(--r-control);
+  background: var(--pd-encre);
+  color: var(--pd-papier, #fff);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.board-zoom.lifted {
+  bottom: 88px;
+}
+.board-add-ghost {
+  position: absolute;
+  z-index: 40;
+  border: 2px dashed var(--pd-tuile);
+  border-radius: var(--r-card);
+  background: color-mix(in oklab, var(--panel) 70%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.board-add-ghost-title {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  font-size: calc(15px * var(--inv, 1));
+  color: var(--muted);
+}
+.board-add-target {
+  outline: calc(3px * var(--inv, 1)) solid var(--pd-tuile);
+  outline-offset: calc(4px * var(--inv, 1));
+}
+.board-add-relink {
+  position: absolute;
+  z-index: 41;
+  transform-origin: 0 0;
+  padding: 4px 10px;
+  border-radius: var(--r-control);
+  background: var(--pd-tuile);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 *:has(> .board-addbar) > .board-wire-toast {
   bottom: 88px;

@@ -20,10 +20,29 @@ const NOT_RECREATED =
 
 /** Écritures en attente, par élément : l'élément tel qu'il doit être, ou null (retiré). */
 type Ops = Map<string, BoardItem | null>;
-/** Un geste annulable : chaque élément touché, avant et après (null : absent). */
+/** Un geste annulable : chaque élément touché, avant et après (null : absent). KAN-111 : les
+ *  liens qu'il a posés (un node lâché sur un autre) ; annuler retire le node, et le serveur
+ *  retire avec lui ses liens ; rétablir repose le node puis ses liens. */
 interface Gesture {
   before: Ops;
   after: Ops;
+  links?: BoardLink[];
+}
+
+/** KAN-111 : les liens pas encore confirmés par-dessus ceux du serveur (même paire : le mien). */
+function withLinks(board: Board, links: BoardLink[]): Board {
+  if (!links.length) return board;
+  const pairs = new Set(links.map((l) => `${l.source}>${l.target}`));
+  const ids = new Set(links.map((l) => l.id));
+  return {
+    ...board,
+    links: [
+      ...(board.links ?? []).filter(
+        (l) => !ids.has(l.id) && !pairs.has(`${l.source}>${l.target}`),
+      ),
+      ...links,
+    ],
+  };
 }
 
 /** Ce que le projet fournit (comme `AUTO_KINDS` côté serveur) : une carte par image. */
@@ -50,13 +69,19 @@ function withOps(board: Board, ...layers: Ops[]): Board {
   return { ...board, items: [...items.values()] };
 }
 
-function toPatch(ops: Ops, view: BoardView | null): BoardPatch {
+function toPatch(
+  ops: Ops,
+  view: BoardView | null,
+  links: BoardLink[] = [],
+): BoardPatch {
   const patch: BoardPatch = { set: [], delete: [] };
   for (const [id, item] of ops) {
     if (item === null) patch.delete.push(id);
     else patch.set.push(item);
   }
   if (view) patch.view = view;
+  // KAN-111 : dans le même envoi que les nodes ; le serveur pose les nodes d'abord.
+  if (links.length) patch.links_set = links;
   return patch;
 }
 
@@ -83,6 +108,9 @@ export function useBoard(projectId: string, syncKey: string) {
   const pending = useRef<Ops>(new Map());
   const pendingView = useRef<BoardView | null>(null);
   const inflight = useRef<Ops | null>(null);
+  /** KAN-111 : liens d'un geste, envoyés avec ses nodes (en attente, puis en vol). */
+  const pendingLinks = useRef<BoardLink[]>([]);
+  const inflightLinks = useRef<BoardLink[]>([]);
   const past = useRef<Gesture[]>([]);
   const future = useRef<Gesture[]>([]);
   const timer = useRef<number | null>(null);
@@ -117,10 +145,13 @@ export function useBoard(projectId: string, syncKey: string) {
     if (doubles.length) window.setTimeout(() => again.current(), 0);
     server.current = fresh;
     const view = pendingView.current;
-    const shown = withOps(
-      view ? { ...fresh, view } : fresh,
-      inflight.current ?? new Map(),
-      pending.current,
+    const shown = withLinks(
+      withOps(
+        view ? { ...fresh, view } : fresh,
+        inflight.current ?? new Map(),
+        pending.current,
+      ),
+      [...inflightLinks.current, ...pendingLinks.current],
     );
     for (const i of shown.items) known.current.add(i);
     latest.current = shown;
@@ -153,22 +184,32 @@ export function useBoard(projectId: string, syncKey: string) {
     pendingView.current = null;
     if (view) void boardApi.putView(projectId, view).catch(() => undefined);
     const ops = pending.current;
-    if (ops.size === 0) {
+    const links = pendingLinks.current;
+    if (ops.size === 0 && links.length === 0) {
       setSave("saved");
       return;
     }
     pending.current = new Map();
+    pendingLinks.current = [];
     inflight.current = ops;
+    inflightLinks.current = links;
     setSave("saving");
     try {
-      const saved = await boardApi.patch(projectId, toPatch(ops, null));
+      const saved = await boardApi.patch(projectId, toPatch(ops, null, links));
       inflight.current = null;
+      inflightLinks.current = [];
       show(saved);
       // Un geste fait pendant l'envoi part à son tour.
-      if (pending.current.size || pendingView.current) again.current();
+      if (
+        pending.current.size ||
+        pendingLinks.current.length ||
+        pendingView.current
+      )
+        again.current();
       else setSave("saved");
     } catch (e) {
       inflight.current = null;
+      inflightLinks.current = [];
       if (e instanceof ApiError && (e.status === 409 || e.status === 422)) {
         // KAN-91 : un geste refusé par une règle (une carte qui n'accepte pas cet élément) ne
         // repart pas en boucle : il est retiré, la raison est dite, le tableau est relu.
@@ -179,6 +220,7 @@ export function useBoard(projectId: string, syncKey: string) {
       }
       // Rien n'est perdu : ces écritures repartiront, sous celles faites depuis.
       pending.current = new Map([...ops, ...pending.current]);
+      pendingLinks.current = [...links, ...pendingLinks.current];
       setSave("error");
     }
   }, [projectId, show]);
@@ -202,14 +244,17 @@ export function useBoard(projectId: string, syncKey: string) {
       if (document.visibilityState !== "hidden" && timer.current === null)
         return;
       const ops = pending.current;
+      const links = pendingLinks.current;
       const view = pendingView.current;
-      if (ops.size === 0 && !view) return;
+      if (ops.size === 0 && links.length === 0 && !view) return;
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
       pending.current = new Map();
+      pendingLinks.current = [];
       pendingView.current = null;
       if (view) boardApi.putViewKeepalive(projectId, view);
-      if (ops.size) boardApi.patchKeepalive(projectId, toPatch(ops, null));
+      if (ops.size || links.length)
+        boardApi.patchKeepalive(projectId, toPatch(ops, null, links));
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", onHide);
@@ -228,27 +273,44 @@ export function useBoard(projectId: string, syncKey: string) {
     [flush],
   );
 
-  /** Applique des écritures à l'écran et les met en attente d'envoi. */
+  /** Applique des écritures à l'écran et les met en attente d'envoi. KAN-111 : avec des
+   *  liens, tout part sans attendre, dans un seul envoi ; un élément retiré emporte, à
+   *  l'écran, les liens qui le touchent (le serveur fait de même). */
   const write = useCallback(
-    (ops: Ops) => {
+    (ops: Ops, links: BoardLink[] = [], soon = false) => {
       const current = latest.current;
-      if (!current || ops.size === 0) return;
+      if (!current || (ops.size === 0 && links.length === 0)) return;
       for (const [id, item] of ops) {
         pending.current.set(id, item);
         seen.current.add(id);
         if (item) known.current.add(item);
       }
-      latest.current = withOps(current, ops);
+      pendingLinks.current = [...pendingLinks.current, ...links];
+      const gone = new Set(
+        [...ops].filter(([, item]) => item === null).map(([id]) => id),
+      );
+      const shown = withLinks(withOps(current, ops), links);
+      latest.current = gone.size
+        ? {
+            ...shown,
+            links: (shown.links ?? []).filter(
+              (l) => !gone.has(l.source) && !gone.has(l.target),
+            ),
+          }
+        : shown;
       setBoard(latest.current);
-      schedule(SAVE_DELAY_MS);
+      schedule(links.length || soon ? 0 : SAVE_DELAY_MS);
     },
     [schedule],
   );
 
   /** Un geste sur le tableau (la liste entière, comme l'espace de travail la voit) : seuls
-   *  les éléments qu'il a créés, changés ou retirés partent ; annulable (sauf `record: false`). */
+   *  les éléments qu'il a créés, changés ou retirés partent ; annulable (sauf `record: false`).
+   *  KAN-111 : `links`, les liens que le geste pose avec ses nodes (un seul pas d'historique) ;
+   *  un geste non enregistré (la pose du node d'un plan neuf) part sans attendre : un Ctrl+Z
+   *  qui retire ce plan juste après ne doit pas le voir revenir. */
   const commit = useCallback(
-    (items: BoardItem[], record = true) => {
+    (items: BoardItem[], record = true, links: BoardLink[] = []) => {
       const current = latest.current;
       if (!current) return;
       const before: Ops = new Map();
@@ -267,13 +329,16 @@ export function useBoard(projectId: string, syncKey: string) {
           before.set(id, item);
           after.set(id, null);
         }
-      if (after.size === 0) return;
+      if (after.size === 0 && links.length === 0) return;
       if (record) {
-        past.current = [...past.current, { before, after }].slice(-HISTORY_MAX);
+        const gesture: Gesture = links.length
+          ? { before, after, links }
+          : { before, after };
+        past.current = [...past.current, gesture].slice(-HISTORY_MAX);
         future.current = [];
         counts();
       }
-      write(after);
+      write(after, links, !record);
     },
     [write],
   );
@@ -293,7 +358,7 @@ export function useBoard(projectId: string, syncKey: string) {
   /** Réécrit un état de mes éléments (avant ou après un geste). Un élément que j'avais
    *  changé (pas supprimé) et que quelqu'un d'autre a supprimé depuis n'est pas recréé. */
   const replay = useCallback(
-    (target: Ops, other: Ops) => {
+    (target: Ops, other: Ops, links: BoardLink[] = []) => {
       const current = latest.current;
       if (!current) return;
       const here = new Set(current.items.map((i) => i.id));
@@ -309,7 +374,14 @@ export function useBoard(projectId: string, syncKey: string) {
         ops.set(id, item);
       }
       if (skipped) setNotice(NOT_RECREATED);
-      write(ops);
+      // KAN-111 : un lien ne repart que si ses deux nodes sont là (ou reviennent).
+      const back = new Set([...ops].filter(([, i]) => i).map(([id]) => id));
+      const alive = (id: string) =>
+        back.has(id) || (here.has(id) && ops.get(id) !== null);
+      write(
+        ops,
+        links.filter((l) => alive(l.source) && alive(l.target)),
+      );
     },
     [write],
   );
@@ -329,7 +401,7 @@ export function useBoard(projectId: string, syncKey: string) {
     future.current = future.current.slice(0, -1);
     past.current = [...past.current, gesture];
     counts();
-    replay(gesture.after, gesture.before);
+    replay(gesture.after, gesture.before, gesture.links);
   }, [replay]);
 
   /** KAN-91 : pose ou coupe des liens, tout de suite (pas d'attente : le geste est rare et

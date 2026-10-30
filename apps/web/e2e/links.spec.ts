@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  addByKey,
   createEmptyProject,
   expectSpace,
   goSpace,
@@ -217,10 +218,8 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
   const board = page.getByRole("region", { name: "Espace de travail" });
   const cards = board.locator(".board-item.kind-frame.role-photos");
   await expect(cards).toHaveCount(1);
-  await page
-    .getByRole("group", { name: "Ajouter" })
-    .getByRole("button", { name: "Plan", exact: true })
-    .click();
+  // KAN-111 : la barre d'ajout au clavier (Entrée) ; le glisser a ses propres tests.
+  await addByKey(page, "Plan");
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await dialog.getByLabel("Nom").fill("Étage");
   await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
@@ -267,10 +266,7 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
     );
 
   // KAN-98 : « Photos de la pièce » dans la barre d'ajout : un node vide, sans lien.
-  await page
-    .getByRole("group", { name: "Ajouter" })
-    .getByRole("button", { name: "Photos de la pièce", exact: true })
-    .click();
+  await addByKey(page, "Photos de la pièce");
   await expect(cards).toHaveCount(3);
   await expect(board.locator(".board-wire[data-kind=feeds_plan]")).toHaveCount(
     2,
@@ -279,10 +275,7 @@ test("une carte Photos par plan : l'étage a la sienne, elle n'alimente que l'é
 
 /** Un étage de plus, depuis l'espace de travail ; on y revient. */
 async function addStorey(page: Page) {
-  await page
-    .getByRole("group", { name: "Ajouter" })
-    .getByRole("button", { name: "Plan", exact: true })
-    .click();
+  await addByKey(page, "Plan");
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await dialog.getByLabel("Nom").fill("Étage");
   await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
@@ -466,10 +459,7 @@ test("deux Moodboards en N-N : ils entrent par le haut des Rendus, pastilles hor
   await expect(insp).toHaveCount(1);
   // La carte de départ guide les deux cartes Rendus ; la nouvelle n'est reliée à rien.
   await expect(guides).toHaveCount(2);
-  await page
-    .getByRole("group", { name: "Ajouter" })
-    .getByRole("button", { name: "Moodboard", exact: true })
-    .click();
+  await addByKey(page, "Moodboard");
   await expect(insp).toHaveCount(2);
   await expect(guides).toHaveCount(2);
   // On la relie aux deux cartes Rendus (comme avec sa poignée « + »).

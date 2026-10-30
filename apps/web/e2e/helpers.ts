@@ -46,6 +46,45 @@ export async function canRender(page: Page): Promise<boolean> {
 }
 export const NO_RENDER = "rendus réalistes : Blender absent sur ce serveur (CI)";
 
+/** KAN-111 : un bouton de la barre d'ajout (« Plan », « Photos de la pièce », « Moodboard »,
+ *  « Rendus »). */
+export function addButton(page: Page, name: string): Locator {
+  return page
+    .getByRole("group", { name: "Ajouter" })
+    .getByRole("button", { name, exact: true });
+}
+
+/** KAN-111 : ajouter au clavier (Entrée : au centre de la vue, sur une place libre). Les
+ *  tests qui veulent seulement un node de plus passent par là ; le glisser a ses tests. */
+export async function addByKey(page: Page, name: string): Promise<void> {
+  const button = addButton(page, name);
+  await button.focus();
+  await page.keyboard.press("Enter");
+}
+
+/** KAN-111 : glisser un bouton de la barre d'ajout jusqu'à un point de l'écran (ou au milieu
+ *  d'un élément), en plusieurs pas, comme une souris ; `release: false` garde le bouton
+ *  appuyé (pour regarder l'aperçu, ou appuyer sur Échap). */
+export async function dragAdd(
+  page: Page,
+  name: string,
+  to: { x: number; y: number } | Locator,
+  { release = true }: { release?: boolean } = {},
+): Promise<void> {
+  const from = (await addButton(page, name).boundingBox())!;
+  let x: number;
+  let y: number;
+  if ("boundingBox" in to) {
+    const b = (await to.boundingBox())!;
+    x = b.x + b.width / 2;
+    y = b.y + b.height / 2;
+  } else ({ x, y } = to);
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, y, { steps: 12 });
+  if (release) await page.mouse.up();
+}
+
 /** T7d1 (isolation des e2e lourds, PO du 18 oct.) : à la fin d'un test qui lance le chemin
  *  automatique, attendre que le serveur n'ait plus de tâche lourde, ni en cours ni en
  *  attente : le test suivant ne démarre pas derrière le calcul du précédent. */

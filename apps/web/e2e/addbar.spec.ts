@@ -1,7 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import {
+  addByKey,
   createEmptyProject,
+  dragAdd,
   expectSpace,
   goSpace,
   waitNoHeavyJob,
@@ -66,11 +68,19 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
   if (rail) expect(after.x).toBeGreaterThan(rail.x + rail.width);
 
   // Moodboard : un node vide, titré « Moodboard », au-dessus du node Rendus de départ.
+  // KAN-111 : glissé sur le node Rendus, il s'y pose au-dessus (et s'y relie).
+  for (let k = 0; k < 6; k++)
+    await zoom.getByRole("button", { name: "Zoomer", exact: true }).click();
+  await page.keyboard.press("Shift+Digit1");
   const moods = board.locator(".board-item.kind-frame.role-inspirations");
   await expect(moods).toHaveCount(1);
   await expect(moods.first()).toContainText("Moodboard");
   const start = (await moods.first().boundingBox())!;
-  await bar.getByRole("button", { name: "Moodboard", exact: true }).click();
+  await dragAdd(
+    page,
+    "Moodboard",
+    board.locator(".board-item.kind-frame.role-renders").first(),
+  );
   await expect(moods).toHaveCount(2);
   const renders = board.locator(".board-item.kind-frame.role-renders").first();
   const r = (await renders.boundingBox())!;
@@ -89,9 +99,7 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
   // Photos de la pièce : un node vide de plus.
   const photos = board.locator(".board-item.kind-frame.role-photos");
   await expect(photos).toHaveCount(1);
-  await bar
-    .getByRole("button", { name: "Photos de la pièce", exact: true })
-    .click();
+  await addByKey(page, "Photos de la pièce");
   await expect(photos).toHaveCount(2);
 
   // Rendus : chaque plan a déjà le sien : grisé, la raison dans l'infobulle.
@@ -103,7 +111,7 @@ test("barre d'ajout : fixe à tout zoom, hors de la colonne d'outils, ajoute cha
   );
 
   // Plan : la boîte « Nouveau plan » existante.
-  await bar.getByRole("button", { name: "Plan", exact: true }).click();
+  await addByKey(page, "Plan");
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");

@@ -57,6 +57,58 @@ function slot(w: number, index: number): Box {
   };
 }
 
+/** KAN-111 : marge libre autour d'un node posé (ses poignées « + » dépassent du bord). */
+export const FREE_MARGIN = 48;
+const FREE_STEP = 40;
+const FREE_RINGS = 80;
+
+/** KAN-111 : la place libre la plus proche de `want` (sa taille gardée), où le node ne
+ *  touche aucun élément de premier niveau, marge comprise. `prefer` cherche d'abord dans la
+ *  même colonne, vers le haut ou vers le bas (Moodboard au-dessus de Rendus, Photos sous
+ *  Photos) ; sinon, en anneaux de plus en plus larges, du plus proche au plus loin.
+ *  Déterministe ; une place déjà libre est rendue telle quelle. */
+export function freeSpot(
+  want: Box,
+  items: BoardItem[],
+  prefer: "up" | "down" | null = null,
+): Box {
+  const blockers = items.filter((i) => !i.frame);
+  const free = (b: Box) => !blockers.some((i) => overlap(b, i, FREE_MARGIN));
+  const at = (dx: number, dy: number): Box => ({
+    ...want,
+    x: Math.round(want.x + dx),
+    y: Math.round(want.y + dy),
+  });
+  if (free(want)) return { ...want };
+  if (prefer) {
+    const step = want.h + FREE_MARGIN;
+    for (let k = 1; k <= 20; k++) {
+      const b = at(0, (prefer === "up" ? -1 : 1) * k * step);
+      if (free(b)) return b;
+    }
+  }
+  for (let r = 1; r <= FREE_RINGS; r++) {
+    const ring: Box[] = [];
+    for (let i = -r; i <= r; i++)
+      for (const [dx, dy] of [
+        [i, -r],
+        [i, r],
+        [-r, i],
+        [r, i],
+      ] as const)
+        if (Math.abs(dx) === r || Math.abs(dy) === r)
+          ring.push(at(dx * FREE_STEP, dy * FREE_STEP));
+    const dist = (b: Box) => (b.x - want.x) ** 2 + (b.y - want.y) ** 2;
+    const best = ring
+      .filter(free)
+      .sort((a, b) => dist(a) - dist(b) || a.y - b.y || a.x - b.x)[0];
+    if (best) return best;
+  }
+  // Rien d'assez proche : à droite de tout.
+  const right = Math.max(want.x, ...blockers.map((i) => i.x + i.w));
+  return at(right + FREE_MARGIN * 2 - want.x, 0);
+}
+
 /** Les nouvelles places et tailles (seulement ce qui change), par id. Vide : rien à ranger. */
 export function arrange(
   items: BoardItem[],

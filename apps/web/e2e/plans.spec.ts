@@ -67,7 +67,8 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
     .getByRole("button", { name: "Plan", exact: true });
   await expect(open).toBeVisible();
   // La petite fenêtre : deux champs, les trois sortes avec les mots d'augus, rien d'autre.
-  await open.click();
+  await open.focus(); // KAN-111 : Entrée (un clic ne fait plus que dire le glisser)
+  await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Nouveau plan" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Nom")).toBeFocused();
@@ -82,7 +83,8 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
   await expect(dialog).toHaveCount(0);
 
   // « Variante de ce plan » : une copie, qui s'ouvre (le nom dit à côté de « Plan »).
-  await open.click();
+  await open.focus(); // KAN-111 : Entrée (un clic ne fait plus que dire le glisser)
+  await page.keyboard.press("Enter");
   await dialog.getByLabel("Nom").fill("Variante bureau");
   await dialog.getByRole("button", { name: "Créer" }).click();
   await expect(dialog).toHaveCount(0);
@@ -123,7 +125,8 @@ test("T7e : + Nouveau plan (variante, étage), une rangée par plan, annuler", a
 
   // « Nouvel étage » : vide, au-dessus ; puis Ctrl+Z le retire et rouvre le premier plan.
   await goSpace(page, "board");
-  await open.click();
+  await open.focus(); // KAN-111 : Entrée (un clic ne fait plus que dire le glisser)
+  await page.keyboard.press("Enter");
   await dialog.getByLabel("Nom").fill("Étage");
   await dialog.getByLabel("Sorte").selectOption({ label: "Nouvel étage" });
   await dialog.getByRole("button", { name: "Créer" }).click();

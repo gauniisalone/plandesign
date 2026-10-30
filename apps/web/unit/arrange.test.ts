@@ -7,6 +7,9 @@ import type { BoardItem, BoardLink } from "../src/api/client.ts";
 import {
   arrange,
   COL_GAP,
+  FREE_MARGIN,
+  freeSpot,
+  NODE_H,
   NODE_W,
   ROW_GAP,
   type Box,
@@ -185,4 +188,68 @@ test("idempotent : ranger un espace rangé ne change rien", () => {
 test("rien à ranger sans plan", () => {
   const items = [item("n", "note", 0, 0, 300, 170)];
   assert.equal(arrange(items, []).size, 0);
+});
+
+// KAN-111 : la place libre la plus proche (barre d'ajout en glisser-déposer).
+const touches = (b: Box, items: BoardItem[]) =>
+  items.some(
+    (i) =>
+      !i.frame &&
+      b.x < i.x + i.w + FREE_MARGIN &&
+      i.x < b.x + b.w + FREE_MARGIN &&
+      b.y < i.y + i.h + FREE_MARGIN &&
+      i.y < b.y + b.h + FREE_MARGIN,
+  );
+const want = (x: number, y: number): Box => ({ x, y, w: NODE_W, h: NODE_H });
+
+test("freeSpot : une place libre est rendue telle quelle", () => {
+  const items = [item("p", "plan", 2000, 2000, 1200, 700)];
+  assert.deepEqual(freeSpot(want(0, 0), items), want(0, 0));
+});
+
+test("freeSpot : place prise → la plus proche qui ne touche rien, marge comprise", () => {
+  const items = [
+    item("a", "frame", 0, 0, NODE_W, NODE_H, { role: "inspirations" }),
+    item("m", "photo", 10, 10, 100, 100, { frame: "a" }),
+  ];
+  const got = freeSpot(want(100, 50), items);
+  assert.equal(touches(got, items), false);
+  // Au plus près : pas plus loin qu'un node et sa marge.
+  assert.ok(Math.hypot(got.x - 100, got.y - 50) <= NODE_H + FREE_MARGIN + 40);
+  assert.equal(got.w, NODE_W);
+  assert.equal(got.h, NODE_H);
+});
+
+test("freeSpot : quatre lâchers au même point ne se chevauchent jamais", () => {
+  const items: BoardItem[] = [item("p", "plan", 0, 0, 1200, 700)];
+  for (let k = 0; k < 4; k++) {
+    const b = freeSpot(want(300, 200), items);
+    assert.equal(touches(b, items), false, `lâcher ${k + 1}`);
+    items.push(item(`n${k}`, "frame", b.x, b.y, b.w, b.h, { role: "inspirations" }));
+  }
+});
+
+test("freeSpot : colonne pleine vers le haut (Moodboard sur Rendus) → au-dessus encore", () => {
+  const r = item("r", "frame", 0, 1000, NODE_W, 700, { role: "renders" });
+  const m1 = item("m1", "frame", 0, 1000 - NODE_H - ROW_GAP, NODE_W, NODE_H, {
+    role: "inspirations",
+  });
+  const items = [r, m1];
+  const got = freeSpot(want(0, m1.y), items, "up");
+  assert.equal(got.x, 0);
+  assert.ok(got.y + got.h + FREE_MARGIN <= m1.y);
+  assert.equal(touches(got, items), false);
+});
+
+test("freeSpot : vers le bas (2e Photos à gauche du Plan) → décalé vers le bas", () => {
+  const plan = item("p", "plan", NODE_W + COL_GAP, 0, 1200, 700);
+  const ph = item("ph", "frame", 0, 0, NODE_W, NODE_H, { role: "photos" });
+  const got = freeSpot(want(0, 0), [plan, ph], "down");
+  assert.equal(got.x, 0);
+  assert.ok(got.y >= ph.y + ph.h + FREE_MARGIN);
+});
+
+test("freeSpot : déterministe", () => {
+  const items = [item("p", "plan", 0, 0, 1200, 700)];
+  assert.deepEqual(freeSpot(want(100, 100), items), freeSpot(want(100, 100), items));
 });

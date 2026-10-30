@@ -72,7 +72,15 @@ import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
 import { overlapping } from "./wires";
 import { MAQUETTE_NODE_PX, TIER_NAMES, zoomTier } from "./tiers";
-import { arrange } from "./arrange";
+import {
+  arrange,
+  COL_GAP,
+  freeSpot,
+  NODE_H,
+  NODE_W,
+  ROW_GAP,
+  type Box,
+} from "./arrange";
 import {
   accepts,
   cardRole,
@@ -164,7 +172,33 @@ const WALLS_STAY =
 /** KAN-98 : une carte ajoutée par la barre, 25 % plus grande que celles d'avant (624 × 374) ;
  *  les cartes déjà posées gardent leur taille. */
 const NEW_CARD = { w: 780, h: 468 };
-const NEW_CARD_GAP = 48;
+/** KAN-111 : la taille d'un node Plan neuf (PLAN_W, PLAN_H côté serveur, board.py). */
+const PLAN_NODE = { w: 900, h: 700 };
+/** KAN-111 : au-delà de ce déplacement, l'appui sur un bouton d'ajout devient un glisser. */
+const DRAG_START_PX = 4;
+const ADD_HINT_MS = 3000;
+const ADD_HINT = "Faites glisser sur l'espace de travail pour l'ajouter";
+const ADD_TITLES: Record<"plan" | "photos" | "inspirations" | "renders", string> = {
+  plan: "Plan",
+  photos: "Photos de la pièce",
+  inspirations: "Moodboard",
+  renders: "Rendus",
+};
+
+/** KAN-111 : les quatre ajouts de la barre, par glisser-déposer. */
+type AddKind = "plan" | "photos" | "inspirations" | "renders";
+interface AddDrag {
+  kind: AddKind;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  /** Le seuil est passé : c'est un glisser, plus un clic. */
+  active: boolean;
+  /** La place finale (aimantée), ou null hors de l'espace de travail. */
+  box: Box | null;
+  /** Le node à relier (Moodboard sur Rendus, Photos sur Plan). */
+  target: BoardItem | null;
+}
 const PHOTOS_TITLE = "Photos de la pièce";
 const MOODBOARD_TITLE = "Moodboard";
 
@@ -179,7 +213,8 @@ interface Props {
   /** Le tableau reçoit le clavier (pas un champ, pas un autre espace). */
   active: boolean;
   planVersion: number;
-  onCommit: (items: BoardItem[], record?: boolean) => void;
+  /** KAN-111 : `links`, posés avec les nodes du geste (un seul Ctrl+Z pour les deux). */
+  onCommit: (items: BoardItem[], record?: boolean, links?: BoardLink[]) => void;
   onView: (view: BoardView) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -245,8 +280,9 @@ interface Props {
   /** T7e : ouvrir un autre plan. */
   onOpenLevel?: (levelId: string) => void;
   /** « + Nouveau plan » (T7e ; retour d'augus du 19 oct. : sous la dernière rangée Plan +
-   *  Rendus, plus dans la barre du haut) ; absent pour un lecteur. */
-  onNewPlan?: () => void;
+   *  Rendus, plus dans la barre du haut) ; absent pour un lecteur. KAN-111 : `at`, le coin
+   *  où poser le node Plan une fois le plan créé (lâcher de la barre d'ajout). */
+  onNewPlan?: (at?: { x: number; y: number }) => void;
   /** KAN-91 (retours MEP 14) : « Supprimer le plan » (après confirmation) ; absent pour un
    *  lecteur. */
   onDeletePlan?: (levelId: string) => void;
@@ -502,6 +538,31 @@ export function BoardCanvas(props: Props) {
     y: number;
   } | null>(null);
   const recompute = useRef<number | null>(null);
+  /** KAN-111 : glisser-déposer depuis la barre d'ajout ; bulle du simple clic ; barre en
+   *  icônes seules (fenêtre étroite) et zoom remonté s'il la croiserait. */
+  const [addDrag, setAddDrag] = useState<AddDrag | null>(null);
+  const [addHint, setAddHint] = useState<AddKind | null>(null);
+  const [addCompact, setAddCompact] = useState(false);
+  const [zoomLifted, setZoomLifted] = useState(false);
+  const addbarRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef<HTMLDivElement>(null);
+  const addbarFull = useRef(0);
+  useEffect(() => {
+    if (!addHint) return;
+    const t = window.setTimeout(() => setAddHint(null), ADD_HINT_MS);
+    return () => window.clearTimeout(t);
+  }, [addHint]);
+  useEffect(() => {
+    if (!addDrag?.active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setAddDrag(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [addDrag?.active]);
   /** KAN-91 L5 : guide de prise de photo ouvert, pour ce cadre Photos (son « Importer des
    *  photos ») ou sans cadre ; il ne s'ouvre que par son lien. */
   const [guide, setGuide] = useState<{ frame: BoardItem | null } | null>(null);
@@ -515,6 +576,32 @@ export function BoardCanvas(props: Props) {
   const caps = useCapabilities();
   // B1d : lecteur (et commentateur jusqu'à B2) : ni outils, ni compositeur, ni « Générer ».
   const readOnly = useReadOnly();
+  // KAN-111 : barre trop large pour la fenêtre (zoom compris de chaque côté) → icônes seules,
+  // jamais de défilement ; si elle croiserait encore le zoom, le zoom remonte au-dessus.
+  useEffect(() => {
+    const el = stage.current;
+    const bar = addbarRef.current;
+    if (!el || !bar) return;
+    let frame = 0;
+    const fit = () => {
+      const sw = el.clientWidth;
+      const zw = zoomRef.current?.offsetWidth ?? 0;
+      if (!bar.classList.contains("compact")) addbarFull.current = bar.scrollWidth;
+      setAddCompact(addbarFull.current + 2 * (zw + 24) > sw);
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() =>
+        setZoomLifted(bar.offsetWidth / 2 + zw + 24 > sw / 2),
+      );
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    if (zoomRef.current) ro.observe(zoomRef.current);
+    fit();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [readOnly]);
   const space = useRef(false);
   const items = live ?? board.items;
   /** B2c : le tableau d'à présent, pour un geste qui se termine après une attente. */
@@ -771,7 +858,8 @@ export function BoardCanvas(props: Props) {
   };
 
   // ------------------------------------------------------------ gestes
-  const commit = (next: BoardItem[]) => props.onCommit(next);
+  const commit = (next: BoardItem[], links?: BoardLink[]) =>
+    props.onCommit(next, true, links);
   const selection = items.filter((i) => selected.has(i.id));
 
   // KAN-100 : « Ranger » : la pose de KAN-98 L2 pour les nodes reliés, en un seul geste
@@ -958,74 +1046,6 @@ export function BoardCanvas(props: Props) {
       y: ((rect?.height ?? 0) / 2 - view.y) / view.zoom,
     };
   };
-  /** KAN-91, KAN-98 : une carte vide posée au centre de la vue. Photos ou Moodboard : sans lien
-   *  (`ref` = son propre id : elle n'est la carte d'aucun plan, ni le Moodboard de départ, tant
-   *  qu'on ne la relie pas) ; Rendus : celle d'un plan qui n'en a plus (`ref` = son niveau). */
-  const addCard = (
-    role: "photos" | "inspirations" | "renders",
-    text: string,
-    hint: string,
-    ref?: string | null,
-    at?: { x: number; y: number },
-  ) => {
-    const id = uid();
-    const c = viewCentre();
-    const card: BoardItem = {
-      id,
-      kind: "frame",
-      x: Math.round(at?.x ?? c.x - NEW_CARD.w / 2),
-      y: Math.round(at?.y ?? c.y - NEW_CARD.h / 2),
-      w: NEW_CARD.w,
-      h: NEW_CARD.h,
-      z: Math.min(0, ...items.map((i) => i.z)) - 1,
-      locked: false,
-      frame: null,
-      ref: ref === undefined ? id : ref,
-      text,
-      role,
-    };
-    commit([...items, card]);
-    setSelected(new Set([id]));
-    setToast({ text: hint });
-  };
-  const addPhotosCard = () =>
-    addCard(
-      "photos",
-      PHOTOS_TITLE,
-      "Nouveau node Photos de la pièce, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent.",
-    );
-  // KAN-98 : un nouveau Moodboard se pose au-dessus du node Rendus (celui du premier plan),
-  // dans la même colonne ; sans node Rendus, au centre de la vue.
-  const addInspirationsCard = () => {
-    const renders = items.filter(
-      (i) => i.kind === "frame" && i.role === "renders",
-    );
-    const under =
-      renders.find((r) => frameLevel(r) === firstLevelId) ?? renders[0];
-    // KAN-98 L2 : au-dessus de Rendus ; si la place est prise (le Moodboard de départ d'un
-    // espace neuf y est déjà), au-dessus encore, dans la même colonne.
-    let at = under
-      ? { x: under.x, y: under.y - NEW_CARD.h - NEW_CARD_GAP }
-      : undefined;
-    const taken = (p: { x: number; y: number }) =>
-      items.some(
-        (i) =>
-          !i.frame &&
-          i.x < p.x + NEW_CARD.w &&
-          p.x < i.x + i.w &&
-          i.y < p.y + NEW_CARD.h &&
-          p.y < i.y + i.h,
-      );
-    for (let guard = 0; at && taken(at) && guard < 20; guard++)
-      at = { x: at.x, y: at.y - NEW_CARD.h - NEW_CARD_GAP };
-    addCard(
-      "inspirations",
-      MOODBOARD_TITLE,
-      "Nouveau Moodboard, sans lien : tirez sa poignée « + » vers un ou plusieurs nodes Rendus pour que ses images guident leur allure.",
-      undefined,
-      at,
-    );
-  };
   // KAN-98 : un plan dont la carte Rendus a été retirée en retrouve une (une par niveau).
   const rendered = new Set(
     items
@@ -1035,15 +1055,159 @@ export function BoardCanvas(props: Props) {
   const unrendered = plans
     .map((p) => p.ref)
     .find((level): level is string => !!level && !rendered.has(level));
-  const addRendersCard = () => {
-    if (!unrendered) return;
+
+  /** KAN-111 : le node qu'un bouton de la barre d'ajout poserait, sans place encore.
+   *  Photos ou Moodboard : sans lien (`ref` = son propre id : il n'est le node d'aucun plan,
+   *  ni le Moodboard de départ, tant qu'on ne le relie pas) ; Rendus : celui d'un plan qui
+   *  n'en a plus (`ref` = son niveau). */
+  const draftNode = (kind: Exclude<AddKind, "plan">): BoardItem => {
+    const id = uid();
     const plan = plans.find((p) => p.ref === unrendered);
-    addCard(
-      "renders",
-      plan?.text ? `Rendus · ${plan.text}` : "Rendus",
-      "Nouveau node Rendus, relié à son plan.",
-      unrendered === firstLevelId ? null : unrendered,
+    const text =
+      kind === "photos"
+        ? PHOTOS_TITLE
+        : kind === "inspirations"
+          ? MOODBOARD_TITLE
+          : plan?.text
+            ? `Rendus · ${plan.text}`
+            : "Rendus";
+    return {
+      id,
+      kind: "frame",
+      x: 0,
+      y: 0,
+      w: NEW_CARD.w,
+      h: NEW_CARD.h,
+      z: Math.min(0, ...items.map((i) => i.z)) - 1,
+      locked: false,
+      frame: null,
+      ref:
+        kind === "renders"
+          ? unrendered === firstLevelId
+            ? null
+            : (unrendered ?? null)
+          : id,
+      text,
+      role: kind,
+    };
+  };
+  const addSize = (kind: AddKind) =>
+    kind === "plan" ? { w: PLAN_NODE.w, h: PLAN_NODE.h } : NEW_CARD;
+  /** La cible d'un lâcher : Moodboard sur Rendus, Photos sur Plan, si le lien est permis. */
+  const dropTarget = (kind: AddKind, at: { x: number; y: number }) => {
+    const want = kind === "inspirations" ? "renders" : kind === "photos" ? "plan" : null;
+    if (!want) return null;
+    const under = cardAt(at, "");
+    if (!under || cardRole(under) !== want) return null;
+    const draft = draftNode(kind as "photos" | "inspirations");
+    return linkRefusal(board, draft, under) ? null : under;
+  };
+  /** La place finale d'un node lâché en `at` (centre visé) : contre sa cible s'il y en a une
+   *  (Moodboard au-dessus de Rendus, Photos à gauche du Plan, décalées vers le haut ou le bas
+   *  si la place est prise), sinon la place libre la plus proche du point visé. */
+  const addPlace = (
+    kind: AddKind,
+    at: { x: number; y: number },
+    target: BoardItem | null,
+  ): Box => {
+    const { w, h } = addSize(kind);
+    if (target && kind === "inspirations")
+      return freeSpot(
+        { x: target.x, y: target.y - NODE_H - ROW_GAP, w, h },
+        items,
+        "up",
+      );
+    if (target && kind === "photos")
+      return freeSpot(
+        { x: target.x - NODE_W - COL_GAP, y: target.y, w, h },
+        items,
+        "down",
+      );
+    return freeSpot(
+      { x: Math.round(at.x - w / 2), y: Math.round(at.y - h / 2), w, h },
+      items,
     );
+  };
+  /** Pose le node à sa place (et son lien, dans le même geste : un seul Ctrl+Z). */
+  const placeNode = (kind: AddKind, box: Box, target: BoardItem | null) => {
+    if (kind === "plan") {
+      props.onNewPlan?.({ x: box.x, y: box.y });
+      return;
+    }
+    if (kind === "renders" && !unrendered) return;
+    const card = { ...draftNode(kind), x: box.x, y: box.y };
+    const link = target ? newLink(card, target) : null;
+    commit([...items, card], link ? [link] : undefined);
+    setSelected(new Set([card.id]));
+    setToast({
+      text: link
+        ? `${cardTitle(card)} posé et relié : ${cardTitle(card)} → ${cardTitle(target)}`
+        : kind === "photos"
+          ? "Nouveau node Photos de la pièce, sans lien : tirez sa poignée « + » vers un plan pour que ses photos le construisent."
+          : kind === "inspirations"
+            ? "Nouveau Moodboard, sans lien : tirez sa poignée « + » vers un ou plusieurs nodes Rendus pour que ses images guident leur allure."
+            : "Nouveau node Rendus, relié à son plan.",
+    });
+  };
+  /** Clavier (Entrée, Espace) : au centre de la vue, sur la place libre la plus proche. */
+  const placeAtCentre = (kind: AddKind) =>
+    placeNode(kind, addPlace(kind, viewCentre(), null), null);
+
+  /** Le point est-il un lâcher valable : dans l'espace de travail, hors de ses barres. */
+  const onBoardSpace = (clientX: number, clientY: number) => {
+    const el = document.elementFromPoint(clientX, clientY);
+    return (
+      !!el &&
+      !!stage.current?.contains(el) &&
+      !el.closest(
+        ".board-addbar, .board-zoom, .board-bottom, .board-wire-toast, .board-addbar-hint",
+      )
+    );
+  };
+  const moveAddDrag = (d: AddDrag, clientX: number, clientY: number): AddDrag => {
+    const active =
+      d.active || Math.hypot(clientX - d.startX, clientY - d.startY) > DRAG_START_PX;
+    if (!active) return d;
+    if (!onBoardSpace(clientX, clientY))
+      return { ...d, active, box: null, target: null };
+    const at = toWorld(clientX, clientY);
+    const target = dropTarget(d.kind, at);
+    return { ...d, active, box: addPlace(d.kind, at, target), target };
+  };
+  const onAddDown = (e: ReactPointerEvent<HTMLButtonElement>, kind: AddKind) => {
+    if (e.button !== 0 || e.currentTarget.disabled) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setAddHint(null);
+    setAddDrag({
+      kind,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+      box: null,
+      target: null,
+    });
+  };
+  const onAddMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!addDrag || e.pointerId !== addDrag.pointerId) return;
+    setAddDrag(moveAddDrag(addDrag, e.clientX, e.clientY));
+  };
+  const onAddUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!addDrag || e.pointerId !== addDrag.pointerId) return;
+    const d = moveAddDrag(addDrag, e.clientX, e.clientY);
+    setAddDrag(null);
+    if (!d.active) {
+      // Un simple clic ne crée plus rien (KAN-111) : il dit le geste.
+      setAddHint(d.kind);
+      return;
+    }
+    if (d.box) placeNode(d.kind, d.box, d.target);
+  };
+  const onAddKey = (e: React.KeyboardEvent<HTMLButtonElement>, kind: AddKind) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    if (e.currentTarget.disabled || e.repeat) return;
+    placeAtCentre(kind);
   };
 
   /** KAN-91 : la carte (plan, cadre Photos, Inspirations ou Rendus) sous un point. */
@@ -2623,10 +2787,40 @@ export function BoardCanvas(props: Props) {
             } as React.CSSProperties
           }
         >
+          {/* KAN-111 : l'aperçu du node glissé depuis la barre d'ajout, à taille réelle, déjà à
+              sa place finale (aimanté) ; au-dessus de sa cible, « Relâchez pour relier ». */}
+          {addDrag?.active && addDrag.box && (
+            <div
+              className={`board-add-ghost type-${addDrag.kind}`}
+              style={{
+                left: addDrag.box.x,
+                top: addDrag.box.y,
+                width: addDrag.box.w,
+                height: addDrag.box.h,
+              }}
+              aria-hidden="true"
+            >
+              <span className="board-add-ghost-title">{ADD_TITLES[addDrag.kind]}</span>
+            </div>
+          )}
+          {addDrag?.active && addDrag.target && (
+            <div
+              className="board-add-relink"
+              role="status"
+              style={{
+                left: addDrag.target.x + addDrag.target.w / 2,
+                top: addDrag.target.y,
+                // Ancré au milieu du haut de la cible, lisible à tout zoom.
+                transform: `scale(${1 / view.zoom}) translate(-50%, calc(-100% - 8px))`,
+              }}
+            >
+              Relâchez pour relier
+            </div>
+          )}
           {sorted.map((item) => (
             <div
               key={item.id}
-              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${closeUp && item.kind === "photo" && item.ref === closeUp.imageId ? " photo-closeup" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}${item.frame ? " in-node" : ""}`}
+              className={`board-item kind-${item.kind}${selected.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${item.reference ? " reference" : ""}${item.kept ? " kept" : ""}${item.role ? ` role-${item.role}` : ""}${item.kind === "note" ? ` postit-${colorOf(item)}` : ""}${dropHint?.frame === item.id ? (dropHint.ok ? " board-drop-ok" : " board-drop-refused") : ""}${dimmed.has(item.id) ? " board-noplan" : ""}${offCard(item, byId, isImageFile(item)) ? " board-offcard-item" : ""}${closeUp && item.kind === "photo" && item.ref === closeUp.imageId ? " photo-closeup" : ""}${overlaps.has(item.id) ? " board-overlap" : ""}${item.frame ? " in-node" : ""}${addDrag?.target?.id === item.id ? " board-add-target" : ""}`}
               style={{
                 left: item.x,
                 top: item.y,
@@ -2823,9 +3017,11 @@ export function BoardCanvas(props: Props) {
         )}
         {!readOnly && (
           // KAN-98 : barre d'ajout fixe, en bas au centre, même place et même taille à tout
-          // zoom ; un clic pose un node vide (Plan : la boîte « Nouveau plan »). Sans raccourci.
+          // zoom. KAN-111 : on fait glisser un bouton sur l'espace de travail (aperçu fantôme,
+          // pose au lâcher) ; un simple clic ne crée rien et le dit ; Entrée pose au centre.
           <div
-            className="board-addbar"
+            ref={addbarRef}
+            className={`board-addbar${addCompact ? " compact" : ""}`}
             role="group"
             aria-label="Ajouter"
             onPointerDown={(e) => e.stopPropagation()}
@@ -2833,51 +3029,78 @@ export function BoardCanvas(props: Props) {
             <span className="board-addbar-label" aria-hidden="true">
               Ajouter
             </span>
-            {props.onNewPlan && (
+            {(
+              [
+                ...(props.onNewPlan
+                  ? [
+                      {
+                        kind: "plan" as const,
+                        cls: "type-plan",
+                        icon: <IconPlanNode aria-hidden="true" />,
+                        title: "Plan : variante d'un plan, nouvel étage ou plan vide",
+                        off: false,
+                      },
+                    ]
+                  : []),
+                {
+                  kind: "photos" as const,
+                  cls: "type-photos",
+                  icon: <IconPhotosNode aria-hidden="true" />,
+                  title:
+                    "Photos de la pièce : glissez-le sur l'espace de travail, ou sur un plan pour le relier",
+                  off: false,
+                },
+                {
+                  kind: "inspirations" as const,
+                  cls: "type-moodboard",
+                  icon: <IconMoodboardNode aria-hidden="true" />,
+                  title:
+                    "Moodboard : glissez-le sur l'espace de travail, ou sur un node Rendus pour qu'il guide son style",
+                  off: false,
+                },
+                {
+                  kind: "renders" as const,
+                  cls: "type-renders",
+                  icon: <IconRendersNode aria-hidden="true" />,
+                  title: unrendered
+                    ? "Rendus : le node Rendus d'un plan qui n'en a plus"
+                    : "Rendus : chaque plan a déjà son node Rendus",
+                  off: !unrendered,
+                },
+              ] as const
+            ).map((b) => (
               <button
+                key={b.kind}
                 type="button"
-                className="board-addbar-btn type-plan"
-                onClick={props.onNewPlan}
-                title="Plan : variante d'un plan, nouvel étage ou plan vide"
+                className={`board-addbar-btn ${b.cls}${addDrag?.kind === b.kind && addDrag.active ? " dragging" : ""}`}
+                aria-label={ADD_TITLES[b.kind]}
+                data-label={ADD_TITLES[b.kind]}
+                title={b.title}
+                disabled={b.off}
+                onPointerDown={(e) => onAddDown(e, b.kind)}
+                onPointerMove={onAddMove}
+                onPointerUp={onAddUp}
+                onPointerCancel={() => setAddDrag(null)}
+                onLostPointerCapture={() => setAddDrag(null)}
+                onKeyDown={(e) => onAddKey(e, b.kind)}
               >
-                <IconPlanNode aria-hidden="true" /> Plan
+                {b.icon}
+                <span className="board-addbar-text">{ADD_TITLES[b.kind]}</span>
               </button>
+            ))}
+            {addHint && (
+              <div className="board-addbar-hint" role="status">
+                {ADD_HINT}
+              </div>
             )}
-            <button
-              type="button"
-              className="board-addbar-btn type-photos"
-              onClick={addPhotosCard}
-              title="Photos de la pièce : un node vide au centre de la vue (ou glissez-le où vous voulez)"
-            >
-              <IconPhotosNode aria-hidden="true" /> {PHOTOS_TITLE}
-            </button>
-            <button
-              type="button"
-              className="board-addbar-btn type-moodboard"
-              onClick={addInspirationsCard}
-              title="Moodboard : un node vide au-dessus du node Rendus ; ses images guident le style des rendus"
-            >
-              <IconMoodboardNode aria-hidden="true" /> {MOODBOARD_TITLE}
-            </button>
-            <button
-              type="button"
-              className="board-addbar-btn type-renders"
-              onClick={addRendersCard}
-              disabled={!unrendered}
-              title={
-                unrendered
-                  ? "Rendus : le node Rendus d'un plan qui n'en a plus"
-                  : "Rendus : chaque plan a déjà son node Rendus"
-              }
-            >
-              <IconRendersNode aria-hidden="true" /> Rendus
-            </button>
             {/* KAN-100 : « Ranger », séparé des ajouts par un filet ; un seul geste (un
                 Ctrl+Z, vu en direct), grisé quand tout est déjà rangé. */}
             <span className="board-addbar-sep" aria-hidden="true" />
             <button
               type="button"
               className="board-addbar-btn board-arrange"
+              aria-label="Ranger"
+              data-label="Ranger"
               onClick={arrangeAll}
               disabled={arranged.size === 0}
               title={
@@ -2886,13 +3109,15 @@ export function BoardCanvas(props: Props) {
                   : "Ranger : l'espace de travail est déjà rangé"
               }
             >
-              <IconArrange aria-hidden="true" /> Ranger
+              <IconArrange aria-hidden="true" />
+              <span className="board-addbar-text">Ranger</span>
             </button>
           </div>
         )}
         {moreRight && <div className="board-more-right" aria-hidden="true" />}
         <div
-          className="board-zoom"
+          ref={zoomRef}
+          className={`board-zoom${zoomLifted && !readOnly ? " lifted" : ""}`}
           role="group"
           aria-label="Zoom de l'espace de travail"
         >
