@@ -241,6 +241,37 @@ def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser
         "--only", nargs="+", default=[], metavar="ID", help="seulement ces projets (id ou 8 car.)"
     )
     imp.add_argument("--yes", action="store_true", help="sans confirmation, projet par projet")
+    forget = accounts_sub.add_parser(
+        "forget",
+        help="effacement d'un compte (RGPD) : simulation seulement (--dry-run, par défaut)",
+        description=(
+            "KAN-114 : montre ce que l'effacement d'un compte supprimerait (compte, sessions, "
+            "codes, événements, invitations, rôles, projets dont il est le seul membre), sans "
+            "rien écrire. Les commentaires, réactions et l'activité dans les projets des "
+            "autres ne sont pas réécrits : ils n'ont ni adresse ni nom, et l'application les "
+            "montre « Ancien membre ». Hors de la commande : le journal d'accès de l'API et les "
+            "sauvegardes (durée de rétention à citer dans la réponse RGPD)."
+        ),
+    )
+    forget.add_argument("email", help="adresse du compte à effacer")
+    shared = forget.add_mutually_exclusive_group()
+    shared.add_argument(
+        "--transfer-to",
+        metavar="ADRESSE",
+        help="ses projets partagés passent à ce membre éditeur (rôle et propriétaire inscrit)",
+    )
+    shared.add_argument(
+        "--delete-shared",
+        action="store_true",
+        help="ses projets partagés sont supprimés eux aussi, avec leurs fichiers",
+    )
+    mode = forget.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run", action="store_true", help="simulation, rien n'est écrit (par défaut)"
+    )
+    mode.add_argument(
+        "--apply", action="store_true", help="effacer pour de bon (pas encore disponible)"
+    )
 
 
 def _accounts(args: argparse.Namespace) -> int:
@@ -258,6 +289,11 @@ def _accounts(args: argparse.Namespace) -> int:
     if args.accounts_command == "import":
         try:
             return _accounts_import(args, settings, engine)
+        finally:
+            engine.dispose()
+    if args.accounts_command == "forget":
+        try:
+            return _accounts_forget(args, settings, engine)
         finally:
             engine.dispose()
     try:
@@ -291,6 +327,35 @@ def _accounts_import(args: argparse.Namespace, settings: Settings, engine: Engin
         print(f"import refusé : {exc}")
         return 2
     return 0
+
+
+def _accounts_forget(args: argparse.Namespace, settings: Settings, engine: Engine) -> int:
+    """`openplan accounts forget` (KAN-114) : le plan seulement, en lecture seule. L'effacement
+    (`--apply`) attend la validation d'augus. 0 : possible tel quel ; 1 : refus ; 2 : erreur."""
+    from openplan.api.accounts import db
+    from openplan.api.accounts.forget import ForgetRefusedError, describe, plan_forget
+    from openplan.api.accounts.repo import AccountsRepo
+    from openplan.api.settings import project_root
+
+    if args.apply:
+        print("--apply n'est pas encore disponible (KAN-114 : en attente de validation).")
+        return 2
+    try:
+        db.check_schema(engine)
+        plan = plan_forget(
+            AccountsRepo(engine),
+            args.email,
+            projects_dir=project_root(settings),
+            data_dir=settings.data_dir,
+            admin_email=settings.admin_email,
+            transfer_to=args.transfer_to,
+            delete_shared=args.delete_shared,
+        )
+    except (db.AccountsSchemaError, ForgetRefusedError) as exc:
+        print(f"effacement refusé : {exc}")
+        return 2
+    describe(plan)
+    return 0 if plan.possible else 1
 
 
 def _add_diagnostic_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
