@@ -37,9 +37,11 @@ class Role(IntEnum):
 
 ROLE_BY_NAME = {role.name.lower(): role for role in Role}
 
-Policy = Literal["public", "user", "admin", "legacy", "worker"]
+Policy = Literal["public", "user", "admin", "legacy", "worker", "extension"]
 """`worker` (KAN-89) : le jeton du poste de rendu seulement (`api.worker_auth`), jamais une
-session ; ce jeton n'ouvre aucune autre route."""
+session ; ce jeton n'ouvre aucune autre route. `extension` (KAN-102) : le jeton du module
+navigateur seulement (`api.accounts.extension`), jamais la session ; ce jeton n'ouvre aucune
+autre route."""
 
 API_PREFIX = "/api"
 P = API_PREFIX + "/projects/{project_id}"
@@ -312,7 +314,23 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # fait foi ; 404 si inconnu, révoqué, expiré ou réglage éteint ; débit limité).
     ("GET", "/api/share/{token}"): "public",
     ("GET", "/api/share/{token}/image"): "public",
+    # KAN-102 : les jetons du module navigateur, gérés depuis la section Compte (session).
+    ("GET", "/api/account/extension-tokens"): "user",
+    ("POST", "/api/account/extension-tokens"): "user",
+    ("DELETE", "/api/account/extension-tokens/{token_id}"): "user",
+    # KAN-102 : le module lui-même (son jeton seulement) ; rôle exigé dans EXTENSION_ROLES.
+    ("GET", "/api/extension/targets"): "extension",
+    ("POST", "/api/extension/projects/{project_id}/images"): "extension",
 }
+
+EXTENSION_ROLES: dict[tuple[str, str], Role] = {
+    # L'image n'entre que dans un projet où le compte du jeton est éditeur (404 non-membre,
+    # 403 lecteur ou commentateur), et la place du propriétaire est réservée comme pour un
+    # lien collé (KAN-98 L3). `targets` filtre elle-même : projets où il est éditeur.
+    ("POST", "/api/extension/projects/{project_id}/images"): Role.EDITOR,
+}
+EXTENSION_SPACE_KEY = ("POST", P + "/media/link")
+"""La réserve de place d'une image ajoutée par le module : celle d'un lien collé."""
 
 NOT_A_MEMBER = "projet inconnu : {}"
 NO_RULE = "route sans droits déclarés : refusée"
@@ -341,6 +359,12 @@ def check_member(
 ) -> AuthUser:
     """Membre du projet avec au moins `role` : sinon 404 (non-membre) ou 403 (rôle)."""
     user = signed_in_user(request)
+    check_role(accounts, project_id, user, role)
+    return user
+
+
+def check_role(accounts: AccountsBackend, project_id: UUID, user: AuthUser, role: Role) -> None:
+    """Le contrôle de `check_member` pour un compte déjà connu (session ou jeton du module)."""
     name = accounts.role_name(project_id, user.id)
     if name is None:
         raise HTTPException(status_code=404, detail=NOT_A_MEMBER.format(project_id))
@@ -348,7 +372,6 @@ def check_member(
         raise HTTPException(
             status_code=403, detail=f"droits insuffisants : rôle « {role.name.lower()} » requis"
         )
-    return user
 
 
 def require_role(request: Request, project_id: UUID, role: Role) -> None:
@@ -401,11 +424,29 @@ def route_guard(request: Request) -> None:
 
         require_worker(request)
         return
+    if policy == "extension":
+        _guard_extension(request, accounts, key)
+        return
     if policy is None or policy == "legacy":
         raise HTTPException(status_code=403, detail=NO_RULE)
     user = signed_in_user(request)
     if policy == "admin" and not user.is_admin:
         raise HTTPException(status_code=403, detail="réservé à un administrateur")
+    _mark_active(request, user.id)
+
+
+def _guard_extension(request: Request, accounts: AccountsBackend, key: tuple[str, str]) -> None:
+    """KAN-102 : le jeton du module (401 sinon, jamais la session), puis, pour l'ajout d'une
+    image, le rôle sur le projet de la route et la place de son propriétaire (413)."""
+    from openplan.api.accounts.extension import require_extension
+
+    user = require_extension(request)
+    role = EXTENSION_ROLES.get(key)
+    if role is not None:
+        check_role(accounts, _project_id(request), user, role)
+        from openplan.api.accounts.quota import guard_space
+
+        guard_space(request, accounts, EXTENSION_SPACE_KEY, user)
     _mark_active(request, user.id)
 
 

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Ajouter à PlanDesign",
+  "version": "0.1.0",
+  "description": "Clic droit sur une image : elle part dans le Moodboard d'un projet PlanDesign.",
+  "permissions": ["activeTab", "contextMenus", "storage"],
+  "host_permissions": ["https://app.plandesign.fr/*"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Ajouter à PlanDesign : réglages",
+    "default_popup": "options.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ajouter@plandesign.fr",
+      "strict_min_version": "121.0"
+    }
+  }
+}

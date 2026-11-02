@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ajouter à PlanDesign : réglages</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="options.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Ajouter à PlanDesign</h1>
+      <p class="muted">
+        Dans PlanDesign : Réglages › Compte › Extension navigateur, « Créer un jeton pour
+        l'extension », puis collez-le ici. Il ne sert qu'à ajouter des images ; révoquez-le
+        là-bas à tout moment.
+      </p>
+      <form id="form">
+        <label for="token">Jeton de l'extension</label>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" />
+        <button type="submit">Enregistrer</button>
+        <button id="forget" type="button" class="link">Oublier le jeton</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p class="muted">Application : <span id="origin"></span></p>
+    </main>
+  </body>
+</html>

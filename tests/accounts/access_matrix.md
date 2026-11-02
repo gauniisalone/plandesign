@@ -5,10 +5,13 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-216 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 88, membre ≥ owner 9, membre ≥ viewer 53, public 12, user 27, worker 6.
+221 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 88, membre ≥ owner 9, membre ≥ viewer 53, public 12, user 30, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
+| GET | /api/account/extension-tokens | comptes | user |  |  |  |
+| POST | /api/account/extension-tokens | comptes | user |  |  | 409 |
+| DELETE | /api/account/extension-tokens/{token_id} | comptes | user |  |  | 404 |
 | GET | /api/admin/audience | comptes | admin |  |  |  |
 | GET | /api/admin/health | comptes | admin |  |  |  |
 | GET | /api/admin/usage | comptes | admin |  |  |  |
@@ -33,6 +36,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/contact | comptes | public |  |  |  |
 | GET | /api/device | local+comptes | user |  |  |  |
 | GET | /api/doctor | local+comptes | admin |  |  |  |
+| POST | /api/extension/projects/{project_id}/images | comptes | extension | porte de l'extension ; membre ≥ editor ; place (413) |  | 404 429 |
+| GET | /api/extension/targets | comptes | extension | porte de l'extension |  |  |
 | GET | /api/health | local+comptes | public |  |  |  |
 | HEAD | /api/health | local+comptes | public |  |  |  |
 | GET | /api/home/settings | local+comptes | user |  |  |  |

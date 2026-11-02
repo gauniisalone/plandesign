@@ -188,6 +188,25 @@ class NotificationReadItem(Base):
     event_at: Mapped[datetime] = mapped_column(_utc())
 
 
+class ExtensionToken(Base):
+    """KAN-102 : jeton du module navigateur « Ajouter à PlanDesign ». Créé depuis la section
+    Compte, il n'ouvre que les deux routes de l'extension (`api.accounts.extension`), jamais une
+    session. Seule son empreinte SHA-256 est gardée ; l'identifiant de la ligne, écrit en clair
+    dans le jeton, sert à le retrouver, l'empreinte est ensuite comparée en temps constant.
+    Révoquer = supprimer la ligne ; elle part aussi avec le compte."""
+
+    __tablename__ = "extension_tokens"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(60), default="")
+    token_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(_utc())
+    last_used_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+
+
 RENDER_STATES = ("pending", "taken", "done", "failed", "expired")
 
 

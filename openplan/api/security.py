@@ -369,7 +369,9 @@ def _accounts_headers(response: Response, path: str, csp: str) -> Response:
     return with_security_headers(_with_csp(response, path, csp), path)
 
 
-def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: AccountsBackend) -> None:
+def _install_accounts_guard(  # noqa: PLR0915 - un intergiciel, une porte par client (KAN-102)
+    app: FastAPI, settings: Settings, accounts: AccountsBackend
+) -> None:
     """Comptes actifs (note 17, § 3) : la session `pd_session` remplace le jeton et le cookie
     de lecture ; contrôle de l'origine sur toute mutation ; 401 sans session hors des routes
     publiques ; limite des tentatives sur `/api/auth/*`. Les droits par projet sont vérifiés
@@ -383,6 +385,10 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
     # KAN-89 : porte de l'API du poste de rendu (jeton, taille, débit) ; sur l'état de
     # l'application pour que les tests puissent régler son horloge.
     app.state.worker_gate = worker_gate = WorkerGate(settings.realistic.worker_token_sha256)
+    # KAN-102 : porte du module navigateur « Ajouter à PlanDesign » (jeton, taille, refus).
+    from openplan.api.accounts.extension import install_gate, is_extension_path
+
+    extension_gate = install_gate(app, accounts)
 
     def from_site(request: Request) -> bool:
         """Requête de la fenêtre « Se connecter » du site, sur une route qui l'accepte."""
@@ -422,6 +428,11 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             # KAN-101 : page publique d'un rendu partagé (lecture seule) : ni session lue, ni
             # cookie renouvelé ; la route fait ses contrôles (réglage, débit, lien).
             return finish(await call_next(request), request, "-", started)
+        if is_extension_path(request):
+            # KAN-102 : le module navigateur n'a ni session (jamais le cookie) ni l'origine de
+            # l'application (chrome-extension://…) : son jeton est exigé ici, avant le corps.
+            gated = await extension_gate.passage(request, call_next)
+            return finish(gated, request, "extension", started)
         if request.method == "OPTIONS" and from_site(request):
             return finish(_site_preflight(), request, "-", started)
         site_mutation = from_site(request) and path in SITE_MUTATIONS | {CONTACT_PATH}

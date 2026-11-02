@@ -614,6 +614,29 @@ export const authApi = {
     request<{ used_bytes: number; quota_bytes: number | null }>("/auth/usage"),
 };
 
+/** KAN-102 : un jeton du module navigateur « Ajouter à PlanDesign » (jamais son secret). */
+export interface ExtensionToken {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** KAN-102 : les jetons du module navigateur, gérés depuis la section Compte. */
+export const extensionApi = {
+  list: () => request<ExtensionToken[]>("/account/extension-tokens"),
+  /** `secret` : le jeton en clair, rendu une seule fois. */
+  create: (name: string) =>
+    request<{ token: ExtensionToken; secret: string }>(
+      "/account/extension-tokens",
+      json({ name }),
+    ),
+  revoke: (id: string) =>
+    request<void>(`/account/extension-tokens/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+};
+
 /** KAN-109 : le back-office d'augus (administrateur seulement). */
 export interface AudienceDay {
   day: string;

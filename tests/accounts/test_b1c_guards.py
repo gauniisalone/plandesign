@@ -15,7 +15,13 @@ from PIL import Image
 
 from openplan.api.accounts.service import AccountService
 from openplan.api.app import create_app
-from openplan.api.guards import GLOBAL_ROUTES, PROJECT_ROUTES, ProjectMember, route_guard
+from openplan.api.guards import (
+    EXTENSION_ROLES,
+    GLOBAL_ROUTES,
+    PROJECT_ROUTES,
+    ProjectMember,
+    route_guard,
+)
 from openplan.api.settings import Settings
 from tests.accounts.helpers import ADMIN, ORIGIN, accounts_client, sign_in
 from tests.unit.test_security import _api_routes
@@ -84,7 +90,10 @@ def test_every_api_route_has_a_guard_and_a_declared_rule(tmp_path: Path, migrate
             problems.append(f"{method} {path} : sans garde")
         key = (method, path)
         if "{project_id}" in path and key not in PROJECT_ROUTES:
-            if not any(isinstance(g, ProjectMember) for g in guards):
+            # KAN-102 : l'ajout d'une image par le module navigateur déclare son rôle dans
+            # EXTENSION_ROLES (politique « extension » de GLOBAL_ROUTES).
+            declared = key in EXTENSION_ROLES and GLOBAL_ROUTES.get(key) == "extension"
+            if not declared and not any(isinstance(g, ProjectMember) for g in guards):
                 problems.append(f"{method} {path} : route de projet sans rôle déclaré")
         elif "{project_id}" not in path and key not in GLOBAL_ROUTES:
             problems.append(f"{method} {path} : ni rôle ni exemption listée")

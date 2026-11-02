@@ -26,10 +26,11 @@ from fastapi import FastAPI
 from fastapi.routing import APIWebSocketRoute
 
 from openplan.api.accounts.db import make_engine, upgrade
+from openplan.api.accounts.extension import EXTENSION_PATH
 from openplan.api.accounts.lease import IMAGE_LEASED, LEASED_ROUTES, PROJECT_WIDE
 from openplan.api.accounts.quota import LAUNCHES, UPLOADS
 from openplan.api.app import create_app
-from openplan.api.guards import GLOBAL_ROUTES, PROJECT_ROUTES, ProjectMember
+from openplan.api.guards import EXTENSION_ROLES, GLOBAL_ROUTES, PROJECT_ROUTES, ProjectMember
 from openplan.api.settings import Settings
 from openplan.api.worker_auth import RATE_LIMITED, WORKER_PATH
 from tests.accounts.helpers import accounts_settings
@@ -83,6 +84,13 @@ def _links(key: tuple[str, str]) -> str:
         out.append("porte du poste" if exact else "HORS porte du poste")
     if path in RATE_LIMITED:
         out.append("débit 1 / 5 s (429)")
+    if path.startswith("/api/extension/"):
+        # KAN-102 : porte du module navigateur (son jeton), rôle et place exigés par la garde.
+        sample = path.replace("{project_id}", "00000000-0000-0000-0000-000000000000")
+        exact = EXTENSION_PATH.fullmatch(sample) is not None
+        out.append("porte de l'extension" if exact else "HORS porte de l'extension")
+        if key in EXTENSION_ROLES:
+            out.append(f"membre ≥ {EXTENSION_ROLES[key].name.lower()} ; place (413)")
     return " ; ".join(out)
 
 

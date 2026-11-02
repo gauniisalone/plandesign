@@ -7395,6 +7395,49 @@ input:disabled {
   align-items: center;
   gap: 12px;
 }
+/* KAN-102 : jetons du module navigateur, repliés sous la section Compte. */
+.account-extension {
+  margin-top: 10px;
+}
+.account-extension summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.account-extension[open] > * + * {
+  margin-top: 8px;
+}
+.account-extension-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.account-extension-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.account-extension-fresh input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.account-extension-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.account-extension-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.account-extension-name {
+  font-weight: 600;
+}
+.account-extension-list button {
+  margin-left: auto;
+}
 
 /* B1d : le rail masqué pour un lecteur (l'attribut `hidden` l'emporte sur display). */
 .board-rail[hidden] {

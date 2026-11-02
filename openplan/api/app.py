@@ -414,6 +414,10 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     )
     app.state.audience.start()
     app.include_router(admin_router, prefix="/api", dependencies=guarded)
+    # KAN-102 : jetons du module navigateur (section Compte) et ses deux routes (son jeton).
+    from openplan.api.accounts.extension import router as extension_router
+
+    app.include_router(extension_router, dependencies=guarded)
     # KAN-109 L2 : événements d'usage pseudonymisés (clé dans data/events.secret).
     from openplan.api.accounts.events import EventLog, cause_code, load_secret
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { authApi } from "../api/client";
 import { useAccount } from "../state/account";
+import { ExtensionTokens } from "./ExtensionTokens";
 
 const MiB = 1024 * 1024;
 const mo = (n: number) => `${Math.round(n / MiB)} Mo`;
@@ -77,6 +78,7 @@ export function AccountSection() {
           Me déconnecter partout
         </button>
       </div>
+      <ExtensionTokens />
     </section>
   );
 }

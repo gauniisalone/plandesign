@@ -6,6 +6,7 @@ L'effacement lui-même (`--apply`) attend la validation d'augus.
 
 Ce qui partirait (décisions du PO, 30 oct. 2026) :
 - le compte, ses sessions, ses codes de connexion (par adresse : sans clé étrangère) ;
+- ses jetons du module navigateur (KAN-102) ;
 - ses événements d'usage (pseudonymes, `EventLog.forget_account`) ;
 - les invitations qu'il a créées, et celles adressées à son adresse ;
 - les liens publics de rendus qu'il a créés (KAN-101) ;
@@ -42,6 +43,7 @@ from openplan.api.accounts.models import (
     AuthSession,
     Base,
     Event,
+    ExtensionToken,
     Invitation,
     LoginToken,
     Member,
@@ -76,6 +78,8 @@ class ForgetPlan:
     user_id: UUID | None = None
     is_admin: bool = False
     sessions: int = 0
+    extension_tokens: int = 0
+    """KAN-102 : jetons du module navigateur (partent avec le compte)."""
     login_codes: int = 0
     events: int | None = 0
     """None : la clé des pseudonymes n'existe pas encore (aucun événement n'a été écrit)."""
@@ -207,6 +211,7 @@ def plan_forget(
             return plan
         plan.user_id, plan.is_admin = user.id, user.is_admin
         plan.sessions = _count(db, AuthSession, AuthSession.user_id == user.id)
+        plan.extension_tokens = _count(db, ExtensionToken, ExtensionToken.user_id == user.id)
         plan.invitations_created = _count(
             db,
             Invitation,
@@ -281,6 +286,7 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
     else:
         role = "administrateur" if plan.is_admin else "compte"
         say(f"  {role} {str(plan.user_id)[:8]} : supprimé, avec {plan.sessions} session(s)")
+        say(f"  jetons de l'extension navigateur supprimés : {plan.extension_tokens}")
         events = "inconnu (clé absente)" if plan.events is None else str(plan.events)
         say(f"  événements d'usage supprimés : {events}")
     say(f"  codes de connexion supprimés : {plan.login_codes}")

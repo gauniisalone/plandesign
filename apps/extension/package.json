@@ -1,0 +1,7 @@
+{
+  "name": "plandesign-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "KAN-102 : module navigateur « Ajouter à PlanDesign ». Aucune dépendance ; ce fichier n'entre pas dans le zip (il dit seulement à Node que lib.js est un module)."
+}
