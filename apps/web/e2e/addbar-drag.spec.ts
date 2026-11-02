@@ -170,4 +170,20 @@ test("fenêtre étroite : icônes seules, sans défilement, le zoom ne recouvre 
   // « Ranger » reste un clic.
   const ranger = bar.getByRole("button", { name: "Ranger" });
   await expect(ranger).toBeVisible();
+
+  // Le zoom tient en deux lignes à chaque palier : « − », le palier et « + » sur la première,
+  // « Tout voir » dessous (un palier long renvoyait « + » sur une troisième ligne).
+  const group = page.getByRole("group", { name: "Zoom de l'espace de travail" });
+  const out = group.getByRole("button", { name: "Dézoomer" });
+  for (let k = 0; k < 5; k++) {
+    const minus = (await out.boundingBox())!;
+    const plus = (await group
+      .getByRole("button", { name: "Zoomer", exact: true })
+      .boundingBox())!;
+    const all = (await group.getByRole("button", { name: /Tout voir/ }).boundingBox())!;
+    expect(Math.abs(plus.y - minus.y)).toBeLessThan(2);
+    expect(all.y).toBeGreaterThanOrEqual(plus.y + plus.height - 1);
+    expect(apart((await bar.boundingBox())!, (await group.boundingBox())!)).toBe(true);
+    await out.click();
+  }
 });

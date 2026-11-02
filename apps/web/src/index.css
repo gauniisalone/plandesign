@@ -6408,11 +6408,12 @@ input:disabled {
 /* KAN-98 L2 : le zoom dit son palier (« 45 % · vignettes ») ; « Tout voir » et Maj+1. Noms
    vérifiés libres : board-zoom-level, board-zoom-all. */
 /* Deux lignes (le zoom, puis « Tout voir ») : le groupe reste étroit et ne touche pas la
-   barre d'ajout, même sur l'écran d'augus (1411 px, panneau ouvert). */
+   barre d'ajout, même sur l'écran d'augus (1411 px, panneau ouvert). En grille, jamais trois :
+   avec une largeur bornée, un palier long (« 16 % · vignettes ») renvoyait « + » à la ligne. */
 .board-zoom:has(.board-zoom-all) {
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 172px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-items: center;
 }
 .board-zoom-level {
   padding: 0 4px;
@@ -6420,7 +6421,7 @@ input:disabled {
   white-space: nowrap;
 }
 .board-zoom-all {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   white-space: nowrap;
   font-size: 13px;
 }
