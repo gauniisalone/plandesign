@@ -447,6 +447,9 @@ export interface RealisticRequest {
   /** KAN-97 : `words` mots lus ; `unread` noms des images non lues par le poste ;
    * `no_style` noms des images lues sans style net retenu. */
   guided_kind?: "words" | "unread" | "no_style" | null;
+  /** KAN-99 : la personne connectée l'a lancé (variante, couverture, réactions). Les rendus
+   *  d'un projet sont montrés à tous ses membres. Absent (serveur d'avant) : le sien. */
+  mine?: boolean;
 }
 
 const GUIDED_NOTE: Record<string, string> = {
@@ -479,6 +482,8 @@ export interface RealisticListing {
   typical_seconds?: number;
   cover_id?: string | null;
   reactions?: RealisticReaction[];
+  /** KAN-99 : les rendus étoilés du projet (« Favoris »), communs à tous les membres. */
+  favorite_ids?: string[];
 }
 
 export const realisticApi = {
@@ -526,6 +531,12 @@ export const realisticApi = {
   react: (pid: string, requestId: string, key: ReactionKey, on: boolean) =>
     request<RealisticReaction[]>(
       `/projects/${pid}/realistic/${requestId}/reactions/${key}`,
+      { method: on ? "PUT" : "DELETE" },
+    ),
+  /** KAN-99 : l'étoile d'un rendu (éditeurs) ; renvoie les favoris du projet. */
+  favorite: (pid: string, requestId: string, on: boolean) =>
+    request<{ favorite_ids: string[] }>(
+      `/projects/${pid}/realistic/${requestId}/favorite`,
       { method: on ? "PUT" : "DELETE" },
     ),
 };

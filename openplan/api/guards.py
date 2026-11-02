@@ -214,8 +214,8 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", L + "/lease"): E,
     ("DELETE", L + "/lease"): E,
     ("POST", L + "/lease/request"): E,
-    # KAN-89 : rendus réalistes par le poste d'augus ; en plus du rôle, la route exige un
-    # compte de OPENPLAN_RENDER_ACCOUNTS (403 sinon).
+    # KAN-89 : rendus réalistes par le poste d'augus ; en plus du rôle, lancer exige un compte
+    # de OPENPLAN_RENDER_ACCOUNTS (403 sinon). KAN-99 : voir (liste, image) ne l'exige plus.
     ("GET", P + "/realistic"): V,
     ("GET", P + "/realistic/{request_id}/image"): V,
     ("POST", L + "/realistic"): E,
@@ -227,6 +227,11 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("DELETE", P + "/realistic/cover"): E,
     ("PUT", P + "/realistic/{request_id}/reactions/{key}"): C,
     ("DELETE", P + "/realistic/{request_id}/reactions/{key}"): C,
+    # KAN-99 : la liste et l'image s'ouvrent à tout membre (lecteur compris), hors liste
+    # blanche ; l'étoile (« Favoris », commune au projet) à tout éditeur. Lancer, variante,
+    # couverture et réactions gardent la liste blanche et le lanceur.
+    ("PUT", P + "/realistic/{request_id}/favorite"): E,
+    ("DELETE", P + "/realistic/{request_id}/favorite"): E,
 }
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {

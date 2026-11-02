@@ -144,6 +144,20 @@ class RenderQueue:
                 )
             )
 
+    def list_project(self, project_id: UUID, limit: int = 50) -> list[RenderRequest]:
+        """KAN-99 : les demandes de tous les membres sur ce projet, les plus récentes d'abord
+        (les rendus d'un projet sont montrés à ses membres, lecteurs compris)."""
+        self.sweep()
+        with self.session() as db:
+            return list(
+                db.scalars(
+                    select(RenderRequest)
+                    .where(RenderRequest.project_id == project_id)
+                    .order_by(RenderRequest.created_at.desc())
+                    .limit(limit)
+                )
+            )
+
     def get(self, request_id: UUID) -> RenderRequest | None:
         with self.session() as db:
             return db.get(RenderRequest, request_id)
@@ -454,7 +468,7 @@ def variant_seed(request_id: UUID) -> int:
 
 
 def public_request(
-    row: RenderRequest, has_image: bool, photo_id: UUID | None = None
+    row: RenderRequest, has_image: bool, photo_id: UUID | None = None, *, mine: bool = False
 ) -> RealisticRequest:
     return RealisticRequest(
         id=row.id,
@@ -471,4 +485,5 @@ def public_request(
         image=has_image and row.state == "done",
         taken_at=None if row.taken_at is None else aware(row.taken_at),
         photo_id=photo_id,
+        mine=mine,
     )

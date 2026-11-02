@@ -38,6 +38,8 @@ from tests.accounts.test_b1c_guards import _guards, _walk
 REFERENCE = Path(__file__).with_name("access_matrix.md")
 BODY_CHECKS = {
     "allowed_user": r"\ballowed_user\(",
+    # KAN-99 : rendus visibles de tout membre, refusés seulement si le rendu est désactivé.
+    "member_user": r"\bmember_user\(",
     "require_role": r"\brequire_role\(",
     "role_of": r"\brole_of\(",
     "signed_in_user": r"\bsigned_in_user\(",

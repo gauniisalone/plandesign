@@ -5,7 +5,7 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-209 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 83, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
+211 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 85, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -172,10 +172,12 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/reactions | local+comptes | membre ≥ viewer |  |  |  |
 | DELETE | /api/projects/{project_id}/reactions/{item_id}/{key} | local+comptes | membre ≥ commenter |  |  |  |
 | PUT | /api/projects/{project_id}/reactions/{item_id}/{key} | local+comptes | membre ≥ commenter |  |  |  |
-| GET | /api/projects/{project_id}/realistic | comptes | membre ≥ viewer |  | allowed_user |  |
+| GET | /api/projects/{project_id}/realistic | comptes | membre ≥ viewer |  | member_user |  |
 | DELETE | /api/projects/{project_id}/realistic/cover | comptes | membre ≥ editor |  | allowed_user |  |
 | PUT | /api/projects/{project_id}/realistic/{request_id}/cover | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
-| GET | /api/projects/{project_id}/realistic/{request_id}/image | comptes | membre ≥ viewer |  | allowed_user, propriétaire | 404 |
+| DELETE | /api/projects/{project_id}/realistic/{request_id}/favorite | comptes | membre ≥ editor |  | member_user | 404 |
+| PUT | /api/projects/{project_id}/realistic/{request_id}/favorite | comptes | membre ≥ editor |  | member_user |  |
+| GET | /api/projects/{project_id}/realistic/{request_id}/image | comptes | membre ≥ viewer |  | member_user | 404 |
 | DELETE | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | allowed_user, propriétaire |  |
 | PUT | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/realistic/{request_id}/variant | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |

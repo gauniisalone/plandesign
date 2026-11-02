@@ -11,7 +11,13 @@ import {
 } from "../api/client";
 import type { Camera, Project } from "../api/types.gen";
 import { allCameras, NO_SELECTION } from "../model";
-import { etaText, photoNumber } from "./renderGallery";
+import {
+  etaText,
+  isMine,
+  MAX_COMPARE,
+  MIN_COMPARE,
+  photoNumber,
+} from "./renderGallery";
 
 /** KAN-91 (lot L6, maquette validée par augus le 22 oct.) : la visionneuse plein écran d'un
  *  rendu réaliste. Curseur avant/après contre la vue 3D du plan ou la photo réelle,
@@ -44,6 +50,17 @@ export interface RenderViewerProps {
   onReact: (requestId: string, key: ReactionKey, on: boolean) => Promise<void>;
   onVariant: (requestId: string) => Promise<void>;
   onFromPhoto: (imageId: string) => Promise<void>;
+  /** KAN-89 : la personne peut lancer des rendus (liste blanche). KAN-99 : les rendus d'un
+   *  projet sont montrés à tous ses membres ; variante, couverture et réactions restent au
+   *  lanceur, « Rendre depuis la photo » à la liste blanche. */
+  allowed: boolean;
+  /** KAN-99 : les favoris du projet ; l'étoile se pose par un éditeur (`readOnly` faux). */
+  favorites: ReadonlySet<string>;
+  onStar: (requestId: string, on: boolean) => Promise<void>;
+  /** KAN-99 : les rendus choisis pour la vue comparée (2 à 4). */
+  picks: readonly string[];
+  onPick: (requestId: string) => void;
+  onCompare: () => void;
 }
 
 function when(iso: string): string {
@@ -161,7 +178,13 @@ export function RenderViewer(props: RenderViewerProps) {
   const isCover = coverId === render.id;
   const variants = renders.filter((r) => r.camera_id === render.camera_id);
   const eta = etaText(typicalSeconds);
-  const canAct = !props.readOnly;
+  // KAN-99 : lancer (depuis la photo) : liste blanche et éditeur ; variante, couverture,
+  // réactions : en plus, son propre rendu ; l'étoile : tout éditeur.
+  const canLaunch = !props.readOnly && props.allowed;
+  const canAct = canLaunch && isMine(render);
+  const isFavorite = props.favorites.has(render.id);
+  const picked = props.picks.includes(render.id);
+  const pickFull = props.picks.length >= MAX_COMPARE && !picked;
 
   const act = async (job: () => Promise<void>) => {
     setBusy(true);
@@ -230,7 +253,9 @@ export function RenderViewer(props: RenderViewerProps) {
           {index + 1} sur {renders.length} · {when(render.created_at)} ·{" "}
           {viewName}
         </span>
-        <span className="rview-keys">← → pour passer d'un rendu à l'autre</span>
+        <span className="rview-keys">
+          ← → pour passer d'un rendu à l'autre · Échap ferme
+        </span>
       </header>
       <div className="rview-body">
         <button
@@ -287,7 +312,7 @@ export function RenderViewer(props: RenderViewerProps) {
                   Ce rendu n'a pas le point de vue de la {photoName} : la
                   comparaison est approximative.
                 </span>
-                {canAct && (
+                {canLaunch && (
                   <button
                     type="button"
                     className="primary"
@@ -333,6 +358,55 @@ export function RenderViewer(props: RenderViewerProps) {
               Photo réelle
             </button>
           </div>
+          {/* KAN-99 : l'étoile du projet (tout éditeur), lue seulement par les autres. */}
+          {!props.readOnly ? (
+            <button
+              type="button"
+              className="rview-star"
+              aria-pressed={isFavorite}
+              disabled={busy}
+              title="Favori du projet : visible par tous les membres"
+              onClick={() =>
+                void act(() => props.onStar(render.id, !isFavorite))
+              }
+            >
+              <span className="rgal-star-glyph" aria-hidden="true">
+                {isFavorite ? "★" : "☆"}
+              </span>{" "}
+              {isFavorite ? "Favori du projet" : "Ajouter aux favoris"}
+            </button>
+          ) : (
+            isFavorite && (
+              <p className="rview-star-note">
+                <span className="rgal-star-glyph" aria-hidden="true">
+                  ★
+                </span>{" "}
+                Favori du projet
+              </p>
+            )
+          )}
+          {!props.readOnly && (
+            <p className="rview-star-note">
+              Partagé avec les membres du projet · ne compte pas dans le quota
+            </p>
+          )}
+          {/* KAN-99 : choisir ce rendu pour la vue comparée (2 à 4). */}
+          <button
+            type="button"
+            aria-pressed={picked}
+            disabled={pickFull}
+            title={pickFull ? "Quatre rendus au plus" : undefined}
+            onClick={() => props.onPick(render.id)}
+          >
+            {picked
+              ? `Choisi pour comparer (${props.picks.indexOf(render.id) + 1})`
+              : "Choisir pour comparer"}
+          </button>
+          {props.picks.length >= MIN_COMPARE && (
+            <button type="button" className="primary" onClick={props.onCompare}>
+              Comparer les {props.picks.length} rendus
+            </button>
+          )}
           <a
             className="rview-download"
             href={realisticApi.imageUrl(project.id, render.id)}
@@ -356,7 +430,7 @@ export function RenderViewer(props: RenderViewerProps) {
                 : "Définir comme couverture du projet"}
             </button>
           )}
-          {canAct && comparePhoto && !faithful && (
+          {canLaunch && comparePhoto && !faithful && (
             <button
               type="button"
               disabled={busy || !props.linked}
@@ -381,7 +455,7 @@ export function RenderViewer(props: RenderViewerProps) {
                   title={
                     pill ? `${r.label} : ${pill.names.join(", ")}` : r.label
                   }
-                  disabled={busy}
+                  disabled={busy || !canAct}
                   onClick={() =>
                     void act(() => props.onReact(render.id, r.key, !pill?.mine))
                   }

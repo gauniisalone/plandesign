@@ -278,7 +278,9 @@ def test_failure_is_reported_in_french(world: World) -> None:
 
 
 def test_other_accounts_can_neither_create_nor_see(world: World) -> None:
-    """Un autre compte, même éditeur du projet d'augus : ni création, ni liste, ni image."""
+    """Un autre compte, même éditeur du projet d'augus : aucune création. KAN-99 (décision
+    d'augus, 2 nov.) : il voit en revanche les rendus du projet (liste et image), comme tout
+    membre ; voir `test_kan99_renders`."""
     world.ask()
     job = world.worker.post("/api/worker/claim", headers=WORKER).json()
     meta = WorkerResult(seconds=1.0, vram_peak_mib=0, width=64, height=48, engine="fake")
@@ -299,8 +301,8 @@ def test_other_accounts_can_neither_create_nor_see(world: World) -> None:
     )
     assert create.status_code == 403
     assert create.json()["detail"] == "Rendus réalistes : bientôt en ligne"
-    assert marie.get(f"{base}/realistic").status_code == 403
-    assert marie.get(f"{base}/realistic/{job['request_id']}/image").status_code == 403
+    assert marie.get(f"{base}/realistic").status_code == 200
+    assert marie.get(f"{base}/realistic/{job['request_id']}/image").status_code == 200
     assert marie.get("/api/realistic/status").json()["allowed"] is False
     # Son propre projet ne change rien.
     pid, lid, cid = world.new_project(marie)

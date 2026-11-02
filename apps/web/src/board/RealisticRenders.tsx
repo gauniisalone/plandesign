@@ -16,14 +16,18 @@ import {
 import type { Project } from "../api/types.gen";
 import { allCameras, isFreeCamera } from "../model";
 import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
+import { RenderCompare } from "./RenderCompare";
 import { RenderViewer } from "./RenderViewer";
 import { useRetryImage } from "./retryImage";
 import {
   etaText,
   gallery,
+  isMine,
   isRunning,
+  MIN_COMPARE,
   photoNumber,
   progress,
+  togglePick,
 } from "./renderGallery";
 
 /** KAN-89 : rendus réalistes calculés par le poste d'augus, dans le cadre Rendus (en ligne,
@@ -36,7 +40,13 @@ import {
  *  prend la première case avec la durée typique (médiane du journal du poste, sinon ~2 min).
  *  Le menu « Rendre ▾ » rend une vue du plan, toutes les vues, le point de vue exact d'une
  *  photo (D5) ou une nouvelle variante ; il est inactif sans plan relié (D2, `hasLinkedPlan`).
- *  Un clic sur une vignette ouvre la visionneuse plein écran (RenderViewer). */
+ *  Un clic sur une vignette ouvre la visionneuse plein écran (RenderViewer).
+ *
+ *  KAN-99 (maquette validée par augus le 2 nov.) : les rendus d'un projet sont montrés à tous
+ *  ses membres, lecteurs compris (sans « Rendre ▾ » hors liste blanche) ; une étoile sur
+ *  chaque rendu (« Favoris », commune au projet, posée par un éditeur), le filtre
+ *  « Tous · N | ★ Favoris · N », et « Comparer » : 2 à 4 rendus choisis s'ouvrent dans la vue
+ *  comparée (RenderCompare). */
 
 const NOT_YET = "Rendus réalistes : bientôt en ligne";
 const OFFLINE = "Poste de rendu hors ligne : le rendu sera fait à son retour";
@@ -56,12 +66,15 @@ function RetryTile({
   alt,
   label,
   onOpen,
+  pressed,
   children,
 }: {
   src: string;
   alt: string;
   label: string;
   onOpen: () => void;
+  /** KAN-99 : en mode « Comparer », la case est choisie (ou non). */
+  pressed?: boolean;
   children: ReactNode;
 }) {
   const image = useRetryImage(src);
@@ -69,6 +82,7 @@ function RetryTile({
     <button
       type="button"
       className="rgal-open"
+      aria-pressed={pressed}
       onClick={image.failed ? image.retry : onOpen}
       aria-label={
         image.failed ? `Image non chargée : réessayer (${alt})` : label
@@ -190,11 +204,19 @@ export function RealisticRenders({
   title?: string;
 }) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  /** KAN-99 : la liste des rendus du projet a répondu (null : pas encore ; false : refusée,
+   *  rendu désactivé sur ce serveur). */
+  const [visible, setVisible] = useState<boolean | null>(null);
   const [listing, setListing] = useState<RealisticListing>(EMPTY);
   const [message, setMessage] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  /** KAN-99 : filtre « Favoris », mode « Comparer » et rendus choisis, vue comparée. */
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [picks, setPicks] = useState<string[]>([]);
+  const [comparing, setComparing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const level = project.levels[levelId];
   const cameras = level ? allCameras(level) : [];
@@ -237,15 +259,19 @@ export function RealisticRenders({
         ...listed,
         requests: listed.requests.filter((r) => r.level_id === levelId),
       });
+      setVisible(true);
     } catch {
-      /* serveur injoignable : on garde la dernière lecture */
+      /* serveur injoignable, ou rendu désactivé (403) : on garde la dernière lecture */
+      setVisible((v) => v ?? false);
     }
   }, [project.id, levelId]);
 
   const requests = listing.requests;
   const busy = requests.some(isRunning);
+  // KAN-99 : la liste est lue par tout membre (le statut dit seulement s'il peut lancer).
+  const known = allowed !== null;
   useEffect(() => {
-    if (!allowed) return;
+    if (!known) return;
     const first = window.setTimeout(() => void refresh(), 0);
     const timer = window.setInterval(
       () => void refresh(),
@@ -255,7 +281,7 @@ export function RealisticRenders({
       window.clearTimeout(first);
       window.clearInterval(timer);
     };
-  }, [allowed, busy, refresh]);
+  }, [known, busy, refresh]);
 
   // La barre d'avancement avance entre deux lectures.
   useEffect(() => {
@@ -281,7 +307,12 @@ export function RealisticRenders({
     };
   }, [menu]);
 
-  if (!allowed) {
+  const favorites = new Set(listing.favorite_ids ?? []);
+  const all = gallery(requests);
+  // Hors liste blanche, sans rendu du projet à montrer : la même ligne qu'avant KAN-99.
+  const nothingToShow =
+    !allowed && (visible !== true || (all.done.length === 0 && all.tiles.length === 0));
+  if (nothingToShow) {
     return (
       <span className="board-frame-hint board-frame-missing" role="note">
         {NOT_YET}
@@ -318,15 +349,31 @@ export function RealisticRenders({
     run(async () => {
       for (const v of views) await realisticApi.ask(project.id, levelId, v.id);
     });
+  /** KAN-99 : l'étoile (éditeurs) ; la réponse donne les favoris du projet. */
+  const star = async (requestId: string, on: boolean) => {
+    const done = await realisticApi.favorite(project.id, requestId, on);
+    setListing((l) => ({ ...l, favorite_ids: done.favorite_ids }));
+  };
+  const starTile = (requestId: string, on: boolean) =>
+    void star(requestId, on).catch((e: unknown) =>
+      setMessage(e instanceof Error ? e.message : String(e)),
+    );
+  const pick = (requestId: string) => setPicks((p) => togglePick(p, requestId));
+  const stopPicking = () => {
+    setPicking(false);
+    setPicks([]);
+  };
 
-  const g = gallery(requests);
+  const g = onlyFavorites ? gallery(requests, undefined, favorites) : all;
   const worker = listing.status.worker;
   const eta = etaText(listing.typical_seconds);
-  const latest = g.done[0];
+  const latest = all.done[0];
+  const latestMine = all.done.find(isMine);
   // KAN-97 : ce qui a guidé le dernier rendu fait (mots lus par le poste, en français).
   const guided = latest ? guidedLine(latest) : null;
+  const canLaunch = !readOnly && Boolean(allowed);
   const canRender =
-    !readOnly && linked && (views.length > 0 || photos.length > 0);
+    canLaunch && linked && (views.length > 0 || photos.length > 0);
   const viewName = (r: RealisticRequest) => {
     if (r.photo_id) {
       const n = photoNumber(project, r.photo_id);
@@ -337,90 +384,154 @@ export function RealisticRenders({
   const reactionsOf = (id: string) =>
     (listing.reactions ?? []).filter((p) => p.item_id === id);
   const viewingIndex = viewing ? g.done.findIndex((r) => r.id === viewing) : -1;
+  const byId = new Map(all.done.map((r) => [r.id, r]));
+  const picked = picks
+    .map((id) => byId.get(id))
+    .filter((r): r is RealisticRequest => Boolean(r));
+  const favoriteCount = all.done.filter((r) => favorites.has(r.id)).length;
+  const hasDone = all.done.length > 0;
 
   return (
     <div
-      className={`realistic-renders rgal${linked ? "" : " rgal-unlinked"}`}
+      className={`realistic-renders rgal${linked ? "" : " rgal-unlinked"}${picking ? " rgal-picking" : ""}`}
       role="region"
       aria-label="Rendus réalistes"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {!readOnly && (
-        <div className="rgal-bar" ref={menuRef}>
+      {picking ? (
+        <div className="rgal-tools" role="group" aria-label="Comparer">
+          <span className="rgal-hint">Choisissez 2 à 4 rendus</span>
+          <button type="button" className="rgal-push" onClick={stopPicking}>
+            Annuler
+          </button>
           <button
             type="button"
-            className="primary rgal-render"
-            aria-haspopup="menu"
-            aria-expanded={menu}
-            disabled={!canRender}
-            title={
-              linked
-                ? "Calculé par le poste de rendu ; l'image arrive ici quand elle est faite"
-                : NO_PLAN_TEXT
-            }
-            onClick={() => setMenu((m) => !m)}
+            className="primary"
+            disabled={picked.length < MIN_COMPARE}
+            onClick={() => setComparing(true)}
           >
-            Rendre ▾
+            {picked.length >= MIN_COMPARE
+              ? `Comparer les ${picked.length} rendus`
+              : "Comparer"}
           </button>
-          {menu && (
-            <div className="rgal-menu" role="menu" aria-label="Rendre">
-              {views.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void askView(v.id)}
-                >
-                  <span>Rendre la vue « {v.name || "Vue"} »</span>
-                  <small>{eta} · arrive en tête de la galerie</small>
-                </button>
-              ))}
-              {views.length > 1 && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void askAll()}
-                >
-                  <span>Rendre les {views.length} vues du plan</span>
-                  <small>une demande par vue</small>
-                </button>
-              )}
-              {photos.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void askPhoto(id)}
-                >
-                  <span>Depuis la photo {photoNumber(project, id)}</span>
-                  <small>
-                    point de vue exact de la photo : avant/après fidèle
-                  </small>
-                </button>
-              ))}
-              {latest && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void askVariant(latest.id)}
-                >
-                  <span>Nouvelle variante du dernier rendu</span>
-                  <small>même vue, autre tirage</small>
-                </button>
-              )}
-            </div>
-          )}
         </div>
+      ) : (
+        (hasDone || canLaunch) && (
+          <div className="rgal-tools">
+            {hasDone && (
+              <div
+                className="rgal-filter"
+                role="group"
+                aria-label="Filtrer les rendus"
+              >
+                <button
+                  type="button"
+                  aria-pressed={!onlyFavorites}
+                  onClick={() => setOnlyFavorites(false)}
+                >
+                  Tous · {all.done.length}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={onlyFavorites}
+                  onClick={() => setOnlyFavorites(true)}
+                >
+                  <span className="rgal-star-glyph" aria-hidden="true">
+                    ★
+                  </span>{" "}
+                  Favoris · {favoriteCount}
+                </button>
+              </div>
+            )}
+            {all.done.length >= MIN_COMPARE && (
+              <button type="button" onClick={() => setPicking(true)}>
+                Comparer
+              </button>
+            )}
+            {canLaunch && (
+              <div className="rgal-bar rgal-push" ref={menuRef}>
+                <button
+                  type="button"
+                  className="primary rgal-render"
+                  aria-haspopup="menu"
+                  aria-expanded={menu}
+                  disabled={!canRender}
+                  title={
+                    linked
+                      ? "Calculé par le poste de rendu ; l'image arrive ici quand elle est faite"
+                      : NO_PLAN_TEXT
+                  }
+                  onClick={() => setMenu((m) => !m)}
+                >
+                  Rendre ▾
+                </button>
+                {menu && (
+                  <div className="rgal-menu" role="menu" aria-label="Rendre">
+                    {views.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askView(v.id)}
+                      >
+                        <span>Rendre la vue « {v.name || "Vue"} »</span>
+                        <small>{eta} · arrive en tête de la galerie</small>
+                      </button>
+                    ))}
+                    {views.length > 1 && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askAll()}
+                      >
+                        <span>Rendre les {views.length} vues du plan</span>
+                        <small>une demande par vue</small>
+                      </button>
+                    )}
+                    {photos.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askPhoto(id)}
+                      >
+                        <span>Depuis la photo {photoNumber(project, id)}</span>
+                        <small>
+                          point de vue exact de la photo : avant/après fidèle
+                        </small>
+                      </button>
+                    ))}
+                    {latestMine && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askVariant(latestMine.id)}
+                      >
+                        <span>Nouvelle variante du dernier rendu</span>
+                        <small>même vue, autre tirage</small>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
       )}
-      {!linked && (
+      {canLaunch && !linked && (
         <p className="rgal-hint" role="note">
           {NO_PLAN_TEXT}
         </p>
       )}
       {guided && <p className="rgal-guided">{guided}</p>}
-      {linked && cameras.length === 0 && (
+      {canLaunch && linked && cameras.length === 0 && (
         <p className="realistic-empty">
           Aucune vue : posez un point de vue sur le plan.
+        </p>
+      )}
+      {onlyFavorites && g.done.length === 0 && (
+        <p className="rgal-empty-fav">
+          Aucun favori : l'étoile d'un rendu l'ajoute ici.
         </p>
       )}
       {g.tiles.length > 0 && (
@@ -463,16 +574,25 @@ export function RealisticRenders({
             }
             const pills = reactionsOf(r.id);
             const total = pills.reduce((n, p) => n + p.count, 0);
+            const fav = favorites.has(r.id);
+            const order = picks.indexOf(r.id);
+            const choosing = picking && tile.kind === "done";
             return (
-              <li key={r.id} className="rgal-cell">
+              <li
+                key={r.id}
+                className={`rgal-cell${choosing && order >= 0 ? " picked" : ""}`}
+              >
                 <RetryTile
                   src={realisticApi.imageUrl(project.id, r.id)}
                   alt={`Rendu réaliste : ${viewName(r)}`}
-                  onOpen={() => setViewing(r.id)}
+                  onOpen={() => (choosing ? pick(r.id) : setViewing(r.id))}
+                  pressed={choosing ? order >= 0 : undefined}
                   label={
                     tile.kind === "more"
                       ? `${tile.count} plus anciens : tout voir`
-                      : `Ouvrir le rendu : ${viewName(r)}, ${hour(r.created_at)}`
+                      : choosing
+                        ? `Choisir pour comparer : ${viewName(r)}, ${hour(r.created_at)}`
+                        : `Ouvrir le rendu : ${viewName(r)}, ${hour(r.created_at)}`
                   }
                 >
                   {tile.kind === "more" ? (
@@ -484,7 +604,7 @@ export function RealisticRenders({
                       <span className="rgal-chip rgal-time">
                         {hour(r.created_at)}
                       </span>
-                      {listing.cover_id === r.id && (
+                      {!choosing && listing.cover_id === r.id && (
                         <span className="rgal-chip rgal-cover">couverture</span>
                       )}
                       {total > 0 && (
@@ -492,9 +612,38 @@ export function RealisticRenders({
                           {pills[0]!.emoji} {total}
                         </span>
                       )}
+                      {choosing && (
+                        <span className="rgal-pick" aria-hidden="true">
+                          {order >= 0 ? order + 1 : ""}
+                        </span>
+                      )}
                     </>
                   )}
                 </RetryTile>
+                {tile.kind === "done" &&
+                  (!readOnly ? (
+                    <button
+                      type="button"
+                      className="rgal-star"
+                      aria-pressed={fav}
+                      aria-label={
+                        fav
+                          ? `Retirer des favoris : ${viewName(r)}, ${hour(r.created_at)}`
+                          : `Ajouter aux favoris : ${viewName(r)}, ${hour(r.created_at)}`
+                      }
+                      onClick={() => starTile(r.id, !fav)}
+                    >
+                      <span className="rgal-star-glyph" aria-hidden="true">
+                        {fav ? "★" : "☆"}
+                      </span>
+                    </button>
+                  ) : (
+                    fav && (
+                      <span className="rgal-star" role="img" aria-label="Favori">
+                        <span className="rgal-star-glyph">★</span>
+                      </span>
+                    )
+                  ))}
               </li>
             );
           })}
@@ -518,12 +667,26 @@ export function RealisticRenders({
           renders={g.done}
           index={viewingIndex}
           onIndex={(i) => setViewing(g.done[i]?.id ?? null)}
-          onClose={() => setViewing(null)}
+          onClose={() => {
+            setViewing(null);
+            // Des rendus choisis depuis la visionneuse : le node reste en mode « Comparer ».
+            if (picks.length > 0) setPicking(true);
+          }}
           coverId={listing.cover_id ?? null}
           reactions={listing.reactions ?? []}
           typicalSeconds={listing.typical_seconds}
           linked={linked}
           readOnly={readOnly}
+          allowed={Boolean(allowed)}
+          favorites={favorites}
+          onStar={star}
+          picks={picks}
+          onPick={pick}
+          onCompare={() => {
+            setViewing(null);
+            setPicking(true);
+            setComparing(true);
+          }}
           onCover={async (id, on) => {
             await (on
               ? realisticApi.setCover(project.id, id)
@@ -545,6 +708,23 @@ export function RealisticRenders({
               .catch(noPlan);
             await refresh();
             setViewing(null);
+          }}
+        />
+      )}
+      {comparing && picked.length >= MIN_COMPARE && (
+        <RenderCompare
+          projectId={project.id}
+          renders={picked}
+          viewName={viewName}
+          favorites={favorites}
+          canStar={!readOnly}
+          onStar={star}
+          onClose={() => setComparing(false)}
+          onOpen={(id) => {
+            setComparing(false);
+            // La visionneuse parcourt la galerie affichée : un rendu hors du filtre l'enlève.
+            if (onlyFavorites && !favorites.has(id)) setOnlyFavorites(false);
+            setViewing(id);
           }}
         />
       )}

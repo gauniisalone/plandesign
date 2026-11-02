@@ -8,8 +8,10 @@ import type { Project } from "../src/api/types.gen";
 import {
   etaText,
   gallery,
+  MAX_COMPARE,
   photoNumber,
   progress,
+  togglePick,
 } from "../src/board/renderGallery.ts";
 
 let n = 0;
@@ -83,6 +85,45 @@ test("avancement : seulement pendant le calcul, jamais 100 % avant l'image", () 
   assert.equal(progress(taken, 120, start + 60_000), 0.5);
   assert.equal(progress(taken, 120, start + 600_000), 0.95);
   assert.equal(progress(req("pending", 1), 120, start), null);
+});
+
+test("KAN-99 : filtre « Favoris » : seulement les rendus étoilés, sans case en cours", () => {
+  const a = req("done", 1);
+  const b = req("done", 2);
+  const c = req("done", 3);
+  const running = req("taken", 4);
+  const failed = req("failed", 5);
+  const g = gallery([a, b, c, running, failed], undefined, new Set([a.id, c.id]));
+  assert.deepEqual(
+    g.tiles.map((t) => [t.kind, t.request.id]),
+    [
+      ["done", c.id],
+      ["done", a.id],
+    ],
+  );
+  assert.deepEqual(
+    g.done.map((r) => r.id),
+    [c.id, a.id],
+  );
+  assert.equal(g.problem, null);
+  assert.equal(gallery([a, b], undefined, new Set()).tiles.length, 0);
+});
+
+test("KAN-99 : l'échec d'un autre membre n'est pas signalé", () => {
+  const theirs = req("failed", 2, { mine: false });
+  assert.equal(gallery([req("done", 1), theirs]).problem, null);
+  const mine = req("failed", 3, { mine: true });
+  assert.equal(gallery([req("done", 1), theirs, mine]).problem?.id, mine.id);
+});
+
+test("KAN-99 : choisir 2 à 4 rendus, dans l'ordre des clics ; un 5e est refusé", () => {
+  let picks: string[] = [];
+  for (const id of ["a", "b", "c", "d", "e"]) picks = togglePick(picks, id);
+  assert.equal(MAX_COMPARE, 4);
+  assert.deepEqual(picks, ["a", "b", "c", "d"]);
+  picks = togglePick(picks, "b");
+  assert.deepEqual(picks, ["a", "c", "d"]);
+  assert.deepEqual(togglePick(picks, "e"), ["a", "c", "d", "e"]);
 });
 
 test("numéro de photo : celui de la bande de photos", () => {

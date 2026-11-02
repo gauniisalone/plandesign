@@ -119,6 +119,9 @@ class RealisticRequest(StrictModel):
     guided_kind: Literal["words", "unread", "no_style"] | None = None
     """`words` : mots lus ; `unread` : noms des images, non lues par le poste (ancien poste,
     SigLIP2 absent) ; `no_style` : noms des images, lues sans style net retenu."""
+    mine: bool = False
+    """KAN-99 : la personne connectée a lancé ce rendu. Les rendus d'un projet sont montrés à
+    tous ses membres ; variante, couverture et réactions restent au lanceur."""
 
 
 class RealisticCreate(StrictModel):
@@ -168,6 +171,19 @@ class RealisticList(StrictModel):
     cover_id: UUID | None = None
     """KAN-91 : le rendu choisi comme couverture du projet (liste « Mes projets »)."""
     reactions: list[RealisticReaction] = Field(default_factory=list)
+    favorite_ids: list[UUID] = Field(default_factory=list)
+    """KAN-99 : les rendus étoilés du projet (« Favoris »), communs à tous les membres."""
+
+
+MAX_FAVORITES = 1000
+"""KAN-99 : plafond du fichier des favoris (une demande pèse ~40 octets)."""
+
+
+class RealisticFavorites(StrictModel):
+    """KAN-99 : les rendus étoilés d'un projet, sans auteur (`realistic/favorites.json`, à
+    côté de la couverture ; hors du format du projet). Réponse des routes de l'étoile."""
+
+    favorite_ids: list[UUID] = Field(default_factory=list, max_length=MAX_FAVORITES)
 
 
 FAILURE_TEXT: dict[str, str] = {

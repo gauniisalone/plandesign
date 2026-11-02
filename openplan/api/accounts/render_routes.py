@@ -35,6 +35,7 @@ from openplan.api.access import AuthUser, accounts_of, signed_in_user
 from openplan.api.accounts.events import cause_code, emit_from
 from openplan.api.accounts.models import RenderRequest as RenderRow
 from openplan.api.accounts.quota import LAUNCH_RESERVE, full, quota_bytes, used_bytes
+from openplan.api.accounts.render_favorites import load_favorites, save_favorites
 from openplan.api.accounts.render_queue import (
     LeaseError,
     QuotaExceededError,
@@ -70,6 +71,7 @@ from openplan.schemas.render_queue import (
     STYLE,
     RealisticCover,
     RealisticCreate,
+    RealisticFavorites,
     RealisticFromPhoto,
     RealisticList,
     RealisticReaction,
@@ -113,6 +115,16 @@ def store_of(request: Request) -> ProjectStore:
 def allowed_user(request: Request) -> AuthUser:
     user = signed_in_user(request)
     if not queue_of(request).config.allows(user.id):
+        raise HTTPException(status_code=403, detail=NOT_YET)
+    return user
+
+
+def member_user(request: Request) -> AuthUser:
+    """KAN-99 : voir les rendus d'un projet. Tout membre (lecteur compris : la garde de la
+    route a déjà vérifié le rôle et refusé un non-membre), hors liste blanche ; seul un rendu
+    désactivé (aucune variable du poste) les refuse à tous."""
+    user = signed_in_user(request)
+    if not queue_of(request).config.enabled:
         raise HTTPException(status_code=403, detail=NOT_YET)
     return user
 
@@ -204,12 +216,20 @@ def _reactions(
 
 def _own_done(request: Request, user: AuthUser, project_id: UUID, request_id: UUID) -> RenderRow:
     """Un rendu fait de cette personne dans ce projet, avec son image ; 404 sinon."""
+    row = _project_done(request, project_id, request_id)
+    if row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="rendu introuvable")
+    return row
+
+
+def _project_done(request: Request, project_id: UUID, request_id: UUID) -> RenderRow:
+    """KAN-99 : un rendu fait de ce projet (de n'importe quel membre), avec son image ; 404
+    sinon."""
     row = queue_of(request).get(request_id)
     store = store_of(request)
     if (
         row is None
         or row.project_id != project_id
-        or row.user_id != user.id
         or row.state != "done"
         or not image_path(store, project_id, request_id).is_file()
     ):
@@ -219,14 +239,17 @@ def _own_done(request: Request, user: AuthUser, project_id: UUID, request_id: UU
 
 @router.get(P + "/realistic")
 def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> RealisticList:
-    user = allowed_user(request)
+    """KAN-99 : les rendus du projet, de tous ses membres, pour tout membre (lecteur compris) ;
+    `mine` dit ceux que la personne a lancés (variante, couverture, réactions)."""
+    user = member_user(request)
     store = store_of(request)
     queue = queue_of(request)
-    rows = queue.list_for(user.id, project_id)
+    rows = queue.list_project(project_id)
     try:
         photos = photo_cameras(store.load(project_id))
     except ProjectNotFoundError:
         photos = {}
+    done = {r.id for r in rows if r.state == "done"}
     return RealisticList(
         status=_status(request, user),
         requests=[
@@ -234,16 +257,18 @@ def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> Reali
                 store,
                 project_id,
                 public_request(
-                    r, image_path(store, project_id, r.id).is_file(), photos.get(r.camera_id)
+                    r,
+                    image_path(store, project_id, r.id).is_file(),
+                    photos.get(r.camera_id),
+                    mine=r.user_id == user.id,
                 ),
             )
             for r in rows
         ],
         typical_seconds=queue.typical_seconds(),
         cover_id=_cover_id(store, project_id),
-        reactions=_reactions(
-            request, project_id, author_of(actor), {r.id for r in rows if r.state == "done"}
-        ),
+        reactions=_reactions(request, project_id, author_of(actor), done),
+        favorite_ids=[f for f in load_favorites(store.project_dir(project_id)) if f in done],
     )
 
 
@@ -397,6 +422,43 @@ def remove_realistic_reaction(
     return _reactions(request, project_id, me, {request_id})
 
 
+@router.put(P + "/realistic/{request_id}/favorite")
+def add_realistic_favorite(
+    project_id: UUID, request_id: UUID, request: Request
+) -> RealisticFavorites:
+    """KAN-99 : étoiler un rendu du projet (« Favoris »). Commun à tous les membres, sans
+    auteur ; tout éditeur, lanceur ou non, hors liste blanche. Ne crée aucune demande : le
+    quota des rendus du jour n'est pas touché, et l'étoile passe même avec un espace plein."""
+    member_user(request)
+    _project_done(request, project_id, request_id)
+    store = store_of(request)
+    project_dir = store.project_dir(project_id)
+    with store.lock(project_id):
+        ids = load_favorites(project_dir)
+        if request_id not in ids:
+            ids = save_favorites(project_dir, [*ids, request_id])
+    return RealisticFavorites(favorite_ids=ids)
+
+
+@router.delete(P + "/realistic/{request_id}/favorite")
+def remove_realistic_favorite(
+    project_id: UUID, request_id: UUID, request: Request
+) -> RealisticFavorites:
+    """KAN-99 : retirer l'étoile d'un rendu (tout éditeur, quelle que soit la personne qui
+    l'avait posée : elle n'est à personne). Un rendu inconnu n'a rien à retirer : 404."""
+    member_user(request)
+    row = queue_of(request).get(request_id)
+    if row is None or row.project_id != project_id:
+        raise HTTPException(status_code=404, detail="rendu introuvable")
+    store = store_of(request)
+    project_dir = store.project_dir(project_id)
+    with store.lock(project_id):
+        ids = load_favorites(project_dir)
+        if request_id in ids:
+            ids = save_favorites(project_dir, [i for i in ids if i != request_id])
+    return RealisticFavorites(favorite_ids=ids)
+
+
 def _create(
     request: Request,
     response: Response,
@@ -427,7 +489,7 @@ def _create(
             "taken",
         ):
             response.status_code = 200
-            return public_request(row, False, photo)
+            return public_request(row, False, photo, mine=True)
     accounts = accounts_of(request)
     limit = quota_bytes(request)
     payer = None if accounts is None else accounts.payer_of(project_id)
@@ -446,14 +508,15 @@ def _create(
     # KAN-109 L2 : une demande de rendu (value 1 : guidée par au moins une inspiration).
     guided = 1 if inputs is not None and inputs.inspirations else 0
     emit_from(request, "render_requested", user.id, project_id, guided)
-    return with_guidance(store, project_id, public_request(row, False, photo))
+    return with_guidance(store, project_id, public_request(row, False, photo, mine=True))
 
 
 @router.get(P + "/realistic/{request_id}/image")
 def realistic_image(project_id: UUID, request_id: UUID, request: Request) -> Response:
-    user = allowed_user(request)
+    """KAN-99 : l'image d'un rendu du projet, pour tout membre (lecteur compris)."""
+    member_user(request)
     row = queue_of(request).get(request_id)
-    if row is None or row.project_id != project_id or row.user_id != user.id:
+    if row is None or row.project_id != project_id:
         raise HTTPException(status_code=404, detail="rendu introuvable")
     store = store_of(request)
     return served_file(

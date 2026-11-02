@@ -198,9 +198,13 @@ test("rendu réaliste : un autre compte n'a ni le bouton ni l'API", async ({
     { data: { camera_id: crypto.randomUUID() }, headers: origin },
   );
   expect(ask.status()).toBe(403);
-  expect(
-    (await page.request.get(`/api/projects/${id}/realistic`)).status(),
-  ).toBe(403);
+  // KAN-99 (décision d'augus, 2 nov.) : la liste des rendus du projet est lisible par tout
+  // membre ; ici, son propre projet, sans aucun rendu (le cadre garde « bientôt en ligne »).
+  const listed = await page.request.get(`/api/projects/${id}/realistic`);
+  expect(listed.status()).toBe(200);
+  expect(((await listed.json()) as { requests: unknown[] }).requests).toEqual(
+    [],
+  );
   const status = (await (
     await page.request.get("/api/realistic/status")
   ).json()) as { allowed: boolean };

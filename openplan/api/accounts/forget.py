@@ -45,6 +45,7 @@ from openplan.api.accounts.models import (
     LoginToken,
     Member,
     ProjectRow,
+    RenderRequest,
     User,
 )
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
@@ -88,6 +89,13 @@ class ForgetPlan:
     shared_action: str = ""
     """« transfer », « delete » ou vide (refus)."""
     transfer_to: UUID | None = None
+    renders: int = 0
+    """KAN-99 : ses demandes de rendu réaliste (supprimées avec le compte, clé étrangère en
+    cascade)."""
+    renders_kept_projects: int = 0
+    """KAN-99 : parmi elles, celles des projets qui restent (les rendus d'un projet sont
+    montrés à tous ses membres) : ces rendus disparaissent de leur galerie ; leurs images
+    restent sur le disque du projet, plus montrées."""
     refusals: list[str] = field(default_factory=list)
 
     @property
@@ -153,6 +161,20 @@ def _owned(
                 )
 
 
+def _renders(repo: AccountsRepo, plan: ForgetPlan, user_id: UUID) -> None:
+    """KAN-99 : ses rendus réalistes, et ceux qui étaient montrés dans des projets qui restent
+    (tous sauf ses projets supprimés : seul membre, ou partagés avec `--delete-shared`)."""
+    gone = {p.id for p in plan.solo}
+    if plan.shared_action == "delete":
+        gone |= {p.id for p in plan.shared}
+    with repo.session() as db:
+        projects = list(
+            db.scalars(select(RenderRequest.project_id).where(RenderRequest.user_id == user_id))
+        )
+    plan.renders = len(projects)
+    plan.renders_kept_projects = sum(1 for pid in projects if pid not in gone)
+
+
 def plan_forget(
     repo: AccountsRepo,
     email: str,
@@ -205,6 +227,7 @@ def plan_forget(
                 f"{len(plan.shared)} projet(s) partagé(s) dont il est propriétaire : choisir "
                 "--transfer-to <adresse d'un membre éditeur> ou --delete-shared"
             )
+    _renders(repo, plan, user.id)
     if plan.is_admin and admins <= 1:
         plan.refusals.append("dernier administrateur : en nommer un autre d'abord")
     if admin_email and normalize_email(admin_email) == address:
@@ -259,6 +282,12 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
         say(f"  ses projets partagés, {what} :")
         for p in plan.shared:
             say(_line(p))
+    if plan.renders:
+        say(
+            f"  rendus réalistes qu'il a lancés, supprimés : {plan.renders}, dont "
+            f"{plan.renders_kept_projects} dans des projets qui restent (ils disparaissent de "
+            "la galerie des membres ; leurs images restent sur le disque du projet)"
+        )
     say(
         "  Inchangés : commentaires, réactions et activité dans les projets des autres "
         "(montrés « Ancien membre », sans adresse ni nom)."

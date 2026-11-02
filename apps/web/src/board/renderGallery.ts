@@ -32,13 +32,34 @@ export function isRunning(r: RealisticRequest): boolean {
   return r.state === "pending" || r.state === "taken";
 }
 
+/** KAN-99 : le rendu a été lancé par la personne connectée (absent : serveur d'avant, le sien). */
+export function isMine(r: RealisticRequest): boolean {
+  return r.mine !== false;
+}
+
+/** KAN-99 : la vue comparée prend de 2 à 4 rendus. */
+export const MIN_COMPARE = 2;
+export const MAX_COMPARE = 4;
+
+/** KAN-99 : choisir ou retirer un rendu de la comparaison, dans l'ordre des clics ; au-delà de
+ *  quatre, le choix est refusé (la liste ne change pas). */
+export function togglePick(picks: readonly string[], id: string): string[] {
+  if (picks.includes(id)) return picks.filter((p) => p !== id);
+  return picks.length >= MAX_COMPARE ? [...picks] : [...picks, id];
+}
+
+/** `only` (KAN-99, filtre « Favoris ») : seulement ces rendus faits, sans case en cours ni
+ *  échec signalé. */
 export function gallery(
   requests: RealisticRequest[],
   cells = GALLERY_CELLS,
+  only: ReadonlySet<string> | null = null,
 ): Gallery {
   const sorted = [...requests].sort(newestFirst);
-  const running = sorted.filter(isRunning);
-  const done = sorted.filter((r) => r.state === "done" && r.image);
+  const running = only ? [] : sorted.filter(isRunning);
+  const done = sorted.filter(
+    (r) => r.state === "done" && r.image && (!only || only.has(r.id)),
+  );
   const tiles: Tile[] = [
     ...running.slice(0, cells).map((request) => ({
       kind: "running" as const,
@@ -58,12 +79,15 @@ export function gallery(
     });
   }
   const latestDone = done[0]?.created_at ?? "";
-  const problem =
-    sorted.find(
-      (r) =>
-        (r.state === "failed" || r.state === "expired") &&
-        r.created_at > latestDone,
-    ) ?? null;
+  // KAN-99 : l'échec d'un autre membre ne lui est pas signalé (il ne peut pas relancer).
+  const problem = only
+    ? null
+    : (sorted.find(
+        (r) =>
+          isMine(r) &&
+          (r.state === "failed" || r.state === "expired") &&
+          r.created_at > latestDone,
+      ) ?? null);
   return { tiles, done, problem };
 }
 
