@@ -186,6 +186,52 @@ def test_reads_once_follows_rotation_and_keeps_no_address(
     assert digests and all("203.0.113" not in d and "Firefox" not in d for d in digests)
 
 
+def _rotate(current: Path, name: str, then: str) -> Path:
+    """Comme Caddy : le courant est renommé (il garde son inode), un nouveau courant s'ouvre."""
+    rotated = current.with_name(name)
+    current.rename(rotated)
+    current.write_text(then, encoding="utf-8")
+    return rotated
+
+
+def _compress(rotated: Path) -> None:
+    """Puis le tourné est compressé en .gz (même contenu) et l'original effacé."""
+    with gzip.open(rotated.with_name(rotated.name + ".gz"), "wb") as gz:
+        gz.write(rotated.read_bytes())
+    rotated.unlink()
+
+
+def test_a_real_rotation_counts_each_line_once(tmp_path: Path, migrated_url: str) -> None:
+    """site.log tourne à 1 Mo (environ tous les 1,5 jour). Le .gz est l'ANCIEN courant : ce
+    qui en a déjà été lu n'est pas recompté, ce qui y a été écrit après la dernière lecture
+    n'est pas perdu ; avant sa compression, rien n'est perdu non plus."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    audience = _audience(migrated_url, logs, [NOW])
+    current = logs / "site.log"
+    current.write_text(line("/a") + "\n" + line("/b") + "\n", encoding="utf-8")
+    assert audience.ingest() == 2
+    with current.open("a", encoding="utf-8") as f:
+        f.write(line("/c") + "\n")  # écrite après la dernière lecture, juste avant la rotation
+    rotated = _rotate(current, "site-2026-10-28T13-25-28.000.log", line("/d") + "\n")
+    assert audience.ingest() == 1, "le tourné pas encore compressé attend ; le nouveau est lu"
+    _compress(rotated)
+    assert audience.ingest() == 1, "du .gz, seule la ligne écrite après la dernière lecture"
+    assert audience.ingest() == 0
+
+    # Deux rotations entre deux lectures, déjà compressées quand on lit.
+    with current.open("a", encoding="utf-8") as f:
+        f.write(line("/e") + "\n")
+    first = _rotate(current, "site-2026-10-29T13-00-00.000.log", line("/f") + "\n")
+    second = _rotate(current, "site-2026-10-30T13-00-00.000.log", line("/g") + "\n")
+    _compress(first)
+    _compress(second)
+    assert audience.ingest() == 3, "/e (fin de l'ancien), /f (tourné entier), /g (courant)"
+    assert audience.ingest() == 0
+    views = {p["path"]: p["views"] for p in audience.summary(7)["pages"]}  # type: ignore[index]
+    assert views == dict.fromkeys(["/a", "/b", "/c", "/d", "/e", "/f", "/g"], 1)
+
+
 def test_digests_and_salts_leave_after_48_hours_counts_stay(
     tmp_path: Path, migrated_url: str
 ) -> None:

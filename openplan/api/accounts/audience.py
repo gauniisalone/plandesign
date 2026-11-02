@@ -12,9 +12,10 @@ Une vue : un GET d'une page HTML de plandesign.fr, statut < 400, hors robots et 
 ressources ; www (redirection 301) compte comme « arrivée par www », jamais comme une vue.
 
 Lecture : le fichier courant par inode et position (la rotation le remplace), chaque fichier
-tourné (.gz) une seule fois ; l'état de lecture est en base, un redémarrage reprend où il en
-était. Un dossier vide ou un fichier absent (Caddy ne le crée qu'à la première requête) n'est
-pas une erreur : « aucune donnée »."""
+tourné (.gz) une seule fois ; le .gz de l'ancien courant, seulement à partir de là où on
+l'avait laissé ; l'état de lecture est en base, un redémarrage reprend où il en était. Un
+dossier vide ou un fichier absent (Caddy ne le crée qu'à la première requête) n'est pas une
+erreur : « aucune donnée »."""
 
 from __future__ import annotations
 
@@ -50,6 +51,8 @@ SITE_HOST = "plandesign.fr"
 WWW_HOST = "www.plandesign.fr"
 CURRENT = "site.log"
 """Le fichier courant ; les tournés s'appellent `site-<horodatage>.log.gz`."""
+ROTATED = "site.log.rotated"
+"""Curseur de l'ancien courant après une rotation, jusqu'à la lecture de son .gz."""
 INTERVAL_S = 300
 KEEP_DAYS = 760
 """25 mois d'agrégats, puis purge."""
@@ -262,26 +265,62 @@ class SiteAudience:
         current = self.log_dir / CURRENT
         return [*rotated, *([current] if current.is_file() else [])]
 
+    def _rotated(self, db: Session, files: list[Path]) -> None:
+        """Avant de lire les .gz : le courant a-t-il tourné ? Le .gz qui va apparaître est
+        l'ANCIEN courant ; on note jusqu'où il a été lu (ligne ROTATED), pour n'en lire que la
+        suite. Le courant repart du début."""
+        if not files or files[-1].name != CURRENT:
+            return
+        cursor = db.get(AccessLogCursor, CURRENT)
+        if cursor is None or cursor.inode == 0:
+            return
+        stat = files[-1].stat()
+        if stat.st_ino == cursor.inode and stat.st_size >= cursor.position:
+            return
+        if cursor.position:
+            pending = self._row(
+                db, AccessLogCursor, ROTATED, name=ROTATED, inode=0, position=0, done=True
+            )
+            if not pending.done:
+                # Deux rotations sans que la première soit compressée : jamais vu à 1 Mo.
+                log.warning("audience du site : deux rotations en attente, la plus ancienne gardée")
+            else:
+                pending.inode, pending.position, pending.done = cursor.inode, cursor.position, False
+        cursor.inode, cursor.position = stat.st_ino, 0
+
     def ingest(self) -> int:
         """Lit ce qui est nouveau ; renvoie le nombre de lignes lues."""
         with self._lock, self.session() as db:
             read = 0
-            for path in self._files():
+            files = self._files()
+            self._rotated(db, files)
+            for path in files:
                 cursor = self._row(
                     db, AccessLogCursor, path.name, name=path.name, inode=0, position=0, done=False
                 )
                 if cursor.done:
                     continue
                 if path.suffix == ".gz":
-                    with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
-                        lines = f.read().splitlines()
+                    with gzip.open(path, "rb") as f:
+                        data = f.read()
+                    # Le plus ancien .gz apparu depuis la rotation est l'ancien courant : on
+                    # reprend où on en était (ni recompté, ni perdu) ; les autres, en entier.
+                    pending = db.get(AccessLogCursor, ROTATED)
+                    if pending is not None and not pending.done:
+                        if len(data) >= pending.position:
+                            data = data[pending.position :]
+                        else:
+                            log.warning(
+                                "audience du site : %s plus court que l'ancien courant, lu entier",
+                                path.name,
+                            )
+                        pending.done = True
+                    lines = data.decode("utf-8", errors="replace").splitlines()
                     cursor.done = True
                 else:
                     inode = path.stat().st_ino
-                    if inode != cursor.inode or path.stat().st_size < cursor.position:
-                        # Rotation : un nouveau fichier courant, lu depuis le début (l'ancien
-                        # est devenu un .gz, lu à part).
-                        cursor.inode, cursor.position = inode, 0
+                    if inode != cursor.inode:
+                        cursor.inode, cursor.position = inode, 0  # première lecture
                     lines, cursor.position = _lines(path, cursor.position)
                 hits = [h for h in (parse(line) for line in lines) if h is not None]
                 if hits and cursor.first_day is None:
