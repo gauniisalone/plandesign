@@ -53,8 +53,8 @@ from openplan.api.accounts.models import ExtensionToken, User
 from openplan.api.accounts.repo import AccountsRepo
 from openplan.api.board_rules import board_now
 from openplan.api.change_events import author_of, record_board
+from openplan.api.link_images import link_limiter, link_name
 from openplan.api.ratelimit import SlidingWindowLimiter
-from openplan.api.routes.board import _link_limiter, _link_name
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
@@ -419,7 +419,7 @@ def extension_image(project_id: UUID, body: ImageIn, request: Request) -> ImageA
     Moodboard choisi. Rôle éditeur et place du propriétaire : vérifiés par la garde."""
     user = require_extension(request)
     actor = f"user:{user.id}"
-    if not _link_limiter(request).allow(author_of(actor)):
+    if not link_limiter(request).allow(author_of(actor)):
         raise HTTPException(
             status_code=429, detail="Trop d'images ajoutées d'un coup : réessayez dans une minute."
         )
@@ -442,7 +442,7 @@ def extension_image(project_id: UUID, body: ImageIn, request: Request) -> ImageA
         ref = b.add_media(
             project_dir,
             got.data,
-            _link_name(got.image_url, media_type),
+            link_name(got.image_url, media_type),
             placed=True,
             source_url=page or got.page_url or got.image_url,
         )

@@ -4,10 +4,8 @@ courantes, montrées)."""
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
@@ -21,7 +19,7 @@ from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import role_of
-from openplan.api.ratelimit import SlidingWindowLimiter
+from openplan.api.link_images import link_limiter, link_name
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
@@ -312,28 +310,6 @@ class LinkIn(StrictModel):
     url: str = Field(min_length=1, max_length=MAX_URL)
 
 
-LINK_LIMIT = 10
-LINK_WINDOW_S = 60.0
-"""10 liens par minute et par compte (accord du PO, 28 oct.) : la route ne sert pas à sonder
-des sites en série."""
-
-
-def _link_limiter(request: Request) -> SlidingWindowLimiter:
-    limiter: SlidingWindowLimiter | None = getattr(request.app.state, "link_limiter", None)
-    if limiter is None:
-        limiter = SlidingWindowLimiter(LINK_LIMIT, LINK_WINDOW_S)
-        request.app.state.link_limiter = limiter
-    return limiter
-
-
-def _link_name(image_url: str, media_type: str) -> str:
-    """Le nom du fichier gardé : la fin de l'adresse de l'image, avec l'extension de son type
-    réel (« salon%20bleu.webp » donne « salon-bleu.png » pour un PNG)."""
-    stem = Path(unquote(urlsplit(image_url).path)).stem
-    stem = re.sub(r"[^\w.-]+", "-", stem).strip("-.")[:80] or "image-du-lien"
-    return f"{stem}.{media_type.removeprefix('image/').replace('jpeg', 'jpg')}"
-
-
 @router.post("/projects/{project_id}/media/link", status_code=201)
 def media_link(
     body: LinkIn,
@@ -347,7 +323,7 @@ def media_link(
     (`adapters.remote.link_fetch`) ; une page donne son image d'aperçu. L'image suit ensuite
     le chemin d'un fichier envoyé (place du propriétaire, stockage) et garde son lien
     (`source_url`). Route synchrone : le réseau attend dans un fil, pas dans la boucle."""
-    if not _link_limiter(request).allow(author_of(actor)):
+    if not link_limiter(request).allow(author_of(actor)):
         raise HTTPException(
             status_code=429, detail="Trop de liens collés d'un coup : réessayez dans une minute."
         )
@@ -363,7 +339,7 @@ def media_link(
         return b.add_media(
             store.project_dir(project.id),
             got.data,
-            _link_name(got.image_url, media_type),
+            link_name(got.image_url, media_type),
             placed=placed,
             source_url=source,
         )

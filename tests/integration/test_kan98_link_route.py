@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from openplan.adapters.remote import link_fetch
 from openplan.api.app import create_app
-from openplan.api.routes.board import LINK_LIMIT
+from openplan.api.link_images import LINK_LIMIT
 from openplan.api.settings import Settings
 from tests.unit.test_kan113_image_formats import OTHERS, other_format, png
 

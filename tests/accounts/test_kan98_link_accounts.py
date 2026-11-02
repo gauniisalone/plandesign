@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from openplan.adapters.remote import link_fetch
 from openplan.api.accounts.quota import LINK_RESERVE, LINKS, MB
 from openplan.api.guards import PROJECT_ROUTES, Role
-from openplan.api.routes.board import LINK_LIMIT
+from openplan.api.link_images import LINK_LIMIT
 from tests.accounts.helpers import sign_in
 from tests.accounts.test_b2a_live import _client
 from tests.accounts.test_kan12_quota import _setup
