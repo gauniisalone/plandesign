@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from openplan.api.accounts.db import utcnow
@@ -46,6 +46,23 @@ class AccountsRepo:
         with self.session() as db, db.begin():
             db.add(user)
         return user
+
+    def self_signed_up(self, user_id: UUID) -> bool:
+        """KAN-104 L2 : compte créé par l'inscription (conditions acceptées), jamais
+        l'administrateur ; ses quotas sont plus serrés."""
+        user = self.user(user_id)
+        return user is not None and user.accepted_terms_at is not None and not user.is_admin
+
+    def owned_project_count(self, user_id: UUID) -> int:
+        with self.session() as db:
+            return int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(ProjectRow)
+                    .where(ProjectRow.owner_id == user_id)
+                )
+                or 0
+            )
 
     # --- projets et membres -----------------------------------------------------------
 

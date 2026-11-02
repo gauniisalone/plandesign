@@ -69,6 +69,25 @@ class ForgotBody(StrictModel):
     email: str = Field(min_length=3, max_length=320)
 
 
+class SignupStartBody(StrictModel):
+    email: str = Field(min_length=3, max_length=320)
+    cgu: bool
+    """Les conditions d'utilisation acceptées : exigé (sinon 422, rien ne part)."""
+    invitation: str | None = Field(default=None, max_length=128)
+
+
+class SignupVerifyBody(StrictModel):
+    email: str = Field(min_length=3, max_length=320)
+    code: str = Field(min_length=1, max_length=32)
+    password: PasswordField
+    name: str = Field(default="", max_length=80)
+    invitation: str | None = Field(default=None, max_length=128)
+
+
+SIGNUP_NEUTRAL = "Si cette adresse peut créer un compte, un code vient de partir."
+TERMS_NEEDED = "Acceptez les conditions d'utilisation pour créer un compte."
+
+
 class ResetBody(StrictModel):
     email: str = Field(min_length=3, max_length=320)
     code: str = Field(min_length=1, max_length=32)
@@ -144,16 +163,66 @@ def password_login_page(
     return response
 
 
+@router.post("/auth/signup/start", status_code=202)
+def signup_start(
+    body: SignupStartBody, request: Request, background: BackgroundTasks
+) -> StartResult:
+    """L2 : même réponse dans tous les cas (inconnue, déjà inscrite, fermée, limite) ;
+    KAN-117 : classe `signup` fermée, 503 avant de regarder l'adresse."""
+    if not body.cgu:
+        raise HTTPException(status_code=422, detail=TERMS_NEEDED)
+    accounts = service(request)
+    accounts.mail_budget.check("signup")
+    try:
+        message = accounts.signup.start(body.email, _client_ip(request), body.invitation)
+    except InvalidEmailError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if message is not None:
+        background.add_task(_send, accounts, message, "signup")
+    return StartResult(detail=SIGNUP_NEUTRAL)
+
+
+@router.post("/auth/signup/verify")
+def signup_verify(body: SignupVerifyBody, request: Request, response: Response) -> Me:
+    """L2 : le code, le mot de passe, le nom facultatif ; le compte naît ici, la session
+    s'ouvre (jeton neuf)."""
+    from openplan.api.accounts.routes import claim_invitations
+
+    agent = request.headers.get("user-agent", "")
+    try:
+        user, raw = service(request).signup.complete(
+            body.email,
+            body.code,
+            body.password,
+            body.name,
+            _client_ip(request),
+            agent,
+            body.invitation,
+        )
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LoginRefusedError as exc:
+        raise HTTPException(status_code=400, detail=REFUSAL_TEXT[exc.reason]) from exc
+    claim_invitations(request, user)
+    record_login(request, user)
+    set_session_cookie(response, raw)
+    return Me(
+        id=user.id, email=user.email, name=user.name, is_admin=user.is_admin, first_login=True
+    )
+
+
 @router.post("/auth/password/forgot", status_code=202)
 def password_forgot(body: ForgotBody, request: Request, background: BackgroundTasks) -> StartResult:
-    """Même réponse que l'adresse ait un compte ou non ; l'envoi part après la réponse."""
+    """Même réponse que l'adresse ait un compte ou non ; l'envoi part après la réponse.
+    KAN-117 : classe `signup` fermée, 503 avant de regarder l'adresse."""
     accounts = service(request)
+    accounts.mail_budget.check("signup")
     try:
         message = accounts.passwords.start_reset(body.email, _client_ip(request))
     except InvalidEmailError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if message is not None:
-        background.add_task(_send, accounts, message)
+        background.add_task(_send, accounts, message, "signup")
     return StartResult(detail=NEUTRAL)
 
 
@@ -204,9 +273,10 @@ def set_password(
 @router.post("/auth/reauth/start", status_code=202)
 def reauth_start(request: Request, user: SignedInDep, background: BackgroundTasks) -> StartResult:
     accounts = service(request)
+    accounts.mail_budget.check("signup")
     message = accounts.passwords.start_reauth(user.id, _client_ip(request))
     if message is not None:
-        background.add_task(_send, accounts, message)
+        background.add_task(_send, accounts, message, "signup")
     return StartResult(detail="Un code vient de partir vers votre adresse.")
 
 

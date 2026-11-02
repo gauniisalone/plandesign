@@ -161,6 +161,32 @@ def login_message(to: str, code: str, minutes: int) -> MailMessage:
     return MailMessage(to=to, subject=subject, text=text, code=code)
 
 
+def signup_message(to: str, code: str, minutes: int) -> MailMessage:
+    """KAN-104 L2 : code de création de compte (l'adresse est prouvée avant toute écriture)."""
+    subject = f"Votre code pour créer votre compte {APP_NAME} : {code}"
+    text = (
+        f"Bonjour,\n\nVotre code pour créer votre compte {APP_NAME} :\n\n    {code}\n\n"
+        f"Ce code expire dans {minutes} minutes.\n\n"
+        "Si vous n'avez rien demandé, ignorez ce message : aucun compte n'est créé.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text, code=code)
+
+
+def already_message(to: str) -> MailMessage:
+    """KAN-104 L2 : une inscription demandée pour une adresse qui a déjà un compte ; aucun
+    code (la page a répondu pareil, seul le titulaire lit ceci)."""
+    subject = f"Vous avez déjà un compte {APP_NAME}"
+    text = (
+        f"Bonjour,\n\nQuelqu'un, sans doute vous, a demandé à créer un compte {APP_NAME} avec "
+        "cette adresse, qui en a déjà un.\n\nConnectez-vous avec un code reçu par e-mail, ou "
+        "avec votre mot de passe ; s'il est perdu : « Mot de passe oublié ».\n\n"
+        "Si vous n'avez rien demandé, ignorez ce message.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text)
+
+
 def reset_message(to: str, code: str, minutes: int) -> MailMessage:
     """KAN-104 : code de réinitialisation (D5 : un code, jamais un lien)."""
     subject = f"Votre code pour changer de mot de passe ({APP_NAME}) : {code}"

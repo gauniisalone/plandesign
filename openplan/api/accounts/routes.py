@@ -29,7 +29,7 @@ from openplan.api.access import (
     SignedInDep,
 )
 from openplan.api.accounts.mail import FakeMailer, MailMessage
-from openplan.api.accounts.mail_budget import QUOTA_TEXT, MailQuotaError
+from openplan.api.accounts.mail_budget import QUOTA_TEXT, MailKind, MailQuotaError
 from openplan.api.accounts.service import (
     LOGIN_TTL,
     REFUSAL_TEXT,
@@ -126,9 +126,9 @@ class LastCode(StrictModel):
     code: str
 
 
-def _send(accounts: AccountService, message: MailMessage) -> None:
+def _send(accounts: AccountService, message: MailMessage, kind: MailKind = "login") -> None:
     try:
-        accounts.send_mail(message)
+        accounts.send_mail(message, kind)
     except Exception:  # l'échec d'envoi ne doit jamais dire si l'adresse a un compte
         log.exception("envoi du code de connexion impossible")
 

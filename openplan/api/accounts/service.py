@@ -171,13 +171,22 @@ class AccountService(AccountsRepo, SharingMixin):
         self.admin_email = normalize_email(settings.admin_email) if settings.admin_email else None
         self.mail_budget = MailBudget(
             settings.mail_daily_total,
-            {"invitation": settings.mail_daily_invites},
-            lambda: self.clock(),  # noqa: PLW0108 - `clock` se remplace après coup (tests)
+            {"invitation": settings.mail_daily_invites, "signup": settings.mail_daily_cap},
+            self._now,
         )
+        """KAN-117 : plafond quotidien de tous les e-mails ; KAN-104 : les nouvelles portes
+        (classe `signup`) s'arrêtent les premières."""
         from openplan.api.accounts.password_service import PasswordFlows
+        from openplan.api.accounts.signup_service import SignupFlows
 
         self.passwords = PasswordFlows(self)
         """KAN-104 : mot de passe (routes derrière OPENPLAN_PASSWORD_LOGIN)."""
+        self.signup = SignupFlows(self)
+        """KAN-104 L2 : inscription (mêmes routes fermées, et OPENPLAN_SIGNUP)."""
+
+    def _now(self) -> datetime:
+        """L'horloge du moment (les tests la remplacent après la construction)."""
+        return self.clock()
 
     def send_mail(self, message: MailMessage, kind: MailKind = "login") -> bool:
         """KAN-117 : chaque envoi compte dans le plafond du jour ; plafond atteint, rien ne

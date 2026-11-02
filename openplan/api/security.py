@@ -233,6 +233,8 @@ ACCOUNTS_PUBLIC = frozenset(
         "/api/auth/login/password",
         "/api/auth/password/forgot",
         "/api/auth/password/reset",
+        "/api/auth/signup/start",
+        "/api/auth/signup/verify",
         "/api/test/mail/last-code",
         "/api/contact",
     }

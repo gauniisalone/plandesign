@@ -268,6 +268,9 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/auth/login/password"): "public",
     ("POST", "/api/auth/password/forgot"): "public",
     ("POST", "/api/auth/password/reset"): "public",
+    # KAN-104 L2 : inscription (de plus fermée par OPENPLAN_SIGNUP=invite).
+    ("POST", "/api/auth/signup/start"): "public",
+    ("POST", "/api/auth/signup/verify"): "public",
     ("PUT", "/api/auth/password"): "user",
     ("POST", "/api/auth/reauth/start"): "user",
     ("POST", "/api/auth/reauth/verify"): "user",
@@ -508,7 +511,26 @@ def register_project(request: Request, project_id: UUID, name: str) -> None:
     """Création avec les comptes : la ligne du projet et son propriétaire."""
     accounts = accounts_of(request)
     if accounts is not None:
-        accounts.add_project(project_id, signed_in_user(request).id, name)
+        user = signed_in_user(request)
+        _check_project_cap(request, accounts, user.id)
+        accounts.add_project(project_id, user.id, name)
+
+
+def _check_project_cap(request: Request, accounts: object, user_id: UUID) -> None:
+    """KAN-104 L2 : un compte créé par l'inscription possède au plus
+    OPENPLAN_SIGNUP_MAX_PROJECTS projets (5) ; refusé avant toute écriture (403)."""
+    from openplan.api.accounts.repo import AccountsRepo
+
+    cap: int = request.app.state.settings.signup_max_projects
+    if cap <= 0 or not isinstance(accounts, AccountsRepo) or not accounts.self_signed_up(user_id):
+        return
+    if accounts.owned_project_count(user_id) >= cap:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Votre compte peut avoir {cap} projets : supprimez-en un pour en créer un autre."
+            ),
+        )
 
 
 def forget_project(request: Request, project_id: UUID) -> None:

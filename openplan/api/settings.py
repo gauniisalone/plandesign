@@ -125,6 +125,16 @@ class Settings:
     mail_daily_invites: int = 250
     """OPENPLAN_MAIL_DAILY_INVITES (KAN-117) : au-delà de ce nombre d'e-mails dans la journée,
     les invitations par e-mail s'arrêtent, pour garder la place des codes de connexion."""
+    signup_quota_mb: int = 200
+    """OPENPLAN_SIGNUP_QUOTA_MB (KAN-104) : place des comptes créés par l'inscription (pas
+    l'administrateur), plafonnée en plus d'OPENPLAN_QUOTA_MB ; 0 = pas de plafond en plus."""
+    signup_max_projects: int = 5
+    """OPENPLAN_SIGNUP_MAX_PROJECTS (KAN-104) : projets possédés par un compte inscrit ;
+    0 = sans limite."""
+    mail_daily_cap: int = 200
+    """OPENPLAN_MAIL_DAILY_CAP (KAN-104, D4) : au-delà de ce nombre d'e-mails dans la journée
+    (tous confondus, KAN-117), les nouvelles portes (inscription, oubli, preuve récente)
+    s'arrêtent les premières ; 0 = sans plafond en plus du total."""
     realistic: RealisticConfig = field(default_factory=RealisticConfig)
     """KAN-89 : rendus réalistes calculés par le poste d'augus (voir `realistic_config`)."""
     access_log_dir: Path | None = None
@@ -197,6 +207,9 @@ class Settings:
             quota_mb=parse_quota(merged.get("OPENPLAN_QUOTA_MB")),
             mail_daily_total=parse_count(merged.get("OPENPLAN_MAIL_DAILY_TOTAL"), 280),
             mail_daily_invites=parse_count(merged.get("OPENPLAN_MAIL_DAILY_INVITES"), 250),
+            signup_quota_mb=parse_count(merged.get("OPENPLAN_SIGNUP_QUOTA_MB"), 200),
+            signup_max_projects=parse_count(merged.get("OPENPLAN_SIGNUP_MAX_PROJECTS"), 5),
+            mail_daily_cap=parse_count(merged.get("OPENPLAN_MAIL_DAILY_CAP"), 200),
             realistic=RealisticConfig.from_env(merged),
             access_log_dir=Path(merged["OPENPLAN_ACCESS_LOG_DIR"])
             if merged.get("OPENPLAN_ACCESS_LOG_DIR", "").strip()

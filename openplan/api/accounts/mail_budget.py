@@ -3,9 +3,11 @@
 Le quota de Brevo (offre gratuite : 300 par jour) est partagé par tous les envois ; quand on
 s'en approche, les codes de connexion passent avant le reste :
 
-- `login` (P1) : codes de connexion et formulaire de contact du site, jusqu'au plafond total
-  (OPENPLAN_MAIL_DAILY_TOTAL, 280 par défaut) ;
-- `invitation` (P2) : invitations par e-mail, jusqu'à OPENPLAN_MAIL_DAILY_INVITES (250).
+- `login` (P1) : codes de connexion, formulaire de contact du site et avis « mot de passe
+  changé » (KAN-104), jusqu'au plafond total (OPENPLAN_MAIL_DAILY_TOTAL, 280 par défaut) ;
+- `invitation` (P2) : invitations par e-mail, jusqu'à OPENPLAN_MAIL_DAILY_INVITES (250) ;
+- `signup` (P3, KAN-104) : inscription, « déjà un compte », oubli et preuve récente, jusqu'à
+  OPENPLAN_MAIL_DAILY_CAP (200) : l'oubli peut attendre, le code de connexion reste ouvert.
 
 Une classe fermée répond 503 avec Retry-After (jusqu'à minuit UTC) et
 `X-PlanDesign-Limit: mail-quota`. Le contrôle (`check`) passe AVANT toute lecture de l'adresse :
@@ -29,8 +31,8 @@ from typing import Literal
 
 log = logging.getLogger("openplan.accounts")
 
-MailKind = Literal["login", "invitation"]
-KINDS: tuple[MailKind, ...] = ("login", "invitation")
+MailKind = Literal["login", "invitation", "signup"]
+KINDS: tuple[MailKind, ...] = ("login", "invitation", "signup")
 ALERT_SHARE = 0.8
 QUOTA_TEXT = "Trop d'e-mails envoyés aujourd'hui : réessayez demain."
 LIMIT_HEADER = "X-PlanDesign-Limit"

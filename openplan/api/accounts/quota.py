@@ -86,9 +86,16 @@ def used_bytes(request: Request, accounts: AccountsBackend, user_id: UUID) -> in
     return sum(folder_bytes(store.project_dir(pid)) for pid in accounts.paid_project_ids(user_id))
 
 
-def quota_bytes(request: Request) -> int | None:
-    mb: int = request.app.state.settings.quota_mb
-    return mb * MB if mb > 0 else None
+def quota_bytes(request: Request, payer: UUID | None = None) -> int | None:
+    """La limite de ce compte : OPENPLAN_QUOTA_MB, et KAN-104 L2, pour un compte créé par
+    l'inscription, au plus OPENPLAN_SIGNUP_QUOTA_MB (200 Mo par défaut)."""
+    settings = request.app.state.settings
+    limits = [settings.quota_mb] if settings.quota_mb > 0 else []
+    if payer is not None and settings.signup_quota_mb > 0:
+        signed_up = getattr(accounts_of(request), "self_signed_up", None)
+        if callable(signed_up) and signed_up(payer):
+            limits.append(settings.signup_quota_mb)
+    return min(limits) * MB if limits else None
 
 
 def mb(n: int) -> str:
@@ -116,11 +123,11 @@ def guard_space(
     la place du propriétaire du projet serait dépassée."""
     if key not in UPLOADS and key not in LAUNCHES and key not in LINKS:
         return
-    limit = quota_bytes(request)
-    if limit is None:
-        return
     payer = accounts.payer_of(UUID(str(request.path_params["project_id"])))
     if payer is None:
+        return
+    limit = quota_bytes(request, payer)
+    if limit is None:
         return
     used = used_bytes(request, accounts, payer)
     if key in UPLOADS:
@@ -144,4 +151,4 @@ def usage(request: Request) -> dict[str, Any]:
     user = signed_in_user(request)
     accounts = accounts_of(request)
     used = 0 if accounts is None else used_bytes(request, accounts, user.id)
-    return {"used_bytes": used, "quota_bytes": quota_bytes(request)}
+    return {"used_bytes": used, "quota_bytes": quota_bytes(request, user.id)}
