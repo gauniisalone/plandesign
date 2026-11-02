@@ -1,7 +1,8 @@
 """KAN-104 : mots de passe (conception, § 4).
 
 - Empreinte argon2id (`argon2-cffi`), paramètres OWASP : m = 19 456 KiB, t = 2, p = 1 ; au plus
-  4 calculs à la fois (sémaphore), pour qu'une rafale ne prenne pas la mémoire du serveur.
+  2 calculs à la fois (les 2 cœurs du serveur). Une requête attend une place 2 s au plus, puis
+  `HashBusyError` (503 avec Retry-After) : elle ne garde pas un fil du pool commun en file.
 - Politique NIST 800-63B : 12 à 128 caractères après normalisation NFKC, sans règle de
   composition ; refusés : l'adresse du compte, sa partie locale, « plandesign ».
 - Mots de passe connus des fuites : Pwned Passwords (HIBP) en k-anonymat. Seuls les 5 premiers
@@ -19,7 +20,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from functools import cache
 from threading import BoundedSemaphore
 
@@ -35,11 +37,29 @@ MAX_LENGTH = 128
 HIBP_RANGE = "https://api.pwnedpasswords.com/range/"
 HIBP_TIMEOUT_S = 2.0
 HASHER = PasswordHasher(time_cost=2, memory_cost=19_456, parallelism=1)
-_SLOTS = BoundedSemaphore(4)
+HASH_SLOTS = 2
+SLOT_WAIT_S = 2.0
+_SLOTS = BoundedSemaphore(HASH_SLOTS)
 
 
 class PasswordPolicyError(ValueError):
     """Le mot de passe ne suit pas la politique ; le texte est montré tel quel."""
+
+
+class HashBusyError(RuntimeError):
+    """Toutes les places de calcul sont prises depuis SLOT_WAIT_S : rien n'a été calculé."""
+
+    retry_after_s = int(SLOT_WAIT_S)
+
+
+@contextmanager
+def _slot() -> Iterator[None]:
+    if not _SLOTS.acquire(timeout=SLOT_WAIT_S):
+        raise HashBusyError
+    try:
+        yield
+    finally:
+        _SLOTS.release()
 
 
 def normalized(password: str) -> str:
@@ -97,14 +117,23 @@ def is_pwned(password: str) -> bool | None:
 
 
 def hash_password(password: str) -> str:
-    with _SLOTS:
+    with _slot():
+        return HASHER.hash(password)
+
+
+def hash_after(check: Callable[[], object], password: str) -> str:
+    """Une place de calcul d'abord, puis `check()` (consommer un code), puis l'empreinte. Sans
+    place (HashBusyError), `check` n'est pas appelé et le code reste valable ; si `check` lève,
+    rien n'est calculé (un code faux ne coûte pas un calcul)."""
+    with _slot():
+        check()
         return HASHER.hash(password)
 
 
 def verify_password(stored: str | None, password: str) -> tuple[bool, bool]:
     """(juste, à recalculer) ; `stored` absent : l'empreinte factice est vérifiée quand même,
     pour la même durée, et la réponse est fausse."""
-    with _SLOTS:
+    with _slot():
         try:
             ok = HASHER.verify(stored or _dummy(), normalized(password))
         except (VerifyMismatchError, VerificationError, InvalidHashError):

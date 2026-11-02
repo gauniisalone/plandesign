@@ -23,7 +23,7 @@ from openplan.api.accounts.password_service import (
     ReauthRequiredError,
     SessionInfo,
 )
-from openplan.api.accounts.passwords import PasswordPolicyError
+from openplan.api.accounts.passwords import HashBusyError, PasswordPolicyError
 from openplan.api.accounts.routes import (
     NEUTRAL,
     Me,
@@ -46,6 +46,7 @@ from openplan.schemas.common import StrictModel
 WRONG = "Adresse ou mot de passe incorrect."
 THROTTLED = "Trop d'essais depuis cette connexion : réessayez dans une heure, ou recevez un code."
 REAUTH_FIRST = "Confirmez d'abord avec le code envoyé à votre adresse."
+BUSY = "Trop de demandes en même temps : réessayez dans un instant."
 
 
 def password_enabled(request: Request) -> None:
@@ -157,6 +158,11 @@ def password_login_page(
         return _email_step(safe_next(next), THROTTLED, 429, password=True)
     except PasswordRefusedError:
         return _email_step(safe_next(next), WRONG, 401, password=True)
+    except HashBusyError as exc:
+        page = _email_step(safe_next(next), BUSY, 503, password=True)
+        page.headers["Retry-After"] = str(exc.retry_after_s)
+        page.headers["X-PlanDesign-Limit"] = "hash-busy"
+        return page
     record_login(request, user)
     response = RedirectResponse(safe_next(next), status_code=303)
     set_session_cookie(response, raw)

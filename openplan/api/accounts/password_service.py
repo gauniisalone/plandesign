@@ -12,11 +12,14 @@ ne bloque jamais le titulaire.
 - Par IP : 30 échecs par heure, puis 429 (en plus des 10 requêtes/min sur `/api/auth/*`).
 - Poser, changer ou réinitialiser le mot de passe ferme TOUTES les sessions et en ouvre une
   neuve (jeton neuf) ; le titulaire est prévenu par e-mail.
+- Calcul argon2 trop demandé (`HashBusyError`, 503) : levé AVANT de consommer un code, qui reste
+  valable ; un nouveau calcul d'empreinte à la connexion est simplement remis à la suivante.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -34,7 +37,9 @@ from openplan.api.accounts.mail import (
 )
 from openplan.api.accounts.models import AuthSession, User
 from openplan.api.accounts.passwords import (
+    HashBusyError,
     check_policy,
+    hash_after,
     hash_password,
     is_pwned,
     normalized,
@@ -140,6 +145,10 @@ class PasswordFlows:
             if usable and user is not None:
                 self._count_failure(user.id, now)
             raise PasswordRefusedError
+        digest = None
+        if rehash:
+            with suppress(HashBusyError):  # recalculée à la prochaine connexion
+                digest = hash_password(normalized(password))
         with self.accounts.session() as db, db.begin():
             row = db.get(User, user.id)
             if row is None:  # pragma: no cover - compte supprimé entre-temps
@@ -147,8 +156,8 @@ class PasswordFlows:
             row.failed_logins = 0
             row.locked_until = None
             row.last_seen_at = now
-            if rehash:
-                row.password_hash = hash_password(normalized(password))
+            if digest is not None:
+                row.password_hash = digest
             found = _auth_user(row)
         return found, self.accounts._open_session(found.id, user_agent, "password", now)
 
@@ -201,11 +210,13 @@ class PasswordFlows:
         except InvalidEmailError:
             raise LoginRefusedError(LoginRefusal.INVALID) from None
         value = check_policy(password, address, self.pwned)
-        self.accounts._consume_code(address, typed, "reset", now)
+        digest = hash_after(
+            lambda: self.accounts._consume_code(address, typed, "reset", now), value
+        )
         user = self._user(address)
         if user is None or self._is_admin(user):
             raise LoginRefusedError(LoginRefusal.INVALID)
-        found = self._set_password(user.id, value, now)
+        found = self._set_password(user.id, digest, now)
         self.accounts.revoke_all(user.id)
         raw = self.accounts._open_session(user.id, user_agent, "password", now)
         return found, raw, password_changed_message(address)
@@ -242,15 +253,14 @@ class PasswordFlows:
         elif session.reauth_at is None or now - aware(session.reauth_at) > REAUTH_FRESH:
             raise ReauthRequiredError
         value = check_policy(password, user.email, self.pwned)
-        self._set_password(user.id, value, now)
+        self._set_password(user.id, hash_password(value), now)
         self.accounts.revoke_all(user.id)
         raw = self.accounts._open_session(user.id, user_agent, session.auth_method, now)
         return raw, password_changed_message(user.email)
 
-    def _set_password(self, user_id: UUID, value: str, now: datetime) -> AuthUser:
+    def _set_password(self, user_id: UUID, digest: str, now: datetime) -> AuthUser:
         from openplan.api.accounts.service import _auth_user
 
-        digest = hash_password(value)
         with self.accounts.session() as db, db.begin():
             row = db.get(User, user_id)
             if row is None:  # pragma: no cover

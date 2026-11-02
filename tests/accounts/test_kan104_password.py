@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select
@@ -430,6 +433,71 @@ def test_hashes_dummy_and_rehash() -> None:
     assert verify_password(None, GOOD) == (False, False)  # empreinte factice, même calcul
     weak = passwords.PasswordHasher(time_cost=1, memory_cost=8192, parallelism=1).hash(GOOD)
     assert verify_password(weak, GOOD) == (True, True)  # paramètres changés : recalculée
+
+
+@contextmanager
+def _all_slots_taken(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Les 2 places de calcul prises par d'autres requêtes ; attente raccourcie pour le test."""
+    monkeypatch.setattr(passwords, "SLOT_WAIT_S", 0.05)
+    held = [passwords._SLOTS.acquire(timeout=1) for _ in range(passwords.HASH_SLOTS)]
+    assert all(held)
+    try:
+        yield
+    finally:
+        for _ in held:
+            passwords._SLOTS.release()
+
+
+def _busy(response: httpx.Response) -> bool:
+    return (
+        response.status_code == 503
+        and response.headers["Retry-After"] == "2"
+        and response.headers["X-PlanDesign-Limit"] == "hash-busy"
+    )
+
+
+def test_hashing_busy_gives_503_and_keeps_the_code(
+    on: tuple[TestClient, AccountService, FakeMailer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service, mailer = on
+    assert passwords.HASH_SLOTS == 2  # les 2 cœurs du serveur
+    _hash_directly(service, LEA, GOOD)
+    fresh = _second(client)
+    with _all_slots_taken(monkeypatch):
+        login = fresh.post("/api/auth/password/login", json={"email": LEA, "password": GOOD})
+        page = fresh.post("/api/auth/login/password", data={"email": LEA, "password": GOOD})
+    assert _busy(login) and "réessayez" in login.json()["detail"]
+    assert _busy(page) and "réessayez" in page.text and GOOD not in page.text
+    with service.session() as db:
+        user = db.scalar(select(User).where(User.email == LEA))
+    assert user is not None and user.failed_logins == 0  # rien de compté : rien n'a été vérifié
+    # Oubli : le code n'est pas consommé tant que le calcul n'a pas eu de place.
+    assert fresh.post("/api/auth/password/forgot", json={"email": LEA}).status_code == 202
+    code = code_of(mailer, LEA)
+    body = {"email": LEA, "code": code, "password": OTHER}
+    with _all_slots_taken(monkeypatch):
+        assert _busy(fresh.post("/api/auth/password/reset", json=body))
+    assert fresh.post("/api/auth/password/reset", json=body).status_code == 200
+
+
+def test_a_wrong_code_costs_no_hash(
+    on: tuple[TestClient, AccountService, FakeMailer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, mailer = on
+    assert client.post("/api/auth/password/forgot", json={"email": LEA}).status_code == 202
+    code_of(mailer, LEA)
+    computed: list[str] = []
+
+    class Counting(passwords.PasswordHasher):
+        def hash(self, password: str | bytes, *, salt: bytes | None = None) -> str:
+            computed.append("calcul")
+            return super().hash(password, salt=salt)
+
+    monkeypatch.setattr(passwords, "HASHER", Counting(time_cost=2, memory_cost=19_456))
+    wrong = client.post(
+        "/api/auth/password/reset", json={"email": LEA, "code": "000000", "password": OTHER}
+    )
+    assert wrong.status_code == 400 and computed == []
 
 
 def test_no_password_in_the_logs(

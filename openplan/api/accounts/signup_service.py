@@ -28,7 +28,7 @@ from openplan.api.access import AuthUser
 from openplan.api.accounts.abuse import disposable
 from openplan.api.accounts.mail import MailMessage, already_message, signup_message
 from openplan.api.accounts.models import LoginToken, User
-from openplan.api.accounts.passwords import check_policy, hash_password
+from openplan.api.accounts.passwords import check_policy, hash_after
 from openplan.api.ratelimit import SlidingWindowLimiter
 
 if TYPE_CHECKING:
@@ -153,8 +153,9 @@ class SignupFlows:
         if address == self.accounts.admin_email:
             raise LoginRefusedError(LoginRefusal.INVALID)
         value = check_policy(password, address, self.accounts.passwords.pwned)
-        self.accounts._consume_code(address, typed, "signup", now)
-        digest = hash_password(value)
+        digest = hash_after(
+            lambda: self.accounts._consume_code(address, typed, "signup", now), value
+        )
         with self.accounts.session() as db, db.begin():
             if db.scalar(select(User.id).where(User.email == address)) is not None:
                 raise LoginRefusedError(LoginRefusal.INVALID)
