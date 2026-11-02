@@ -12,4 +12,10 @@ export const RENDER_ACCOUNT_KAN99 = {
   id: "3f1c7b2a-9d4e-4f6a-8b1c-5e7d9a0b2c43",
   email: "rendus-kan99@example.org",
 };
+/** KAN-103 : un troisième compte autorisé, pour le parcours court (features/), même raison :
+ *  3 codes de connexion par adresse et par quart d'heure, et les deux premiers sont pris. */
+export const RENDER_ACCOUNT_KAN103 = {
+  id: "7716d76b-5fa9-4e71-b6aa-47810feec571",
+  email: "rendus-kan103@example.org",
+};
 export const E2E_WORKER_TOKEN = "e2e-online-poste-de-rendu-jeton-de-test-0001";

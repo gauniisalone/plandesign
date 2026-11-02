@@ -3,7 +3,10 @@ import path from "node:path";
 import { expect, request as playwrightRequest, type Page } from "@playwright/test";
 import { gotoApp } from "../../e2e/app-ready";
 import { showPanel } from "../../e2e/helpers";
-import { E2E_WORKER_TOKEN, RENDER_ACCOUNT } from "../../e2e-online/render-account";
+import {
+  E2E_WORKER_TOKEN,
+  RENDER_ACCOUNT_KAN103 as RENDER_ACCOUNT,
+} from "../../e2e-online/render-account";
 import { origin, signIn } from "./comptes";
 import { Given, Then, When, type Ctx } from "./fixtures";
 
