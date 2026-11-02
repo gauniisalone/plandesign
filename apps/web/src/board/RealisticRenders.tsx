@@ -193,12 +193,15 @@ export function RealisticRenders({
   project,
   levelId,
   readOnly,
+  canReact = !readOnly,
   frameId,
   title = "Rendus",
 }: {
   project: Project;
   levelId: string;
   readOnly: boolean;
+  /** KAN-99 : commentateur ou plus ; il réagit à tout rendu du projet (KAN-78). */
+  canReact?: boolean;
   /** KAN-91 : le cadre Rendus (pour le contrôle « plan relié » du lot L1). */
   frameId?: string;
   title?: string;
@@ -677,6 +680,7 @@ export function RealisticRenders({
           typicalSeconds={listing.typical_seconds}
           linked={linked}
           readOnly={readOnly}
+          canReact={canReact}
           allowed={Boolean(allowed)}
           favorites={favorites}
           onStar={star}

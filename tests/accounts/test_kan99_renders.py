@@ -5,12 +5,14 @@ compte ses rendus montrés dans des projets qui restent.
 
 - Voir (liste, image) : tout membre, lecteur compris, hors liste blanche ; un non-membre
   reçoit 404 (la garde ne révèle pas le projet) ; rendu désactivé : 403 pour tous.
-- Lancer, variante, couverture, réactions : liste blanche et lanceur, comme avant.
+- Lancer, variante, couverture : liste blanche et lanceur, comme avant.
+- Réagir (décision d'augus, 3 nov.) : tout commentateur ou plus, sur tout rendu du projet.
 - L'étoile : tout éditeur ; ni demande créée (quota du jour intact) ni refus d'espace plein.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -96,18 +98,20 @@ def test_members_see_every_render_of_the_project(world: World) -> None:
         ("GET", f"{url}/realistic/{rid}/image"),
         ("PUT", f"{url}/realistic/{rid}/favorite"),
         ("DELETE", f"{url}/realistic/{rid}/favorite"),
+        ("PUT", f"{url}/realistic/{rid}/reactions/up"),
+        ("DELETE", f"{url}/realistic/{rid}/reactions/up"),
     ):
         assert bob.request(method, path).status_code == 404, path  # type: ignore[attr-defined]
 
-    # Un autre compte autorisé, éditeur : il voit le rendu d'augus, l'étoile, mais variante,
-    # couverture et réaction restent au lanceur (404 : pas son rendu).
+    # Un autre compte autorisé, éditeur : il voit le rendu d'augus, l'étoile, mais variante et
+    # couverture restent au lanceur (404 : pas son rendu) ; il réagit (commentateur ou plus).
     zoe, zoe_id = _member(world, "zoe@example.org", "editor")
     _allow(world, zoe_id)
     row = zoe.get(f"{url}/realistic").json()["requests"][0]  # type: ignore[attr-defined]
     assert row["id"] == rid and row["mine"] is False
     assert zoe.post(f"{url}/realistic/{rid}/variant").status_code == 404  # type: ignore[attr-defined]
     assert zoe.put(f"{url}/realistic/{rid}/cover").status_code == 404  # type: ignore[attr-defined]
-    assert zoe.put(f"{url}/realistic/{rid}/reactions/up").status_code == 404  # type: ignore[attr-defined]
+    assert zoe.put(f"{url}/realistic/{rid}/reactions/up").status_code == 200  # type: ignore[attr-defined]
     starred = zoe.put(f"{url}/realistic/{rid}/favorite")  # type: ignore[attr-defined]
     assert starred.status_code == 200 and starred.json() == {"favorite_ids": [rid]}
     # Sa propre demande est « mine » pour elle, pas pour augus ; elle part sur son quota.
@@ -122,6 +126,37 @@ def test_members_see_every_render_of_the_project(world: World) -> None:
     ]
     # L'étoile d'un éditeur est vue de tous, lectrice comprise.
     assert kim.get(f"{url}/realistic").json()["favorite_ids"] == [rid]  # type: ignore[attr-defined]
+    world.close()
+
+
+def test_reactions_are_open_to_commenters(world: World) -> None:
+    """KAN-99 (décision d'augus, 3 nov.) : commentateur hors liste blanche, 200 ; lecteur, 403 ;
+    non-membre, 404. Une réaction par membre et par emoji (KAN-78) ; chacun ne retire que la
+    sienne ; la cloche prévient le lanceur (`item_author`)."""
+    world.ask()
+    rid = str(render_one(world)["request_id"])
+    url = f"{base(world)}/realistic/{rid}/reactions"
+    lou, _ = _member(world, "lou@example.org", "commenter")
+    put = lou.put(f"{url}/heart")  # type: ignore[attr-defined]
+    assert put.status_code == 200, put.text
+    assert [(p["key"], p["count"], p["mine"]) for p in put.json()] == [("heart", 1, True)]
+    assert lou.put(f"{url}/heart").json() == put.json()  # type: ignore[attr-defined]
+    assert world.client.put(f"{url}/heart").json()[0]["count"] == 2
+    # Lou retire la sienne, pas celle d'augus.
+    left = lou.delete(f"{url}/heart")  # type: ignore[attr-defined]
+    assert left.status_code == 200
+    assert [(p["count"], p["mine"]) for p in left.json()] == [(1, False)]
+    store = world.client.app.state.store  # type: ignore[attr-defined]
+    events = (store.project_dir(world.project_id) / "events.jsonl").read_text(encoding="utf-8")
+    added = [json.loads(x) for x in events.splitlines() if '"reaction.added"' in x]
+    assert added[0]["item_author"] == str(world.augus_id)
+    kim, _ = _member(world, "kim@example.org", "viewer")
+    assert kim.put(f"{url}/up").status_code == 403  # type: ignore[attr-defined]
+    assert kim.delete(f"{url}/up").status_code == 403  # type: ignore[attr-defined]
+    bob, _ = _member(world, "bob@example.org", None)
+    assert bob.put(f"{url}/up").status_code == 404  # type: ignore[attr-defined]
+    # Un rendu inconnu ou pas encore fait : 404.
+    assert lou.put(f"{base(world)}/realistic/{uuid4()}/reactions/up").status_code == 404  # type: ignore[attr-defined]
     world.close()
 
 

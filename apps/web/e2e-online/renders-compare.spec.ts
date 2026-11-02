@@ -25,7 +25,8 @@ import {
  *  Et l'ouverture des rendus aux membres (décision d'augus, 2 nov.) : une lectrice voit les
  *  rendus du projet sans rien pouvoir lancer ni étoiler ; une non-membre reçoit 404.
  *  Le poste est SIMULÉ comme dans renders-gallery.spec.ts. Chaque personne et le poste ont
- *  leur propre X-Forwarded-For (198.51.100.251 à 256). `KAN99_SHOTS` : dossier des captures. */
+ *  leur propre X-Forwarded-For (198.51.100.251 à 255, 214 et 215). Une commentatrice réagit aux rendus
+ *  (décision d'augus, 3 nov.) ; la lectrice voit les pastilles, inactives. `KAN99_SHOTS` : dossier des captures. */
 
 const IMAGE = path.resolve("../../tests/fixtures/rect_room/image.png");
 const PNG = fs.readFileSync(IMAGE);
@@ -470,7 +471,7 @@ test("avant/après, favoris, côte à côte synchronisé, clavier", async ({
   expect(failures).toEqual([]);
 });
 
-test("rendus ouverts aux membres : la lectrice voit, la non-membre reçoit 404", async ({
+test("rendus ouverts aux membres : la lectrice voit, la commentatrice réagit, la non-membre reçoit 404", async ({
   browser,
   baseURL,
 }) => {
@@ -489,7 +490,7 @@ test("rendus ouverts aux membres : la lectrice voit, la non-membre reçoit 404",
     baseURL,
     extraHTTPHeaders: {
       Authorization: `Bearer ${E2E_WORKER_TOKEN}`,
-      "X-Forwarded-For": "198.51.100.256",
+      "X-Forwarded-For": "198.51.100.214",
     },
   });
   await deliverProject(worker, launcher, id, ["japandi"]);
@@ -555,8 +556,39 @@ test("rendus ouverts aux membres : la lectrice voit, la non-membre reçoit 404",
   await expect(
     viewer.getByRole("button", { name: /Nouvelle variante/ }),
   ).toHaveCount(0);
+  // Lectrice : les pastilles de réaction se voient, inactives.
+  await expect(viewer.getByRole("button", { name: "J'adore" })).toBeDisabled();
   await kim.keyboard.press("Escape");
   await expect(viewer).toHaveCount(0);
+
+  // Céline, commentatrice (hors liste blanche) : elle réagit au rendu (décision du 3 nov.).
+  const asCommenter = (await (
+    await launcher.request.post(`/api/projects/${id}/invitations`, {
+      data: { role: "commenter" },
+      headers: origin,
+    })
+  ).json()) as { token: string };
+  const celine = await person(browser, "198.51.100.215");
+  await gotoApp(celine, `/#/invitation/${asCommenter.token}`);
+  await signInHere(celine, `celine-${run}.kan99@example.org`);
+  await gotoApp(celine, `/#/projects/${id}/board`);
+  const celineGallery = celine
+    .getByRole("region", { name: "Espace de travail" })
+    .getByRole("region", { name: "Rendus réalistes" })
+    .getByRole("list", { name: "Galerie des rendus" });
+  await celineGallery
+    .getByRole("button", { name: /^Ouvrir le rendu/ })
+    .click({ timeout: 30_000 });
+  const celineViewer = celine.getByRole("dialog", {
+    name: "Visionneuse des rendus",
+  });
+  await celineViewer.getByRole("button", { name: "J'adore" }).click();
+  await expect(
+    celineViewer.getByRole("button", { name: "J'adore (1)" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    celineViewer.getByRole("button", { name: /couverture du projet/ }),
+  ).toHaveCount(0);
 
   // Lou, connectée mais pas membre : 404 (le projet n'est pas révélé).
   const lou = await person(browser, "198.51.100.255");

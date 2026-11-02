@@ -225,11 +225,13 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     ("POST", P + "/realistic/{request_id}/variant"): E,
     ("PUT", P + "/realistic/{request_id}/cover"): E,
     ("DELETE", P + "/realistic/cover"): E,
+    # KAN-99 (3 nov.) : réagir, tout commentateur ou plus, hors liste blanche, à tout rendu
+    # fait du projet (le rôle seul suffit).
     ("PUT", P + "/realistic/{request_id}/reactions/{key}"): C,
     ("DELETE", P + "/realistic/{request_id}/reactions/{key}"): C,
     # KAN-99 : la liste et l'image s'ouvrent à tout membre (lecteur compris), hors liste
-    # blanche ; l'étoile (« Favoris », commune au projet) à tout éditeur. Lancer, variante,
-    # couverture et réactions gardent la liste blanche et le lanceur.
+    # blanche ; l'étoile (« Favoris », commune au projet) à tout éditeur. Lancer, variante et
+    # couverture gardent la liste blanche et le lanceur.
     ("PUT", P + "/realistic/{request_id}/favorite"): E,
     ("DELETE", P + "/realistic/{request_id}/favorite"): E,
 }

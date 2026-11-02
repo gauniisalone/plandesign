@@ -2460,6 +2460,7 @@ export function BoardCanvas(props: Props) {
                 project={project}
                 levelId={frameLevel(item)}
                 readOnly={readOnly}
+                canReact={props.reactions?.canReact ?? !readOnly}
                 frameId={item.id}
                 title={item.text}
               />

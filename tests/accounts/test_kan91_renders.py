@@ -296,12 +296,13 @@ def test_reactions_on_a_render(world: World) -> None:
     assert world.client.get(f"{base(world)}/reactions").json() == []
     removed = world.client.delete(f"{base(world)}/realistic/{rid}/reactions/heart")
     assert removed.status_code == 200 and removed.json() == []
-    # Un autre compte, même commentateur du projet : 403 (liste blanche).
+    # KAN-99 (décision d'augus, 3 nov.) : un commentateur hors liste blanche réagit ; le
+    # détail des rôles est dans test_kan99_renders.
     marie = world.person("marie@example.org")
     user = world.service.user_by_email("marie@example.org")
     assert user is not None
     world.service.set_member(world.project_id, user.id, "commenter", added_by=world.augus_id)
-    assert marie.put(f"{base(world)}/realistic/{rid}/reactions/up").status_code == 403
+    assert marie.put(f"{base(world)}/realistic/{rid}/reactions/up").status_code == 200
     world.close()
 
 

@@ -370,9 +370,11 @@ def add_realistic_reaction(
     project_id: UUID, request_id: UUID, key: ReactionKey, request: Request, actor: ActorDep
 ) -> list[RealisticReaction]:
     """KAN-91 : réagir à un rendu réaliste, avec les réactions de KAN-78 (même fichier, même
-    journal : la cloche prévient le lanceur du rendu, jamais celui qui réagit)."""
-    user = allowed_user(request)
-    row = _own_done(request, user, project_id, request_id)
+    journal : la cloche prévient le lanceur du rendu, jamais celui qui réagit). KAN-99
+    (décision d'augus, 3 nov.) : tout commentateur ou plus (garde de la route), hors liste
+    blanche, sur tout rendu fait du projet ; une réaction par membre et par emoji (KAN-78)."""
+    member_user(request)
+    row = _project_done(request, project_id, request_id)
     me = author_of(actor)
     store = store_of(request)
     project_dir = store.project_dir(project_id)
@@ -403,9 +405,9 @@ def add_realistic_reaction(
 def remove_realistic_reaction(
     project_id: UUID, request_id: UUID, key: ReactionKey, request: Request, actor: ActorDep
 ) -> list[RealisticReaction]:
-    """Retire ma réaction (seulement la mienne)."""
-    user = allowed_user(request)
-    _own_done(request, user, project_id, request_id)
+    """Retire ma réaction (seulement la mienne : la route ne touche qu'à celle de l'appelant)."""
+    member_user(request)
+    _project_done(request, project_id, request_id)
     me = author_of(actor)
     store = store_of(request)
     reactions = ReactionStore(store.project_dir(project_id))

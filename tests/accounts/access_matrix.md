@@ -178,8 +178,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | DELETE | /api/projects/{project_id}/realistic/{request_id}/favorite | comptes | membre ≥ editor |  | member_user | 404 |
 | PUT | /api/projects/{project_id}/realistic/{request_id}/favorite | comptes | membre ≥ editor |  | member_user |  |
 | GET | /api/projects/{project_id}/realistic/{request_id}/image | comptes | membre ≥ viewer |  | member_user | 404 |
-| DELETE | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | allowed_user, propriétaire |  |
-| PUT | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | allowed_user, propriétaire |  |
+| DELETE | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
+| PUT | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
 | POST | /api/projects/{project_id}/realistic/{request_id}/variant | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/redo | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/renders | local+comptes | membre ≥ viewer |  |  |  |

@@ -51,9 +51,12 @@ export interface RenderViewerProps {
   onVariant: (requestId: string) => Promise<void>;
   onFromPhoto: (imageId: string) => Promise<void>;
   /** KAN-89 : la personne peut lancer des rendus (liste blanche). KAN-99 : les rendus d'un
-   *  projet sont montrés à tous ses membres ; variante, couverture et réactions restent au
-   *  lanceur, « Rendre depuis la photo » à la liste blanche. */
+   *  projet sont montrés à tous ses membres ; variante et couverture restent au lanceur,
+   *  « Rendre depuis la photo » à la liste blanche. */
   allowed: boolean;
+  /** KAN-99 (décision d'augus, 3 nov.) : commentateur ou plus, il réagit à tout rendu du
+   *  projet ; le lecteur voit les pastilles, inactives. */
+  canReact: boolean;
   /** KAN-99 : les favoris du projet ; l'étoile se pose par un éditeur (`readOnly` faux). */
   favorites: ReadonlySet<string>;
   onStar: (requestId: string, on: boolean) => Promise<void>;
@@ -178,8 +181,8 @@ export function RenderViewer(props: RenderViewerProps) {
   const isCover = coverId === render.id;
   const variants = renders.filter((r) => r.camera_id === render.camera_id);
   const eta = etaText(typicalSeconds);
-  // KAN-99 : lancer (depuis la photo) : liste blanche et éditeur ; variante, couverture,
-  // réactions : en plus, son propre rendu ; l'étoile : tout éditeur.
+  // KAN-99 : lancer (depuis la photo) : liste blanche et éditeur ; variante, couverture : en
+  // plus, son propre rendu ; l'étoile : tout éditeur ; réagir : commentateur ou plus.
   const canLaunch = !props.readOnly && props.allowed;
   const canAct = canLaunch && isMine(render);
   const isFavorite = props.favorites.has(render.id);
@@ -455,7 +458,7 @@ export function RenderViewer(props: RenderViewerProps) {
                   title={
                     pill ? `${r.label} : ${pill.names.join(", ")}` : r.label
                   }
-                  disabled={busy || !canAct}
+                  disabled={busy || !props.canReact}
                   onClick={() =>
                     void act(() => props.onReact(render.id, r.key, !pill?.mine))
                   }
