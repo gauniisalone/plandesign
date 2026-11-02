@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from openplan.api.access import SESSION_MAX_AGE_S, AuthUser, ResolvedSession
 from openplan.api.accounts.db import aware, utcnow
 from openplan.api.accounts.mail import Mailer, MailMessage, login_message
+from openplan.api.accounts.mail_budget import MailBudget, MailKind
 from openplan.api.accounts.models import AuthSession, LoginToken, User
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
 from openplan.api.accounts.sharing import SharingMixin
@@ -168,6 +169,19 @@ class AccountService(AccountsRepo, SharingMixin):
         self.clock = clock
         self.ip_limiter = SlidingWindowLimiter(IP_LIMIT, IP_WINDOW_S)
         self.admin_email = normalize_email(settings.admin_email) if settings.admin_email else None
+        self.mail_budget = MailBudget(
+            settings.mail_daily_total,
+            {"invitation": settings.mail_daily_invites},
+            lambda: self.clock(),  # noqa: PLW0108 - `clock` se remplace après coup (tests)
+        )
+
+    def send_mail(self, message: MailMessage, kind: MailKind = "login") -> bool:
+        """KAN-117 : chaque envoi compte dans le plafond du jour ; plafond atteint, rien ne
+        part (faux)."""
+        if not self.mail_budget.take(kind):
+            return False
+        self.mailer.send(message)
+        return True
 
     # --- demande d'un lien ------------------------------------------------------------
 

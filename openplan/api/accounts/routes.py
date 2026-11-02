@@ -29,6 +29,7 @@ from openplan.api.access import (
     SignedInDep,
 )
 from openplan.api.accounts.mail import FakeMailer, MailMessage
+from openplan.api.accounts.mail_budget import QUOTA_TEXT, MailQuotaError
 from openplan.api.accounts.service import (
     LOGIN_TTL,
     REFUSAL_TEXT,
@@ -127,7 +128,7 @@ class LastCode(StrictModel):
 
 def _send(accounts: AccountService, message: MailMessage) -> None:
     try:
-        accounts.mailer.send(message)
+        accounts.send_mail(message)
     except Exception:  # l'échec d'envoi ne doit jamais dire si l'adresse a un compte
         log.exception("envoi du code de connexion impossible")
 
@@ -135,8 +136,10 @@ def _send(accounts: AccountService, message: MailMessage) -> None:
 @router.post("/auth/email/start", status_code=202)
 def email_start(body: StartBody, request: Request, background: BackgroundTasks) -> StartResult:
     """Même réponse que l'adresse ait un compte ou non ; l'envoi part après la réponse, pour
-    que la durée de la réponse ne le trahisse pas non plus."""
+    que la durée de la réponse ne le trahisse pas non plus. KAN-117 : plafond du jour atteint,
+    503 avant de regarder l'adresse (`MailQuotaError`, même réponse pour toutes)."""
     accounts = service(request)
+    accounts.mail_budget.check("login")
     try:
         message = accounts.start_login(
             body.email,
@@ -232,6 +235,12 @@ def login_code_page(
 ) -> HTMLResponse:
     """Demande d'un code depuis la page : même réponse que l'adresse ait un compte ou non."""
     accounts = service(request)
+    try:
+        accounts.mail_budget.check("login")
+    except MailQuotaError as exc:
+        page = _email_step(safe_next(next), QUOTA_TEXT, 503)
+        page.headers.update(exc.headers)
+        return page
     try:
         message = accounts.start_login(email, next, _client_ip(request))
     except InvalidEmailError:

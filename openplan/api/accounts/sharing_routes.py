@@ -130,8 +130,11 @@ def invite_by_email(
     background: BackgroundTasks,
 ) -> InviteSent:
     """KAN-55 : toujours la même réponse, que l'adresse ait un compte ou non ; l'avis (cloche
-    ou e-mail) part après la réponse, pour que sa durée ne trahisse rien non plus."""
+    ou e-mail) part après la réponse, pour que sa durée ne trahisse rien non plus. KAN-117 :
+    invitations fermées pour la journée, 503 pour TOUTE adresse (même avec un compte, qui
+    n'aurait reçu que la cloche), sinon le 503 dirait qui a un compte."""
     accounts = service(request)
+    accounts.mail_budget.check("invitation")
     try:
         address = checked_email(body.email)
     except InvalidEmailError as exc:
@@ -172,7 +175,8 @@ def _send_invitation(
             accounts.settings.public_url,
             EMAIL_INVITE_DAYS,
         )
-        accounts.mailer.send(message)
+        if not accounts.send_mail(message, "invitation"):
+            log.warning("invitation par e-mail non envoyée : plafond du jour atteint")
     except Exception:  # jamais l'adresse dans le journal (KAN-55, MH6), ni la trace
         log.error("envoi d'une invitation impossible")
 

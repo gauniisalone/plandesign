@@ -61,7 +61,7 @@ def contact_message(to: str, visitor: str, text: str) -> MailMessage:
 
 def _send(request: Request, message: MailMessage) -> None:
     try:
-        service(request).mailer.send(message)
+        service(request).send_mail(message)  # KAN-117 : classe `login` (P1)
     except Exception:  # l'échec d'envoi ne change pas la réponse
         log.exception("envoi du message de contact impossible")
 
@@ -79,6 +79,7 @@ def contact(body: ContactBody, request: Request, background: BackgroundTasks) ->
             status_code=422, detail="Cette adresse e-mail n'est pas valable."
         ) from exc
     accounts = service(request)
+    accounts.mail_budget.check("login")  # KAN-117 : 503 si plus rien ne part aujourd'hui
     to = accounts.settings.contact_to or accounts.settings.admin_email
     client = request.client.host if request.client else "-"
     if body.website or not to or not _limiter(request).allow(client):

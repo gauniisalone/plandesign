@@ -114,6 +114,13 @@ class Settings:
     """OPENPLAN_QUOTA_MB (KAN-12) : place disque par compte, en Mo, pour les projets dont il est
     le premier propriétaire (photos, fichiers joints, plans, rendus) ; 0 = sans limite. Avec
     les comptes seulement : le mode local n'a pas de limite."""
+    mail_daily_total: int = 280
+    """OPENPLAN_MAIL_DAILY_TOTAL (KAN-117) : e-mails par jour (UTC), tous confondus, sous le
+    quota de Brevo (offre gratuite : 300) ; les codes de connexion vont jusque-là ; 0 = sans
+    plafond."""
+    mail_daily_invites: int = 250
+    """OPENPLAN_MAIL_DAILY_INVITES (KAN-117) : au-delà de ce nombre d'e-mails dans la journée,
+    les invitations par e-mail s'arrêtent, pour garder la place des codes de connexion."""
     realistic: RealisticConfig = field(default_factory=RealisticConfig)
     """KAN-89 : rendus réalistes calculés par le poste d'augus (voir `realistic_config`)."""
     access_log_dir: Path | None = None
@@ -178,6 +185,8 @@ class Settings:
             site_origin=parse_origin(merged.get("OPENPLAN_SITE_ORIGIN")),
             contact_to=merged.get("OPENPLAN_CONTACT_TO", "").strip() or None,
             quota_mb=parse_quota(merged.get("OPENPLAN_QUOTA_MB")),
+            mail_daily_total=parse_count(merged.get("OPENPLAN_MAIL_DAILY_TOTAL"), 280),
+            mail_daily_invites=parse_count(merged.get("OPENPLAN_MAIL_DAILY_INVITES"), 250),
             realistic=RealisticConfig.from_env(merged),
             access_log_dir=Path(merged["OPENPLAN_ACCESS_LOG_DIR"])
             if merged.get("OPENPLAN_ACCESS_LOG_DIR", "").strip()
@@ -205,6 +214,17 @@ def parse_quota(text: str | None) -> int:
         return DEFAULT_QUOTA_MB
     if not raw.isdigit():
         msg = "OPENPLAN_QUOTA_MB : un nombre entier de Mo, 0 pour sans limite"
+        raise ValueError(msg)
+    return int(raw)
+
+
+def parse_count(text: str | None, default: int) -> int:
+    """KAN-117 : un entier, 0 ou plus (0 = sans limite) ; vide : la valeur par défaut."""
+    raw = (text or "").strip()
+    if not raw:
+        return default
+    if not raw.isdigit():
+        msg = f"un nombre entier attendu, 0 pour sans limite (reçu : {raw[:20]!r})"
         raise ValueError(msg)
     return int(raw)
 
