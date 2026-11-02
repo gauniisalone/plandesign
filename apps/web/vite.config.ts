@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineConfig, type Plugin } from "vite";
+import { createLogger, defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -39,7 +39,21 @@ function ortStatic(): Plugin {
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = Number(process.env.OPENPLAN_WEB_PORT ?? "5173");
 
+/** KAN-112 : un onglet fermé pendant l'écriture (EPIPE, ECONNRESET) n'est pas une erreur du
+ *  proxy. Vite l'écrit par trois chemins (« http proxy error », « ws proxy error » et « ws
+ *  proxy socket error », ce dernier posé sur la socket du navigateur, hors de `configure`) ;
+ *  tous passent par son logger avec l'erreur jointe : on ne tait que ces deux codes-là, et
+ *  Vite ferme toujours la connexion lui-même. Toute autre erreur reste écrite. */
+const logger = createLogger();
+const logError = logger.error;
+logger.error = (msg, options) => {
+  const code = (options?.error as NodeJS.ErrnoException | null | undefined)?.code;
+  if ((code === "EPIPE" || code === "ECONNRESET") && msg.includes("proxy")) return;
+  logError(msg, options);
+};
+
 export default defineConfig({
+  customLogger: logger,
   plugins: [
     react(),
     ortStatic(),
@@ -120,24 +134,6 @@ export default defineConfig({
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: false,
         ws: true,
-        // KAN-112 : un onglet fermé pendant l'écriture (EPIPE, ECONNRESET) n'est pas une
-        // erreur ; toute autre erreur du proxy reste écrite par Vite (API injoignable…).
-        // Vite pose son propre « error » APRÈS `configure` : un simple écouteur ne le tait
-        // pas ; on filtre donc l'événement avant lui, et on ferme la socket comme il le fait.
-        configure: (proxy) => {
-          const emit = proxy.emit.bind(proxy) as (
-            event: string,
-            ...args: unknown[]
-          ) => boolean;
-          proxy.emit = ((event: string, ...args: unknown[]) => {
-            const code = (args[0] as NodeJS.ErrnoException | undefined)?.code;
-            if (event === "error" && (code === "EPIPE" || code === "ECONNRESET")) {
-              (args[2] as { end?: () => void } | undefined)?.end?.();
-              return true;
-            }
-            return emit(event, ...args);
-          }) as typeof proxy.emit;
-        },
       },
     },
   },
