@@ -18,6 +18,7 @@ import {
   MIN_COMPARE,
   photoNumber,
 } from "./renderGallery";
+import { RenderShare } from "./RenderShare";
 
 /** KAN-91 (lot L6, maquette validée par augus le 22 oct.) : la visionneuse plein écran d'un
  *  rendu réaliste. Curseur avant/après contre la vue 3D du plan ou la photo réelle,
@@ -46,7 +47,9 @@ export interface RenderViewerProps {
   /** D2 : un plan est relié (sinon, ni variante ni nouveau rendu). */
   linked: boolean;
   readOnly: boolean;
-  onCover: (requestId: string, on: boolean) => Promise<void>;
+  /** KAN-101 : « Partager » par lien public (éditeur, réglage du serveur allumé). */
+  canShare: boolean;
+  onCover:(requestId: string, on: boolean) => Promise<void>;
   onReact: (requestId: string, key: ReactionKey, on: boolean) => Promise<void>;
   onVariant: (requestId: string) => Promise<void>;
   onFromPhoto: (imageId: string) => Promise<void>;
@@ -433,7 +436,10 @@ export function RenderViewer(props: RenderViewerProps) {
                 : "Définir comme couverture du projet"}
             </button>
           )}
-          {canLaunch && comparePhoto && !faithful && (
+          {canAct && props.canShare && (
+            <RenderShare projectId={project.id} requestId={render.id} />
+          )}
+                    {canLaunch && comparePhoto && !faithful && (
             <button
               type="button"
               disabled={busy || !props.linked}

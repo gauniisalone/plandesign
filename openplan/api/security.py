@@ -46,6 +46,7 @@ from openplan.api.access import (
 from openplan.api.guards import route_guard
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
+from openplan.api.share_page import SHARE_CSP, is_share_path, logged_form
 from openplan.api.worker_auth import WorkerGate, is_worker_path
 from openplan.scene.history import USER_ACTOR, user_actor
 from openplan.schemas.common import StrictModel
@@ -358,6 +359,16 @@ def install_security(app: FastAPI, settings: Settings) -> None:
         return with_security_headers(_with_csp(response, path, csp), path)
 
 
+def _accounts_headers(response: Response, path: str, csp: str) -> Response:
+    """En-têtes de sécurité avec les comptes ; KAN-101 : la page publique d'un rendu partagé a
+    sa CSP stricte et n'envoie aucun référent."""
+    if is_share_path(path):
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return with_security_headers(_with_csp(response, path, SHARE_CSP), path)
+    response.headers["Referrer-Policy"] = ACCOUNTS_REFERRER_POLICY
+    return with_security_headers(_with_csp(response, path, csp), path)
+
+
 def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: AccountsBackend) -> None:
     """Comptes actifs (note 17, § 3) : la session `pd_session` remplace le jeton et le cookie
     de lecture ; contrôle de l'origine sur toute mutation ; 401 sans session hors des routes
@@ -386,12 +397,12 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             log.write(
                 actor=actor,
                 method=request.method,
-                path=path,
+                # KAN-101 : le jeton d'un lien public n'entre jamais au journal.
+                path=logged_form(path),
                 status=response.status_code,
                 ms=(time.perf_counter() - started) * 1000,
             )
-        response.headers["Referrer-Policy"] = ACCOUNTS_REFERRER_POLICY
-        return with_security_headers(_with_csp(response, path, csp), path)
+        return _accounts_headers(response, path, csp)
 
     @app.middleware("http")
     async def _session_guard(  # noqa: PLR0911 - une sortie par refus (KAN-89 : poste)
@@ -407,6 +418,10 @@ def _install_accounts_guard(app: FastAPI, settings: Settings, accounts: Accounts
             # session est ignorée, le jeton du poste est exigé ici, AVANT la lecture du corps
             # (et de nouveau par la garde de la route), corps plafonné, débit limité.
             return finish(await worker_gate.passage(request, call_next), request, "worker", started)
+        if is_share_path(path):
+            # KAN-101 : page publique d'un rendu partagé (lecture seule) : ni session lue, ni
+            # cookie renouvelé ; la route fait ses contrôles (réglage, débit, lien).
+            return finish(await call_next(request), request, "-", started)
         if request.method == "OPTIONS" and from_site(request):
             return finish(_site_preflight(), request, "-", started)
         site_mutation = from_site(request) and path in SITE_MUTATIONS | {CONTACT_PATH}

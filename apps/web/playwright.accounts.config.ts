@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { SHARE_ACCOUNT } from "./e2e-accounts/share-account";
 
 /**
  * B1d : e2e avec les comptes actifs (page de connexion, session, rôle, /nouveau).
@@ -15,6 +16,10 @@ const dir = "apps/web/.e2e-accounts";
 // SQLite jetable d'avant. La migration se fait au lancement dans les deux cas.
 const databaseUrl =
   process.env.E2E_DATABASE_URL?.trim() || `sqlite:///${dir}/comptes.db`;
+// KAN-101 : un compte autorisé aux rendus réalistes (ses rendus faits sont posés en base par
+// e2e-accounts/seed_done_render.py : la place d'un Mo refuserait une demande), et les liens
+// publics allumés (éteints par défaut en production). Le test du réglage éteint lance son
+// propre second serveur.
 const env = [
   "OPENPLAN_DOTENV=",
   "OPENPLAN_AUTO_PATH=0",
@@ -32,6 +37,8 @@ const env = [
   // KAN-109 : le journal du site (écrit par le test du back-office), lu chaque seconde.
   `OPENPLAN_ACCESS_LOG_DIR=${dir}/access-log`,
   "OPENPLAN_ACCESS_LOG_INTERVAL_S=1",
+  `OPENPLAN_RENDER_ACCOUNTS=${SHARE_ACCOUNT.id}`,
+  "OPENPLAN_SHARE_LINKS=1",
 ].join(" ");
 
 export default defineConfig({
@@ -54,6 +61,8 @@ export default defineConfig({
       command:
         `cd ../.. && rm -rf ${dir} && mkdir -p ${dir} && ` +
         `${env} uv run --extra comptes openplan accounts migrate && ` +
+        `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
+        `'${databaseUrl.replaceAll("'", "")}' ${SHARE_ACCOUNT.id} ${SHARE_ACCOUNT.email} && ` +
         `${env} uv run --extra comptes openplan serve --port ${apiPort} --data-dir ${dir}/data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,

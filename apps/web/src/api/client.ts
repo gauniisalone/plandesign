@@ -541,6 +541,34 @@ export const realisticApi = {
     ),
 };
 
+/** KAN-101 : un lien public vers un rendu (sans son jeton, sauf à la création). */
+export interface ShareLink {
+  id: string;
+  request_id: string;
+  created_at: string;
+  expires_at: string;
+  show_project_name: boolean;
+}
+
+export const shareLinksApi = {
+  /** Le jeton n'est rendu qu'ici, une seule fois. */
+  create: (pid: string, requestId: string, showProjectName: boolean) =>
+    request<ShareLink & { token: string }>(
+      `/projects/${pid}/realistic/${requestId}/share-links`,
+      json({ show_project_name: showProjectName }),
+    ),
+  list: (pid: string) => request<ShareLink[]>(`/projects/${pid}/share-links`),
+  revoke: (pid: string, linkId: string) =>
+    request<void>(`/projects/${pid}/share-links/${linkId}`, {
+      method: "DELETE",
+    }),
+};
+
+/** L'adresse publique d'un rendu partagé (page servie par l'API, sans compte). */
+export function shareLinkUrl(token: string): string {
+  return `${window.location.origin}${BASE}/share/${token}`;
+}
+
 /** Connexion par code (B1b2) et rôle par projet (B1d). */
 export const authApi = {
   /** Même réponse que l'adresse ait un compte ou non. */
@@ -702,6 +730,8 @@ export const api = {
       accounts?: boolean;
       /** Avec les comptes : inscription sur invitation (bêta) ou ouverte. */
       signup?: "invite" | "open";
+      /** KAN-101 : liens publics d'un rendu activés (OPENPLAN_SHARE_LINKS). */
+      share_links?: boolean;
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),

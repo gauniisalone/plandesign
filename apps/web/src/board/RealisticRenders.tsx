@@ -15,6 +15,7 @@ import {
 } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { allCameras, isFreeCamera } from "../model";
+import { useHosting } from "../state/hosting";
 import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
 import { RenderCompare } from "./RenderCompare";
 import { RenderViewer } from "./RenderViewer";
@@ -220,6 +221,8 @@ export function RealisticRenders({
   const [picking, setPicking] = useState(false);
   const [picks, setPicks] = useState<string[]>([]);
   const [comparing, setComparing] = useState(false);
+  // KAN-101 : « Partager » n'existe que si le serveur a les liens publics allumés.
+  const hosting = useHosting();
   const menuRef = useRef<HTMLDivElement>(null);
   const level = project.levels[levelId];
   const cameras = level ? allCameras(level) : [];
@@ -691,6 +694,7 @@ export function RealisticRenders({
             setPicking(true);
             setComparing(true);
           }}
+          canShare={Boolean(hosting?.shareLinks) && !readOnly}
           onCover={async (id, on) => {
             await (on
               ? realisticApi.setCover(project.id, id)

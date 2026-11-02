@@ -17,7 +17,14 @@ from sqlalchemy import Engine, select
 from openplan.api.accounts.db import make_engine, utcnow
 from openplan.api.accounts.events import SECRET_FILE, EventLog, load_secret
 from openplan.api.accounts.forget import ForgetRefusedError, describe, plan_forget
-from openplan.api.accounts.models import AuthSession, Base, Invitation, LoginToken
+from openplan.api.accounts.models import (
+    AuthSession,
+    Base,
+    Invitation,
+    LoginToken,
+    RenderRequest,
+    ShareLink,
+)
 from openplan.api.accounts.repo import AccountsRepo
 from openplan.cli.main import main
 
@@ -191,6 +198,48 @@ def test_an_address_without_account_still_has_its_codes_counted(
     assert plan.user_id is None and plan.login_codes == 1 and plan.possible
     with pytest.raises(ForgetRefusedError, match="vide"):
         _plan(world, "   ")
+
+
+def test_the_plan_counts_the_public_links_of_the_account(world: dict[str, object]) -> None:
+    """KAN-101 : les liens publics de rendus créés par le compte (actifs ou révoqués) sont
+    comptés et nommés ; ceux des autres ne le sont pas ; rien n'est écrit."""
+    repo: AccountsRepo = world["repo"]  # type: ignore[assignment]
+    users: dict[str, UUID] = world["users"]  # type: ignore[assignment]
+    now = utcnow()
+    with repo.session() as db, db.begin():
+        for who, project in ((LEA, world["solo"]), (BRUNO, world["theirs"])):
+            render = RenderRequest(
+                user_id=users[who],
+                project_id=project,
+                level_id=uuid4(),
+                camera_id=uuid4(),
+                state="done",
+                created_at=now,
+                expires_at=now,
+            )
+            db.add(render)
+            db.flush()
+            for n, revoked in enumerate((None, now)):
+                db.add(
+                    ShareLink(
+                        token_hash=_token(50 + n + (10 if who == BRUNO else 0)),
+                        project_id=project,
+                        request_id=render.id,
+                        created_by=users[who],
+                        created_at=now,
+                        expires_at=now + timedelta(days=30),
+                        revoked_at=revoked,
+                        show_project_name=True,
+                    )
+                )
+    before = _snapshot(world["engine"], world["data"])  # type: ignore[arg-type]
+    plan = _plan(world, transfer_to=BRUNO)
+    assert plan.share_links == 2
+    lines: list[str] = []
+    describe(plan, lines.append)
+    assert "  liens publics de rendus supprimés : 2" in lines
+    assert _plan(world, BRUNO).share_links == 2
+    assert _snapshot(world["engine"], world["data"]) == before  # type: ignore[arg-type]
 
 
 def test_the_key_of_pseudonyms_is_never_created(tmp_path: Path, migrated_url: str) -> None:

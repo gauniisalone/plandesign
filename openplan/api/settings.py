@@ -130,6 +130,10 @@ class Settings:
     access_log_interval_s: int = 300
     """OPENPLAN_ACCESS_LOG_INTERVAL_S : intervalle de lecture de ce journal (5 min ; les e2e le
     raccourcissent)."""
+    share_links: bool = False
+    """OPENPLAN_SHARE_LINKS (KAN-101) : liens publics vers un rendu (`1` pour les activer).
+    DÉSACTIVÉ par défaut tant que la revue Infra et la décision d'augus manquent : les routes
+    répondent alors 404 et le front n'offre pas « Partager ». Avec les comptes seulement."""
 
     @property
     def local_only(self) -> bool:
@@ -192,6 +196,7 @@ class Settings:
             if merged.get("OPENPLAN_ACCESS_LOG_DIR", "").strip()
             else None,
             access_log_interval_s=max(1, int(merged.get("OPENPLAN_ACCESS_LOG_INTERVAL_S") or 300)),
+            share_links=parse_switch(merged.get("OPENPLAN_SHARE_LINKS")),
         )
 
     @property
@@ -227,6 +232,15 @@ def parse_count(text: str | None, default: int) -> int:
         msg = f"un nombre entier attendu, 0 pour sans limite (reçu : {raw[:20]!r})"
         raise ValueError(msg)
     return int(raw)
+
+
+SWITCH_ON = frozenset({"1", "true", "yes", "on", "oui"})
+
+
+def parse_switch(text: str | None) -> bool:
+    """Un interrupteur : `1`, `true`, `yes`, `on` ou `oui` l'allument ; tout le reste (vide
+    compris) le laisse éteint."""
+    return (text or "").strip().lower() in SWITCH_ON
 
 
 def parse_signup(text: str | None) -> str:

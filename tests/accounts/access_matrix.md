@@ -5,7 +5,7 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-211 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 85, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 27, worker 6.
+216 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 88, membre ≥ owner 9, membre ≥ viewer 53, public 12, user 27, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -180,6 +180,7 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/realistic/{request_id}/image | comptes | membre ≥ viewer |  | member_user | 404 |
 | DELETE | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
 | PUT | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
+| POST | /api/projects/{project_id}/realistic/{request_id}/share-links | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/realistic/{request_id}/variant | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/redo | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/renders | local+comptes | membre ≥ viewer |  |  |  |
@@ -202,6 +203,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/runs/{run_id}/layout/{name} | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/runs/{run_id}/openings/{name} | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/runs/{run_id}/perception/{name} | local+comptes | membre ≥ viewer |  |  |  |
+| GET | /api/projects/{project_id}/share-links | comptes | membre ≥ editor |  |  |  |
+| DELETE | /api/projects/{project_id}/share-links/{link_id} | comptes | membre ≥ editor |  |  | 404 |
 | GET | /api/projects/{project_id}/thumbnail | local+comptes | membre ≥ viewer |  |  |  |
 | POST | /api/projects/{project_id}/undo | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/validation | local+comptes | membre ≥ viewer |  |  |  |
@@ -210,6 +213,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/realistic/status | comptes | user |  | signed_in_user |  |
 | DELETE | /api/session | local | legacy |  |  |  |
 | POST | /api/session | local | legacy |  |  |  |
+| GET | /api/share/{token} | comptes | public |  |  |  |
+| GET | /api/share/{token}/image | comptes | public |  |  |  |
 | GET | /api/test/mail/last-code | comptes | public |  |  | 404 |
 | GET | /api/web-models/depth | local+comptes | user |  |  | 404 |
 | POST | /api/worker/claim | comptes | worker | porte du poste ; débit 1 / 5 s (429) |  |  |

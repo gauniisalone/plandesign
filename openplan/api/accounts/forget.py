@@ -8,6 +8,7 @@ Ce qui partirait (décisions du PO, 30 oct. 2026) :
 - le compte, ses sessions, ses codes de connexion (par adresse : sans clé étrangère) ;
 - ses événements d'usage (pseudonymes, `EventLog.forget_account`) ;
 - les invitations qu'il a créées, et celles adressées à son adresse ;
+- les liens publics de rendus qu'il a créés (KAN-101) ;
 - ses rôles de membre dans les projets des autres ;
 - ses projets dont il est le seul membre, avec leurs fichiers.
 
@@ -46,6 +47,7 @@ from openplan.api.accounts.models import (
     Member,
     ProjectRow,
     RenderRequest,
+    ShareLink,
     User,
 )
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
@@ -79,6 +81,9 @@ class ForgetPlan:
     """None : la clé des pseudonymes n'existe pas encore (aucun événement n'a été écrit)."""
     invitations_created: int = 0
     invitations_to_address: int = 0
+    share_links: int = 0
+    """KAN-101 : les liens publics de rendus qu'il a créés (actifs ou non) : ils tombent avec
+    le compte (clé étrangère en cascade)."""
     memberships: list[tuple[UUID, str, str]] = field(default_factory=list)
     """Rôles dans les projets des autres : (projet, nom, rôle)."""
     solo: list[OwnedProject] = field(default_factory=list)
@@ -208,6 +213,7 @@ def plan_forget(
             Invitation.created_by == user.id,
             or_(Invitation.email.is_(None), Invitation.email != address),
         )
+        plan.share_links = _count(db, ShareLink, ShareLink.created_by == user.id)
         admins = _count(db, User, User.is_admin.is_(True))
         target = None
         if transfer_to:
@@ -246,25 +252,8 @@ def _line(p: OwnedProject) -> str:
     return f"    {str(p.id)[:8]}  « {p.name} » · {p.others} autre(s) membre(s) · {_mo(p.size)}"
 
 
-def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
-    """Le plan, lisible ; aucune autre adresse que celle tapée."""
-    say(f"Effacement de {plan.email} : simulation (--dry-run), rien n'est écrit.")
-    if plan.user_id is None:
-        say("  aucun compte pour cette adresse.")
-    else:
-        role = "administrateur" if plan.is_admin else "compte"
-        say(f"  {role} {str(plan.user_id)[:8]} : supprimé, avec {plan.sessions} session(s)")
-        events = "inconnu (clé absente)" if plan.events is None else str(plan.events)
-        say(f"  événements d'usage supprimés : {events}")
-    say(f"  codes de connexion supprimés : {plan.login_codes}")
-    say(
-        f"  invitations supprimées : {plan.invitations_created} créée(s) par lui, "
-        f"{plan.invitations_to_address} adressée(s) à cette adresse"
-    )
-    if plan.memberships:
-        say(f"  rôles retirés dans les projets des autres : {len(plan.memberships)}")
-        for pid, name, role in plan.memberships:
-            say(f"    {str(pid)[:8]}  « {name} » ({role})")
+def _describe_projects(plan: ForgetPlan, say: Callable[[str], None]) -> None:
+    """Ses projets : seul membre, avec un autre propriétaire, partagés."""
     if plan.solo:
         total = sum(p.size for p in plan.solo)
         say(f"  ses projets, seul membre, supprimés avec leurs fichiers ({_mo(total)}) :")
@@ -282,6 +271,30 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
         say(f"  ses projets partagés, {what} :")
         for p in plan.shared:
             say(_line(p))
+
+
+def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
+    """Le plan, lisible ; aucune autre adresse que celle tapée."""
+    say(f"Effacement de {plan.email} : simulation (--dry-run), rien n'est écrit.")
+    if plan.user_id is None:
+        say("  aucun compte pour cette adresse.")
+    else:
+        role = "administrateur" if plan.is_admin else "compte"
+        say(f"  {role} {str(plan.user_id)[:8]} : supprimé, avec {plan.sessions} session(s)")
+        events = "inconnu (clé absente)" if plan.events is None else str(plan.events)
+        say(f"  événements d'usage supprimés : {events}")
+    say(f"  codes de connexion supprimés : {plan.login_codes}")
+    say(
+        f"  invitations supprimées : {plan.invitations_created} créée(s) par lui, "
+        f"{plan.invitations_to_address} adressée(s) à cette adresse"
+    )
+    if plan.user_id is not None:
+        say(f"  liens publics de rendus supprimés : {plan.share_links}")
+    if plan.memberships:
+        say(f"  rôles retirés dans les projets des autres : {len(plan.memberships)}")
+        for pid, name, role in plan.memberships:
+            say(f"    {str(pid)[:8]}  « {name} » ({role})")
+    _describe_projects(plan, say)
     if plan.renders:
         say(
             f"  rendus réalistes qu'il a lancés, supprimés : {plan.renders}, dont "

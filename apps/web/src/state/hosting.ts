@@ -12,6 +12,9 @@ export interface Hosting {
   accounts: boolean;
   /** Bêta sur invitation (PO, 19 oct.) : la connexion le dit tant que le mode est « invite ». */
   inviteOnly: boolean;
+  /** KAN-101 : « Partager » un rendu par lien public (OPENPLAN_SHARE_LINKS, éteint par
+   *  défaut) ; sinon le bouton n'existe pas. */
+  shareLinks: boolean;
 }
 
 const LOCAL: Hosting = {
@@ -19,6 +22,7 @@ const LOCAL: Hosting = {
   errorReports: false,
   accounts: false,
   inviteOnly: false,
+  shareLinks: false,
 };
 let pending: Promise<Hosting> | null = null;
 
@@ -29,6 +33,7 @@ export function loadHosting(): Promise<Hosting> {
       errorReports: Boolean(h.error_reports),
       accounts: Boolean(h.accounts),
       inviteOnly: Boolean(h.accounts) && h.signup === "invite",
+      shareLinks: Boolean(h.accounts) && h.share_links === true,
     }),
     () => LOCAL,
   );

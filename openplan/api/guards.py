@@ -234,6 +234,12 @@ PROJECT_ROUTES: dict[tuple[str, str], Role] = {
     # couverture gardent la liste blanche et le lanceur.
     ("PUT", P + "/realistic/{request_id}/favorite"): E,
     ("DELETE", P + "/realistic/{request_id}/favorite"): E,
+    # KAN-101 : liens publics d'un rendu : créer, lister, révoquer, éditeur et plus (lecteur
+    # et commentateur 403, non-membre 404). Créer exige en plus un rendu fait de la personne
+    # et la liste blanche des rendus. Tout répond 404 tant que OPENPLAN_SHARE_LINKS est éteint.
+    ("POST", P + "/realistic/{request_id}/share-links"): E,
+    ("GET", P + "/share-links"): E,
+    ("DELETE", P + "/share-links/{link_id}"): E,
 }
 
 GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
@@ -302,6 +308,10 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("POST", "/api/worker/jobs/{request_id}/beat"): "worker",
     # KAN-97 : images de style d'une demande prise (sous bail).
     ("GET", "/api/worker/jobs/{request_id}/style/{index}"): "worker",
+    # KAN-101 : page publique d'un rendu partagé et son image, SANS compte (le jeton du lien
+    # fait foi ; 404 si inconnu, révoqué, expiré ou réglage éteint ; débit limité).
+    ("GET", "/api/share/{token}"): "public",
+    ("GET", "/api/share/{token}/image"): "public",
 }
 
 NOT_A_MEMBER = "projet inconnu : {}"

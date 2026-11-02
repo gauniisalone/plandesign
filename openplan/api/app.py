@@ -265,7 +265,8 @@ def create_app(
         if settings.accounts_enabled:
             # Bêta sur invitation (PO, 19 oct.) : le front et la fenêtre du site disent « sur
             # invitation » tant que le mode est « invite » ; ouvert, les mentions disparaissent.
-            extra["signup"] = settings.signup
+            # KAN-101 : le front n'offre « Partager » (lien public d'un rendu) qu'activé.
+            extra = {"signup": settings.signup, "share_links": settings.share_links}
         return {
             "status": "ok",
             "version": __version__,
@@ -392,6 +393,13 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
         app.state.accounts.engine, settings.realistic, settings.data_dir
     )
     app.include_router(render_router, dependencies=guarded)
+    # KAN-101 : liens publics d'un rendu ; routes toujours déclarées, 404 tant que
+    # OPENPLAN_SHARE_LINKS est éteint (défaut).
+    from openplan.api.accounts.share_links import ShareLinks
+    from openplan.api.accounts.share_links import router as share_router
+
+    app.state.share_links = ShareLinks(app.state.accounts.engine)
+    app.include_router(share_router, dependencies=guarded)
     # KAN-109 : back-office d'augus : audience du site (journal de Caddy, IP déjà tronquée,
     # monté en lecture seule) et santé technique (mesurée dans l'app).
     from openplan.api.accounts.admin_routes import install_metrics

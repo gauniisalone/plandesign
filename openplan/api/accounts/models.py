@@ -232,6 +232,33 @@ class RenderRequest(Base):
     annoncé savoir battre (seul le délai de reprise `TAKE_TTL` vaut alors)."""
 
 
+class ShareLink(Base):
+    """KAN-101 : lien public, en lecture seule, vers UN rendu réaliste fait (l'image et son
+    « Guidé par », jamais le projet). Le jeton (32 octets aléatoires) n'est gardé qu'en
+    empreinte SHA-256 ; révocable, il expire (30 jours par défaut). Il tombe avec son rendu,
+    son projet ou le compte qui l'a créé (clés étrangères en cascade)."""
+
+    __tablename__ = "share_links"
+    __table_args__ = (
+        Index("ix_share_links_project", "project_id"),
+        Index("ix_share_links_request", "request_id"),
+        Index("ix_share_links_created_by", "created_by"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"))
+    request_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("render_requests.id", ondelete="CASCADE")
+    )
+    created_by: Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(_utc())
+    expires_at: Mapped[datetime] = mapped_column(_utc())
+    revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    show_project_name: Mapped[bool] = mapped_column(Boolean, default=True)
+    """« Afficher le nom du projet » : décoché, la page publique ne le montre pas."""
+
+
 class RenderWorker(Base):
     """KAN-89 : dernier battement de cœur du poste de rendu (une ligne par poste)."""
 
