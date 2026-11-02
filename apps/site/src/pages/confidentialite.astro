@@ -13,7 +13,7 @@ import { LOGIN_WINDOW } from "../config";
   <article class="wrap prose">
     <h1>Confidentialité</h1>
     {LOGIN_WINDOW ? (
-      <p class="updated">Dernière mise à jour : 28 octobre 2026</p>
+      <p class="updated">Dernière mise à jour : 2 novembre 2026</p>
     ) : (
     <p class="updated">Dernière mise à jour : 16 octobre 2026</p>
     )}
@@ -97,7 +97,11 @@ import { LOGIN_WINDOW } from "../config";
 
     <h2>Durées de conservation</h2>
     <ul>
+      {LOGIN_WINDOW ? (
+        <li>Journaux techniques du serveur (application et site) : 14 jours, 16 au plus le temps de la rotation automatique.</li>
+      ) : (
       <li>Journaux techniques du serveur web : quelques semaines au plus (rotation automatique).</li>
+      )}
       <li>Rapports d'erreur techniques : 30 jours.</li>{LOGIN_WINDOW && <li>Codes de connexion : 15 minutes (effacés après 24 heures) ; sessions : 30 jours après la dernière visite ; liens d'invitation : 30 jours au plus.</li>}
       <li>
         Données d'un compte supprimé : effacées du service dès la suppression ; elles peuvent subsister dans les
