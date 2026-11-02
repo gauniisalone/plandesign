@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { defineConfig } from "@playwright/test";
+import { defineBddProject } from "playwright-bdd";
 import {
   E2E_WORKER_TOKEN,
   RENDER_ACCOUNT,
@@ -43,7 +44,17 @@ const env = [
 ].join(" ");
 
 export default defineConfig({
-  testDir: "e2e-online",
+  // KAN-103 : les specs d'avant, puis les parcours Gherkin (features/*.feature, générés par
+  // `bddgen` dans .features-gen/ avant `playwright test`).
+  projects: [
+    { name: "online", testDir: "e2e-online" },
+    defineBddProject({
+      name: "parcours",
+      features: "features/parcours-court.feature",
+      steps: "features/steps/*.ts",
+      outputDir: ".features-gen/online",
+    }),
+  ],
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

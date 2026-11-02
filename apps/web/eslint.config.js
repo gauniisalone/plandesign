@@ -6,7 +6,8 @@ import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores(["dist", "src/api/types.gen.ts", "scripts"]),
+  // KAN-103 : .features-gen est généré par bddgen depuis features/*.feature.
+  globalIgnores(["dist", "src/api/types.gen.ts", "scripts", ".features-gen"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
