@@ -96,10 +96,15 @@ When("je demande le rendu de la vue {string}", async ({ page }, name: string) =>
   await renders(page).getByRole("menuitem", { name: `Rendre la vue « ${name} »` }).click();
 });
 
+/** En file, la tuile dit l'état du poste, qui est commun à toute la suite (un autre fichier peut
+ *  l'avoir simulé juste avant) : hors ligne, occupé ou libre, le rendu attend dans les trois cas. */
+const QUEUED =
+  /^(Poste de rendu hors ligne : le rendu sera fait à son retour|En attente( : le poste de rendu finit un autre travail)?)$/;
+
 Then("le rendu attend le poste de rendu", async ({ page }) => {
-  await expect(
-    renders(page).getByText("Poste de rendu hors ligne : le rendu sera fait à son retour"),
-  ).toBeVisible();
+  const tile = renders(page).getByRole("list", { name: "Galerie des rendus" }).getByRole("status");
+  // L'état est dans <strong> ; le reste de la tuile dit la vue et la durée estimée.
+  await expect(tile.first().locator("strong")).toHaveText(QUEUED);
 });
 
 When("le poste de rendu prend la demande", async ({ ctx, baseURL }) => {
