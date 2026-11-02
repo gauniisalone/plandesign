@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, request as playwrightRequest, type Page } from "@playwright/test";
+import {
+  expect,
+  request as playwrightRequest,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 import { gotoApp } from "../../e2e/app-ready";
 import { showPanel } from "../../e2e/helpers";
 import {
@@ -107,15 +112,54 @@ Then("le rendu attend le poste de rendu", async ({ page }) => {
   await expect(tile.first().locator("strong")).toHaveText(QUEUED);
 });
 
-When("le poste de rendu prend la demande", async ({ ctx, baseURL }) => {
+/** Une image simulée déposée par le poste pour la demande `job` (celle du parcours ou une autre). */
+async function deliver(api: APIRequestContext, job: { request_id: string; lease: string }): Promise<number> {
+  const png = fs.readFileSync(PHOTO);
+  const done = await api.post(`/api/worker/jobs/${job.request_id}/result`, {
+    headers: { "X-Render-Lease": job.lease },
+    multipart: {
+      meta: JSON.stringify({
+        seconds: 41.6,
+        vram_peak_mib: 4800,
+        width: png.readUInt32BE(16),
+        height: png.readUInt32BE(20),
+        engine: "fake",
+      }),
+      image: { name: "render.png", mimeType: "image/png", buffer: png },
+    },
+  });
+  return done.status();
+}
+
+When("le poste de rendu prend la demande", async ({ page, ctx, baseURL }) => {
+  // La demande du parcours : la file est commune à toute la suite, un fichier précédent a pu y
+  // laisser la sienne (la variante de renders-gallery, prise et jamais déposée).
+  const list = await page.request.get(`/api/projects/${project(ctx).id}/realistic`);
+  const ours = ((await list.json()) as { requests: { id: string; state: string; mine: boolean }[] }).requests
+    .filter((r) => r.mine && r.state === "pending")
+    .map((r) => r.id);
+  expect(ours).toHaveLength(1);
   // Le poste : ni cookie ni origine, son jeton seulement, sa propre adresse.
   const api = await playwrightRequest.newContext({
     baseURL,
     extraHTTPHeaders: { Authorization: `Bearer ${E2E_WORKER_TOKEN}`, "X-Forwarded-For": "198.51.100.212" },
   });
-  const claim = await api.post("/api/worker/claim", { data: { state: "idle" } });
-  expect(claim.status()).toBe(200);
-  const job = (await claim.json()) as { request_id: string; lease: string };
+  let job: { request_id: string; lease: string } | undefined;
+  for (let i = 0; i < 8 && job?.request_id !== ours[0]; i++) {
+    if (job) expect(await deliver(api, job), "demande laissée par un autre fichier").toBe(200);
+    const claim = await api.post("/api/worker/claim", { data: { state: "idle" } });
+    if (claim.status() === 429) {
+      // Le débit du poste (un vrai poste appelle toutes les 10 à 15 s) : on attend son tour.
+      const wait = Math.min(Number(claim.headers()["retry-after"] ?? "5") || 5, 15);
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+      job = undefined;
+      continue;
+    }
+    expect(claim.status()).toBe(200);
+    job = (await claim.json()) as { request_id: string; lease: string };
+  }
+  expect(job?.request_id).toBe(ours[0]);
+  if (!job) throw new Error("le poste n'a pris aucune demande");
   ctx.worker = { api, requestId: job.request_id, lease: job.lease };
   for (const name of ["project", "bake", "camera"]) {
     const file = await api.get(`/api/worker/jobs/${job.request_id}/files/${name}`, {
@@ -134,21 +178,7 @@ Then("le rendu est en cours", async ({ page }) => {
 When("le poste de rendu dépose son image", async ({ ctx }) => {
   const worker = ctx.worker;
   if (!worker) throw new Error("le poste n'a pris aucune demande");
-  const png = fs.readFileSync(PHOTO);
-  const done = await worker.api.post(`/api/worker/jobs/${worker.requestId}/result`, {
-    headers: { "X-Render-Lease": worker.lease },
-    multipart: {
-      meta: JSON.stringify({
-        seconds: 41.6,
-        vram_peak_mib: 4800,
-        width: png.readUInt32BE(16),
-        height: png.readUInt32BE(20),
-        engine: "fake",
-      }),
-      image: { name: "render.png", mimeType: "image/png", buffer: png },
-    },
-  });
-  expect(done.status()).toBe(200);
+  expect(await deliver(worker.api, { request_id: worker.requestId, lease: worker.lease })).toBe(200);
 });
 
 Then("l'image du rendu s'affiche", async ({ page }) => {
