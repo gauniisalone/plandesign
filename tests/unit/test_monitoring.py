@@ -136,6 +136,47 @@ def test_before_breadcrumb_drops_logs_and_cleans_http() -> None:
     assert crumb == {"category": "httplib", "data": {"url": "/x/<id>"}}
 
 
+SHARE_TOKEN = "AbcDefGhiJklMnoPqrStuVwxYz_AbcDefGhiJklMnoP"  # 43 caractères, SANS chiffre
+"""KAN-101 : un jeton de lien public sans chiffre échappe à la règle générique (24 caractères
+ou plus avec un chiffre) : la règle du chemin /api/share/ le masque quand même."""
+
+
+def test_share_token_without_digit_is_masked() -> None:
+    assert len(SHARE_TOKEN) == 43 and not any(c.isdigit() for c in SHARE_TOKEN)
+    assert monitoring._RE_SECRET.search(SHARE_TOKEN) is None, "la règle générique le rate"
+    for path in (f"/api/share/{SHARE_TOKEN}", f"/api/share/{SHARE_TOKEN}/image"):
+        text = monitoring.scrub_text(f"GET {path} 404")
+        assert SHARE_TOKEN not in text and "/api/share/<jeton masqué>" in text
+    url = monitoring.scrub_url(f"https://app.example/api/share/{SHARE_TOKEN}/image?x=1")
+    assert url == "https://app.example/api/share/<jeton masqué>/image"
+    crumb = monitoring.before_breadcrumb(
+        {"category": "httplib", "data": {"url": f"/api/share/{SHARE_TOKEN}"}}
+    )
+    assert crumb == {"category": "httplib", "data": {"url": "/api/share/<jeton masqué>"}}
+
+
+def test_request_drops_the_referer_of_a_share_page() -> None:
+    """Le Referer (qui porterait l'adresse d'une page publique) ne passe jamais ; l'URL de la
+    requête est masquée."""
+    page = f"https://app.example/api/share/{SHARE_TOKEN}"
+    event = monitoring.before_send(
+        {
+            "request": {
+                "method": "GET",
+                "url": f"{page}/image",
+                "headers": {"Referer": page, "referer": page, "User-Agent": "Firefox"},
+            }
+        }
+    )
+    assert event is not None
+    assert event["request"] == {
+        "method": "GET",
+        "url": "https://app.example/api/share/<jeton masqué>/image",
+        "headers": {"User-Agent": "Firefox"},
+    }
+    assert SHARE_TOKEN not in json.dumps(event)
+
+
 def test_no_dsn_no_import(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(monitoring.DSN_ENV, raising=False)
     calls: list[int] = []

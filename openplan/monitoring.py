@@ -47,6 +47,10 @@ _RE_HOME = re.compile(r"(?:/home/|/Users/|/root/|[A-Za-z]:\\Users\\)[^\s'\"«»]
 _RE_BEARER = re.compile(r"(?i)\b(bearer|token|basic)(\s+|=|:\s*)[A-Za-z0-9._~+/=-]+")
 _RE_UUID = re.compile(r"\b[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\b", re.I)
 _RE_SECRET = re.compile(r"\b(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{24,}\b")
+_RE_SHARE = re.compile(r"/api/share/[^/\s?#'\"«»]+")
+"""KAN-101 : le jeton d'un lien public, toujours masqué (la règle générique ci-dessus laisse
+passer un jeton sans chiffre)."""
+SHARE_MASKED = "/api/share/<jeton masqué>"
 _RE_QUOTED = re.compile(r"«[^»]*»|\"[^\"]*\"|“[^”]*”")
 _RE_EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 
@@ -97,7 +101,8 @@ def _bounded(text: str) -> str:
 def scrub_text(text: str, *, quotes: bool = True) -> str:
     """Le texte sans chemin personnel, chemin de projet, image, jeton, identifiant ni adresse
     électronique ; avec `quotes`, sans texte cité non plus (consignes, noms de projet)."""
-    text = _RE_APP_DATA.sub("<projet>", _bounded(text))
+    text = _RE_SHARE.sub(SHARE_MASKED, _bounded(text))
+    text = _RE_APP_DATA.sub("<projet>", text)
     text = _RE_HOME.sub(lambda m: _code_path(m.group(0)), text)
     text = _RE_IMAGE.sub("<image>", text)
     text = _RE_BEARER.sub(lambda m: f"{m.group(1)} <masqué>", text)
