@@ -133,6 +133,12 @@ export function Admin({ onHome }: { onHome: () => void }) {
               tronquée, robots écartés.
               {audience?.since && ` Depuis le ${ddmm(audience.since)}.`}
             </p>
+            {/* KAN-109 (2 nov.) : le .gz tourné était relu en entier ; les agrégats de prod
+                de ces jours ne sont pas corrigés (décision du PO), on le dit. */}
+            <p className="admin-note">
+              Vues, pages et sources du 28 oct. au 2 nov. comptées en double
+              (bogue de rotation corrigé le 2 nov.) ; visiteurs uniques justes.
+            </p>
             {error && (
               <p className="admin-empty" role="alert">
                 {error}

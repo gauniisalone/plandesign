@@ -96,6 +96,9 @@ test("KAN-109 : l'administrateur voit l'audience et la santé ; un membre, non",
     )
     .toMatch(/Vues\s*2/);
   await expect(audience).toContainText("Depuis le");
+  await expect(audience).toContainText(
+    "Vues, pages et sources du 28 oct. au 2 nov. comptées en double (bogue de rotation corrigé le 2 nov.) ; visiteurs uniques justes.",
+  );
   await expect(audience).toContainText("Robots écartés1");
   await expect(audience).toContainText("example.org");
   await expect(audience).toContainText("/tarifs");
