@@ -149,8 +149,24 @@ Then("l'image du rendu s'affiche", async ({ page }) => {
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
 });
 
-Then("le plan se construit depuis la photo", async ({ page }) => {
-  await expect(board(page).locator(".board-item.kind-plan img.board-plan")).toBeVisible({
-    timeout: 180_000,
-  });
+// Le chemin avec poids (plan-photo.feature, e2e de base) : la photo déposée sur « Ajouter une
+// source » construit le plan, comme slice.spec.
+When("je dépose une photo de la pièce comme source du plan", async ({ page, ctx }) => {
+  // Comme slice.spec : depuis l'accueil, droit sur « Ajouter une source ».
+  await gotoApp(page, "/");
+  await expect(page.getByRole("heading", { name: "Vos espaces de travail" })).toBeVisible();
+  await gotoApp(page, `/#/projects/${project(ctx).id}/import`);
+  await expect(page).toHaveURL(/\/import$/);
+  await expect(page.getByRole("heading", { name: "Ajouter une source" })).toBeVisible();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /^Déposer une photo ou un plan/ }).click();
+  await (await chooser).setFiles(PHOTO);
+});
+
+Then("le plan se construit depuis la photo, avec ses quatre murs", async ({ page }) => {
+  await expect(page.locator("polygon.wall")).toHaveCount(4, { timeout: 180_000 });
+});
+
+Then("le plan est annoncé comme estimé", async ({ page }) => {
+  await expect(page.locator(".auto-banner.estimated")).toContainText("Plan estimé");
 });

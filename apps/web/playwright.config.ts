@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { defineBddProject } from "playwright-bdd";
 
 /**
  * Tests de bout en bout dans un vrai navigateur (Chromium headless).
@@ -11,7 +12,17 @@ const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
 
 export default defineConfig({
-  testDir: "e2e",
+  // KAN-103 : les specs d'avant, puis les parcours Gherkin qui demandent les poids (générés par
+  // `bddgen` dans .features-gen/ avant `playwright test`).
+  projects: [
+    { name: "e2e", testDir: "e2e" },
+    defineBddProject({
+      name: "parcours",
+      features: "features/plan-photo.feature",
+      steps: "features/steps/*.ts",
+      outputDir: ".features-gen/base",
+    }),
+  ],
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

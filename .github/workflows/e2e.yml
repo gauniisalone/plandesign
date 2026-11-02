@@ -120,8 +120,9 @@ jobs:
           rm -rf .e2e-data
           set -o pipefail
           # KAN-103 : les parcours Gherkin (features/*.feature) sont générés avant les tests,
-          # pour les configs qui en déclarent (bddgen vient du dépôt : playwright-bdd).
-          if grep -q defineBddProject ${{ matrix.config }}; then npx bddgen -c ${{ matrix.config }}; fi
+          # pour les configs qui en déclarent (bddgen vient du dépôt : playwright-bdd ;
+          # --no-install : échoue net plutôt que de télécharger un paquet du registre).
+          if grep -q defineBddProject ${{ matrix.config }}; then npx --no-install bddgen -c ${{ matrix.config }}; fi
           npx playwright test -c ${{ matrix.config }} ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }} \
             --reporter=list,json 2>&1 | tee "$GITHUB_WORKSPACE/sortie.log"
 

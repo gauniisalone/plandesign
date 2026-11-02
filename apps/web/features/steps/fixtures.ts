@@ -48,11 +48,13 @@ defineParameterType({
 
 // Must have 4 : les sauts conditionnels restent visibles, par tag, avec leur raison (listés
 // comme « skipped » par Playwright, puis dans le rapport des tests sautés).
-BeforeScenario({ tags: "@poids" }, async ({ page, $test }) => {
+BeforeScenario({ tags: "@poids" }, async ({ page, $test, $testInfo }) => {
   $test.skip(
     !(await hasWeights(page, PHOTO_WEIGHTS)),
     "@poids : poids de l'analyse de la photo absents (en ligne, CI)",
   );
+  // Avec les poids, l'analyse d'une photo prend jusqu'à 3 min (comme slice.spec).
+  $testInfo.setTimeout(240_000);
 });
 
 BeforeScenario({ tags: "@gpu" }, async ({ $test }) => {

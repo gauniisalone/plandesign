@@ -23,10 +23,3 @@ Fonctionnalité: Parcours court, du nouveau projet au rendu en file
     Alors le rendu est en cours
     Quand le poste de rendu dépose son image
     Alors l'image du rendu s'affiche
-
-  # Sans poids (en ligne, CI) : sauté, avec sa raison, dans la liste des tests sautés.
-  @poids
-  Scénario: le plan se construit depuis la photo
-    Quand je crée le projet "Chambre depuis la photo"
-    Et j'importe une photo de la pièce
-    Alors le plan se construit depuis la photo
