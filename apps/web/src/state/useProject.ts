@@ -714,6 +714,9 @@ export function useProject(projectId: string) {
    *  l'autre (« photo k sur N ») ; une photo déjà analysée et envoyée n'est pas recalculée
    *  (envoyée dans cette page, ou déjà posée sur ce plan). Une photo en échec n'arrête rien :
    *  le plan part des autres, et le node dit « non analysée ». */
+  const computedDepth = useRef(
+    new Map<string, Awaited<ReturnType<typeof computeDepth>>>(),
+  );
   const generateFromPhotos = useCallback(
     (lid: string, photos: string[], replace: boolean) => {
       const { project } = state;
@@ -735,23 +738,59 @@ export function useProject(projectId: string) {
           error: null,
           photosProgress: { levelId: lid, label, fraction },
         }));
+      // KAN-79 : le même bandeau « Analyse de la photo » (premier téléchargement du modèle,
+      // échec, « Réessayer » ou « Recharger la page »), pour la photo en cours.
+      const banner = (imageId: string, label: string, fraction: number | null) =>
+        setState((s) => ({
+          ...s,
+          photoDepth: {
+            imageId,
+            label,
+            fraction,
+            firstTime: s.photoDepth?.firstTime ?? false,
+            error: null,
+          },
+        }));
       void (async () => {
         const failed: string[] = [];
+        let last: unknown = null;
+        let lastSending = false;
         if (currentCapabilities().browserDepth) {
           for (const [k, imageId] of photos.entries()) {
             const ref = project.images[imageId];
             if (!ref || depthSent.current.has(imageId) || posed.has(imageId)) continue;
-            const label = `Analyse de la photo ${k + 1} sur ${n}…`;
-            show(label, null);
+            const label =
+              n > 1 ? `Analyse de la photo ${k + 1} sur ${n}…` : "Analyse de la photo…";
+            const sending =
+              n > 1 ? `Envoi de l'analyse de la photo ${k + 1} sur ${n}` : "Envoi de l'analyse";
+            // Connexion lente (25 oct.) : une analyse faite dont l'envoi a échoué est gardée ;
+            // « Réessayer » la renvoie sans la recalculer.
+            const kept = computedDepth.current.get(imageId);
+            show(kept ? sending : label, kept ? 0 : null);
+            banner(imageId, kept ? sending : label, kept ? 0 : null);
+            let computing = !kept;
             try {
-              const local = await browserDepthApi.photo(pid, imageId);
-              const result = await computeDepth(
-                local,
-                ref.width_px,
-                ref.height_px,
-                (p: DepthProgress) => show(label, p.fraction),
-              );
-              show(`Envoi de l'analyse de la photo ${k + 1} sur ${n}`, 0);
+              let result = kept;
+              if (!result) {
+                const firstTime = !(await modelCached());
+                setState((s) =>
+                  s.photoDepth ? { ...s, photoDepth: { ...s.photoDepth, firstTime } } : s,
+                );
+                const local = await browserDepthApi.photo(pid, imageId);
+                result = await computeDepth(
+                  local,
+                  ref.width_px,
+                  ref.height_px,
+                  (p: DepthProgress) => {
+                    show(label, p.fraction);
+                    banner(imageId, p.label, p.fraction);
+                  },
+                );
+                computedDepth.current.set(imageId, result);
+              }
+              computing = false;
+              show(sending, 0);
+              banner(imageId, sending, 0);
               await browserDepthApi.put(
                 pid,
                 lid,
@@ -759,31 +798,59 @@ export function useProject(projectId: string) {
                 result.grid,
                 result.width,
                 result.height,
-                (fraction) => show(`Envoi de l'analyse de la photo ${k + 1} sur ${n}`, fraction),
+                (fraction) => {
+                  show(sending, fraction);
+                  banner(imageId, sending, fraction);
+                },
               );
               depthSent.current.add(imageId);
-            } catch {
+              computedDepth.current.delete(imageId);
+            } catch (e) {
               failed.push(imageId);
+              last = e;
+              lastSending = !computing;
+              // La bibliothèque n'a pas démarré : les photos suivantes échoueraient aussi.
+              if (e instanceof LibraryFailed) {
+                failed.push(...photos.slice(k + 1));
+                break;
+              }
             }
           }
         }
         const usable = photos.filter((id) => !failed.includes(id));
-        setState((s) => ({ ...s, photosProgress: null, depthFailed: failed }));
+        setState((s) => ({
+          ...s,
+          photosProgress: null,
+          photoDepth: null,
+          depthFailed: failed,
+        }));
         if (usable.length === 0) {
+          depthRetry.current = () => generateRef.current(lid, photos, replace);
           setState((s) => ({
             ...s,
-            error:
-              n > 1
-                ? "Aucune photo n'a pu être analysée : réessayez, ou rechargez la page."
-                : "La photo n'a pas pu être analysée : réessayez, ou rechargez la page.",
+            photoDepth: {
+              imageId: photos[0]!,
+              label: "Analyse de la photo…",
+              fraction: null,
+              firstTime: false,
+              error: last instanceof Error ? last.message : String(last),
+              reload: last instanceof LibraryFailed,
+              sending: lastSending,
+            },
           }));
           return;
         }
-        autoplan(pid, lid, usable[0], base, undefined, replace);
+        depthRetry.current = null;
+        autoplan(pid, lid, usable[0]!, base, undefined, replace);
       })();
     },
     [state, autoplan],
   );
+  /** « Réessayer » relance la dernière version (état à jour), pas celle de l'échec. */
+  const generateRef = useRef(generateFromPhotos);
+  useEffect(() => {
+    generateRef.current = generateFromPhotos;
+  }, [generateFromPhotos]);
   const dismissRegenerated = useCallback(
     () => setState((s) => ({ ...s, regenerated: null })),
     [],
