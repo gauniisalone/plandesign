@@ -127,6 +127,10 @@ async function importPhoto(page: Page): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
   await photos.getByRole("button", { name: "Importer", exact: true }).click();
   await (await chooser).setFiles(PHOTO);
+  // KAN-120 : l'analyse part au clic du node, pas à l'import.
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 60_000 });
 }
 
 async function wallsOf(page: Page, id: string): Promise<number> {

@@ -172,6 +172,10 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   const chooser = page.waitForEvent("filechooser");
   await photos.getByRole("button", { name: "Importer" }).click();
   await (await chooser).setFiles(PHOTO);
+  // KAN-120 : l'analyse part au clic du node, pas à l'import.
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 30_000 });
   const failed = page.getByRole("alert", { name: "Analyse de la photo" });
   await expect(failed).toContainText("valeurs non finies", { timeout: 30_000 });
   // L'espace de travail reste utilisable pendant ce temps (rien n'est grisé), en ton neutre.
@@ -234,6 +238,9 @@ test("correctif KAN-79 : bibliothèque non démarrée → « Recharger la page �
   const chooser = page.waitForEvent("filechooser");
   await photos.getByRole("button", { name: "Importer" }).click();
   await (await chooser).setFiles(PHOTO);
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 30_000 });
   const failed = page.getByRole("alert", { name: "Analyse de la photo" });
   await expect(failed).toContainText("rechargez la page", { timeout: 30_000 });
   await expect(
@@ -246,7 +253,8 @@ test("correctif KAN-79 : bibliothèque non démarrée → « Recharger la page �
 
 /** KAN-81 (signalé en production) : deux photos du grenier importées, « Générer le plan »
  *  disait « décrivez la pièce dans le compositeur ». Avec la profondeur du navigateur, le
- *  plan se construit depuis les photos. */
+ *  plan se construit depuis les photos. KAN-120 : le bouton est celui du node Photos, et les
+ *  deux photos sont analysées (deux envois de profondeur, une seule construction). */
 test("KAN-81 : deux photos importées, « Générer le plan » construit le plan", async ({
   page,
 }) => {
@@ -270,11 +278,12 @@ test("KAN-81 : deux photos importées, « Générer le plan » construit le plan
     })
   ).json()) as { id: string; render: Record<string, unknown> };
   // Comme chez augus : les photos sont rangées d'abord, le plan est demandé ensuite.
-  const off = await page.request.patch(`/api/projects/${a.id}`, {
-    data: { render: { ...a.render, auto_on_drop: false } },
-    headers: origin,
+  const sent: string[] = [];
+  page.on("request", (r) => {
+    const p = new URL(r.url()).pathname;
+    if (r.method() === "PUT" && p.endsWith("/depth")) sent.push(p);
+    if (r.method() === "POST" && p.endsWith("/autoplan")) sent.push(p);
   });
-  expect(off.ok()).toBe(true);
   await gotoApp(page, `/#/projects/${a.id}/board`);
   const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");
@@ -293,16 +302,17 @@ test("KAN-81 : deux photos importées, « Générer le plan » construit le plan
   await expect(
     board.getByText("Plan depuis photo : bientôt en ligne"),
   ).toHaveCount(0);
-  // Le bouton du cadre Plan vide, celui qu'augus a cliqué.
-  await board
-    .locator(".board-item.kind-plan")
-    .getByRole("button", { name: "Générer le plan", exact: true })
+  expect(sent).toEqual([]);
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 2 photos" })
     .click();
   await expect(
     board.locator(".board-item.kind-plan img.board-plan"),
   ).toBeVisible({
     timeout: 90_000,
   });
+  expect(sent.filter((p) => p.endsWith("/depth"))).toHaveLength(2);
+  expect(sent.filter((p) => p.endsWith("/autoplan"))).toHaveLength(1);
   const project = (await (
     await page.request.get(`/api/projects/${a.id}`)
   ).json()) as {

@@ -184,18 +184,26 @@ test("galerie : nouveau projet → tableau, consigne et photos → plan, vignett
   );
   await kept(page, id, (p) => p.pending_instruction === CONSIGNE);
 
-  // Deux photos dans « Photos de la pièce » : la première construit le plan, sans geste.
+  // Deux photos dans « Photos de la pièce » ; KAN-120 : elles attendent le bouton du node,
+  // qui les lit toutes les deux.
   const board = page.getByRole("region", { name: "Espace de travail" });
   const photos = board.locator(".board-item.kind-frame.role-photos");
   await dropInto(page, photos, PHOTO, "image/png");
-  await expect(
-    board.locator(".board-item.kind-plan img.board-plan"),
-  ).toBeVisible({
-    timeout: 200_000,
+  await expect(board.locator(".board-item.kind-photo")).toHaveCount(1, {
+    timeout: 60_000,
   });
   await dropInto(page, photos, PHOTO, "image/png");
   await expect(board.locator(".board-item.kind-photo")).toHaveCount(2, {
     timeout: 60_000,
+  });
+  await expect(board.locator(".board-item.kind-plan img.board-plan")).toHaveCount(0);
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 2 photos" })
+    .click();
+  await expect(
+    board.locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({
+    timeout: 200_000,
   });
   const p = await project(page, id);
   expect(Object.keys(p.images)).toHaveLength(2);
@@ -253,12 +261,12 @@ test("tableau : échec de la construction → message clair, photo et consigne g
   await card.getByLabel("Vos envies et contraintes").blur();
   await kept(page, id, (p) => p.pending_instruction === CONSIGNE);
   const board = page.getByRole("region", { name: "Espace de travail" });
-  await dropInto(
-    page,
-    board.locator(".board-item.kind-frame.role-photos"),
-    PHOTO,
-    "image/png",
-  );
+  const photos = board.locator(".board-item.kind-frame.role-photos");
+  await dropInto(page, photos, PHOTO, "image/png");
+  // KAN-120 : la construction part au clic du node.
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 60_000 });
   await expect(page.getByRole("alert")).toContainText(
     "construction impossible",
     {

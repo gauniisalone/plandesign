@@ -66,7 +66,7 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
   }
 
   // Le plan vide : seulement « Tracer moi-même », « Importer un plan » (KAN-77) et
-  // « Générer le plan », dans le cadre.
+  // « Générer le plan d'après mes exigences » (KAN-120), dans le cadre.
   const plan = board.locator(".board-item.kind-plan");
   const empty = plan.locator(".board-plan-empty");
   await expect(empty.getByRole("button")).toHaveCount(3);
@@ -74,7 +74,7 @@ test("cadres vides à 150 % : états courts, rien ne déborde", async ({
   for (const name of [
     "Tracer moi-même",
     "Importer un plan (DXF, PDF, image)",
-    "Générer le plan",
+    "Générer le plan d'après mes exigences",
   ])
     await inside(empty.getByRole("button", { name }), plan, name);
 });

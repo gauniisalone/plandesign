@@ -59,6 +59,10 @@ test("file d'attente : « En attente » dans le cadre Rendus, puis Annuler", asy
     clientX: box.x + box.width / 2,
     clientY: box.y + box.height / 2,
   });
+  // KAN-120 : la photo déposée attend le bouton du node.
+  await photos
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 30_000 });
 
   // Aucun refus, aucune erreur : la ligne d'attente dans le cadre Rendus, sans autre texte.
   const renders = board.locator(".board-item.kind-frame.role-renders");

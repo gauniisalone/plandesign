@@ -199,3 +199,28 @@ export async function goSpace(page: Page, space: Space): Promise<void> {
   }
   await expectSpace(page, space);
 }
+
+/** KAN-120 : une photo importée ne construit plus le plan ; on clique, comme on le ferait,
+ *  « Générer le plan à partir de N photos » dans le node Photos de la pièce (l'import d'une
+ *  photo ouvre l'espace de travail), puis on attend les murs. */
+export async function generateFromPhotos(
+  page: Page,
+  options?: { photos?: number; timeout?: number; walls?: number },
+): Promise<void> {
+  await expectSpace(page, "board", { timeout: 30_000 });
+  const n = options?.photos ?? 1;
+  const node = page
+    .getByRole("region", { name: "Espace de travail" })
+    .locator(".board-item.kind-frame.role-photos");
+  await node
+    .getByRole("button", {
+      name: `Générer le plan à partir de ${n} photo${n > 1 ? "s" : ""}`,
+    })
+    .click({ timeout: 30_000 });
+  if (options?.walls === 0) return;
+  await expect(
+    page
+      .getByRole("region", { name: "Espace de travail" })
+      .locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({ timeout: options?.timeout ?? 180_000 });
+}

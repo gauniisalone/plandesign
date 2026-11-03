@@ -10,6 +10,7 @@ import path from "node:path";
 import {
   createEmptyProject,
   expectSpace,
+  generateFromPhotos,
   goSpace,
   hasWeights,
   openRendersPane,
@@ -426,14 +427,14 @@ test("tracer, détecter la pièce, mesurer, calibrer, annuler, vue 3D", async ({
   });
 });
 
-test("première photo d'un projet neuf (tableau) : plan construit sans autre action", async ({
+test("première photo d'un projet neuf (tableau) : plan construit au clic du node", async ({
   page,
 }) => {
   // R1 (3 octobre 2026) : la photo déposée sur l'accueil était importée sans lancer la
-  // construction ; le plan n'arrivait qu'avec une seconde photo.
+  // construction ; le plan n'arrivait qu'avec une seconde photo. KAN-120 : la photo attend
+  // le bouton « Générer le plan à partir de 1 photo », qui la lit dès la première.
   test.skip(!existsSync(FIXTURE), "fixture image.png absente");
-  // T5 : « Nouveau projet » ouvre le tableau ; la photo importée sur le tableau construit le
-  // plan (bascule « générer au dépôt d'une photo », activée par défaut).
+  // T5 : « Nouveau projet » ouvre le tableau.
   await gotoApp(page, "/");
   await page.getByRole("button", { name: "Nouveau projet" }).click();
   await expect(page).toHaveURL(/#\/projects\/[0-9a-f-]{36}$/, {
@@ -462,6 +463,7 @@ test("première photo d'un projet neuf (tableau) : plan construit sans autre act
     clientX: box.x + box.width / 2,
     clientY: box.y + box.height / 2,
   });
+  await generateFromPhotos(page, { walls: 0 });
   const id = /projects\/([0-9a-f-]{36})/.exec(page.url())?.[1];
   await expect
     .poll(
@@ -503,10 +505,12 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
   );
   await createProject(page, "E2E photo");
 
-  // Directive d'augus du 29 septembre : la photo déposée construit le plan toute seule,
-  // sans question ni bouton d'analyse ; à l'arrivée, un bandeau « plan estimé » et
-  // « Recalibrer ». La bande de vignettes importe.
+  // Directive d'augus du 29 septembre, revue par KAN-120 : la photo déposée attend « Générer
+  // le plan à partir de 1 photo » (un clic, sans question ni choix de méthode) ; à l'arrivée,
+  // un bandeau « plan estimé » et « Recalibrer ». La bande de vignettes importe.
   await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+  await generateFromPhotos(page);
+  await goSpace(page, "plan");
   await expect(page.locator(".strip-thumb")).toHaveCount(1);
   await expect(page.locator("polygon.wall")).toHaveCount(4, {
     timeout: 180_000,
@@ -631,11 +635,26 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
     .getByRole("button", { name: "fermer" })
     .click();
 
-  // Une seconde photo (la même) est comparée au plan toute seule : « Photo 2 » dans le
-  // plan, que l'on peut écarter (elle reste) puis réintégrer.
+  // KAN-120 : une seconde photo (la même) ne change rien au plan ; « Régénérer le plan à
+  // partir de 2 photos » la lit : « Photo 2 » dans le plan, que l'on peut écarter (elle
+  // reste) puis réintégrer.
   await page.locator(".strip input[type=file]").setInputFiles(FIXTURE);
+  await expectSpace(page, "board", { timeout: 30_000 });
+  await page.waitForTimeout(2000);
+  const node = page
+    .getByRole("region", { name: "Espace de travail" })
+    .locator(".board-item.kind-frame.role-photos");
+  await node
+    .getByRole("button", { name: "Régénérer le plan à partir de 2 photos" })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Remplacer le plan actuel ?" })
+    .getByRole("button", { name: "Régénérer le plan" })
+    .click();
+  await expect(page.getByText(/^Plan régénéré\./)).toBeVisible({ timeout: 180_000 });
+  await goSpace(page, "plan");
   await expect(page.locator("svg.plan circle.camera")).toHaveCount(2, {
-    timeout: 180_000,
+    timeout: 30_000,
   });
   await expect(page.locator("polygon.wall")).toHaveCount(4);
   await expect(photos).toContainText("Photo 2");
@@ -706,13 +725,22 @@ test("photo avec les poids de profondeur : distances estimées, plafond plat, di
   );
   await createProject(page, "E2E profondeur");
   await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+  await generateFromPhotos(page, { walls: 0 });
   // Progression lisible pendant le calcul (étape et durée annoncée), jamais un nom de modèle.
-  const progress = page.locator(".auto-banner:not(.estimated)");
+  const progress = page
+    .getByRole("region", { name: "Espace de travail" })
+    .locator(".board-photos-progress");
   if (await progress.isVisible()) {
     await expect(progress).toContainText(/Construction du plan/);
     await expect(progress).toContainText(/environ \d+ s/);
     await expect(progress).not.toContainText(/depth|RANSAC|@/i);
   }
+  await expect(
+    page
+      .getByRole("region", { name: "Espace de travail" })
+      .locator(".board-item.kind-plan img.board-plan"),
+  ).toBeVisible({ timeout: 180_000 });
+  await goSpace(page, "plan");
   await expect(page.locator("polygon.wall")).toHaveCount(4, {
     timeout: 180_000,
   });

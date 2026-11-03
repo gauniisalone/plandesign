@@ -15,10 +15,10 @@ test.afterEach(async ({ page }) => {
   await waitNoHeavyJob(page);
 });
 
-/** T4 : le déclencheur du chemin « zéro geste » sur le tableau. Bascule « générer au dépôt
- *  d'une photo » activée par défaut : une photo déposée sur un projet sans plan construit le
- *  plan sans autre geste (0 geste mesuré) ; coupée, rien ne part, « Générer maintenant » le
- *  fait (1 geste mesuré). Aucune requête externe. */
+/** T4, KAN-120 : le déclencheur du chemin sur l'espace de travail. Une photo déposée dans le
+ *  node Photos ne lance plus rien (la bascule « générer au dépôt d'une photo » a disparu) ;
+ *  « Générer le plan à partir de 1 photo » du node, ou « Générer maintenant », construit le
+ *  plan (1 geste mesuré). Aucune requête externe. */
 const PNG = readFileSync(
   path.resolve("../../tests/fixtures/rect_room/image.png"),
 );
@@ -58,7 +58,7 @@ async function metrics(page: Page, id: string) {
   };
 }
 
-test("déclencheur : au dépôt (0 geste) ou « Générer maintenant » (1 geste)", async ({
+test("déclencheur : la photo déposée attend le bouton ; « Générer maintenant » (1 geste)", async ({
   page,
 }) => {
   test.skip(!(await canRender(page)), NO_RENDER);
@@ -69,60 +69,24 @@ test("déclencheur : au dépôt (0 geste) ou « Générer maintenant » (1 geste
     if (!["127.0.0.1", "localhost"].includes(host)) outside.push(host);
   });
 
-  // Bascule activée (défaut) : la photo déposée construit le plan.
-  const auto = await createEmptyProject(page, "Déclencheur auto");
+  // KAN-120 : plus de bascule ; la photo déposée ne lance rien.
+  const manual = await createEmptyProject(page, "Déclencheur manuel");
   await goSpace(page, "board");
   const board = page.getByRole("region", { name: "Espace de travail" });
   const trigger = page.getByRole("group", { name: "Déclencheur" });
-  const toggle = trigger.getByLabel(
-    "Générer automatiquement au dépôt d'une photo",
-  );
-  await expect(toggle).toBeChecked();
-  await dropInto(
-    page,
-    board.locator(".board-item.kind-frame.role-photos"),
-    "piece.png",
-    PNG,
-  );
-  const plan = board.locator(".board-item.kind-plan");
-  await expect(plan.locator("img.board-plan")).toBeVisible({
-    timeout: 180_000,
-  });
-  const m0 = await metrics(page, auto);
-  expect(m0.generate_clicks).toBe(0);
-  expect(m0.gestures_before_first_render).toBe(0);
-
-  // Bascule coupée : rien ne part ; « Générer maintenant » construit le plan.
-  const manual = await createEmptyProject(page, "Déclencheur manuel");
-  await goSpace(page, "board");
-  // Case pilotée par le projet : elle change à la réponse du serveur.
-  const manualToggle = trigger.getByLabel(
-    "Générer automatiquement au dépôt d'une photo",
-  );
-  await manualToggle.click();
-  await expect(manualToggle).not.toBeChecked();
-  await expect
-    .poll(async () => {
-      const p = (await (
-        await page.request.get(`/api/projects/${manual}`)
-      ).json()) as {
-        render: { auto_on_drop: boolean };
-      };
-      return p.render.auto_on_drop;
-    })
-    .toBe(false);
-  await dropInto(
-    page,
-    board.locator(".board-item.kind-frame.role-photos"),
-    "piece.png",
-    PNG,
-  );
+  await expect(
+    trigger.getByLabel("Générer automatiquement au dépôt d'une photo"),
+  ).toHaveCount(0);
+  const photos = board.locator(".board-item.kind-frame.role-photos");
+  await dropInto(page, photos, "piece.png", PNG);
   await expect(board.locator(".board-item.kind-photo")).toHaveCount(1, {
     timeout: 60_000,
   });
   await page.waitForTimeout(3000);
+  const plan = board.locator(".board-item.kind-plan");
+  await expect(plan.locator("img.board-plan")).toHaveCount(0);
   await expect(
-    plan.getByRole("button", { name: "Générer le plan" }),
+    photos.getByRole("button", { name: "Générer le plan à partir de 1 photo" }),
   ).toBeVisible();
   // KAN-64 : la photo déposée reste choisie, et ses actions ont pris la place de
   // l'Assistant ; on revient à l'Assistant (un clic) pour « Générer maintenant ».
