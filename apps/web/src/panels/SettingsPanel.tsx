@@ -93,20 +93,8 @@ export function SettingsPanel({
           />
           Après un dépôt : ambiance, aménagement, trois vues et leurs rendus
         </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            aria-label="Générer au dépôt d'une photo"
-            checked={project.render.auto_on_drop}
-            onChange={(e) =>
-              onSettings({
-                render: { ...project.render, auto_on_drop: e.target.checked },
-              })
-            }
-          />
-          Une photo déposée dans l'espace de travail d'un projet sans plan lance
-          la construction du plan
-        </label>
+        {/* KAN-120 : « Générer au dépôt d'une photo » retiré ; le plan se génère sur le
+            bouton du node Photos (auto_on_drop reste dans le format 0.22, plus lu). */}
         <label className="check">
           <input
             type="checkbox"

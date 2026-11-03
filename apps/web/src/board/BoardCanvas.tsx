@@ -68,6 +68,8 @@ import {
   resizedPostit,
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
+import { PhotosGenerate } from "./PhotosGenerate";
+import { PHOTO_TAGS, photosState } from "./photoStatus";
 import { CLOSE_UP_TEXT, PHOTO_GUIDE_LINK, PhotoGuide } from "./PhotoGuide";
 import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
@@ -245,9 +247,13 @@ interface Props {
    *  ouvert le dit, en une ligne, avec « Annuler »). */
   queued?: boolean;
   onCancelQueued?: () => void;
-  /** T4 : une photo réelle déposée (projet à jour, id de la première) ; le chemin décide
-   *  selon la bascule « générer au dépôt d'une photo ». */
-  onPhotoDropped: (project: Project, imageId: string, file?: File) => void;
+  /** KAN-120 : « Générer le plan à partir de N photos » (`replace` : « Régénérer »), depuis
+   *  le node Photos de la pièce relié au plan `levelId`. */
+  onGenerateFromPhotos?: (levelId: string, photos: string[], replace: boolean) => void;
+  /** KAN-120 : la progression « photo k sur N » du plan `levelId`. */
+  photosProgress?: { levelId: string; label: string; fraction: number | null } | null;
+  /** KAN-120 : photos dont l'analyse a échoué au dernier essai. */
+  depthFailed?: string[];
   /** T4 : « Générer maintenant » (plan s'il manque, sinon chemin automatique). */
   onGenerateNow: (fresh: Requirements) => void;
   /** T4 : il y a déjà des rendus (la barre du déclencheur se retire). */
@@ -1047,6 +1053,23 @@ export function BoardCanvas(props: Props) {
   };
 
   /** KAN-98 : le compteur d'un node, à côté de son titre ; rien quand il est vide. */
+  /** KAN-120 : les photos d'un node Photos, dans l'ordre de l'espace de travail. */
+  const photoMembers = (frame: BoardItem): string[] =>
+    items
+      .filter((i) => i.frame === frame.id && i.kind === "photo" && i.ref)
+      .map((i) => i.ref as string);
+  const failedPhotos = new Set(props.depthFailed ?? []);
+  /** KAN-120 : où en est chaque photo d'un node Photos relié (utilisée, écartée, nouvelle). */
+  const photoUse = (item: BoardItem) => {
+    if (item.kind !== "photo" || !item.ref || !item.frame) return null;
+    const frame = items.find((i) => i.id === item.frame);
+    if (!frame || frame.role !== "photos") return null;
+    const lid = plansFedBy(board, frame.id)[0];
+    if (!lid) return null;
+    const state = photosState(project.levels[lid], photoMembers(frame), failedPhotos);
+    if (!state.hasPlan && !failedPhotos.has(item.ref)) return null;
+    return state.photos[item.ref] ?? null;
+  };
   const frameCount = (frame: BoardItem): string | null => {
     const n = items.filter((i) => i.frame === frame.id).length;
     if (n === 0) return null;
@@ -1459,8 +1482,6 @@ export function BoardCanvas(props: Props) {
     const added: BoardItem[] = [];
     let changed: Project | null = null;
     let firstPhoto: string | null = null;
-    // Connexion lente (25 oct.) : le fichier déposé sert à l'analyse, sans le retélécharger.
-    let firstFile: File | undefined;
     let offset = 0;
     let target = into ?? frameAt(at);
     const dropped = target;
@@ -1481,10 +1502,7 @@ export function BoardCanvas(props: Props) {
         if (isImage && !inspirations) {
           const result = await api.uploadImage(project.id, file);
           changed = result.project;
-          if (firstPhoto === null) {
-            firstPhoto = result.image.id;
-            firstFile = file;
-          }
+          if (firstPhoto === null) firstPhoto = result.image.id;
           item = {
             id: uid(),
             kind: "photo",
@@ -1544,19 +1562,10 @@ export function BoardCanvas(props: Props) {
       ]);
       setSelected(new Set(added.map((a) => a.id)));
       if (changed) props.onProjectChanged(changed);
-      // KAN-91 (C1) : une photo ne construit le plan que déposée dans la carte Photos reliée
-      // à ce plan ; posée librement, elle attend qu'on l'y glisse (et le dit).
-      const level = props.activeLevelId ?? firstLevelId;
-      const fed =
-        dropped && cardRole(dropped) === "photos"
-          ? plansFedBy(board, dropped.id)
-          : [];
-      if (changed && firstPhoto && fed.includes(level))
-        props.onPhotoDropped(changed, firstPhoto, firstFile);
-      else if (firstPhoto && fed.length && props.onPlanMembers)
-        // La carte d'un autre plan (l'étage) : c'est ce plan-là qui la lit.
-        for (const lid of fed) props.onPlanMembers(lid, [firstPhoto], []);
-      else if (firstPhoto && cardRole(dropped) !== "photos")
+      // KAN-91 (C1) : une photo ne sert au plan que déposée dans la carte Photos reliée à ce
+      // plan ; posée librement, elle attend qu'on l'y glisse (et le dit). KAN-120 : déposée
+      // dans la carte, elle attend le bouton « Générer le plan à partir de N photos ».
+      if (firstPhoto && cardRole(dropped) !== "photos")
         setToast({
           text: "Photo posée hors node : glissez-la dans « Photos de la pièce » pour qu'elle serve au plan.",
         });
@@ -2178,16 +2187,30 @@ export function BoardCanvas(props: Props) {
 
   const body = (item: BoardItem) => {
     switch (item.kind) {
-      case "photo":
+      case "photo": {
+        // KAN-120 : utilisée, écartée (et pourquoi), pas encore utilisée, non analysée.
+        const use = photoUse(item);
         return item.ref && project.images[item.ref] ? (
-          <AuthedImg
-            src={api.imageFileUrl(project.id, item.ref)}
-            alt={item.text || "Photo"}
-            missing="photo indisponible"
-          />
+          <>
+            <AuthedImg
+              src={api.imageFileUrl(project.id, item.ref)}
+              alt={item.text || "Photo"}
+              missing="photo indisponible"
+            />
+            {use && (
+              <span
+                className={`board-photo-use use-${use.use}`}
+                title={use.reason || PHOTO_TAGS[use.use]}
+              >
+                {use.use === "used" ? "✓ " : ""}
+                {PHOTO_TAGS[use.use]}
+              </span>
+            )}
+          </>
         ) : (
           <span className="board-missing">photo introuvable</span>
         );
+      }
       case "render": {
         const url = renderUrl(item);
         const entry = item.ref ? byRun.get(item.ref) : undefined;
@@ -2271,18 +2294,20 @@ export function BoardCanvas(props: Props) {
                         <button
                           type="button"
                           onClick={() => props.onAddSource()}
-                          title="Un plan DXF, PDF ou une image de plan, ou des photos de la pièce : le plan se construit"
+                          title="Un plan DXF, PDF ou une image de plan : le plan se construit. Des photos de la pièce : elles attendent « Générer le plan » dans leur node"
                         >
                           <IconUpload aria-hidden="true" /> Importer un plan
                           (DXF, PDF, image)
                         </button>
+                        {/* KAN-120 : les photos ont leur bouton dans le node Photos ;
+                            celui-ci lit les exigences (L3). */}
                         <button
                           type="button"
                           className="primary"
                           onClick={() => props.onGeneratePlan()}
-                          title="D'après les photos de la pièce, sinon d'après vos exigences (plan proposé, à ajuster)"
+                          title="D'après vos exigences (surface, logement, envies) : plan proposé, à ajuster"
                         >
-                          Générer le plan
+                          Générer le plan d'après mes exigences
                         </button>
                       </span>
                     </>
@@ -2515,6 +2540,36 @@ export function BoardCanvas(props: Props) {
                   )}
                 </span>
               )}
+            {item.role === "photos" && !readOnly && caps.photoPlan && (() => {
+              // KAN-120 : le plan se génère ici, sur un clic, à partir de toutes les photos
+              // du node (le plan qu'il nourrit : son lien « photos → plan »).
+              const lid = plansFedBy(board, item.id)[0];
+              const members = photoMembers(item);
+              if (!lid || members.length === 0 || !props.onGenerateFromPhotos) return null;
+              const level = project.levels[lid];
+              const progress =
+                props.photosProgress?.levelId === lid
+                  ? props.photosProgress
+                  : lid === (props.activeLevelId ?? firstLevelId) && props.planProgress
+                    ? { label: props.planProgress, fraction: null }
+                    : null;
+              return (
+                <PhotosGenerate
+                  state={photosState(level, members, failedPhotos)}
+                  progress={progress}
+                  busy={Boolean(props.planProgress)}
+                  furniture={
+                    level
+                      ? Object.values(level.elements).filter((e) => e.type === "furniture")
+                          .length
+                      : 0
+                  }
+                  onGenerate={(replace) =>
+                    props.onGenerateFromPhotos?.(lid, members, replace)
+                  }
+                />
+              );
+            })()}
             <span
               className={
                 item.role

@@ -89,6 +89,9 @@ export interface ImageImportResult {
   image: ImageRef;
   warnings: string[];
   project: Project;
+  /** KAN-120 : une image de plan construit le plan dès l'import ; une photo attend le
+   *  bouton « Générer le plan à partir de N photos ». */
+  kind?: "photo" | "plan";
 }
 
 const TOKEN_KEY = "openplan_api_token";
@@ -1300,11 +1303,23 @@ export interface AutoPlanResult {
 
 export const autoplanApi = {
   /** Lance la construction du plan depuis l'image ; l'état se suit par la tâche. */
-  start: (pid: string, lid: string, imageId: string, kind?: "photo" | "plan") =>
-    request<JobStatus>(
-      `/projects/${pid}/levels/${lid}/images/${imageId}/autoplan${kind ? `?kind=${kind}` : ""}`,
+  start: (
+    pid: string,
+    lid: string,
+    imageId: string,
+    kind?: "photo" | "plan",
+    replace = false,
+  ) => {
+    const query = new URLSearchParams();
+    if (kind) query.set("kind", kind);
+    // KAN-120 : « Régénérer le plan », remplacé en une seule étape d'annulation.
+    if (replace) query.set("replace", "true");
+    const tail = query.toString() ? `?${query.toString()}` : "";
+    return request<JobStatus>(
+      `/projects/${pid}/levels/${lid}/images/${imageId}/autoplan${tail}`,
       { method: "POST" },
-    ),
+    );
+  },
 };
 
 /** KAN-79 : profondeur calculée par le navigateur (float16, grille de 640 px au plus). */

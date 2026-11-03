@@ -85,6 +85,7 @@ import { takePendingNotices, takePendingPlan } from "../state/pendingArrival";
 import { takePendingFile } from "../state/pendingFile";
 import { useProject } from "../state/useProject";
 import { BoardCanvas } from "../board/BoardCanvas";
+import { WireToast } from "../board/BoardLinks";
 import { ContextualPanel, type ContextualPick } from "../board/ContextualPanel";
 import { useBoard } from "../board/useBoard";
 import { freeSpot } from "../board/arrange";
@@ -643,6 +644,13 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     setNoticeClosed(false);
     fit();
   }, [arrival, fit]);
+  // KAN-120 : une photo importée attend « Générer le plan à partir de N photos » : l'espace
+  // de travail s'affiche, avec son node Photos.
+  const photoArrival = state.photoArrival;
+  useEffect(() => {
+    if (photoArrival === 0) return;
+    goStep("board");
+  }, [photoArrival, goStep]);
 
   // Chemin « zéro geste » arrivé au bout (V1, point 6) : l'atelier passe à Rendre, les
   // rendus en premier, avec les accès pour affiner.
@@ -1483,6 +1491,19 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onRerender={rerenderViews}
             />
           )}
+          {state.regenerated !== null && (
+            // KAN-120 : le plan régénéré est une seule étape d'annulation.
+            <WireToast
+              text={`Plan régénéré.${state.regenerated ? ` ${state.regenerated}` : ""}`}
+              onUndo={() => {
+                actions.dismissRegenerated();
+                actions.undo();
+              }}
+              onClose={actions.dismissRegenerated}
+              ms={10000}
+              bar
+            />
+          )}
           {step === "board" && board.board && (
             <BoardCanvas
               project={state.project}
@@ -1540,20 +1561,29 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onSettings={actions.updateSettings}
               onGeneratePlan={() => {
                 journalApi.ui(projectId, "generate_clicked", "plan");
-                // KAN-91 (C1) : la première photo de la carte Photos reliée à ce plan.
-                actions.generatePlan(
-                  undefined,
-                  planPhotos(board.board, level.id)[0],
-                );
+                // KAN-120 : « d'après mes exigences » ; les photos ont leur bouton.
+                actions.generatePlan();
               }}
               onGenerateNow={(fresh) => {
                 journalApi.ui(projectId, "generate_clicked", "now");
-                actions.generateNow(
-                  fresh,
-                  planPhotos(board.board, level.id)[0],
-                );
+                // KAN-91 (C1), KAN-120 : toutes les photos de la carte reliée à ce plan.
+                actions.generateNow(fresh, planPhotos(board.board, level.id));
               }}
-              onPhotoDropped={actions.planFromPhoto}
+              onGenerateFromPhotos={
+                readOnly
+                  ? undefined
+                  : (lid, photos, replace) => {
+                      journalApi.ui(
+                        projectId,
+                        "generate_clicked",
+                        replace ? "photos_replace" : "photos",
+                      );
+                      if (lid !== level.id) actions.openLevel(lid);
+                      actions.generateFromPhotos(lid, photos, replace);
+                    }
+              }
+              photosProgress={state.photosProgress}
+              depthFailed={state.depthFailed}
               closeUp={
                 state.lastAuto?.run.close_up
                   ? {
@@ -1566,7 +1596,9 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               onCancelQueued={actions.cancelQueued}
               hasRenders={state.renders.length > 0}
               planProgress={
-                state.photoDepth && !state.photoDepth.error
+                state.photosProgress
+                  ? state.photosProgress.label
+                  : state.photoDepth && !state.photoDepth.error
                   ? "Analyse de la photo…"
                   : state.autoJob?.status === "queued" ||
                       state.pilotJob?.status === "queued"

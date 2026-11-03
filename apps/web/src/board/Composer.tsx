@@ -333,29 +333,7 @@ export function Composer({
           </span>
         ) : (
           <>
-            {caps.renders && (
-              <label
-                className="board-trigger-toggle"
-                title="Générer automatiquement au dépôt d'une photo"
-              >
-                <input
-                  type="checkbox"
-                  checked={project.render.auto_on_drop}
-                  onChange={(e) =>
-                    onSettings({
-                      render: {
-                        ...project.render,
-                        auto_on_drop: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                {/* Replié : la case seule, le texte reste son nom (lecteurs d'écran). */}
-                <span className={compact ? "sr-only" : undefined}>
-                  Générer automatiquement au dépôt d'une photo
-                </span>
-              </label>
-            )}
+            {/* KAN-120 : plus de « Générer automatiquement au dépôt d'une photo ». */}
             <span className="board-composer-sp" />
             {(caps.renders || !hasWalls) && (
               <button

@@ -145,6 +145,15 @@ export interface EditorState {
   /** KAN-79 : « Analyse de la photo… » dans le navigateur, avant la construction du plan ;
    *  `error` : l'analyse a échoué (bouton « Réessayer »), l'espace reste utilisable. */
   photoDepth: PhotoDepthState | null;
+  /** KAN-120 : progression de « Générer le plan à partir de N photos » (photo k sur N). */
+  photosProgress: { levelId: string; label: string; fraction: number | null } | null;
+  /** KAN-120 : photos dont l'analyse a échoué au dernier essai (« non analysée »). */
+  depthFailed: string[];
+  /** KAN-120 : après « Régénérer le plan », la phrase sur les meubles retirés ("" sinon) ;
+   *  null quand il n'y a rien à dire (barre « Annuler » fermée). */
+  regenerated: string | null;
+  /** KAN-120 : une photo importée attend le bouton ; l'espace de travail s'affiche. */
+  photoArrival: number;
 }
 
 export interface PhotoDepthState {
@@ -205,6 +214,10 @@ const INITIAL: EditorState = {
   pilotRun: null,
   pilotArrival: 0,
   photoDepth: null,
+  photosProgress: null,
+  depthFailed: [],
+  regenerated: null,
+  photoArrival: 0,
 };
 
 export function useProject(projectId: string) {
@@ -536,6 +549,7 @@ export function useProject(projectId: string) {
       imageId: string,
       base: number,
       kind?: "photo" | "plan",
+      replace = false,
     ) => {
       const fail = (e: unknown) =>
         setState((s) => ({
@@ -560,8 +574,14 @@ export function useProject(projectId: string) {
             planPreview: null,
             planCursor: null,
             arrival: s.arrival + 1,
+            // KAN-120 : « Plan régénéré … Annuler » (une seule étape d'annulation).
+            regenerated: replace
+              ? (result.run.notices.find((t) => t.includes("hors des nouveaux murs")) ??
+                "")
+              : s.regenerated,
           }));
           if (
+            !replace &&
             result.run.method !== "none" &&
             result.run.project.render.auto_path &&
             currentCapabilities().renders
@@ -575,7 +595,7 @@ export function useProject(projectId: string) {
         }
       };
       autoplanApi
-        .start(pid, lid, imageId, kind)
+        .start(pid, lid, imageId, kind, replace)
         .then((job) => {
           setState((s) => ({ ...s, autoJob: job, error: null }));
           return poll(job.id);
@@ -689,6 +709,85 @@ export function useProject(projectId: string) {
     },
     [autoplan],
   );
+  /** KAN-120 : « Générer le plan à partir de N photos » (ou « Régénérer », `replace`). En
+   *  ligne, la profondeur de chaque photo du node se calcule dans le navigateur, l'une après
+   *  l'autre (« photo k sur N ») ; une photo déjà analysée et envoyée n'est pas recalculée
+   *  (envoyée dans cette page, ou déjà posée sur ce plan). Une photo en échec n'arrête rien :
+   *  le plan part des autres, et le node dit « non analysée ». */
+  const generateFromPhotos = useCallback(
+    (lid: string, photos: string[], replace: boolean) => {
+      const { project } = state;
+      if (!project || !project.levels[lid] || photos.length === 0) return;
+      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
+      if (state.photosProgress) return;
+      if (!currentCapabilities().photoPlan) return;
+      const pid = project.id;
+      const base = project.history_cursor;
+      const n = photos.length;
+      const posed = new Set(
+        Object.values(project.levels[lid].elements)
+          .filter((e) => e.type === "camera" && "image_id" in e && e.image_id)
+          .map((e) => ("image_id" in e ? (e.image_id as string) : "")),
+      );
+      const show = (label: string, fraction: number | null) =>
+        setState((s) => ({
+          ...s,
+          error: null,
+          photosProgress: { levelId: lid, label, fraction },
+        }));
+      void (async () => {
+        const failed: string[] = [];
+        if (currentCapabilities().browserDepth) {
+          for (const [k, imageId] of photos.entries()) {
+            const ref = project.images[imageId];
+            if (!ref || depthSent.current.has(imageId) || posed.has(imageId)) continue;
+            const label = `Analyse de la photo ${k + 1} sur ${n}…`;
+            show(label, null);
+            try {
+              const local = await browserDepthApi.photo(pid, imageId);
+              const result = await computeDepth(
+                local,
+                ref.width_px,
+                ref.height_px,
+                (p: DepthProgress) => show(label, p.fraction),
+              );
+              show(`Envoi de l'analyse de la photo ${k + 1} sur ${n}`, 0);
+              await browserDepthApi.put(
+                pid,
+                lid,
+                imageId,
+                result.grid,
+                result.width,
+                result.height,
+                (fraction) => show(`Envoi de l'analyse de la photo ${k + 1} sur ${n}`, fraction),
+              );
+              depthSent.current.add(imageId);
+            } catch {
+              failed.push(imageId);
+            }
+          }
+        }
+        const usable = photos.filter((id) => !failed.includes(id));
+        setState((s) => ({ ...s, photosProgress: null, depthFailed: failed }));
+        if (usable.length === 0) {
+          setState((s) => ({
+            ...s,
+            error:
+              n > 1
+                ? "Aucune photo n'a pu être analysée : réessayez, ou rechargez la page."
+                : "La photo n'a pas pu être analysée : réessayez, ou rechargez la page.",
+          }));
+          return;
+        }
+        autoplan(pid, lid, usable[0], base, undefined, replace);
+      })();
+    },
+    [state, autoplan],
+  );
+  const dismissRegenerated = useCallback(
+    () => setState((s) => ({ ...s, regenerated: null })),
+    [],
+  );
   const retryPhotoDepth = useCallback(() => depthRetry.current?.(), []);
   const dismissPhotoDepth = useCallback(() => {
     depthRetry.current = null;
@@ -788,19 +887,20 @@ export function useProject(projectId: string) {
           },
         }));
         await applyProject(result.project);
-        // En ligne sans estimation de profondeur : la photo est rangée, le plan ne se
-        // construit pas depuis elle (« Plan depuis photo : bientôt en ligne »).
-        if (!currentCapabilities().photoPlan) {
-          setState((s) => ({ ...s, arrival: s.arrival + 1 }));
+        // KAN-120 : une image de plan construit le plan dès l'import ; une photo est rangée
+        // dans le node Photos et attend « Générer le plan à partir de N photos ».
+        if (result.kind === "plan" && currentCapabilities().photoPlan) {
+          autoplanFromPhoto(
+            result.project,
+            levelId,
+            result.image.id,
+            result.project.history_cursor,
+            file,
+            "plan",
+          );
           return;
         }
-        autoplanFromPhoto(
-          result.project,
-          levelId,
-          result.image.id,
-          result.project.history_cursor,
-          file,
-        );
+        setState((s) => ({ ...s, photoArrival: s.photoArrival + 1 }));
       });
     },
     [state, run, applyProject, autoplanFromPhoto, importPlan],
@@ -858,11 +958,10 @@ export function useProject(projectId: string) {
 
   /** KAN-91 : les photos de la carte Photos reliée au plan `levelId` ont changé (après le
    *  délai d'« Annuler » de l'espace de travail). Une photo sortie quitte le plan : sa caméra
-   *  estimée s'en va (un pas d'historique, annulable). Une photo entrée qui n'a jamais été
-   *  analysée sur ce plan l'est : elle construit le plan s'il est vide, sinon elle y est
-   *  confrontée. Une photo déjà analysée garde son analyse (décision d'augus). */
+   *  estimée s'en va (un pas d'historique, annulable). KAN-120 : une photo entrée ne lance
+   *  plus rien ; elle attend « Générer le plan » ou « Régénérer le plan ». */
   const recomputePlan = useCallback(
-    (levelId: string, added: string[], removed: string[]) => {
+    (levelId: string, _added: string[], removed: string[]) => {
       const { project } = state;
       if (!project || !project.levels[levelId]) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
@@ -874,12 +973,7 @@ export function useProject(projectId: string) {
           e.image_id &&
           removed.includes(e.image_id),
       );
-      const analysed = new Set(
-        Object.values(level.elements)
-          .filter((e) => e.type === "camera" && "image_id" in e && e.image_id)
-          .map((e) => ("image_id" in e ? e.image_id : null)),
-      );
-      const fresh = added.filter((id) => !analysed.has(id));
+      if (cameras.length === 0) return;
       void run(async () => {
         let current = project;
         for (const camera of cameras) {
@@ -889,49 +983,28 @@ export function useProject(projectId: string) {
           });
           current = result.project;
         }
-        if (cameras.length) await applyProject(current);
-        if (fresh[0] && currentCapabilities().photoPlan)
-          autoplanFromPhoto(current, levelId, fresh[0], current.history_cursor);
+        await applyProject(current);
       });
     },
-    [state, run, applyProject, autoplanFromPhoto],
-  );
-
-  /** Une photo déposée sur le tableau (T4) : projet sans plan et bascule « générer au dépôt
-   *  d'une photo » active → construction du plan puis chemin automatique, sans autre geste. */
-  const planFromPhoto = useCallback(
-    (project: Project, imageId: string, file?: File) => {
-      const { levelId } = state;
-      if (!levelId || !project.render.auto_on_drop) return;
-      const level = project.levels[levelId];
-      if (!level || walls(level).length > 0) return;
-      if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
-      if (!currentCapabilities().photoPlan) return; // photo rangée, plan bientôt en ligne
-      if (state.photoDepth && !state.photoDepth.error) return;
-      autoplanFromPhoto(
-        project,
-        levelId,
-        imageId,
-        project.history_cursor,
-        file,
-      );
-    },
-    [state, autoplanFromPhoto],
+    [state, run, applyProject],
   );
 
   /** « Générer maintenant » (T4) : sans plan, comme « Générer le plan » ; avec un plan, le
    *  chemin automatique (ambiance, aménagement, vues, rendus). */
   const generateNow = useCallback(
-    (fresh?: Requirements, member?: string) => {
+    (fresh?: Requirements, photos: string[] = []) => {
       const { project, levelId } = state;
       if (!project || !levelId) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       const level = project.levels[levelId];
-      if (!level || walls(level).length === 0) generatePlan(fresh, member);
+      // KAN-120 : un clic, toutes les photos du node relié (jamais une seule en silence).
+      if ((!level || walls(level).length === 0) && photos.length > 0)
+        generateFromPhotos(levelId, photos, false);
+      else if (!level || walls(level).length === 0) generatePlan(fresh);
       else if (currentCapabilities().renders)
         startAutopilot(project.id, levelId);
     },
-    [state, generatePlan, startAutopilot],
+    [state, generatePlan, generateFromPhotos, startAutopilot],
   );
 
   /** « Ce n'est pas une photo » / « ce n'est pas un plan » : ce que la construction a
@@ -1910,7 +1983,8 @@ export function useProject(projectId: string) {
       updateSettings,
       importFile,
       generatePlan,
-      planFromPhoto,
+      generateFromPhotos,
+      dismissRegenerated,
       recomputePlan,
       retryPhotoDepth,
       dismissPhotoDepth,

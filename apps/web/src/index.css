@@ -9920,3 +9920,102 @@ button.link,
   padding-top: 0;
   padding-bottom: 0.4em;
 }
+
+/* ---- KAN-120 : « Générer le plan à partir de N photos », au bas du node Photos ----
+   Jetons de KAN-77 seulement ; taille constante à tout zoom comme la consigne (--inv). */
+.board-photos-generate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  padding: 0.6em 0.8em;
+  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  border-top: 1px solid var(--line);
+}
+.board-photos-hint {
+  color: var(--muted);
+  line-height: 1.35;
+}
+.board-photos-button {
+  font-size: inherit;
+  padding: 0.5em 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-photos-progress {
+  display: grid;
+  gap: 0.35em;
+  font-weight: 600;
+}
+.board-photos-progress-line {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+}
+.board-photos-bar {
+  display: block;
+  height: 0.4em;
+  border-radius: var(--r-pill);
+  background: var(--field);
+  overflow: hidden;
+}
+.board-photos-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+}
+.board-photos-confirm {
+  position: absolute;
+  left: 0.5em;
+  right: 0.5em;
+  bottom: calc(100% + 0.4em);
+  display: grid;
+  gap: 0.5em;
+  padding: 0.8em;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 24px color-mix(in oklab, black 22%, transparent);
+  line-height: 1.4;
+  white-space: normal;
+}
+.board-photos-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+.board-photos-confirm-actions button {
+  font-size: inherit;
+}
+.board-photo-use {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: calc(100% - 8px);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: min(calc(11px * max(1, var(--inv, 1))), 8cqw);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--on-primary);
+  background: color-mix(in oklab, var(--text) 75%, transparent);
+}
+.board-photo-use.use-used {
+  background: color-mix(in oklab, var(--pd-olive) 90%, transparent);
+}
+.board-photo-use.use-new {
+  background: color-mix(in oklab, var(--link) 90%, transparent);
+}
+.board-item.kind-photo:has(.use-excluded) img,
+.board-item.kind-photo:has(.use-failed) img {
+  filter: grayscale(0.8) opacity(0.7);
+}
