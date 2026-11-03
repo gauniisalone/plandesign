@@ -54,20 +54,17 @@ def member_photos(project: Project, store: ProjectStore, level_id: UUID) -> list
     return out
 
 
-def fuse_members(
+def fuse_project(
+    before: Project,
     store: ProjectStore,
-    project_id: UUID,
     level_id: UUID,
     depth: DepthEstimator | None,
     progress: Callable[[str], None] | None = None,
     *,
     force: bool = False,
 ) -> FusionRun | RoomFusionRun | None:
-    """Recoupe les photos membres quand la carte en compte au moins deux : combles (`force` :
-    même si le niveau n'est pas encore en combles), sinon pièce droite estimée depuis une photo
-    (P2b ; un plan tiré d'une image de plan dessiné n'est jamais touché). Enregistre le plan
-    recoupé si rien n'a changé pendant le calcul ; None quand il n'y a rien à recouper."""
-    before = store.load(project_id)
+    """Le recoupement de `fuse_members` sur un projet en mémoire, sans rien enregistrer
+    (KAN-120 : la régénération n'écrit qu'une fois, à la fin)."""
     level = before.levels.get(level_id)
     if level is None:
         return None
@@ -82,15 +79,13 @@ def fuse_members(
         return None
     if progress is not None:
         progress(f"Recoupement des {len(photos)} photos…")
-    project_dir = store.project_dir(project_id)
+    project_dir = store.project_dir(before.id)
     run: FusionRun | RoomFusionRun = (
         fuse_attic(before, project_dir, level_id, photos, estimator=depth)
         if attic
         else fuse_room(before, project_dir, level_id, photos, estimator=depth)
     )
-    if not run.applied:
-        return run
-    if not validate_invariants(run.project).valid:
+    if run.applied and not validate_invariants(run.project).valid:
         return run.model_copy(
             update={
                 "applied": False,
@@ -98,6 +93,26 @@ def fuse_members(
                 "notices": ["Plan recoupé incohérent : le plan n'a pas été remplacé."],
             }
         )
+    return run
+
+
+def fuse_members(
+    store: ProjectStore,
+    project_id: UUID,
+    level_id: UUID,
+    depth: DepthEstimator | None,
+    progress: Callable[[str], None] | None = None,
+    *,
+    force: bool = False,
+) -> FusionRun | RoomFusionRun | None:
+    """Recoupe les photos membres quand la carte en compte au moins deux : combles (`force` :
+    même si le niveau n'est pas encore en combles), sinon pièce droite estimée depuis une photo
+    (P2b ; un plan tiré d'une image de plan dessiné n'est jamais touché). Enregistre le plan
+    recoupé si rien n'a changé pendant le calcul ; None quand il n'y a rien à recouper."""
+    before = store.load(project_id)
+    run = fuse_project(before, store, level_id, depth, progress, force=force)
+    if run is None or not run.applied:
+        return run
     latest = store.load(project_id)
     if (latest.history_cursor, len(latest.history)) != (before.history_cursor, len(before.history)):
         msg = "le plan a été modifié pendant le recoupement : rien n'a été écrasé, relancez-le"

@@ -263,6 +263,8 @@ class MemoryHub:
         return any(e.peer.user_id == user_id for e in self.rooms.get(project_id, {}).values())
 
     async def join(self, project_id: UUID, conn: str, socket: WebSocket, peer: Peer) -> None:
+        # KAN-120 : la boucle sert aussi à annoncer la fin d'une tâche (plan écrit).
+        self.loop = asyncio.get_running_loop()
         first = not self._present(project_id, peer.user_id)
         self.rooms.setdefault(project_id, {})[conn] = Conn(socket, peer)
         if first:
@@ -558,6 +560,19 @@ def ring_project_from_thread(app: Any, project_id: UUID) -> None:
         return
     members = app.state.accounts.members(project_id)
     asyncio.run_coroutine_threadsafe(hub.ring(str(m.user_id) for m in members), loop)
+
+
+def announce_changed_from_thread(app: Any, project_id: UUID, exclude: str | None = None) -> None:
+    """KAN-120 : depuis le fil d'une tâche qui vient d'écrire le projet (plan construit ou
+    régénéré), le même avis « changed » qu'une écriture de requête (B2a) : les autres membres
+    connectés relisent le plan à l'écriture finale, pas à l'envoi de la demande. L'onglet
+    qui l'a demandé (`exclude`) a déjà le résultat."""
+    hub = hub_of(app)
+    loop = getattr(hub, "loop", None)
+    if loop is None or loop.is_closed():
+        return
+    message = {"type": "changed", "scope": "project"}
+    asyncio.run_coroutine_threadsafe(hub.publish(project_id, message, exclude=exclude), loop)
 
 
 async def _left(app: Any, hub: LiveHub, project_id: UUID, conn: str, user_id: str) -> None:

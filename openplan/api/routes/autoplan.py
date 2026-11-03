@@ -26,13 +26,18 @@ from openplan.api.deps import (
 )
 from openplan.api.jobs import JobStatus
 from openplan.api.public_errors import public_detail
-from openplan.api.routes.attic_fusion import fuse_members
+from openplan.api.routes.attic_fusion import fuse_members, fuse_project
+from openplan.api.settings import Settings
 from openplan.pipeline.autoplan import AutoPlanRun, ImageKind, run_autoplan
 from openplan.pipeline.client_depth import StoredDepthEstimator, has_stored_depth
 from openplan.pipeline.floorplan import DetectionError
 from openplan.pipeline.ingestion import ImageNotFoundError
+from openplan.pipeline.regenerate import cleared, regenerated
+from openplan.scene import history
+from openplan.scene.store import ProjectStore
 from openplan.schemas.common import StrictModel
 from openplan.schemas.results import ValidationReport
+from openplan.schemas.scene import Project
 from openplan.validation.invariants import validate_invariants
 
 router = APIRouter(tags=["autoplan"])
@@ -85,6 +90,74 @@ def _missing_notice(missing: list[str], *, exposed: bool) -> list[str]:
     ]
 
 
+def announce_written(
+    request: Request, settings: Settings, project_id: UUID, conn: str | None
+) -> None:
+    """KAN-120 : avec les comptes, le plan écrit par la tâche est annoncé aux co-éditeurs à
+    l'écriture finale (sinon ils travailleraient sur l'ancien plan et l'écraseraient)."""
+    if not settings.accounts_enabled:
+        return
+    from openplan.api.accounts.live import announce_changed_from_thread
+
+    announce_changed_from_thread(request.app, project_id, exclude=conn)
+
+
+def _replace(
+    store: ProjectStore,
+    request: Request,
+    actor: str,
+    level_id: UUID,
+    run: AutoPlanRun,
+    before: Project,
+    progress: Callable[[str], None],
+    depth: DepthEstimator | None,
+) -> AutoPlanResult:
+    """KAN-120, « Régénérer le plan » : recoupement en mémoire, meubles remis s'ils tiennent
+    dans les nouveaux murs, puis UNE écriture et une seule entrée d'historique (Ctrl+Z remet
+    l'ancien plan en entier). Rien n'est écrit si le calcul n'aboutit pas."""
+    if run.method == "none":
+        msg = "aucun mur n'a pu être deviné : le plan actuel est gardé tel quel"
+        raise DetectionError(msg)
+    rebuilt, notices, photos = run.project, list(run.notices), 1
+    try:
+        fused = fuse_project(rebuilt, store, level_id, depth, progress)
+    except DetectionError:
+        fused = None
+    if fused is not None:
+        if fused.applied:
+            rebuilt = fused.project
+            photos = max(1, len(fused.fusion.photos) if fused.fusion else 1)
+        notices.extend(fused.notices)
+    done = regenerated(before, rebuilt, level_id)
+    if done.removed_furniture:
+        n = done.removed_furniture
+        plural = "s" if n > 1 else ""
+        notices.append(f"{n} meuble{plural} hors des nouveaux murs retiré{plural}.")
+    latest = store.load(before.id)
+    if (latest.history_cursor, len(latest.history)) != (
+        before.history_cursor,
+        len(before.history),
+    ):
+        msg = (
+            "le plan a été modifié pendant le calcul : rien n'a été remplacé, relancez "
+            "« Régénérer le plan »"
+        )
+        raise DetectionError(msg)
+    label = f"Plan régénéré à partir de {photos} photo{'s' if photos > 1 else ''}"
+    after = history.commit(before, done.project, actor=actor, label=label)
+    # Une image ajoutée pendant le calcul reste dans le projet.
+    after = after.model_copy(update={"images": {**after.images, **latest.images}})
+    report = validate_invariants(after)
+    if not report.valid:
+        msg = "le plan régénéré est incohérent : le plan actuel est gardé tel quel"
+        raise DetectionError(msg)
+    store.save(after)
+    usage_event(request, "plan_built", before.id, photos)
+    progress("Plan prêt")
+    result = run.model_copy(update={"project": after, "notices": notices})
+    return AutoPlanResult(run=result, report=report)
+
+
 @router.post("/projects/{project_id}/levels/{level_id}/images/{image_id}/autoplan", status_code=202)
 def autoplan(
     level_id: UUID,
@@ -96,13 +169,16 @@ def autoplan(
     actor: ActorDep,
     request: Request,
     kind: ImageKind | None = None,
+    replace: bool = False,
 ) -> JobStatus:
     """Construit le plan depuis l'image déposée, sans question ni choix de méthode : photo
     d'une pièce (lignes, distances, pentes de toit, portes et fenêtres, meilleure méthode
     gardée) ou image d'un plan (redressement, échelle devinée, murs). Répond tout de suite ;
     l'étape en cours se lit dans `GET .../jobs/{id}` (`stage`). Ce qui manque (poids, Tesseract)
     est dit une fois dans `notices`, jamais bloquant. `kind` impose la lecture (photo ou plan)
-    quand l'utilisateur corrige celle qui a été devinée."""
+    quand l'utilisateur corrige celle qui a été devinée. KAN-120, `replace` : « Régénérer le
+    plan » ; le plan est refait comme sur un niveau vide puis remplacé en une seule étape
+    d'annulation, ou laissé intact si le calcul échoue."""
     if level_id not in project.levels:
         msg = f"niveau inconnu : {level_id}"
         raise DetectionError(msg)
@@ -113,6 +189,7 @@ def autoplan(
     require_plan_photo(project, store, level_id, image_id)
     project_id = project.id
     device, _ = resolve_device(settings.device)
+    conn = request.headers.get("x-live-conn")
 
     def work(progress: Callable[[str], None]) -> AutoPlanResult:
         progress("Préparation…")
@@ -136,7 +213,7 @@ def autoplan(
         )
         before = store.load(project_id)
         run = run_autoplan(
-            before,
+            cleared(before, level_id) if replace else before,
             store.project_dir(project_id),
             level_id,
             image_id,
@@ -151,6 +228,10 @@ def autoplan(
         if not report.valid:
             msg = "le plan construit est incohérent : rien n'a été enregistré"
             raise DetectionError(msg)
+        if replace:
+            done = _replace(store, request, actor, level_id, run, before, progress, depth)
+            announce_written(request, settings, project_id, conn)
+            return done
         latest = store.load(project_id)
         if (latest.history_cursor, len(latest.history)) != (
             before.history_cursor,
@@ -178,6 +259,7 @@ def autoplan(
             run = run.model_copy(update={"notices": [*run.notices, *fused.notices]})
         # KAN-109 L2 : un plan construit (value : nombre de photos lues).
         usage_event(request, "plan_built", project_id, photos)
+        announce_written(request, settings, project_id, conn)
         progress("Plan prêt")
         return AutoPlanResult(run=run.model_copy(update={"project": after}), report=report)
 

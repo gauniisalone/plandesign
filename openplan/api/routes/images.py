@@ -5,11 +5,13 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Response, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from openplan.api.board_rules import place_new_photo
 from openplan.api.deps import ProjectDep, StoreDep
 from openplan.api.files import served_file
-from openplan.pipeline.ingestion import ImageNotFoundError, import_image, remove_image
+from openplan.pipeline.autoplan import ImageKind, classify_image
+from openplan.pipeline.ingestion import ImageNotFoundError, import_image, load_image, remove_image
 from openplan.pipeline.quality import quality_warnings
 from openplan.schemas.common import StrictModel
 from openplan.schemas.scene import ImageRef, Project
@@ -21,6 +23,9 @@ class ImageImportResult(StrictModel):
     image: ImageRef
     warnings: list[str]
     project: Project
+    kind: ImageKind = "photo"
+    """KAN-120 : la lecture devinée (celle de l'autoplan). Une image de plan construit le plan
+    dès l'import ; une photo attend « Générer le plan à partir de N photos »."""
 
 
 class ImageQuality(StrictModel):
@@ -41,7 +46,11 @@ async def upload_image(
     store.save(after)
     if level_id is not None:
         place_new_photo(after, store, level_id, ref.id)
-    return ImageImportResult(image=ref, warnings=warnings, project=after)
+    # KAN-120 : ~0,3 s de processeur sur 12 Mpx (relecture comprise), hors de la boucle.
+    kind = await run_in_threadpool(
+        lambda: classify_image(load_image(store.project_dir(project.id), ref).pixels)
+    )
+    return ImageImportResult(image=ref, warnings=warnings, project=after, kind=kind)
 
 
 @router.get("/projects/{project_id}/images/{image_id}/file")
