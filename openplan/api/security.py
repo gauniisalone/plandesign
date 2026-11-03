@@ -411,7 +411,7 @@ def _install_accounts_guard(  # noqa: PLR0915 - un intergiciel, une porte par cl
         return _accounts_headers(response, path, csp)
 
     @app.middleware("http")
-    async def _session_guard(  # noqa: PLR0911 - une sortie par refus (KAN-89 : poste)
+    async def _session_guard(  # noqa: PLR0911, PLR0912 - une sortie par client (poste, lien, module)
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         started = time.perf_counter()
