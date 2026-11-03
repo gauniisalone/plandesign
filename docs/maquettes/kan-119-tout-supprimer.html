@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAN-119 Tout supprimer</title>
+<style>
+  :root {
+    --bg: #f6f0e5; --surface: #f6f0e5; --canvas: #ede3d1; --field: #e4d8c2;
+    --text: #2a2420; --muted: #5c5047; --link: #3e5a7e;
+    --primary: #a63a2e; --primary-hover: #8e3026; --on-primary: #ede3d1;
+    --line: #d9ccb4; --line-strong: #8c7d66; --olive: #6f7d4e;
+    --r-control: 8px; --r-card: 12px; --r-pill: 999px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.4; }
+  header { padding: 20px 16px 8px; max-width: 1100px; margin: 0 auto; }
+  header h1 { font-size: 1.35rem; margin: 0 0 6px; }
+  header p { margin: 0; color: var(--muted); max-width: 72ch; }
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 40px; display: grid; gap: 22px; }
+  .step { background: var(--canvas); border-radius: var(--r-card); padding: 14px 16px 18px; }
+  .step h2 { font-size: 1rem; margin: 0 0 4px; }
+  .step .why { margin: 0 0 12px; color: var(--muted); font-size: 0.9rem; max-width: 80ch; }
+  .row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  button { font: inherit; border-radius: var(--r-control); cursor: pointer; padding: 0.55em 1em;
+           border: 1px solid var(--line-strong); background: var(--field); color: var(--text); }
+  button.danger { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+  button.danger-ghost { background: transparent; border-color: var(--primary); color: var(--primary); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .home { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 14px; width: 560px; max-width: 100%; }
+  .home .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .home h3 { margin: 0; font-size: 1.05rem; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .card { border: 1px solid var(--line); border-radius: var(--r-control); overflow: hidden; background: var(--bg); font-size: 0.78rem; }
+  .card i { display: block; aspect-ratio: 4 / 3; background: linear-gradient(160deg, #d7c3a3, #a98d6b 60%, #7d6750); }
+  .card span { display: block; padding: 4px 6px; }
+  .card .role { color: var(--muted); }
+  .menu { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control); box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); padding: 4px; width: 250px; font-size: 0.9rem; }
+  .menu div { padding: 6px 10px; border-radius: 6px; }
+  .menu div.danger { color: var(--primary); font-weight: 600; background: rgb(166 58 46 / 0.08); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+  .dialog { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-card);
+            box-shadow: 0 8px 28px rgb(0 0 0 / 0.25); padding: 16px; width: 440px; max-width: 100%; display: grid; gap: 10px; }
+  .dialog h3 { margin: 0; font-size: 1.05rem; }
+  .dialog p, .dialog li { margin: 0; font-size: 0.9rem; }
+  .dialog ul { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; }
+  .dialog label { font-size: 0.88rem; display: grid; gap: 4px; }
+  .dialog input { font: inherit; padding: 0.5em 0.7em; border-radius: var(--r-control); border: 1px solid var(--line-strong); background: var(--bg); letter-spacing: 0.06em; }
+  .dialog input.ok { border-color: var(--primary); outline: 2px solid rgb(166 58 46 / 0.25); }
+  .dialog .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .hint { font-size: 0.85rem; color: var(--muted); margin: 0; }
+  .progress { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 0.9rem; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { background: var(--text); color: var(--bg); border-radius: var(--r-control); padding: 8px 12px; font-size: 0.85rem; display: inline-block; }
+  .note { font-size: 0.8rem; color: var(--muted); border-left: 3px solid var(--line-strong); padding-left: 8px; margin: 10px 0 0; max-width: 80ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KAN-119 : supprimer tous mes projets</h1>
+  <p>Maquette statique, sans code de l'application. Le geste est rare et définitif, il demande de saisir SUPPRIMER. Seuls les projets dont on est propriétaire partent. Les projets partagés avec soi restent.</p>
+</header>
+<main>
+
+<section class="step">
+  <h2>1. Où se trouve le geste</h2>
+  <p class="why">Il est loin des cartes de projets, pour qu'on ne le clique pas par erreur. Deux emplacements sont possibles, à trancher.</p>
+  <div class="row">
+    <div class="home">
+      <div class="top"><h3>Mes projets</h3><button>⋯ Plus</button></div>
+      <div class="grid">
+        <div class="card"><i></i><span>Séjour</span></div>
+        <div class="card"><i></i><span>Combles</span></div>
+        <div class="card"><i></i><span>Chambre</span><span class="role">partagé avec vous · éditeur</span></div>
+      </div>
+    </div>
+    <div class="menu" aria-label="Menu Plus">
+      <div>Nouveau projet</div>
+      <div>Importer un projet</div>
+      <hr>
+      <div class="danger">Supprimer tous mes projets…</div>
+    </div>
+  </div>
+  <p class="note">Emplacement retenu (choix d'augus, 3 nov.) : le menu « Plus » de l'accueil.</p>
+</section>
+
+<section class="step">
+  <h2>2. La confirmation : ce qui part, ce qui reste, saisir SUPPRIMER</h2>
+  <p class="why">Le bouton rouge reste grisé tant que le champ ne contient pas SUPPRIMER (la casse et les espaces autour sont ignorés). La touche Entrée ne valide pas avant, et Échap vaut Annuler. Au-delà de 10 projets, la liste des noms se replie (« et 7 autres… »).</p>
+  <div class="row">
+    <div class="dialog" role="dialog" aria-labelledby="t1">
+      <h3 id="t1">Supprimer vos 2 projets ?</h3>
+      <ul>
+        <li><strong>Supprimés définitivement :</strong> « Séjour » et « Combles », avec leur espace de travail, leurs plans, leurs photos, leurs fichiers et leurs rendus.</li>
+        <li><strong>Leurs membres</strong> (2 personnes invitées) n'y auront plus accès.</li>
+        <li><strong>Restent :</strong> les projets partagés avec vous (1), votre compte, vos réglages.</li>
+      </ul>
+      <p class="hint">Cela ne s'annule pas. Pensez à exporter d'abord les projets à garder.</p>
+      <label>Pour confirmer, saisissez SUPPRIMER
+        <input value="" placeholder="SUPPRIMER" aria-describedby="t1">
+      </label>
+      <div class="actions"><button>Annuler</button><button class="danger" disabled>Supprimer mes 2 projets</button></div>
+    </div>
+    <div class="dialog" role="dialog" aria-labelledby="t2">
+      <h3 id="t2">Supprimer vos 2 projets ?</h3>
+      <p class="hint">… (même texte) …</p>
+      <label>Pour confirmer, saisissez SUPPRIMER
+        <input class="ok" value="SUPPRIMER">
+      </label>
+      <div class="actions"><button>Annuler</button><button class="danger">Supprimer mes 2 projets</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="step">
+  <h2>3. Pendant la suppression, puis à la fin</h2>
+  <p class="why">On montre la suppression projet par projet. Si un projet échoue, les autres partent quand même, et le message nomme celui qui reste.</p>
+  <div class="row">
+    <div class="dialog"><div class="progress"><span class="spinner"></span> Suppression du projet 1 sur 2…</div></div>
+    <div style="display: grid; gap: 10px">
+      <span class="toast">2 projets supprimés. La place est libérée.</span>
+      <span class="toast">1 supprimé, 1 en échec : « Combles » reste, réessayez.</span>
+    </div>
+  </div>
+</section>
+
+<section class="step">
+  <h2>4. Aucun projet à soi</h2>
+  <p class="why">Si l'on ne possède aucun projet (seulement des projets partagés avec soi), l'entrée est grisée et le survol explique pourquoi.</p>
+  <div class="menu"><div>Nouveau projet</div><hr><div style="opacity: 0.5" title="Vous n'êtes propriétaire d'aucun projet">Supprimer tous mes projets…</div></div>
+  <p class="note">Serveur (décision du 3 nov.) : une boucle sur la route existante DELETE /projects/{id}, sans route ni migration. Le cas partiel (« X supprimés, Y en échec ») couvre la coupure réseau.</p>
+</section>
+
+</main>
+</body>
+</html>
