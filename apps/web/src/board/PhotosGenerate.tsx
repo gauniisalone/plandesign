@@ -19,6 +19,9 @@ export interface PhotosProgress {
 }
 
 interface Props {
+  /** Le bas du node Photos, en coordonnées de l'espace de travail : la barre s'y pose,
+   *  juste dessous (au-dessus des pastilles de réactions des photos). */
+  at: { x: number; y: number; w: number };
   state: PhotosState;
   progress: PhotosProgress | null;
   /** Un autre calcul occupe le plan (construction, chemin automatique). */
@@ -27,7 +30,7 @@ interface Props {
   onGenerate: (replace: boolean) => void;
 }
 
-export function PhotosGenerate({ state, progress, busy, furniture, onGenerate }: Props) {
+export function PhotosGenerate({ at, state, progress, busy, furniture, onGenerate }: Props) {
   const [asking, setAsking] = useState(false);
   useEffect(() => {
     if (!asking) return;
@@ -41,6 +44,7 @@ export function PhotosGenerate({ state, progress, busy, furniture, onGenerate }:
   return (
     <span
       className="board-photos-generate"
+      style={{ left: at.x, top: at.y, width: at.w }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {progress ? (

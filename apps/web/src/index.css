@@ -9924,18 +9924,21 @@ button.link,
 /* ---- KAN-120 : « Générer le plan à partir de N photos », au bas du node Photos ----
    Jetons de KAN-77 seulement ; taille constante à tout zoom comme la consigne (--inv). */
 .board-photos-generate {
+  /* Sous le node Photos (left/top/width posés en ligne), au-dessus des photos et de leurs
+     pastilles de réactions (z-index des éléments : 10 + z). */
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
+  z-index: 100000;
+  box-sizing: border-box;
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 0.5em;
   padding: 0.6em 0.8em;
-  font-size: min(calc(13px * max(1, var(--inv, 1))), 6cqw);
-  background: color-mix(in oklab, var(--surface) 92%, transparent);
-  border-top: 1px solid var(--line);
+  font-size: calc(13px * max(1, var(--inv, 1)));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: 0 1px 3px color-mix(in oklab, black 18%, transparent);
 }
 .board-photos-hint {
   color: var(--muted);

@@ -2540,36 +2540,6 @@ export function BoardCanvas(props: Props) {
                   )}
                 </span>
               )}
-            {item.role === "photos" && !readOnly && caps.photoPlan && (() => {
-              // KAN-120 : le plan se génère ici, sur un clic, à partir de toutes les photos
-              // du node (le plan qu'il nourrit : son lien « photos → plan »).
-              const lid = plansFedBy(board, item.id)[0];
-              const members = photoMembers(item);
-              if (!lid || members.length === 0 || !props.onGenerateFromPhotos) return null;
-              const level = project.levels[lid];
-              const progress =
-                props.photosProgress?.levelId === lid
-                  ? props.photosProgress
-                  : lid === (props.activeLevelId ?? firstLevelId) && props.planProgress
-                    ? { label: props.planProgress, fraction: null }
-                    : null;
-              return (
-                <PhotosGenerate
-                  state={photosState(level, members, failedPhotos)}
-                  progress={progress}
-                  busy={Boolean(props.planProgress)}
-                  furniture={
-                    level
-                      ? Object.values(level.elements).filter((e) => e.type === "furniture")
-                          .length
-                      : 0
-                  }
-                  onGenerate={(replace) =>
-                    props.onGenerateFromPhotos?.(lid, members, replace)
-                  }
-                />
-              );
-            })()}
             <span
               className={
                 item.role
@@ -3196,6 +3166,43 @@ export function BoardCanvas(props: Props) {
               onLeave={hover.leave}
             />
           )}
+          {/* KAN-120 : sous chaque node Photos relié, le bouton qui génère le plan à partir
+              de toutes ses photos (au-dessus des pastilles : jamais recouvert par une photo). */}
+          {!readOnly &&
+            caps.photoPlan &&
+            props.onGenerateFromPhotos &&
+            items
+              .filter((f) => f.kind === "frame" && f.role === "photos")
+              .map((frame) => {
+                const lid = plansFedBy(board, frame.id)[0];
+                const members = photoMembers(frame);
+                if (!lid || members.length === 0) return null;
+                const level = project.levels[lid];
+                const progress =
+                  props.photosProgress?.levelId === lid
+                    ? props.photosProgress
+                    : lid === (props.activeLevelId ?? firstLevelId) && props.planProgress
+                      ? { label: props.planProgress, fraction: null }
+                      : null;
+                return (
+                  <PhotosGenerate
+                    key={frame.id}
+                    at={{ x: frame.x, y: frame.y + frame.h, w: frame.w }}
+                    state={photosState(level, members, failedPhotos)}
+                    progress={progress}
+                    busy={Boolean(props.planProgress)}
+                    furniture={
+                      level
+                        ? Object.values(level.elements).filter((e) => e.type === "furniture")
+                            .length
+                        : 0
+                    }
+                    onGenerate={(replace) =>
+                      props.onGenerateFromPhotos?.(lid, members, replace)
+                    }
+                  />
+                );
+              })}
           {marquee && (
             <div
               className={`board-marquee${marquee.kind === "frame" ? " frame" : ""}`}
