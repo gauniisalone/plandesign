@@ -128,7 +128,8 @@ async function importPhoto(page: Page): Promise<void> {
   await photos.getByRole("button", { name: "Importer", exact: true }).click();
   await (await chooser).setFiles(PHOTO);
   // KAN-120 : l'analyse part au clic du node, pas à l'import.
-  await photos
+  await page
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
     .click({ timeout: 60_000 });
 }

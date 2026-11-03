@@ -86,7 +86,9 @@ test("déclencheur : la photo déposée attend le bouton ; « Générer maintena
   const plan = board.locator(".board-item.kind-plan");
   await expect(plan.locator("img.board-plan")).toHaveCount(0);
   await expect(
-    photos.getByRole("button", { name: "Générer le plan à partir de 1 photo" }),
+    board
+      .locator(".board-photos-generate")
+      .getByRole("button", { name: "Générer le plan à partir de 1 photo" }),
   ).toBeVisible();
   // KAN-64 : la photo déposée reste choisie, et ses actions ont pris la place de
   // l'Assistant ; on revient à l'Assistant (un clic) pour « Générer maintenant ».

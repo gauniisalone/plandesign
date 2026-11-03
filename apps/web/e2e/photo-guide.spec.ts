@@ -171,6 +171,11 @@ test("KAN-91 L5 : alerte « gros plan » après l'import, avec le guide", async 
   const chooser = page.waitForEvent("filechooser");
   await photos.getByRole("button", { name: "Importer" }).click();
   await (await chooser).setFiles(PHOTO);
+  // KAN-120 : la construction (simulée) part au clic du node, pas à l'import.
+  await board
+    .locator(".board-photos-generate")
+    .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
+    .click({ timeout: 30_000 });
 
   const alert = page.getByRole("alert").filter({ hasText: CLOSE_UP });
   await expect(alert).toBeVisible({ timeout: 30_000 });

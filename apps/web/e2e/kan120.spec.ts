@@ -21,6 +21,9 @@ const PNG = readFileSync(
 );
 const SHOTS = path.resolve("e2e/screenshots");
 
+/** La barre « Générer le plan » posée sous le node Photos (au-dessus des pastilles). */
+const bar = (page: Page) => page.locator(".board-photos-generate");
+
 test.afterEach(async ({ page }) => {
   await waitNoHeavyJob(page);
 });
@@ -78,12 +81,12 @@ test("KAN-120 : une photo importée ne lance rien ; le node propose le bouton", 
   await expect(board.locator(".board-item.kind-photo")).toHaveCount(1, {
     timeout: 30_000,
   });
-  const button = photos.getByRole("button", {
+  const button = bar(page).getByRole("button", {
     name: "Générer le plan à partir de 1 photo",
   });
   await expect(button).toBeVisible();
   await expect(
-    photos.getByText(
+    bar(page).getByText(
       "Ajoutez 2 ou 3 photos prises depuis d'autres coins de la pièce : le plan sera plus sûr.",
     ),
   ).toBeVisible();
@@ -102,7 +105,7 @@ test("KAN-120 : une photo importée ne lance rien ; le node propose le bouton", 
   await button.click();
   await expect(plan.locator("img.board-plan")).toBeVisible({ timeout: 180_000 });
   expect(calls.filter((c) => c.includes("/autoplan"))).toHaveLength(1);
-  await expect(photos.getByRole("button", { name: "Régénérer le plan" })).toBeVisible();
+  await expect(bar(page).getByRole("button", { name: "Régénérer le plan" })).toBeVisible();
 });
 
 test("KAN-120 : trois photos, une seule analyse, « 3 photos utilisées », puis Régénérer", async ({
@@ -211,14 +214,14 @@ test("KAN-120 : trois photos, une seule analyse, « 3 photos utilisées », puis
     timeout: 30_000,
   });
   await expect(
-    photos.getByText("Plusieurs angles : les photos seront recoupées entre elles."),
+    bar(page).getByText("Plusieurs angles : les photos seront recoupées entre elles."),
   ).toBeVisible();
   await page.waitForTimeout(2000);
   expect(calls).toEqual([]);
 
-  await photos.getByRole("button", { name: "Générer le plan à partir de 3 photos" }).click();
-  await expect(photos.getByText("3 photos utilisées.")).toBeVisible({ timeout: 30_000 });
-  await expect(photos.getByText(/3 photos concordent à ±4 %/)).toBeVisible();
+  await bar(page).getByRole("button", { name: "Générer le plan à partir de 3 photos" }).click();
+  await expect(bar(page).getByText("3 photos utilisées.")).toBeVisible({ timeout: 30_000 });
+  await expect(bar(page).getByText(/3 photos concordent à ±4 %/)).toBeVisible();
   await expect(board.locator(".board-photo-use.use-used")).toHaveCount(3);
   // Une seule construction pour les trois photos, sans `replace`.
   expect(calls.filter((c) => c.includes("/autoplan"))).toHaveLength(1);
@@ -226,7 +229,7 @@ test("KAN-120 : trois photos, une seule analyse, « 3 photos utilisées », puis
   await page.screenshot({ path: path.join(SHOTS, "kan120_trois_photos.png") });
 
   // Régénérer : l'avertissement d'abord ; Échap = Annuler, rien ne part.
-  await photos.getByRole("button", { name: "Régénérer le plan" }).click();
+  await bar(page).getByRole("button", { name: "Régénérer le plan" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Remplacer le plan actuel ?" });
   await expect(confirm).toBeVisible();
   await expect(confirm).toContainText("remplacera le plan actuel");
@@ -237,7 +240,7 @@ test("KAN-120 : trois photos, une seule analyse, « 3 photos utilisées », puis
   await expect(confirm).toHaveCount(0);
   expect(calls.filter((c) => c.includes("/autoplan"))).toHaveLength(1);
 
-  await photos.getByRole("button", { name: "Régénérer le plan" }).click();
+  await bar(page).getByRole("button", { name: "Régénérer le plan" }).click();
   await page.screenshot({ path: path.join(SHOTS, "kan120_regenerer.png") });
   await confirm.getByRole("button", { name: "Régénérer le plan" }).click();
   const toast = page
@@ -262,8 +265,8 @@ test("KAN-120 : trois photos réelles, la fusion les utilise toutes (poids requi
   await expect(board.locator(".board-item.kind-photo")).toHaveCount(3, {
     timeout: 30_000,
   });
-  await photos.getByRole("button", { name: "Générer le plan à partir de 3 photos" }).click();
+  await bar(page).getByRole("button", { name: "Générer le plan à partir de 3 photos" }).click();
   await expect(plan.locator("img.board-plan")).toBeVisible({ timeout: 360_000 });
   expect(calls.filter((c) => c.includes("/autoplan"))).toHaveLength(1);
-  await expect(photos.getByText("3 photos utilisées.")).toBeVisible({ timeout: 30_000 });
+  await expect(bar(page).getByText("3 photos utilisées.")).toBeVisible({ timeout: 30_000 });
 });

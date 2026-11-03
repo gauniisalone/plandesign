@@ -643,7 +643,7 @@ test("photo : plan construit tout seul, plan estimé, recalibrer, fond, vues, pa
   await page.waitForTimeout(2000);
   const node = page
     .getByRole("region", { name: "Espace de travail" })
-    .locator(".board-item.kind-frame.role-photos");
+    .locator(".board-photos-generate");
   await node
     .getByRole("button", { name: "Régénérer le plan à partir de 2 photos" })
     .click();

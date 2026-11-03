@@ -50,6 +50,26 @@ async function signIn(page: Page, email: string, at = "/"): Promise<void> {
   }
 }
 
+/** La photo de la fixture réduite à 640 px en JPEG : le serveur de ces tests a 1 Mo de place
+ *  par propriétaire (OPENPLAN_QUOTA_MB=1). */
+async function smallPhoto(page: Page): Promise<Buffer> {
+  // Une page vierge : la CSP de l'application n'y joue pas (image en data:).
+  const blank = await page.context().newPage();
+  await blank.goto("about:blank");
+  const b64 = await blank.evaluate(async (src) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${src}`;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = Math.round((640 * img.height) / img.width);
+    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.8).split(",")[1]!;
+  }, PNG.toString("base64"));
+  await blank.close();
+  return Buffer.from(b64, "base64");
+}
+
 type Job = { id: string; status: string; error: string | null };
 
 async function finished(page: Page, pid: string, job: Job): Promise<Job> {
@@ -95,7 +115,9 @@ test("KAN-120 : le plan régénéré par A arrive chez B sans recharger", async 
   const upload = await gilles.request.post(
     `/api/projects/${id}/images?level_id=${lid}`,
     {
-      multipart: { file: { name: "piece.png", mimeType: "image/png", buffer: PNG } },
+      multipart: {
+        file: { name: "piece.jpg", mimeType: "image/jpeg", buffer: await smallPhoto(gilles) },
+      },
       headers: origin,
     },
   );

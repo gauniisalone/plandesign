@@ -60,7 +60,8 @@ test("file d'attente : « En attente » dans le cadre Rendus, puis Annuler", asy
     clientY: box.y + box.height / 2,
   });
   // KAN-120 : la photo déposée attend le bouton du node.
-  await photos
+  await board
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
     .click({ timeout: 30_000 });
 

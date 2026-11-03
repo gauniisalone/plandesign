@@ -211,7 +211,7 @@ export async function generateFromPhotos(
   const n = options?.photos ?? 1;
   const node = page
     .getByRole("region", { name: "Espace de travail" })
-    .locator(".board-item.kind-frame.role-photos");
+    .locator(".board-photos-generate");
   await node
     .getByRole("button", {
       name: `Générer le plan à partir de ${n} photo${n > 1 ? "s" : ""}`,

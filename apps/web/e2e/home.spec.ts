@@ -197,7 +197,8 @@ test("galerie : nouveau projet → tableau, consigne et photos → plan, vignett
     timeout: 60_000,
   });
   await expect(board.locator(".board-item.kind-plan img.board-plan")).toHaveCount(0);
-  await photos
+  await board
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 2 photos" })
     .click();
   await expect(
@@ -264,7 +265,8 @@ test("tableau : échec de la construction → message clair, photo et consigne g
   const photos = board.locator(".board-item.kind-frame.role-photos");
   await dropInto(page, photos, PHOTO, "image/png");
   // KAN-120 : la construction part au clic du node.
-  await photos
+  await board
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
     .click({ timeout: 60_000 });
   await expect(page.getByRole("alert")).toContainText(

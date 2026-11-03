@@ -173,7 +173,8 @@ test("en ligne : la photo est analysée dans le navigateur, puis le plan se cons
   await photos.getByRole("button", { name: "Importer" }).click();
   await (await chooser).setFiles(PHOTO);
   // KAN-120 : l'analyse part au clic du node, pas à l'import.
-  await photos
+  await page
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
     .click({ timeout: 30_000 });
   const failed = page.getByRole("alert", { name: "Analyse de la photo" });
@@ -238,7 +239,8 @@ test("correctif KAN-79 : bibliothèque non démarrée → « Recharger la page �
   const chooser = page.waitForEvent("filechooser");
   await photos.getByRole("button", { name: "Importer" }).click();
   await (await chooser).setFiles(PHOTO);
-  await photos
+  await page
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 1 photo" })
     .click({ timeout: 30_000 });
   const failed = page.getByRole("alert", { name: "Analyse de la photo" });
@@ -303,7 +305,8 @@ test("KAN-81 : deux photos importées, « Générer le plan » construit le plan
     board.getByText("Plan depuis photo : bientôt en ligne"),
   ).toHaveCount(0);
   expect(sent).toEqual([]);
-  await photos
+  await page
+    .locator(".board-photos-generate")
     .getByRole("button", { name: "Générer le plan à partir de 2 photos" })
     .click();
   await expect(

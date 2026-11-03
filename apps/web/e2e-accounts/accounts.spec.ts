@@ -262,11 +262,11 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
       .or(page.getByRole("region", { name: "Compositeur", exact: true })),
   ).toBeVisible({ timeout: 30_000 });
   // KAN-112 : le bouton du plan vide, par son titre ; sans Blender (CI), celui du compositeur
-  // s'appelle aussi « Générer le plan ».
+  // s'appelle aussi « Générer le plan ». KAN-120 : celui du plan vide lit les exigences.
   await expect(
     page
       .getByRole("button", { name: "Générer le plan" })
-      .and(page.getByTitle(/^D'après les photos de la pièce/)),
+      .and(page.getByTitle(/^D'après vos exigences/)),
   ).toBeVisible();
   await expect(
     page.getByRole("toolbar", { name: "Outils de l'espace de travail" }),
