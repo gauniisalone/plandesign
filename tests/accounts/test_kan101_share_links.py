@@ -119,7 +119,7 @@ def test_migration_kan101_goes_up_and_down(db_url: str) -> None:
     assert current_revision(engine) == "kan109b_0009"
     after = set(inspect(engine).get_table_names())
     assert after == before - {"share_links"}, "rien d'autre ne part"
-    upgrade(engine, "kan101_0010")
+    upgrade(engine, "kan101_0010")  # la tête est plus loin (KAN-102, KAN-115)
     assert current_revision(engine) == "kan101_0010"
     assert set(inspect(engine).get_table_names()) == before
     engine.dispose()

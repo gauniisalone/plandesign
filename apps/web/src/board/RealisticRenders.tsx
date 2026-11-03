@@ -598,7 +598,8 @@ export function RealisticRenders({
                       ? `${tile.count} plus anciens : tout voir`
                       : choosing
                         ? `Choisir pour comparer : ${viewName(r)}, ${hour(r.created_at)}`
-                        : `Ouvrir le rendu : ${viewName(r)}, ${hour(r.created_at)}`
+                        : // KAN-115 : le lanceur d'un autre (« Ancien membre » s'il est effacé).
+                          `Ouvrir le rendu : ${viewName(r)}, ${hour(r.created_at)}${r.author && !isMine(r) ? `, par ${r.author}` : ""}`
                   }
                 >
                   {tile.kind === "more" ? (

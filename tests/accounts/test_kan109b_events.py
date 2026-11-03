@@ -23,7 +23,7 @@ UUID_TEXT = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 
 def test_migration_kan109b_goes_up_and_down(db_url: str) -> None:
     engine = make_engine(db_url)
-    upgrade(engine, "kan109b_0009")
+    upgrade(engine, "kan109b_0009")  # la tête est plus loin (KAN-101, KAN-115)
     assert current_revision(engine) == "kan109b_0009"
     assert "events" in inspect(engine).get_table_names()
     columns = {c["name"] for c in inspect(engine).get_columns("events")}

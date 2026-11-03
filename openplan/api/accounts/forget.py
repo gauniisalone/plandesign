@@ -19,6 +19,8 @@ ou `--delete-shared`. S'il a un autre propriétaire, ce dernier devient le propr
 
 Les fichiers des projets des autres ne sont PAS réécrits : commentaires, réactions et activité
 gardent un identifiant sans adresse ni nom, que l'application montre « Ancien membre ».
+KAN-115 : ses rendus réalistes dans les projets qui restent sont gardés (lanceur effacé par
+`SET NULL`, montrés « Ancien membre »).
 Hors de la commande : le journal d'accès de l'API (rotation par Infra) et les sauvegardes.
 
 Refus : le dernier administrateur, et le compte que désigne OPENPLAN_ADMIN_EMAIL (il serait
@@ -99,12 +101,11 @@ class ForgetPlan:
     """« transfer », « delete » ou vide (refus)."""
     transfer_to: UUID | None = None
     renders: int = 0
-    """KAN-99 : ses demandes de rendu réaliste (supprimées avec le compte, clé étrangère en
-    cascade)."""
+    """KAN-99 : ses demandes de rendu réaliste."""
     renders_kept_projects: int = 0
-    """KAN-99 : parmi elles, celles des projets qui restent (les rendus d'un projet sont
-    montrés à tous ses membres) : ces rendus disparaissent de leur galerie ; leurs images
-    restent sur le disque du projet, plus montrées."""
+    """KAN-115 : parmi elles, celles des projets qui restent : GARDÉES (clé étrangère en
+    `SET NULL`), montrées à tous les membres avec l'auteur « Ancien membre » ; personne n'en
+    est plus le lanceur. Les autres partent avec ses projets supprimés."""
     refusals: list[str] = field(default_factory=list)
 
     @property
@@ -171,8 +172,8 @@ def _owned(
 
 
 def _renders(repo: AccountsRepo, plan: ForgetPlan, user_id: UUID) -> None:
-    """KAN-99 : ses rendus réalistes, et ceux qui étaient montrés dans des projets qui restent
-    (tous sauf ses projets supprimés : seul membre, ou partagés avec `--delete-shared`)."""
+    """KAN-99 : ses rendus réalistes ; KAN-115 : ceux des projets qui restent (tous sauf ses
+    projets supprimés : seul membre, ou partagés avec `--delete-shared`) sont gardés."""
     gone = {p.id for p in plan.solo}
     if plan.shared_action == "delete":
         gone |= {p.id for p in plan.shared}
@@ -303,9 +304,9 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
     _describe_projects(plan, say)
     if plan.renders:
         say(
-            f"  rendus réalistes qu'il a lancés, supprimés : {plan.renders}, dont "
-            f"{plan.renders_kept_projects} dans des projets qui restent (ils disparaissent de "
-            "la galerie des membres ; leurs images restent sur le disque du projet)"
+            f"  rendus réalistes qu'il a lancés : {plan.renders} ; gardés dans les projets qui "
+            f"restent : {plan.renders_kept_projects} (montrés « Ancien membre », sans lanceur) ; "
+            "les autres partent avec ses projets supprimés"
         )
     say(
         "  Inchangés : commentaires, réactions et activité dans les projets des autres "

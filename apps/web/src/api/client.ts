@@ -447,9 +447,12 @@ export interface RealisticRequest {
   /** KAN-97 : `words` mots lus ; `unread` noms des images non lues par le poste ;
    * `no_style` noms des images lues sans style net retenu. */
   guided_kind?: "words" | "unread" | "no_style" | null;
-  /** KAN-99 : la personne connectée l'a lancé (variante, couverture, réactions). Les rendus
-   *  d'un projet sont montrés à tous ses membres. Absent (serveur d'avant) : le sien. */
+  /** KAN-99 : la personne connectée l'a lancé (variante, couverture). Les rendus d'un projet
+   *  sont montrés à tous ses membres. Absent (serveur d'avant) : le sien. */
   mine?: boolean;
+  /** KAN-115 : le lanceur tel que le voit la personne (« Vous », son nom, « Ancien membre »
+   *  pour un compte effacé) ; absent hors de la liste. */
+  author?: string | null;
 }
 
 const GUIDED_NOTE: Record<string, string> = {

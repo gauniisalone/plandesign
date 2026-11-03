@@ -468,7 +468,12 @@ def variant_seed(request_id: UUID) -> int:
 
 
 def public_request(
-    row: RenderRequest, has_image: bool, photo_id: UUID | None = None, *, mine: bool = False
+    row: RenderRequest,
+    has_image: bool,
+    photo_id: UUID | None = None,
+    *,
+    mine: bool = False,
+    author: str | None = None,
 ) -> RealisticRequest:
     return RealisticRequest(
         id=row.id,
@@ -486,4 +491,5 @@ def public_request(
         taken_at=None if row.taken_at is None else aware(row.taken_at),
         photo_id=photo_id,
         mine=mine,
+        author=author,
     )

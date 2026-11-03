@@ -121,7 +121,10 @@ class RealisticRequest(StrictModel):
     SigLIP2 absent) ; `no_style` : noms des images, lues sans style net retenu."""
     mine: bool = False
     """KAN-99 : la personne connectée a lancé ce rendu. Les rendus d'un projet sont montrés à
-    tous ses membres ; variante, couverture et réactions restent au lanceur."""
+    tous ses membres ; variante et couverture restent au lanceur."""
+    author: str | None = Field(default=None, max_length=80)
+    """KAN-115 : le lanceur tel que le voit la personne connectée (« Vous », son nom, « Ancien
+    membre » pour un compte effacé) ; None hors de la liste (création, poste)."""
 
 
 class RealisticCreate(StrictModel):

@@ -234,6 +234,8 @@ export function RenderCompare(props: RenderCompareProps) {
               <div className="rcomp-cap">
                 <strong>
                   {name} · {when(r.created_at)}
+                  {/* KAN-115 : « Ancien membre » pour un compte effacé. */}
+                  {r.author ? ` · ${r.author}` : ""}
                 </strong>
                 {guided && <span className="rcomp-guided">{guided}</span>}
                 {props.canStar ? (

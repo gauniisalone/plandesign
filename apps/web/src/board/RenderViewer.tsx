@@ -512,6 +512,8 @@ export function RenderViewer(props: RenderViewerProps) {
                 : `point de vue « ${camera?.name || "Vue"} »`}
             </li>
             {guidedLine(render) && <li className="rview-guided">{guidedLine(render)}</li>}
+            {/* KAN-115 : « Ancien membre » pour un compte effacé. */}
+            {render.author && <li>Lancé par : {render.author}</li>}
             <li>
               Calculé par le poste de rendu
               {duration(render.seconds)

@@ -226,7 +226,11 @@ class RenderRequest(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    """Le lanceur ; None (KAN-115) : son compte a été effacé, le rendu reste au projet
+    (« Ancien membre ») et personne n'en est plus le lanceur."""
     project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"))
     level_id: Mapped[UUID] = mapped_column(Uuid)
     camera_id: Mapped[UUID] = mapped_column(Uuid)

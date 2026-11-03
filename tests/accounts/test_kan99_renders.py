@@ -246,9 +246,9 @@ def test_rendering_disabled_refuses_everyone(world: World) -> None:
 def test_forget_plan_counts_renders_shown_in_projects_that_stay(
     tmp_path: Path, migrated_url: str
 ) -> None:
-    """KAN-114 : la clé étrangère `render_requests.user_id` est en cascade. Les rendus du compte
-    effacé disparaîtraient aussi des projets partagés qui restent (montrés à tous depuis
-    KAN-99) : le plan le dit, chiffré, sans rien écrire."""
+    """KAN-114, KAN-115 : les rendus du compte effacé dans les projets qui restent (montrés à
+    tous depuis KAN-99) sont GARDÉS (`SET NULL`, « Ancien membre ») ; ceux de ses projets
+    supprimés partent avec eux. Le plan le dit, chiffré, sans rien écrire."""
     engine = make_engine(migrated_url)
     repo = AccountsRepo(engine)
     lea = repo.create_user("lea@example.org").id
@@ -278,7 +278,11 @@ def test_forget_plan_counts_renders_shown_in_projects_that_stay(
     assert (plan.renders, plan.renders_kept_projects) == (3, 2)
     lines: list[str] = []
     describe(plan, lines.append)
-    assert any("rendus réalistes qu'il a lancés, supprimés : 3, dont 2" in x for x in lines)
+    assert any(
+        "rendus réalistes qu'il a lancés : 3 ; gardés dans les projets qui restent : 2 "
+        "(montrés « Ancien membre », sans lanceur)" in x
+        for x in lines
+    )
     assert not any("bruno" in x for x in lines)
     with repo.session() as db:
         assert db.query(RenderRequest).count() == 3  # rien d'écrit

@@ -52,7 +52,7 @@ from openplan.api.accounts.render_style import (
 from openplan.api.board_rules import render_inputs
 from openplan.api.deps import ActorDep
 from openplan.api.files import served_file
-from openplan.api.routes.comments import YOU, AuthorNames, author_of
+from openplan.api.routes.comments import FORMER_MEMBER, YOU, AuthorNames, author_of
 from openplan.pipeline.cover import CHOSEN_COVER, COVER_QUALITY, COVER_WIDTH
 from openplan.pipeline.events import ProjectEvents
 from openplan.pipeline.reactions import ReactionStore
@@ -240,7 +240,9 @@ def _project_done(request: Request, project_id: UUID, request_id: UUID) -> Rende
 @router.get(P + "/realistic")
 def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> RealisticList:
     """KAN-99 : les rendus du projet, de tous ses membres, pour tout membre (lecteur compris) ;
-    `mine` dit ceux que la personne a lancés (variante, couverture, réactions)."""
+    `mine` dit ceux que la personne a lancés (variante, couverture). KAN-115 : `author`, le
+    lanceur tel que le voit la personne (« Vous », son nom, ou « Ancien membre » pour un compte
+    effacé ou parti du projet)."""
     user = member_user(request)
     store = store_of(request)
     queue = queue_of(request)
@@ -250,6 +252,13 @@ def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> Reali
     except ProjectNotFoundError:
         photos = {}
     done = {r.id for r in rows if r.state == "done"}
+    names = AuthorNames(request, project_id, author_of(actor))
+
+    def launcher(row: RenderRow) -> str:
+        if row.user_id is None:
+            return FORMER_MEMBER
+        return YOU if row.user_id == user.id else names(str(row.user_id))[0]
+
     return RealisticList(
         status=_status(request, user),
         requests=[
@@ -261,6 +270,7 @@ def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> Reali
                     image_path(store, project_id, r.id).is_file(),
                     photos.get(r.camera_id),
                     mine=r.user_id == user.id,
+                    author=launcher(r),
                 ),
             )
             for r in rows
@@ -395,7 +405,8 @@ def add_realistic_reaction(
                     item_kind="render",
                     label=RENDER_LABEL,
                     emoji=EMOJI[key],
-                    item_author=str(row.user_id),
+                    # KAN-115 : lanceur effacé : personne à prévenir (pas le propriétaire).
+                    item_author=None if row.user_id is None else str(row.user_id),
                 )
             )
     return _reactions(request, project_id, me, {request_id})
@@ -720,6 +731,8 @@ def _announce_done(request: Request, row: RenderRow) -> None:
     lanceur) : la cloche (KAN-52) dit « Votre rendu est prêt » et sonne pour les membres à
     l'écoute. Un échec ici ne perd jamais le rendu déposé."""
     store = store_of(request)
+    if row.user_id is None:  # KAN-115 : lanceur effacé pendant le calcul, personne à prévenir
+        return
     try:
         ProjectEvents(store.project_dir(row.project_id)).append(
             ProjectEvent(
