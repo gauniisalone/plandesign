@@ -678,12 +678,14 @@ test("B2c : deux éditeurs, dernière écriture par élément, annuler sans recr
   await shot(owner, "12-deux-editeurs");
 
   // La même carte, l'un après l'autre : la dernière écriture gagne, chez les deux.
+  // L'envoi est différé (500 ms) : on attend que la position du serveur change, sinon
+  // on lirait l'écriture précédente (updated_by est déjà posé depuis le premier geste).
+  const beforeOwner = await xOf(alpha);
   await drag(owner, "Alpha", 80);
-  await expect
-    .poll(
-      async () => (await saved()).items.find((i) => i.id === alpha)?.updated_by,
-    )
-    .toMatch(/^user:/);
+  await expect.poll(async () => (await xOf(alpha)) !== beforeOwner).toBe(true);
+  expect(
+    (await saved()).items.find((i) => i.id === alpha)?.updated_by,
+  ).toMatch(/^user:/);
   const afterOwner = await xOf(alpha);
   await expect
     .poll(async () =>
