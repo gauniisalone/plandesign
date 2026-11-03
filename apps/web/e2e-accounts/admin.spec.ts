@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { gotoApp } from "../e2e/app-ready";
+import { gotoApp, reloadApp } from "../e2e/app-ready";
 import { expectHomeSettingsWhole } from "./settings-check";
 
 /** KAN-109 L1 : le back-office d'augus. L'administrateur voit l'audience du site, tirée d'un
@@ -85,16 +85,23 @@ test("KAN-109 : l'administrateur voit l'audience et la santé ; un membre, non",
   await signIn(admin, "admin@example.org");
   await gotoApp(admin, "/#/admin");
   const audience = admin.getByRole("region", { name: "Audience du site" });
-  // Le journal est lu chaque seconde par ce serveur de test (5 min en production).
+  // Le journal est lu chaque seconde par ce serveur de test (5 min en production). KAN-118 :
+  // on attend les agrégats par l'API, puis la page une seule fois. Relire le texte juste après
+  // un rechargement le lisait avant la réponse de /api/admin/audience (carte encore vide),
+  // à chaque tour sur une machine lente : 1 échec sur 10 sur Postgres.
   await expect
     .poll(
       async () => {
-        await admin.reload();
-        return (await audience.textContent()) ?? "";
+        const r = await admin.request.get("/api/admin/audience?days=30");
+        if (!r.ok()) return -1;
+        const body = (await r.json()) as { days: { views: number }[] };
+        return body.days.reduce((n, d) => n + d.views, 0);
       },
       { timeout: 30_000 },
     )
-    .toMatch(/Vues\s*2/);
+    .toBe(2);
+  await reloadApp(admin);
+  await expect(audience).toContainText(/Vues\s*2(?!\d)/);
   await expect(audience).toContainText("Depuis le");
   await expect(audience).toContainText(
     "Vues, pages et sources du 28 oct. au 2 nov. comptées en double (bogue de rotation corrigé le 2 nov.) ; visiteurs uniques justes.",
