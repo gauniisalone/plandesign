@@ -24,7 +24,7 @@ from openplan.api.accounts.db import (
     upgrade,
     utcnow,
 )
-from openplan.api.accounts.forget import describe, plan_forget
+from openplan.api.accounts.forget import cancel_pending_renders, describe, plan_forget
 from openplan.api.accounts.models import RenderRequest, ShareLink, User
 from openplan.api.accounts.render_queue import RenderQueue
 from openplan.api.accounts.repo import AccountsRepo
@@ -49,7 +49,7 @@ def _user_fk(engine: object) -> tuple[bool, str | None]:
     return bool(column["nullable"]), None if rule is None else str(rule).upper()
 
 
-def _row(project: UUID, user: UUID | None) -> RenderRequest:
+def _row(project: UUID, user: UUID | None, state: str = "done") -> RenderRequest:
     now = utcnow()
     return RenderRequest(
         id=uuid4(),
@@ -57,9 +57,9 @@ def _row(project: UUID, user: UUID | None) -> RenderRequest:
         project_id=project,
         level_id=uuid4(),
         camera_id=uuid4(),
-        state="done",
+        state=state,
         created_at=now,
-        expires_at=now,
+        expires_at=now + timedelta(hours=1),
         attempts=1,
     )
 
@@ -117,8 +117,8 @@ def test_migration_kan115_up_and_down(db_url: str) -> None:
     with repo.session() as db, db.begin():
         db.execute(delete(User).where(User.id == lea))
     with repo.session() as db:
-        users = dict(db.execute(select(RenderRequest.id, RenderRequest.user_id)).tuples().all())
-    assert users == {kept.id: None, orphan.id: None, brunos.id: bruno}
+        rows = db.execute(select(RenderRequest.id, RenderRequest.user_id)).all()
+    assert {rid: uid for rid, uid in rows} == {kept.id: None, orphan.id: None, brunos.id: bruno}
     assert _link_ids(repo) == {kept_link.id, brunos_link.id}
     # Descente : obligatoire et en cascade ; les demandes sans lanceur partent d'abord, avec
     # les liens publics qui les visaient.
@@ -136,6 +136,55 @@ def test_migration_kan115_up_and_down(db_url: str) -> None:
     with repo.session() as db:
         assert db.scalars(select(RenderRequest.user_id)).all() == [bruno]
     assert _link_ids(repo) == {brunos_link.id}
+    engine.dispose()
+
+
+def test_erasure_cancels_pending_requests_only(tmp_path: Path, migrated_url: str) -> None:
+    """Décision du PO (3 nov.) : à l'effacement, les demandes de Léa EN ATTENTE sont annulées
+    (sorties de la file, `expired`), dans la même transaction que la suppression du compte ;
+    celle déjà prise par le poste suit son sort habituel, la faite reste « Ancien membre ».
+    `forget --dry-run` les compte sans rien écrire."""
+    engine = make_engine(migrated_url)
+    repo = AccountsRepo(engine)
+    lea = repo.create_user("lea@example.org").id
+    bruno = repo.create_user("bruno@example.org").id
+    pid = uuid4()
+    repo.add_project(pid, bruno, "Atelier")
+    waiting, taken, done = (_row(pid, lea, s) for s in ("pending", "taken", "done"))
+    brunos = _row(pid, bruno, "pending")
+    with repo.session() as db, db.begin():
+        db.add_all([waiting, taken, done, brunos])
+
+    plan = plan_forget(repo, "lea@example.org", projects_dir=tmp_path / "p", data_dir=tmp_path)
+    assert (plan.renders, plan.renders_kept_projects, plan.renders_pending) == (3, 3, 1)
+    lines: list[str] = []
+    describe(plan, lines.append)
+    assert "  demandes en attente annulées : 1" in lines
+    with repo.session() as db:
+        assert db.get(RenderRequest, waiting.id).state == "pending"  # type: ignore[union-attr]
+
+    # Le chemin de l'effacement : annuler, puis supprimer le compte, en une transaction.
+    with repo.session() as db, db.begin():
+        assert cancel_pending_renders(db, lea, utcnow()) == 1
+        db.execute(delete(User).where(User.id == lea))
+    with repo.session() as db:
+        states = {
+            rid: (state, uid, finished is not None)
+            for rid, state, uid, finished in db.execute(
+                select(
+                    RenderRequest.id,
+                    RenderRequest.state,
+                    RenderRequest.user_id,
+                    RenderRequest.finished_at,
+                )
+            )
+        }
+    assert states == {
+        waiting.id: ("expired", None, True),
+        taken.id: ("taken", None, False),
+        done.id: ("done", None, False),
+        brunos.id: ("pending", bruno, False),
+    }
     engine.dispose()
 
 

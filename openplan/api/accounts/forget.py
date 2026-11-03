@@ -20,7 +20,8 @@ ou `--delete-shared`. S'il a un autre propriétaire, ce dernier devient le propr
 Les fichiers des projets des autres ne sont PAS réécrits : commentaires, réactions et activité
 gardent un identifiant sans adresse ni nom, que l'application montre « Ancien membre ».
 KAN-115 : ses rendus réalistes dans les projets qui restent sont gardés (lanceur effacé par
-`SET NULL`, montrés « Ancien membre »).
+`SET NULL`, montrés « Ancien membre ») ; ses demandes encore en attente sont annulées
+(`cancel_pending_renders`, à appeler avant la suppression de la ligne `users`).
 Hors de la commande : le journal d'accès de l'API (rotation par Infra) et les sauvegardes.
 
 Refus : le dernier administrateur, et le compte que désigne OPENPLAN_ADMIN_EMAIL (il serait
@@ -34,6 +35,7 @@ import hashlib
 import hmac
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -106,6 +108,9 @@ class ForgetPlan:
     """KAN-115 : parmi elles, celles des projets qui restent : GARDÉES (clé étrangère en
     `SET NULL`), montrées à tous les membres avec l'auteur « Ancien membre » ; personne n'en
     est plus le lanceur. Les autres partent avec ses projets supprimés."""
+    renders_pending: int = 0
+    """KAN-115 : parmi elles, celles encore en attente : annulées à l'effacement
+    (`cancel_pending_renders`) ; celles déjà prises par le poste suivent leur sort habituel."""
     refusals: list[str] = field(default_factory=list)
 
     @property
@@ -171,9 +176,29 @@ def _owned(
                 )
 
 
+def _pending(user_id: UUID) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    """KAN-115 : ses demandes de rendu encore EN ATTENTE (pas celles déjà prises par le
+    poste, qui suivent le sort habituel : faites, perdues ou en échec)."""
+    return RenderRequest.user_id == user_id, RenderRequest.state == "pending"
+
+
+def cancel_pending_renders(db: Session, user_id: UUID, now: datetime) -> int:
+    """KAN-115 (décision du PO, 3 nov.) : l'effacement du compte ANNULE ses demandes en
+    attente, dans la même transaction, AVANT de supprimer la ligne `users` : sans lanceur,
+    aucun poste ne les prendrait plus (`RenderQueue.claim` ne prend que les comptes
+    autorisés). Annulée = sortie de la file comme une demande expirée (`expired`, état final
+    déjà connu de la galerie). Renvoie leur nombre. Chemin d'`accounts forget --apply`,
+    qui attend la validation d'augus."""
+    rows = list(db.scalars(select(RenderRequest).where(*_pending(user_id))))
+    for row in rows:
+        row.state, row.finished_at, row.lease_id = "expired", now, None
+    return len(rows)
+
+
 def _renders(repo: AccountsRepo, plan: ForgetPlan, user_id: UUID) -> None:
     """KAN-99 : ses rendus réalistes ; KAN-115 : ceux des projets qui restent (tous sauf ses
-    projets supprimés : seul membre, ou partagés avec `--delete-shared`) sont gardés."""
+    projets supprimés : seul membre, ou partagés avec `--delete-shared`) sont gardés ; ses
+    demandes en attente sont annulées (`cancel_pending_renders`)."""
     gone = {p.id for p in plan.solo}
     if plan.shared_action == "delete":
         gone |= {p.id for p in plan.shared}
@@ -181,6 +206,7 @@ def _renders(repo: AccountsRepo, plan: ForgetPlan, user_id: UUID) -> None:
         projects = list(
             db.scalars(select(RenderRequest.project_id).where(RenderRequest.user_id == user_id))
         )
+        plan.renders_pending = _count(db, RenderRequest, *_pending(user_id))
     plan.renders = len(projects)
     plan.renders_kept_projects = sum(1 for pid in projects if pid not in gone)
 
@@ -308,6 +334,7 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
             f"restent : {plan.renders_kept_projects} (montrés « Ancien membre », sans lanceur) ; "
             "les autres partent avec ses projets supprimés"
         )
+        say(f"  demandes en attente annulées : {plan.renders_pending}")
     say(
         "  Inchangés : commentaires, réactions et activité dans les projets des autres "
         "(montrés « Ancien membre », sans adresse ni nom)."
