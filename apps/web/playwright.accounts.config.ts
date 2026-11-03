@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 import { SHARE_ACCOUNT } from "./e2e-accounts/share-account";
+import { E2E_WORKER_TOKEN } from "./e2e-online/render-account";
 
 /**
  * B1d : e2e avec les comptes actifs (page de connexion, session, rôle, /nouveau).
@@ -19,7 +21,9 @@ const databaseUrl =
 // KAN-101 : un compte autorisé aux rendus réalistes (ses rendus faits sont posés en base par
 // e2e-accounts/seed_done_render.py : la place d'un Mo refuserait une demande), et les liens
 // publics allumés (éteints par défaut en production). Le test du réglage éteint lance son
-// propre second serveur.
+// propre second serveur. KAN-99 : la galerie n'ouvre que si le rendu est allumé (liste
+// blanche ET empreinte du jeton du poste) ; aucun poste ne tourne ici, le jeton n'est pas lu.
+const workerHash = createHash("sha256").update(E2E_WORKER_TOKEN).digest("hex");
 const env = [
   "OPENPLAN_DOTENV=",
   "OPENPLAN_AUTO_PATH=0",
@@ -38,6 +42,7 @@ const env = [
   `OPENPLAN_ACCESS_LOG_DIR=${dir}/access-log`,
   "OPENPLAN_ACCESS_LOG_INTERVAL_S=1",
   `OPENPLAN_RENDER_ACCOUNTS=${SHARE_ACCOUNT.id}`,
+  `OPENPLAN_WORKER_TOKEN_SHA256=${workerHash}`,
   "OPENPLAN_SHARE_LINKS=1",
 ].join(" ");
 
