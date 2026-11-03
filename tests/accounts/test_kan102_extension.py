@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, select
+from sqlalchemy import Engine, inspect, select
 
 from openplan.adapters.remote import link_fetch
 from openplan.api.accounts import extension as ext
@@ -88,6 +88,21 @@ def _add(module: TestClient, pid: str, node: str, **extra: object) -> object:
 # --- migration -----------------------------------------------------------------------------
 
 
+def _shape(engine: Engine) -> tuple[object, ...]:
+    """La table de KAN-101 (colonnes, clés étrangères, index), comparable d'un état à l'autre."""
+    seen = inspect(engine)
+    columns = [(c["name"], str(c["type"]), c["nullable"]) for c in seen.get_columns("share_links")]
+    keys = sorted(
+        (k["referred_table"], tuple(k["constrained_columns"]))
+        for k in seen.get_foreign_keys("share_links")
+    )
+    indexes = sorted(
+        (str(i["name"]), tuple(map(str, i["column_names"])))
+        for i in seen.get_indexes("share_links")
+    )
+    return (columns, keys, indexes)
+
+
 def test_migration_kan102_goes_up_and_down(db_url: str) -> None:
     engine = make_engine(db_url)
     upgrade(engine)
@@ -98,12 +113,12 @@ def test_migration_kan102_goes_up_and_down(db_url: str) -> None:
     indexes = {i["name"] for i in inspect(engine).get_indexes("extension_tokens")}
     assert "ix_extension_tokens_user_id" in indexes
     before = set(inspect(engine).get_table_names())
-    shares = inspect(engine).get_columns("share_links")
+    shares = _shape(engine)
     downgrade(engine, "kan101_0010")
     assert current_revision(engine) == "kan101_0010"
     after = set(inspect(engine).get_table_names())
     assert after == before - {"extension_tokens"}, "rien d'autre ne part"
-    assert inspect(engine).get_columns("share_links") == shares, "KAN-101 intact"
+    assert _shape(engine) == shares, "KAN-101 intact"
     upgrade(engine)
     assert current_revision(engine) == "kan102_0011"
     assert set(inspect(engine).get_table_names()) == before
