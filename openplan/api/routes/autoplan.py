@@ -26,7 +26,7 @@ from openplan.api.deps import (
 )
 from openplan.api.jobs import JobStatus
 from openplan.api.public_errors import public_detail
-from openplan.api.routes.attic_fusion import fuse_members, fuse_project
+from openplan.api.routes.attic_fusion import fuse_members, fuse_project, member_photos
 from openplan.api.settings import Settings
 from openplan.pipeline.autoplan import AutoPlanRun, ImageKind, run_autoplan
 from openplan.pipeline.client_depth import StoredDepthEstimator, has_stored_depth
@@ -36,6 +36,7 @@ from openplan.pipeline.regenerate import cleared, regenerated
 from openplan.scene import history
 from openplan.scene.store import ProjectStore
 from openplan.schemas.common import StrictModel
+from openplan.schemas.elements import Camera, Wall
 from openplan.schemas.results import ValidationReport
 from openplan.schemas.scene import Project
 from openplan.validation.invariants import validate_invariants
@@ -102,6 +103,93 @@ def announce_written(
     announce_changed_from_thread(request.app, project_id, exclude=conn)
 
 
+Confront = Callable[[Project], tuple[Project, int]]
+"""Confronte au plan les photos du node encore sans caméra ; rend le projet et le nombre de
+photos posées sur le plan."""
+
+
+def confront_rest(
+    project: Project,
+    store: ProjectStore,
+    level_id: UUID,
+    analyse: Callable[[Project, UUID], AutoPlanRun],
+    progress: Callable[[str], None],
+) -> tuple[Project, int]:
+    """KAN-120 : les autres photos du node (sans caméra sur le plan, après le recoupement)
+    y sont confrontées l'une après l'autre, comme l'était une photo ajoutée avant KAN-120 :
+    chacune reçoit sa caméra (« Photo 2 », à écarter ou réintégrer). Le recoupement KAN-95
+    d'une pièce droite garde le plan de la meilleure photo (réunion désactivée) : sans cela,
+    les autres photos restaient « pas encore utilisées ». Une photo qui échoue est passée."""
+    members = member_photos(project, store, level_id)
+    if not any(isinstance(e, Wall) for e in project.levels[level_id].elements.values()):
+        return project, 0  # sans mur, une autre photo construirait un plan : rien à confronter
+
+    def posed(p: Project) -> set[UUID]:
+        level = p.levels[level_id]
+        return {e.image_id for e in level.elements.values() if isinstance(e, Camera) and e.image_id}
+
+    rest = [i for i in members if i not in posed(project)]
+    for k, image_id in enumerate(rest, len(members) - len(rest) + 1):
+        progress(f"Photo {k} sur {len(members)} confrontée au plan…")
+        try:
+            view = analyse(project, image_id)
+        except (DetectionError, ValueError, ImageNotFoundError, AdapterUnavailableError):
+            continue
+        if validate_invariants(view.project).valid:
+            project = view.project
+    return project, len(posed(project) & set(members))
+
+
+def _confronter(
+    store: ProjectStore,
+    project_id: UUID,
+    level_id: UUID,
+    depth: DepthEstimator | None,
+    detector: RoomElementDetector | None,
+    run: AutoPlanRun,
+    progress: Callable[[str], None],
+) -> Confront:
+    """La confrontation des autres photos, avec la même profondeur et le même détecteur que la
+    photo qui a construit le plan ; rien pour une image de plan dessiné."""
+
+    def analyse(current: Project, other: UUID) -> AutoPlanRun:
+        return run_autoplan(
+            current,
+            store.project_dir(project_id),
+            level_id,
+            other,
+            store.runs_dir(project_id),
+            depth=depth,
+            openings=detector,
+            kind="photo",
+        )
+
+    def confront(current: Project) -> tuple[Project, int]:
+        if run.kind == "plan":
+            return current, 0
+        return confront_rest(current, store, level_id, analyse, progress)
+
+    return confront
+
+
+def _confront_saved(
+    store: ProjectStore, project_id: UUID, confront: Confront, after: Project, photos: int
+) -> tuple[Project, int]:
+    """Première génération : la confrontation des autres photos est enregistrée si le plan
+    n'a pas bougé pendant le calcul ; sinon il reste tel quel (« Régénérer » relira tout).
+    Rend le projet et le nombre de photos lues."""
+    base = store.load(project_id)
+    confronted, posed = confront(base)
+    if confronted is base:
+        return after, max(photos, posed)
+    latest = store.load(project_id)
+    if (latest.history_cursor, len(latest.history)) != (base.history_cursor, len(base.history)):
+        return after, photos
+    saved = confronted.model_copy(update={"images": {**confronted.images, **latest.images}})
+    store.save(saved)
+    return saved, max(photos, posed)
+
+
 def _replace(
     store: ProjectStore,
     request: Request,
@@ -111,6 +199,8 @@ def _replace(
     before: Project,
     progress: Callable[[str], None],
     depth: DepthEstimator | None,
+    confront: Confront,
+    announce: Callable[[], None],
 ) -> AutoPlanResult:
     """KAN-120, « Régénérer le plan » : recoupement en mémoire, meubles remis s'ils tiennent
     dans les nouveaux murs, puis UNE écriture et une seule entrée d'historique (Ctrl+Z remet
@@ -128,6 +218,8 @@ def _replace(
             rebuilt = fused.project
             photos = max(1, len(fused.fusion.photos) if fused.fusion else 1)
         notices.extend(fused.notices)
+    rebuilt, posed = confront(rebuilt)
+    photos = max(photos, posed)
     done = regenerated(before, rebuilt, level_id)
     if done.removed_furniture:
         n = done.removed_furniture
@@ -153,6 +245,7 @@ def _replace(
         raise DetectionError(msg)
     store.save(after)
     usage_event(request, "plan_built", before.id, photos)
+    announce()  # aux co-éditeurs, une fois l'écriture faite
     progress("Plan prêt")
     result = run.model_copy(update={"project": after, "notices": notices})
     return AutoPlanResult(run=result, report=report)
@@ -228,10 +321,21 @@ def autoplan(
         if not report.valid:
             msg = "le plan construit est incohérent : rien n'a été enregistré"
             raise DetectionError(msg)
+        # KAN-120 : les autres photos du node sont confrontées au plan obtenu.
+        confront = _confronter(store, project_id, level_id, depth, detector, run, progress)
         if replace:
-            done = _replace(store, request, actor, level_id, run, before, progress, depth)
-            announce_written(request, settings, project_id, conn)
-            return done
+            return _replace(
+                store,
+                request,
+                actor,
+                level_id,
+                run,
+                before,
+                progress,
+                depth,
+                confront,
+                lambda: announce_written(request, settings, project_id, conn),
+            )
         latest = store.load(project_id)
         if (latest.history_cursor, len(latest.history)) != (
             before.history_cursor,
@@ -257,6 +361,8 @@ def autoplan(
                 after = fused.project
                 photos = max(1, len(fused.fusion.photos) if fused.fusion else 1)
             run = run.model_copy(update={"notices": [*run.notices, *fused.notices]})
+        # KAN-120 : puis les autres photos du node, confrontées au plan obtenu.
+        after, photos = _confront_saved(store, project_id, confront, after, photos)
         # KAN-109 L2 : un plan construit (value : nombre de photos lues).
         usage_event(request, "plan_built", project_id, photos)
         announce_written(request, settings, project_id, conn)

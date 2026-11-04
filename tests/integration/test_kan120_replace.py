@@ -17,7 +17,7 @@ from openplan.api.settings import Settings
 from openplan.pipeline.floorplan import DetectionError
 from openplan.scene import history
 from openplan.scene.store import ProjectStore
-from openplan.schemas.elements import Furniture
+from openplan.schemas.elements import Camera, Furniture
 
 FIXTURE_IMAGE = Path(__file__).resolve().parents[1] / "fixtures" / "rect_room" / "image.png"
 
@@ -107,6 +107,39 @@ def test_replace_is_one_undo_step_and_keeps_furniture_inside(tmp_path: Path) -> 
         undone = c.post(f"/api/projects/{pid}/undo")
         assert undone.status_code == 200, undone.text
         assert history.content(store.load(UUID(pid))) == history.content(before)
+
+
+def _photo_cameras(store: ProjectStore, pid: str, lid: str) -> set[UUID]:
+    level = store.load(UUID(pid)).levels[UUID(lid)]
+    return {e.image_id for e in level.elements.values() if isinstance(e, Camera) and e.image_id}
+
+
+def test_every_photo_of_the_node_is_posed_on_the_plan(tmp_path: Path) -> None:
+    """P34 : la réunion de pièces KAN-95 étant désactivée, le plan vient d'une photo ; les
+    autres photos du node sont confrontées au plan et y reçoivent leur caméra, à la génération
+    comme à la régénération (sinon elles restaient « pas encore utilisées »)."""
+    client, store = _client(tmp_path)
+    with client as c:
+        project = c.post("/api/projects", json={"name": "trois photos"}).json()
+        pid, lid = project["id"], next(iter(project["levels"]))
+        ids = [
+            c.post(
+                f"/api/projects/{pid}/images",
+                files={"file": (f"p{i}.png", FIXTURE_IMAGE.read_bytes(), "image/png")},
+            ).json()["image"]["id"]
+            for i in range(3)
+        ]
+        route = f"/api/projects/{pid}/levels/{lid}/images/{ids[0]}/autoplan"
+        job = _wait(c, pid, c.post(route).json())
+        assert job["status"] == "done", job
+        assert _photo_cameras(store, pid, lid) == {UUID(i) for i in ids}
+        before = store.load(UUID(pid))
+        job = _wait(c, pid, c.post(f"{route}?replace=true").json())
+        assert job["status"] == "done", job
+        after = store.load(UUID(pid))
+        assert _photo_cameras(store, pid, lid) == {UUID(i) for i in ids}
+        assert after.history_cursor == before.history_cursor + 1  # toujours une seule étape
+        assert after.history[-1].label == "Plan régénéré à partir de 3 photos"
 
 
 def _drawn_plan_png() -> bytes:
