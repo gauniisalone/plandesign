@@ -7,7 +7,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { gotoApp } from "../../e2e/app-ready";
-import { showPanel } from "../../e2e/helpers";
+import { expectSpace, generateFromPhotos, goSpace, showPanel } from "../../e2e/helpers";
 import {
   E2E_WORKER_TOKEN,
   RENDER_ACCOUNT_KAN103 as RENDER_ACCOUNT,
@@ -177,7 +177,7 @@ Then("l'image du rendu s'affiche", async ({ page }) => {
 });
 
 // Le chemin avec poids (plan-photo.feature, e2e de base) : la photo déposée sur « Ajouter une
-// source » construit le plan, comme slice.spec.
+// source » attend « Générer le plan » (KAN-120), puis construit le plan, comme slice.spec.
 When("je dépose une photo de la pièce comme source du plan", async ({ page, ctx }) => {
   // Comme slice.spec : depuis l'accueil, droit sur « Ajouter une source ».
   await gotoApp(page, "/");
@@ -188,6 +188,22 @@ When("je dépose une photo de la pièce comme source du plan", async ({ page, ct
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: /^Déposer une photo ou un plan/ }).click();
   await (await chooser).setFiles(PHOTO);
+});
+
+Then("le plan attend le bouton « Générer le plan »", async ({ page }) => {
+  // KAN-120 : la photo arrive sur l'espace de travail ; rien n'est construit avant le clic.
+  await expectSpace(page, "board", { timeout: 30_000 });
+  await expect(
+    board(page)
+      .locator(".board-photos-generate")
+      .getByRole("button", { name: "Générer le plan à partir de 1 photo" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(board(page).locator(".board-item.kind-plan img.board-plan")).toHaveCount(0);
+});
+
+When("je génère le plan à partir de la photo", async ({ page }) => {
+  await generateFromPhotos(page);
+  await goSpace(page, "plan");
 });
 
 Then("le plan se construit depuis la photo, avec ses quatre murs", async ({ page }) => {
