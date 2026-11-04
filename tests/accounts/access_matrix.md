@@ -5,10 +5,13 @@ ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du m
 globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-212 routes ; par règle : admin 6, dans la route 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 85, membre ≥ owner 9, membre ≥ viewer 53, public 10, user 28, worker 6.
+233 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 88, membre ≥ owner 9, membre ≥ viewer 53, public 18, user 36, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
+| GET | /api/account/extension-tokens | comptes | user |  |  |  |
+| POST | /api/account/extension-tokens | comptes | user |  |  | 409 |
+| DELETE | /api/account/extension-tokens/{token_id} | comptes | user |  |  | 404 |
 | GET | /api/admin/audience | comptes | admin |  |  |  |
 | GET | /api/admin/health | comptes | admin |  |  |  |
 | GET | /api/admin/usage | comptes | admin |  |  |  |
@@ -19,11 +22,22 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/auth/invitation/accept | comptes | user |  |  | 410 |
 | GET | /api/auth/login | comptes | public |  |  |  |
 | POST | /api/auth/login/code | comptes | public |  |  |  |
+| POST | /api/auth/login/password | comptes | public |  |  |  |
 | POST | /api/auth/login/verify | comptes | public |  |  |  |
 | POST | /api/auth/logout | comptes | public |  |  |  |
 | POST | /api/auth/logout-all | comptes | user |  |  |  |
 | GET | /api/auth/me | comptes | user |  |  |  |
 | PATCH | /api/auth/me | comptes | user |  |  |  |
+| PUT | /api/auth/password | comptes | user |  |  | 403 |
+| POST | /api/auth/password/forgot | comptes | public |  |  |  |
+| POST | /api/auth/password/login | comptes | public |  |  | 401 429 |
+| POST | /api/auth/password/reset | comptes | public |  |  |  |
+| POST | /api/auth/reauth/start | comptes | user |  |  |  |
+| POST | /api/auth/reauth/verify | comptes | user |  |  |  |
+| GET | /api/auth/sessions | comptes | user |  |  |  |
+| DELETE | /api/auth/sessions/{session_id} | comptes | user |  |  | 404 |
+| POST | /api/auth/signup/start | comptes | public |  |  |  |
+| POST | /api/auth/signup/verify | comptes | public |  |  |  |
 | GET | /api/auth/usage | comptes | user |  | signed_in_user, place |  |
 | GET | /api/blender | local+comptes | user |  |  |  |
 | GET | /api/catalog | local+comptes | user |  |  |  |
@@ -33,6 +47,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/contact | comptes | public |  |  |  |
 | GET | /api/device | local+comptes | user |  |  |  |
 | GET | /api/doctor | local+comptes | admin |  |  |  |
+| POST | /api/extension/projects/{project_id}/images | comptes | extension | porte de l'extension ; membre ≥ editor ; place (413) |  | 404 429 |
+| GET | /api/extension/targets | comptes | extension | porte de l'extension |  |  |
 | GET | /api/health | local+comptes | public |  |  |  |
 | HEAD | /api/health | local+comptes | public |  |  |  |
 | GET | /api/home/settings | local+comptes | user |  |  |  |
@@ -181,6 +197,7 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/realistic/{request_id}/image | comptes | membre ≥ viewer |  | member_user | 404 |
 | DELETE | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
 | PUT | /api/projects/{project_id}/realistic/{request_id}/reactions/{key} | comptes | membre ≥ commenter |  | member_user |  |
+| POST | /api/projects/{project_id}/realistic/{request_id}/share-links | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/realistic/{request_id}/variant | comptes | membre ≥ editor |  | allowed_user, propriétaire |  |
 | POST | /api/projects/{project_id}/redo | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/renders | local+comptes | membre ≥ viewer |  |  |  |
@@ -203,6 +220,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/runs/{run_id}/layout/{name} | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/runs/{run_id}/openings/{name} | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/runs/{run_id}/perception/{name} | local+comptes | membre ≥ viewer |  |  |  |
+| GET | /api/projects/{project_id}/share-links | comptes | membre ≥ editor |  |  |  |
+| DELETE | /api/projects/{project_id}/share-links/{link_id} | comptes | membre ≥ editor |  |  | 404 |
 | GET | /api/projects/{project_id}/thumbnail | local+comptes | membre ≥ viewer |  |  |  |
 | POST | /api/projects/{project_id}/undo | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/validation | local+comptes | membre ≥ viewer |  |  |  |
@@ -211,6 +230,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/realistic/status | comptes | user |  | signed_in_user |  |
 | DELETE | /api/session | local | legacy |  |  |  |
 | POST | /api/session | local | legacy |  |  |  |
+| GET | /api/share/{token} | comptes | public |  |  |  |
+| GET | /api/share/{token}/image | comptes | public |  |  |  |
 | GET | /api/test/mail/last-code | comptes | public |  |  | 404 |
 | GET | /api/web-models/depth | local+comptes | user |  |  | 404 |
 | POST | /api/worker/claim | comptes | worker | porte du poste ; débit 1 / 5 s (429) |  |  |
