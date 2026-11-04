@@ -243,11 +243,12 @@ def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser
     imp.add_argument("--yes", action="store_true", help="sans confirmation, projet par projet")
     forget = accounts_sub.add_parser(
         "forget",
-        help="effacement d'un compte (RGPD) : simulation seulement (--dry-run, par défaut)",
+        help="effacement d'un compte (RGPD) : simulation par défaut (--dry-run), ou --apply",
         description=(
             "KAN-114 : montre ce que l'effacement d'un compte supprimerait (compte, sessions, "
             "codes, événements, invitations, rôles, projets dont il est le seul membre), sans "
-            "rien écrire. Les commentaires, réactions et l'activité dans les projets des "
+            "rien écrire ; --apply l'efface pour de bon, après avoir fait retaper l'adresse. "
+            "Les commentaires, réactions et l'activité dans les projets des "
             "autres ne sont pas réécrits : ils n'ont ni adresse ni nom, et l'application les "
             "montre « Ancien membre ». Hors de la commande : le journal d'accès de l'API et les "
             "sauvegardes (durée de rétention à citer dans la réponse RGPD)."
@@ -270,7 +271,9 @@ def _add_accounts_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser
         "--dry-run", action="store_true", help="simulation, rien n'est écrit (par défaut)"
     )
     mode.add_argument(
-        "--apply", action="store_true", help="effacer pour de bon (pas encore disponible)"
+        "--apply",
+        action="store_true",
+        help="effacer pour de bon (confirmation : retaper l'adresse du compte)",
     )
 
 
@@ -330,27 +333,34 @@ def _accounts_import(args: argparse.Namespace, settings: Settings, engine: Engin
 
 
 def _accounts_forget(args: argparse.Namespace, settings: Settings, engine: Engine) -> int:
-    """`openplan accounts forget` (KAN-114) : le plan seulement, en lecture seule. L'effacement
-    (`--apply`) attend la validation d'augus. 0 : possible tel quel ; 1 : refus ; 2 : erreur."""
+    """`openplan accounts forget` (KAN-114) : le plan, en lecture seule (`--dry-run`, par
+    défaut) ; `--apply` refait le plan et ses refus, fait retaper l'adresse, puis efface.
+    0 : possible tel quel, effacé, ou rien à faire ; 1 : refus ; 2 : erreur."""
     from openplan.api.accounts import db
-    from openplan.api.accounts.forget import ForgetRefusedError, describe, plan_forget
+    from openplan.api.accounts.forget import (
+        ForgetRefusedError,
+        describe,
+        plan_forget,
+        run_apply,
+    )
     from openplan.api.accounts.repo import AccountsRepo
     from openplan.api.settings import project_root
 
-    if args.apply:
-        print("--apply n'est pas encore disponible (KAN-114 : en attente de validation).")
-        return 2
+    repo = AccountsRepo(engine)
+    projects_dir = project_root(settings)
     try:
         db.check_schema(engine)
         plan = plan_forget(
-            AccountsRepo(engine),
+            repo,
             args.email,
-            projects_dir=project_root(settings),
+            projects_dir=projects_dir,
             data_dir=settings.data_dir,
             admin_email=settings.admin_email,
             transfer_to=args.transfer_to,
             delete_shared=args.delete_shared,
         )
+        if args.apply:
+            return run_apply(repo, plan, projects_dir=projects_dir, data_dir=settings.data_dir)
     except (db.AccountsSchemaError, ForgetRefusedError) as exc:
         print(f"effacement refusé : {exc}")
         return 2

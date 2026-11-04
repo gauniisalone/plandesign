@@ -272,9 +272,10 @@ def test_the_command(
     assert main(["accounts", "forget", LEA]) == 1  # projets partagés sans choix
     assert main(["accounts", "forget", LEA, "--dry-run", "--delete-shared"]) == 0
     assert main(["accounts", "forget", LEA, "--transfer-to", BRUNO]) == 0
-    assert main(["accounts", "forget", LEA, "--apply", "--transfer-to", BRUNO]) == 2
+    monkeypatch.setattr("builtins.input", lambda _prompt: BRUNO)  # mauvaise adresse
+    assert main(["accounts", "forget", LEA, "--apply", "--transfer-to", BRUNO]) == 1
     out = capsys.readouterr().out
-    assert "pas encore disponible" in out
+    assert "Confirmation manquée : rien n'est écrit." in out
     assert "sqlite" not in out and "postgres" not in out  # jamais l'URL de la base
     assert CHLOE not in out and ADMIN not in out
     with pytest.raises(SystemExit):

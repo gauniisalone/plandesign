@@ -1,8 +1,14 @@
 """`openplan accounts forget <adresse>` (KAN-114) : le droit à l'effacement d'un compte.
 
-Ce module ne fait pour l'instant que le PLAN, en lecture seule (`--dry-run`, par défaut) :
-il compte et liste ce qui partirait, sans rien écrire, ni dans la base ni sur le disque.
-L'effacement lui-même (`--apply`) attend la validation d'augus.
+Le PLAN (`--dry-run`, par défaut) est en lecture seule : il compte et liste ce qui partirait,
+sans rien écrire, ni dans la base ni sur le disque. L'effacement (`--apply`, décisions du
+30 oct. confirmées par augus) refait le plan et ses refus, demande de retaper l'adresse, puis
+agit dans UNE transaction, dans cet ordre : sessions révoquées d'abord, demandes de rendu en
+attente annulées (`cancel_pending_renders`), puis le reste, et la ligne `users` en dernier.
+Les dossiers des projets supprimés partent après la validation de la transaction. Un second
+`--apply` sur la même adresse ne trouve « rien à faire ». La sortie de `--apply` masque
+l'adresse (`a***@example.org`) ; le journal ne garde que les 8 premiers caractères de
+l'identifiant du compte, qui ne se relient plus à personne.
 
 Ce qui partirait (décisions du PO, 30 oct. 2026) :
 - le compte, ses sessions, ses codes de connexion (par adresse : sans clé étrangère) ;
@@ -33,16 +39,20 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from openplan.api.accounts.db import utcnow
 from openplan.api.accounts.events import SECRET_FILE
+from openplan.api.accounts.mail import mask_address
 from openplan.api.accounts.models import (
     AuthSession,
     Base,
@@ -51,6 +61,8 @@ from openplan.api.accounts.models import (
     Invitation,
     LoginToken,
     Member,
+    NotificationRead,
+    NotificationReadItem,
     ProjectRow,
     RenderRequest,
     ShareLink,
@@ -58,6 +70,8 @@ from openplan.api.accounts.models import (
 )
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
 from openplan.schemas.numbers import decimal
+
+log = logging.getLogger("openplan.accounts")
 
 
 class ForgetRefusedError(RuntimeError):
@@ -124,14 +138,21 @@ def _size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink())
 
 
-def _events(repo: AccountsRepo, data_dir: Path, user_id: UUID) -> int | None:
-    """Les événements du compte, par son pseudonyme. La clé est LUE, jamais créée : un plan
-    n'écrit rien (`events.load_secret` la créerait)."""
+def _actor(data_dir: Path, user_id: UUID) -> str | None:
+    """Le pseudonyme des événements du compte (comme `EventLog.pseudonym`). La clé est LUE,
+    jamais créée (`events.load_secret` la créerait) ; absente : aucun événement n'existe."""
     path = data_dir / SECRET_FILE
     if not path.is_file():
         return None
     secret = path.read_text(encoding="ascii").strip().encode()
-    actor = hmac.new(secret, f"u:{user_id}".encode(), hashlib.sha256).hexdigest()[:32]
+    return hmac.new(secret, f"u:{user_id}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _events(repo: AccountsRepo, data_dir: Path, user_id: UUID) -> int | None:
+    """Les événements du compte, par son pseudonyme ; un plan n'écrit rien."""
+    actor = _actor(data_dir, user_id)
+    if actor is None:
+        return None
     with repo.session() as db:
         return int(
             db.scalar(select(func.count()).select_from(Event).where(Event.actor == actor)) or 0
@@ -187,8 +208,7 @@ def cancel_pending_renders(db: Session, user_id: UUID, now: datetime) -> int:
     attente, dans la même transaction, AVANT de supprimer la ligne `users` : sans lanceur,
     aucun poste ne les prendrait plus (`RenderQueue.claim` ne prend que les comptes
     autorisés). Annulée = sortie de la file comme une demande expirée (`expired`, état final
-    déjà connu de la galerie). Renvoie leur nombre. Chemin d'`accounts forget --apply`,
-    qui attend la validation d'augus."""
+    déjà connu de la galerie). Renvoie leur nombre. Appelée par `apply_forget`."""
     rows = list(db.scalars(select(RenderRequest).where(*_pending(user_id))))
     for row in rows:
         row.state, row.finished_at, row.lease_id = "expired", now, None
@@ -305,9 +325,13 @@ def _describe_projects(plan: ForgetPlan, say: Callable[[str], None]) -> None:
             say(_line(p))
 
 
-def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
-    """Le plan, lisible ; aucune autre adresse que celle tapée."""
-    say(f"Effacement de {plan.email} : simulation (--dry-run), rien n'est écrit.")
+def describe(plan: ForgetPlan, say: Callable[[str], None] = print, *, apply: bool = False) -> None:
+    """Le plan, lisible ; aucune autre adresse que celle tapée. `apply` : avant l'effacement,
+    l'adresse est masquée."""
+    if apply:
+        say(f"Effacement de {mask_address(plan.email)} (--apply) : ce qui va être fait.")
+    else:
+        say(f"Effacement de {plan.email} : simulation (--dry-run), rien n'est écrit.")
     if plan.user_id is None:
         say("  aucun compte pour cette adresse.")
     else:
@@ -342,3 +366,198 @@ def describe(plan: ForgetPlan, say: Callable[[str], None] = print) -> None:
     for refusal in plan.refusals:
         say(f"  REFUS : {refusal}")
     say("Possible tel quel." if plan.possible else "Impossible tel quel (voir les refus).")
+
+
+# --- effacement (`--apply`) -------------------------------------------------------------
+
+
+@dataclass
+class ForgetResult:
+    """Ce que `--apply` a fait. `done` faux : rien à faire (compte et traces déjà partis)."""
+
+    done: bool
+    sessions: int = 0
+    renders_cancelled: int = 0
+    projects_deleted: list[UUID] = field(default_factory=list)
+    projects_transferred: int = 0
+    folders_left: list[UUID] = field(default_factory=list)
+    """Dossiers de projets supprimés que le disque a refusé d'effacer (à retirer à la main)."""
+
+
+def nothing_to_do(plan: ForgetPlan) -> bool:
+    """Ni compte, ni code de connexion, ni invitation à cette adresse : un second `--apply`."""
+    return plan.user_id is None and not plan.login_codes and not plan.invitations_to_address
+
+
+def _drop_project(db: Session, pid: UUID) -> None:
+    """Un projet supprimé et tout ce qui s'y rattache (explicite : sans compter sur les
+    cascades, pareil sur SQLite et Postgres)."""
+    db.execute(delete(ShareLink).where(ShareLink.project_id == pid))
+    db.execute(delete(RenderRequest).where(RenderRequest.project_id == pid))
+    db.execute(delete(Invitation).where(Invitation.project_id == pid))
+    db.execute(delete(NotificationReadItem).where(NotificationReadItem.project_id == pid))
+    db.execute(delete(Member).where(Member.project_id == pid))
+    db.execute(delete(ProjectRow).where(ProjectRow.id == pid))
+
+
+def _hand_over(db: Session, pid: UUID, user_id: UUID, heir: UUID, *, promote: bool) -> None:
+    """Le projet passe à `heir` : propriétaire inscrit (`owner_id`) et, pour un transfert
+    (`--transfer-to`), son rôle de membre éditeur devient `owner` (décision 1 du 30 oct.)."""
+    if promote:
+        db.execute(
+            update(Member)
+            .where(Member.project_id == pid, Member.user_id == heir)
+            .values(role="owner")
+        )
+    db.execute(
+        update(ProjectRow)
+        .where(ProjectRow.id == pid, ProjectRow.owner_id == user_id)
+        .values(owner_id=heir)
+    )
+
+
+def _apply_projects(db: Session, plan: ForgetPlan, user_id: UUID) -> tuple[list[UUID], int]:
+    """Ses projets : supprimés (seul membre, ou partagés avec `--delete-shared`), ou passés à
+    l'autre propriétaire / au membre éditeur donné. Renvoie (supprimés, transférés)."""
+    gone = [p.id for p in plan.solo]
+    if plan.shared_action == "delete":
+        gone += [p.id for p in plan.shared]
+    moved = 0
+    for p in plan.co_owned:
+        if p.co_owner is not None:
+            _hand_over(db, p.id, user_id, p.co_owner, promote=False)
+            moved += 1
+    if plan.shared_action == "transfer" and plan.transfer_to is not None:
+        for p in plan.shared:
+            _hand_over(db, p.id, user_id, plan.transfer_to, promote=True)
+            moved += 1
+    for pid in gone:
+        _drop_project(db, pid)
+    return gone, moved
+
+
+def _remove_folders(projects_dir: Path, gone: list[UUID]) -> list[UUID]:
+    """Après la transaction : les dossiers des projets supprimés. Renvoie ceux restés."""
+    left: list[UUID] = []
+    root = projects_dir.resolve()
+    for pid in gone:
+        folder = (projects_dir / str(pid)).resolve()
+        if folder.parent != root or not folder.exists():
+            continue
+        try:
+            shutil.rmtree(folder)
+        except OSError:
+            left.append(pid)
+    return left
+
+
+def apply_forget(
+    repo: AccountsRepo,
+    plan: ForgetPlan,
+    *,
+    projects_dir: Path,
+    data_dir: Path,
+    clock: Callable[[], datetime] = utcnow,
+) -> ForgetResult:
+    """L'effacement selon un plan possible, dans une seule transaction. Ordre : sessions
+    révoquées d'abord (décision 5 ; les WebSocket tombent au recontrôle de 30 s), demandes en
+    attente annulées (`cancel_pending_renders`, KAN-115) AVANT le `DELETE users`, codes et
+    invitations effacés par adresse (décision 6). Les fichiers des projets des autres ne sont
+    pas réécrits (décision 2)."""
+    if not plan.possible:
+        msg = "le plan a des refus : rien n'est écrit"
+        raise ForgetRefusedError(msg)
+    if nothing_to_do(plan):
+        return ForgetResult(done=False)
+    address, user_id = plan.email, plan.user_id
+    result = ForgetResult(done=True)
+    with repo.session() as db, db.begin():
+        if user_id is not None:
+            user = db.get(User, user_id)
+            if user is None or user.email != address:
+                msg = "le compte a changé depuis le plan : relancer la commande"
+                raise ForgetRefusedError(msg)
+            gone = db.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
+            result.sessions = int(getattr(gone, "rowcount", 0) or 0)
+            result.renders_cancelled = cancel_pending_renders(db, user_id, clock())
+            db.flush()
+        db.execute(delete(LoginToken).where(LoginToken.email == address))
+        by_address: ColumnElement[bool] = Invitation.email == address
+        if user_id is not None:
+            by_address = or_(by_address, Invitation.created_by == user_id)
+        db.execute(delete(Invitation).where(by_address))
+        if user_id is not None:
+            db.execute(delete(ExtensionToken).where(ExtensionToken.user_id == user_id))
+            actor = _actor(data_dir, user_id)
+            if actor is not None:
+                db.execute(delete(Event).where(Event.actor == actor))
+            db.execute(delete(ShareLink).where(ShareLink.created_by == user_id))
+            result.projects_deleted, result.projects_transferred = _apply_projects(
+                db, plan, user_id
+            )
+            db.execute(delete(Member).where(Member.user_id == user_id))
+            db.execute(delete(NotificationReadItem).where(NotificationReadItem.user_id == user_id))
+            db.execute(delete(NotificationRead).where(NotificationRead.user_id == user_id))
+            # KAN-115 : ses rendus des projets qui restent sont gardés, sans lanceur ; une
+            # prise en cours garde son bail et suit son sort habituel.
+            db.execute(
+                update(RenderRequest).where(RenderRequest.user_id == user_id).values(user_id=None)
+            )
+            db.execute(delete(User).where(User.id == user_id))
+    result.folders_left = _remove_folders(projects_dir, result.projects_deleted)
+    if user_id is None:
+        log.warning("accounts forget --apply : codes et invitations d'une adresse sans compte")
+    else:
+        log.warning(
+            "accounts forget --apply : compte %s effacé (%d projet(s) supprimé(s), "
+            "%d transféré(s))",
+            str(user_id)[:8],
+            len(result.projects_deleted),
+            result.projects_transferred,
+        )
+    return result
+
+
+def describe_result(result: ForgetResult, say: Callable[[str], None] = print) -> None:
+    """Après l'effacement ; ni adresse ni nom."""
+    if not result.done:
+        say("Rien à faire : aucun compte, code ni invitation pour cette adresse.")
+        return
+    say(
+        f"Effacé : {result.sessions} session(s) révoquée(s), {result.renders_cancelled} "
+        f"demande(s) en attente annulée(s), {len(result.projects_deleted)} projet(s) "
+        f"supprimé(s), {result.projects_transferred} projet(s) transféré(s)."
+    )
+    for pid in result.folders_left:
+        say(f"  ATTENTION : dossier du projet {str(pid)[:8]} resté sur le disque, à retirer")
+
+
+def run_apply(
+    repo: AccountsRepo,
+    plan: ForgetPlan,
+    *,
+    projects_dir: Path,
+    data_dir: Path,
+    ask: Callable[[str], str] | None = None,
+    say: Callable[[str], None] = print,
+    clock: Callable[[], datetime] = utcnow,
+) -> int:
+    """`--apply` : le plan (adresse masquée), ses refus, la confirmation en retapant l'adresse,
+    puis l'effacement. 0 : effacé ou rien à faire ; 1 : refus ou confirmation manquée."""
+    if nothing_to_do(plan) and plan.possible:
+        describe_result(ForgetResult(done=False), say)
+        return 0
+    describe(plan, say, apply=True)
+    if not plan.possible:
+        say("Rien n'est écrit.")
+        return 1
+    try:  # `input` lu à l'appel (et non à la définition) : remplaçable dans les tests
+        typed = (ask or input)("Pour confirmer, retapez l'adresse du compte : ")
+    except (EOFError, OSError):  # pas de terminal : pas de confirmation
+        typed = ""
+    if normalize_email(typed) != plan.email:
+        say("Confirmation manquée : rien n'est écrit.")
+        return 1
+    result = apply_forget(repo, plan, projects_dir=projects_dir, data_dir=data_dir, clock=clock)
+    describe_result(result, say)
+    return 0
