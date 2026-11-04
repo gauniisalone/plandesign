@@ -719,19 +719,13 @@ export function useProject(projectId: string) {
   );
   const generateFromPhotos = useCallback(
     (lid: string, photos: string[], replace: boolean) => {
-      const { project } = state;
-      if (!project || !project.levels[lid] || photos.length === 0) return;
+      const shown = state.project;
+      if (!shown || !shown.levels[lid] || photos.length === 0) return;
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       if (state.photosProgress) return;
       if (!currentCapabilities().photoPlan) return;
-      const pid = project.id;
-      const base = project.history_cursor;
+      const pid = shown.id;
       const n = photos.length;
-      const posed = new Set(
-        Object.values(project.levels[lid].elements)
-          .filter((e) => e.type === "camera" && "image_id" in e && e.image_id)
-          .map((e) => ("image_id" in e ? (e.image_id as string) : "")),
-      );
       const show = (label: string, fraction: number | null) =>
         setState((s) => ({
           ...s,
@@ -753,6 +747,32 @@ export function useProject(projectId: string) {
         }));
       void (async () => {
         const failed: string[] = [];
+        // Réseau lent (P37) : une photo entre dans le node dès son envoi, le projet qui la
+        // connaît n'est posé qu'après (derived, validation). Une photo du tableau encore
+        // inconnue n'est plus passée sans analyse : le projet est relu d'abord ; celle qui
+        // reste inconnue n'est pas prête (« non analysée »).
+        let project = shown;
+        if (photos.some((id) => !project.images[id])) {
+          show(n > 1 ? `Analyse de la photo 1 sur ${n}…` : "Analyse de la photo…", null);
+          try {
+            project = await api.getProject(pid);
+            void applyProject(project);
+          } catch {
+            // Relecture impossible : les photos inconnues restent non prêtes.
+          }
+          failed.push(...photos.filter((id) => !project.images[id]));
+          if (!project.levels[lid] || failed.length === photos.length) {
+            setState((s) => ({ ...s, photosProgress: null, depthFailed: failed }));
+            return;
+          }
+        }
+        const level = project.levels[lid]!;
+        const base = project.history_cursor;
+        const posed = new Set(
+          Object.values(level.elements)
+            .filter((e) => e.type === "camera" && "image_id" in e && e.image_id)
+            .map((e) => ("image_id" in e ? (e.image_id as string) : "")),
+        );
         let last: unknown = null;
         let lastSending = false;
         if (currentCapabilities().browserDepth) {
@@ -844,7 +864,7 @@ export function useProject(projectId: string) {
         autoplan(pid, lid, usable[0]!, base, undefined, replace);
       })();
     },
-    [state, autoplan],
+    [state, autoplan, applyProject],
   );
   /** « Réessayer » relance la dernière version (état à jour), pas celle de l'échec. */
   const generateRef = useRef(generateFromPhotos);
