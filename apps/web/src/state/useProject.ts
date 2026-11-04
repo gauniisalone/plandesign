@@ -1065,9 +1065,11 @@ export function useProject(projectId: string) {
       if (jobActive(state.autoJob) || jobActive(state.pilotJob)) return;
       const level = project.levels[levelId];
       // KAN-120 : un clic, toutes les photos du node relié (jamais une seule en silence).
-      if ((!level || walls(level).length === 0) && photos.length > 0)
+      // Sans lecture de photo possible (en ligne sans modèle), les exigences, comme avant.
+      const empty = !level || walls(level).length === 0;
+      if (empty && photos.length > 0 && currentCapabilities().photoPlan)
         generateFromPhotos(levelId, photos, false);
-      else if (!level || walls(level).length === 0) generatePlan(fresh);
+      else if (empty) generatePlan(fresh);
       else if (currentCapabilities().renders)
         startAutopilot(project.id, levelId);
     },
