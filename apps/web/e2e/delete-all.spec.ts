@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { gotoApp } from "./app-ready";
 
-// KAN-119 : « Supprimer tous mes projets » (menu « Plus » de l'accueil). La liste et les
-// DELETE sont simulés : aucun projet réel du serveur de test n'est supprimé.
+// KAN-119 : « Supprimer tous mes projets » (menu « Plus » de l'accueil). La liste et
+// POST /projects/delete-all sont simulés : aucun projet réel du serveur de test n'est
+// supprimé (la route elle-même : tests/accounts/test_kan119_delete_all.py).
 
 const summary = (id: string, name: string, role?: string) => ({
   id,
@@ -16,13 +17,15 @@ const summary = (id: string, name: string, role?: string) => ({
   has_thumbnail: false,
 });
 
-/** Simule la galerie ; `failing` : ids dont le DELETE échoue. Rend les ids supprimés. */
+/** Simule la galerie et la route ; `failing` : ids que le serveur n'a pas pu supprimer.
+ *  Rend les ids supprimés et les corps reçus par la route. */
 async function fakeGallery(
   page: Page,
   list: ReturnType<typeof summary>[],
   failing: string[] = [],
-): Promise<string[]> {
+): Promise<{ deleted: string[]; bodies: unknown[] }> {
   const deleted: string[] = [];
+  const bodies: unknown[] = [];
   await page.route(/\/api\/projects$/, (route) =>
     route.request().method() === "GET"
       ? route.fulfill({
@@ -30,15 +33,20 @@ async function fakeGallery(
         })
       : route.fallback(),
   );
-  await page.route(/\/api\/projects\/[^/]+$/, (route) => {
-    if (route.request().method() !== "DELETE") return route.fallback();
-    const id = route.request().url().split("/").pop() ?? "";
-    if (failing.includes(id))
-      return route.fulfill({ status: 500, json: { detail: "panne" } });
-    deleted.push(id);
-    return route.fulfill({ status: 204 });
+  await page.route(/\/api\/projects\/delete-all$/, (route) => {
+    const body = route.request().postDataJSON() as {
+      confirm: string;
+      project_ids: string[];
+    };
+    bodies.push(body);
+    if (body.confirm !== "SUPPRIMER")
+      return route.fulfill({ status: 400, json: { detail: "mot" } });
+    const failed = body.project_ids.filter((id) => failing.includes(id));
+    const gone = body.project_ids.filter((id) => !failing.includes(id));
+    deleted.push(...gone);
+    return route.fulfill({ json: { deleted: gone, failed } });
   });
-  return deleted;
+  return { deleted, bodies };
 }
 
 async function openDeleteAll(page: Page) {
@@ -52,7 +60,7 @@ async function openDeleteAll(page: Page) {
 test("tout supprimer : SUPPRIMER à saisir, seuls les projets à soi partent", async ({
   page,
 }) => {
-  const deleted = await fakeGallery(page, [
+  const { deleted, bodies } = await fakeGallery(page, [
     summary("a", "Séjour", "owner"),
     summary("b", "Combles", "owner"),
     summary("c", "Chambre", "editor"),
@@ -77,11 +85,15 @@ test("tout supprimer : SUPPRIMER à saisir, seuls les projets à soi partent", a
   );
   await expect(dialog).toBeHidden();
   expect(deleted).toEqual(["a", "b"]);
+  // Un seul appel ; le mot part normalisé, le serveur le revérifie.
+  expect(bodies).toEqual([{ confirm: "SUPPRIMER", project_ids: ["a", "b"] }]);
   await expect(page.locator(".boards-cards")).toContainText("Chambre");
 });
 
 test("tout supprimer : Échap vaut Annuler, rien ne part", async ({ page }) => {
-  const deleted = await fakeGallery(page, [summary("a", "Séjour", "owner")]);
+  const { deleted } = await fakeGallery(page, [
+    summary("a", "Séjour", "owner"),
+  ]);
   await gotoApp(page, "/");
   const dialog = await openDeleteAll(page);
   await expect(dialog).toContainText("Supprimer votre projet ?");
@@ -94,7 +106,7 @@ test("tout supprimer : Échap vaut Annuler, rien ne part", async ({ page }) => {
 test("tout supprimer : un échec n'arrête pas les autres et le message le nomme", async ({
   page,
 }) => {
-  const deleted = await fakeGallery(
+  const { deleted } = await fakeGallery(
     page,
     [summary("a", "Séjour", "owner"), summary("b", "Combles", "owner")],
     ["b"],

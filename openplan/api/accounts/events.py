@@ -38,6 +38,7 @@ NAMES = frozenset(
         "signed_in",
         "active",
         "project_created",
+        "projects_deleted",  # KAN-119 : « Supprimer tous mes projets », le nombre seul
         "plan_built",
         "render_requested",
         "render_done",

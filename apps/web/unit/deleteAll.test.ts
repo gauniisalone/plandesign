@@ -5,11 +5,13 @@ import { test } from "node:test";
 
 import {
   confirmMatches,
+  confirmWord,
   deleteAllButton,
   deleteAllTitle,
-  deleteEach,
   foldedLabel,
+  namedResult,
   ownedProjects,
+  progressLine,
   quotedNames,
   resultLine,
   splitNames,
@@ -31,12 +33,15 @@ test("SUPPRIMER : casse et espaces autour ignorés, rien d'autre", () => {
   assert.equal(confirmMatches("SUPPRIME"), false);
   assert.equal(confirmMatches("SUP PRIMER"), false);
   assert.equal(confirmMatches(""), false);
+  assert.equal(confirmWord("  supprimer "), "SUPPRIMER"); // ce qui part au serveur
 });
 
 test("titres au singulier et au pluriel", () => {
   assert.equal(deleteAllTitle(1), "Supprimer votre projet ?");
   assert.equal(deleteAllTitle(2), "Supprimer vos 2 projets ?");
   assert.equal(deleteAllButton(2), "Supprimer mes 2 projets");
+  assert.equal(progressLine(1), "Suppression de votre projet…");
+  assert.equal(progressLine(3), "Suppression de vos 3 projets…");
 });
 
 test("noms : « A » et « B », repliés au-delà de 10", () => {
@@ -52,17 +57,18 @@ test("noms : « A » et « B », repliés au-delà de 10", () => {
   assert.equal(foldedLabel(1), "et 1 autre…");
 });
 
-test("un échec n'arrête pas les autres, et le message nomme ce qui reste", async () => {
-  const steps: number[] = [];
-  const result = await deleteEach(
-    [p("Séjour"), p("Combles"), p("Bureau")],
-    async (id) => {
-      if (id === "Combles") throw new Error("réseau coupé");
-    },
-    (k) => steps.push(k),
-  );
-  assert.deepEqual(steps, [1, 2, 3]);
+test("le bilan du serveur, nommé ; le message nomme ce qui reste", () => {
+  const list = [p("Séjour"), p("Combles"), p("Bureau")];
+  const result = namedResult(list, {
+    deleted: ["Séjour", "Bureau"],
+    failed: ["Combles"],
+  });
   assert.deepEqual(result, { deleted: ["Séjour", "Bureau"], failed: ["Combles"] });
+  // Sans réponse (réseau coupé, mot refusé, trop de demandes) : tout reste.
+  assert.deepEqual(namedResult(list, null), {
+    deleted: [],
+    failed: ["Séjour", "Combles", "Bureau"],
+  });
   assert.equal(
     resultLine(result),
     "2 supprimés, 1 en échec : « Combles » reste, réessayez.",

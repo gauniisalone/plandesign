@@ -809,6 +809,13 @@ export const api = {
     `${BASE}/projects/${id}/cover?theme=${theme}&v=${encodeURIComponent(version)}`,
   deleteProject: (id: string) =>
     request<void>(`/projects/${id}`, { method: "DELETE" }),
+  /** KAN-119 : « Supprimer tous mes projets » ; le serveur revérifie le mot et le
+   *  propriétaire de chacun, et rend le bilan par ids. */
+  deleteAllProjects: (ids: string[], confirm: string) =>
+    request<{ deleted: string[]; failed: string[] }>(
+      "/projects/delete-all",
+      json({ confirm, project_ids: ids }),
+    ),
   updateSettings: (id: string, body: ProjectSettingsUpdate) =>
     request<Project>(`/projects/${id}`, {
       method: "PATCH",

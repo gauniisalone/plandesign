@@ -5,14 +5,15 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import Field
 
 from openplan.adapters.gateway import ModelGateway
-from openplan.api.access import usage_event
+from openplan.api.access import optional_user, usage_event
 from openplan.api.deps import LanguageModelDep, ProjectDep, SettingsDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import forget_project, register_project, role_of, visible_summaries
+from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.pipeline import home_settings
 from openplan.pipeline.cover import project_cover
 from openplan.pipeline.generated import generate_plan
@@ -24,7 +25,7 @@ from openplan.pipeline.programme import Programme, read_programme
 from openplan.pipeline.starter import MAX_AREA_M2, MIN_AREA_M2, area_in_text, starter_plan
 from openplan.scene.factory import new_project
 from openplan.scene.history import USER_ACTOR
-from openplan.scene.store import ProjectNotFoundError, ProjectSummary
+from openplan.scene.store import ProjectNotFoundError, ProjectStore, ProjectSummary
 from openplan.schemas.common import StrictModel
 from openplan.schemas.home import GuidedAnswers
 from openplan.schemas.scene import Project
@@ -294,12 +295,78 @@ def project_cover_image(
     return Response(content=cover.content or b"", media_type=cover.media_type, headers=headers)
 
 
-@router.delete("/projects/{project_id}", status_code=204)
-def delete_project(project_id: UUID, store: StoreDep, request: Request) -> Response:
-    """Supprime la scène, les images et les runs : rien ne subsiste sur disque ; avec les
-    comptes, la ligne du projet et ses membres aussi (propriétaire seulement)."""
+def _remove(project_id: UUID, store: ProjectStore, request: Request) -> None:
+    """Scène, images et runs ; avec les comptes, la ligne, les membres, et les WS fermées."""
     try:
         store.delete(project_id)
     finally:
         forget_project(request, project_id)
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: UUID, store: StoreDep, request: Request) -> Response:
+    """Supprime la scène, les images et les runs : rien ne subsiste sur disque ; avec les
+    comptes, la ligne du projet et ses membres aussi (propriétaire seulement)."""
+    _remove(project_id, store, request)
     return Response(status_code=204)
+
+
+DELETE_ALL_WORD = "SUPPRIMER"
+DELETE_ALL_LIMIT = 5
+DELETE_ALL_WINDOW_S = 3600.0
+"""Au plus 5 demandes par heure et par compte, mot faux compris."""
+MAX_DELETE_ALL = 1000
+
+
+class DeleteAllBody(StrictModel):
+    confirm: str = Field(max_length=32)
+    """Le mot SUPPRIMER, exact : le client seul ne suffit pas."""
+    project_ids: list[UUID] = Field(max_length=MAX_DELETE_ALL)
+    """Les projets montrés dans la fenêtre : un projet créé entre-temps ne part pas."""
+
+
+class DeleteAllReport(StrictModel):
+    deleted: list[UUID]
+    failed: list[UUID]
+    """Inconnus, pas à soi, ou en erreur : ils restent."""
+
+
+def _delete_all_limiter(request: Request) -> SlidingWindowLimiter:
+    state = request.app.state
+    limiter = getattr(state, "delete_all_limiter", None)
+    if limiter is None:
+        limiter = SlidingWindowLimiter(DELETE_ALL_LIMIT, DELETE_ALL_WINDOW_S)
+        state.delete_all_limiter = limiter
+    return limiter
+
+
+@router.post("/projects/delete-all")
+def delete_all(body: DeleteAllBody, store: StoreDep, request: Request) -> DeleteAllReport:
+    """KAN-119 : « Supprimer tous mes projets ». Chaque projet passe par la suppression d'un
+    projet (WS fermées comprises), et seulement si l'on en est propriétaire : un projet partagé
+    avec soi n'est jamais touché. Un échec n'arrête pas les autres. Au journal d'usage, le
+    nombre seul (ni nom, ni projet)."""
+    user = optional_user(request)
+    key = str(user.id) if user is not None else "local"
+    if not _delete_all_limiter(request).allow(key):
+        raise HTTPException(
+            status_code=429,
+            detail="trop de demandes, réessayer dans une heure",
+            headers={"Retry-After": str(int(DELETE_ALL_WINDOW_S))},
+        )
+    if body.confirm != DELETE_ALL_WORD:
+        raise HTTPException(status_code=400, detail=f"saisir {DELETE_ALL_WORD} pour confirmer")
+    deleted: list[UUID] = []
+    failed: list[UUID] = []
+    for project_id in dict.fromkeys(body.project_ids):
+        try:
+            if role_of(request, project_id) != "owner":
+                failed.append(project_id)
+                continue
+            _remove(project_id, store, request)
+        except (HTTPException, ProjectNotFoundError, OSError):
+            failed.append(project_id)
+        else:
+            deleted.append(project_id)
+    usage_event(request, "projects_deleted", None, len(deleted))
+    return DeleteAllReport(deleted=deleted, failed=failed)

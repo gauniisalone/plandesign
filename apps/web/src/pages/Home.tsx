@@ -263,7 +263,7 @@ export function Home({ onOpen }: Props) {
           owned={owned}
           shared={(projects?.length ?? 0) - owned.length}
           accounts={account !== null}
-          remove={(id) => api.deleteProject(id)}
+          remove={(ids, word) => api.deleteAllProjects(ids, word)}
           onDone={(result) => {
             setDeleting(false);
             setNotice(resultLine(result));

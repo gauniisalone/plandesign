@@ -288,6 +288,8 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     ("GET", "/api/projects"): "user",
     ("POST", "/api/projects"): "user",
+    # KAN-119 : « Supprimer tous mes projets » ; le propriétaire de chacun, vu dans la route.
+    ("POST", "/api/projects/delete-all"): "user",
     ("GET", "/api/auth/usage"): "user",  # KAN-12 : ma place disque
     # KAN-52 : la cloche ne lit que les projets dont la personne est membre.
     ("GET", "/api/notifications"): "user",
