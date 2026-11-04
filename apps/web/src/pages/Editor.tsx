@@ -910,9 +910,18 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   };
 
   if (!state.project || !level) {
+    // KAN-47 : l'attente du rôle se dit dès le chargement, même quand le rôle arrive avant
+    // le projet (réseau ou serveur lent) ; sinon le lecteur ne la voyait jamais.
+    const waiting = !state.error && step === "import" && gate === "waiting";
     return (
       <main className="app">
-        <p>{state.error ?? "Chargement…"}</p>
+        {waiting ? (
+          <p role="status" aria-busy="true">
+            Ouverture du projet…
+          </p>
+        ) : (
+          <p>{state.error ?? "Chargement…"}</p>
+        )}
         <button onClick={onHome}>← Projets</button>
       </main>
     );
