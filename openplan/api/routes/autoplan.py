@@ -190,6 +190,30 @@ def _confront_saved(
     return saved, max(photos, posed)
 
 
+def _one_step(store: ProjectStore, before: Project, after: Project, photos: int) -> Project:
+    """Première génération : le plan, le recoupement et chaque photo confrontée deviennent UNE
+    entrée d'historique (un seul Ctrl+Z, comme « Régénérer »). Un geste venu entre-temps : rien
+    n'est réécrit. Une image ajoutée pendant le calcul n'entre pas dans l'entrée (Ctrl+Z ne
+    l'efface pas)."""
+    new = after.history[before.history_cursor :]
+    if len(new) <= 1:
+        return after
+    latest = store.load(before.id)
+    if (latest.history_cursor, len(latest.history)) != (after.history_cursor, len(after.history)):
+        return after
+    base = before.model_copy(update={"images": {**latest.images, **before.images}})
+    flat = latest.model_copy(
+        update={"history": before.history, "history_cursor": before.history_cursor}
+    )
+    label = new[0].label if photos <= 1 else f"Proposer un plan depuis {photos} photos"
+    try:
+        squashed = history.commit(base, flat, actor=new[0].actor, label=label, run_id=new[0].run_id)
+    except history.PatchRejectedError:
+        return after  # chaque étape a été acceptée seule : on les garde telles quelles
+    store.save(squashed)
+    return squashed
+
+
 def _replace(
     store: ProjectStore,
     request: Request,
@@ -363,6 +387,7 @@ def autoplan(
             run = run.model_copy(update={"notices": [*run.notices, *fused.notices]})
         # KAN-120 : puis les autres photos du node, confrontées au plan obtenu.
         after, photos = _confront_saved(store, project_id, confront, after, photos)
+        after = _one_step(store, before, after, photos)
         # KAN-109 L2 : un plan construit (value : nombre de photos lues).
         usage_event(request, "plan_built", project_id, photos)
         announce_written(request, settings, project_id, conn)

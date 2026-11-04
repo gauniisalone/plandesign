@@ -130,10 +130,20 @@ def test_every_photo_of_the_node_is_posed_on_the_plan(tmp_path: Path) -> None:
             for i in range(3)
         ]
         route = f"/api/projects/{pid}/levels/{lid}/images/{ids[0]}/autoplan"
+        empty = store.load(UUID(pid))
         job = _wait(c, pid, c.post(route).json())
         assert job["status"] == "done", job
         assert _photo_cameras(store, pid, lid) == {UUID(i) for i in ids}
         before = store.load(UUID(pid))
+        # Relecture P39 : la première génération aussi tient en UNE étape d'annulation (le
+        # plan et les deux photos confrontées), et un seul Ctrl+Z remet le niveau vide.
+        assert before.history_cursor == empty.history_cursor + 1
+        assert len(before.history) == before.history_cursor
+        assert before.history[-1].label == "Proposer un plan depuis 3 photos"
+        assert c.post(f"/api/projects/{pid}/undo").status_code == 200
+        assert history.content(store.load(UUID(pid))) == history.content(empty)
+        assert c.post(f"/api/projects/{pid}/redo").status_code == 200
+        assert history.content(store.load(UUID(pid))) == history.content(before)
         job = _wait(c, pid, c.post(f"{route}?replace=true").json())
         assert job["status"] == "done", job
         after = store.load(UUID(pid))
