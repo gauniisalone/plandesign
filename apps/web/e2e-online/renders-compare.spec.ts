@@ -189,6 +189,9 @@ async function deliverProject(
         await page.request.get(`/api/projects/${projectId}/realistic`)
       ).json()) as Listing
     ).requests.filter((r) => r.state === "pending" || r.state === "taken");
+  // La demande part de l'interface (clic du menu) : on attend qu'elle soit enregistrée, sinon
+  // la boucle peut voir une liste vide, ne rien prendre, et la demande arrive après.
+  await expect.poll(async () => (await pending()).length).toBeGreaterThan(0);
   for (let i = 0; i < 12 && (await pending()).length > 0; i++) {
     const claim = await worker.post("/api/worker/claim", {
       data: { state: "idle" },
