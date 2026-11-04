@@ -100,6 +100,56 @@ def test_alerts_once_without_any_address(caplog: pytest.LogCaptureFixture) -> No
     assert "@" not in caplog.text
 
 
+# --- le compte survit à un redémarrage (KAN-104) -------------------------------------------
+
+
+def test_the_count_of_the_day_survives_a_restart(tmp_path: Path) -> None:
+    path = tmp_path / "data" / "mail-budget.json"
+    now = [NOON]
+    first = MailBudget(3, {"invitation": 2}, lambda: now[0], path)
+    assert [first.take("invitation") for _ in range(3)] == [True, True, False]
+    assert not list(path.parent.glob("*.part"))  # écriture atomique, rien ne traîne
+    again = MailBudget(3, {"invitation": 2}, lambda: now[0], path)  # redémarrage
+    assert not again.take("invitation")
+    assert again.take("login") and not again.take("login")
+    now[0] = NOON + timedelta(days=1)  # le lendemain, le fichier d'hier ne compte plus
+    assert MailBudget(3, {"invitation": 2}, lambda: now[0], path).take("invitation")
+
+
+def test_an_alert_is_not_given_twice_after_a_restart(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = tmp_path / "mail-budget.json"
+    with caplog.at_level(logging.WARNING, logger="openplan.accounts"):
+        for takes in (4, 1):  # deux processus, le même jour : l'alerte part au 4e envoi
+            budget = MailBudget(5, {}, lambda: NOON, path)
+            for _ in range(takes):
+                budget.take("login")
+    assert sum("80 %" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_an_unreadable_file_starts_from_zero(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = tmp_path / "mail-budget.json"
+    path.write_text("{pas du json", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="openplan.accounts"):
+        budget = MailBudget(2, {}, lambda: NOON, path)
+    assert "illisible" in caplog.text
+    assert budget.take("login") and budget.take("login") and not budget.take("login")
+
+
+def test_the_api_keeps_the_count_across_a_restart(tmp_path: Path, migrated_url: str) -> None:
+    owner, service, mailer = accounts_client(tmp_path, migrated_url, mail_daily_total=2)
+    sign_in(owner, mailer, ADMIN)  # 1 e-mail
+    assert (tmp_path / "data" / "mail-budget.json").is_file()
+    _, restarted, _ = accounts_client(tmp_path, migrated_url, mail_daily_total=2)
+    assert restarted is not service
+    assert restarted.send_mail(login_message(KNOWN, "123456", 15))  # le 2e du jour
+    with pytest.raises(MailQuotaError):
+        restarted.mail_budget.check("login")
+
+
 # --- les routes ----------------------------------------------------------------------------
 
 

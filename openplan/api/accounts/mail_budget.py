@@ -16,18 +16,24 @@ la réponse est la même pour toutes. 503 et non 429 : la prison fail2ban compte
 entre deux requêtes simultanées. Alertes dans le journal, une fois par jour et par seuil, sans
 aucune adresse : 80 % du total, puis la fermeture de chaque classe. 0 = sans plafond.
 
-En mémoire, comme les autres limites (un seul processus d'API) : un redémarrage remet le
-compte à zéro.
+Le compte du jour est aussi écrit sur le disque (`data/mail-budget.json`, jour, nombre et
+alertes déjà données), de façon atomique à chaque envoi, et relu au démarrage : une MEP ne
+remet plus le compte à zéro (KAN-104, trou (a) du plafond). Un fichier illisible repart de
+zéro, avec un avertissement dans le journal.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import os
 from collections.abc import Callable, Mapping
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from threading import Lock
 from typing import Literal
+from uuid import uuid4
 
 log = logging.getLogger("openplan.accounts")
 
@@ -36,6 +42,8 @@ KINDS: tuple[MailKind, ...] = ("login", "invitation", "signup")
 ALERT_SHARE = 0.8
 QUOTA_TEXT = "Trop d'e-mails envoyés aujourd'hui : réessayez demain."
 LIMIT_HEADER = "X-PlanDesign-Limit"
+STATE_FILE = "mail-budget.json"
+"""Sous OPENPLAN_DATA_DIR : le compte du jour, qui survit à un redémarrage."""
 
 
 class MailQuotaError(RuntimeError):
@@ -54,15 +62,22 @@ class MailBudget:
     """Envois du jour (UTC), tous e-mails confondus ; chaque classe s'arrête à son plafond."""
 
     def __init__(
-        self, total: int, ceilings: Mapping[str, int], clock: Callable[[], datetime]
+        self,
+        total: int,
+        ceilings: Mapping[str, int],
+        clock: Callable[[], datetime],
+        path: Path | None = None,
     ) -> None:
         self.total = total
         self.ceilings = dict(ceilings)
         self.clock = clock
+        self.path = path
+        """Fichier du compte du jour ; None = en mémoire seulement (tests du compteur)."""
         self._day: date | None = None
         self._sent = 0
         self._alerted: set[str] = set()
         self._lock = Lock()
+        self._load()
 
     def limit(self, kind: MailKind) -> int:
         """Plafond de la classe, jamais au-dessus du total ; 0 = sans plafond."""
@@ -84,7 +99,35 @@ class MailBudget:
                 return False
             self._sent += 1
             self._alert()
+            self._save()
             return True
+
+    def _load(self) -> None:
+        if self.path is None or not self.path.is_file():
+            return
+        try:
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+            day, sent = date.fromisoformat(state["day"]), int(state["sent"])
+            alerted = {str(a) for a in state.get("alerted", [])}
+        except (OSError, ValueError, TypeError, KeyError):
+            log.warning("compte d'e-mails du jour illisible : il repart de zéro")
+            return
+        self._day, self._sent, self._alerted = day, max(0, sent), alerted
+
+    def _save(self) -> None:
+        """Écriture atomique : un fichier à côté, puis `os.replace`."""
+        if self.path is None:
+            return
+        state = {"day": str(self._day), "sent": self._sent, "alerted": sorted(self._alerted)}
+        partial = self.path.with_suffix(f".{uuid4().hex}.part")
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_text(json.dumps(state), encoding="utf-8")
+            os.replace(partial, self.path)
+        except OSError:
+            # Disque plein ou en lecture seule : le compte en mémoire tient encore le plafond.
+            partial.unlink(missing_ok=True)
+            log.warning("compte d'e-mails du jour non écrit sur le disque")
 
     def _roll(self) -> None:
         today = self.clock().date()

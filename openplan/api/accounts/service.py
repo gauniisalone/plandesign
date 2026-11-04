@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from openplan.api.access import SESSION_MAX_AGE_S, AuthUser, ResolvedSession
 from openplan.api.accounts.db import aware, utcnow
 from openplan.api.accounts.mail import Mailer, MailMessage, login_message
-from openplan.api.accounts.mail_budget import MailBudget, MailKind
+from openplan.api.accounts.mail_budget import STATE_FILE, MailBudget, MailKind
 from openplan.api.accounts.models import AuthSession, LoginToken, User
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
 from openplan.api.accounts.sharing import SharingMixin
@@ -173,6 +173,7 @@ class AccountService(AccountsRepo, SharingMixin):
             settings.mail_daily_total,
             {"invitation": settings.mail_daily_invites, "signup": settings.mail_daily_cap},
             self._now,
+            settings.data_dir / STATE_FILE,
         )
         """KAN-117 : plafond quotidien de tous les e-mails ; KAN-104 : les nouvelles portes
         (classe `signup`) s'arrêtent les premières."""
