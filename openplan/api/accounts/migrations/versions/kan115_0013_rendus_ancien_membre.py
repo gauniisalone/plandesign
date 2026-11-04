@@ -11,7 +11,7 @@ d'anciens membres) sont d'abord SUPPRIMÉES, comme l'aurait fait l'effacement av
 avec les liens publics qui les visaient ; leurs images restent sur le disque du projet.
 
 Révision : kan115_0013. La précédente est `down_revision`, seule ligne à rechaîner à
-l'intégration (provisoirement après KAN-101 ; à terme après KAN-102, kan102_0011).
+l'intégration (après KAN-102, kan102_0011).
 Une migration publiée n'est jamais modifiée (note 17, § 8).
 """
 
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "kan115_0013"
-down_revision: str | None = "kan101_0010"
+down_revision: str | None = "kan102_0011"
 branch_labels = None
 depends_on = None
 

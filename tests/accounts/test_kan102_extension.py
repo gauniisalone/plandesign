@@ -105,7 +105,7 @@ def _shape(engine: Engine) -> tuple[object, ...]:
 
 def test_migration_kan102_goes_up_and_down(db_url: str) -> None:
     engine = make_engine(db_url)
-    upgrade(engine)
+    upgrade(engine, "kan102_0011")  # la tête est plus loin (KAN-115)
     assert current_revision(engine) == "kan102_0011"
     columns = {c["name"] for c in inspect(engine).get_columns("extension_tokens")}
     assert columns == {"id", "user_id", "name", "token_hash", "created_at", "last_used_at"}
@@ -119,7 +119,7 @@ def test_migration_kan102_goes_up_and_down(db_url: str) -> None:
     after = set(inspect(engine).get_table_names())
     assert after == before - {"extension_tokens"}, "rien d'autre ne part"
     assert _shape(engine) == shares, "KAN-101 intact"
-    upgrade(engine)
+    upgrade(engine, "kan102_0011")
     assert current_revision(engine) == "kan102_0011"
     assert set(inspect(engine).get_table_names()) == before
     engine.dispose()
