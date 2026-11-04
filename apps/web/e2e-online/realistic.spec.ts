@@ -8,6 +8,7 @@ import {
 } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
 import { E2E_WORKER_TOKEN, RENDER_ACCOUNT } from "./render-account";
+import { claimOwn } from "./worker-queue";
 
 /** KAN-89 : en ligne (serveur sans Blender ni GPU), le compte autorisé demande un rendu
  *  réaliste depuis le cadre Rendus ; un poste SIMULÉ (appels HTTP du poste avec son jeton) le
@@ -130,11 +131,8 @@ test("rendu réaliste : demande, poste simulé, image affichée", async ({
       "X-Forwarded-For": "198.51.100.223",
     },
   });
-  const claim = await worker.post("/api/worker/claim", {
-    data: { state: "idle" },
-  });
-  expect(claim.status()).toBe(200);
-  const job = (await claim.json()) as { request_id: string; lease: string };
+  // KAN-103 : la demande de ce projet (la file est commune à la suite).
+  const job = await claimOwn(worker, page, id, fs.readFileSync(IMAGE));
   const leased = { "X-Render-Lease": job.lease };
   for (const name of ["project", "bake", "camera"]) {
     const file = await worker.get(

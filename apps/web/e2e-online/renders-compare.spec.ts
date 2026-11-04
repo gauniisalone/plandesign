@@ -15,6 +15,7 @@ import {
   E2E_WORKER_TOKEN,
   RENDER_ACCOUNT_KAN99 as RENDER_ACCOUNT,
 } from "./render-account";
+import { claimOwn } from "./worker-queue";
 
 /** KAN-99 : comparer les rendus (maquette validée par augus le 2 nov.).
  *  1. Avant/après sur un rendu « depuis la photo » : même vue, même cadrage que la photo.
@@ -192,17 +193,10 @@ async function deliverProject(
   // La demande part de l'interface (clic du menu) : on attend qu'elle soit enregistrée, sinon
   // la boucle peut voir une liste vide, ne rien prendre, et la demande arrive après.
   await expect.poll(async () => (await pending()).length).toBeGreaterThan(0);
+  // KAN-103 : le poste ne dépose ici que les demandes de CE projet (claimOwn dépose celles
+  // laissées par un autre fichier sans les compter) ; les autres demandes du projet suivent.
   for (let i = 0; i < 12 && (await pending()).length > 0; i++) {
-    const claim = await worker.post("/api/worker/claim", {
-      data: { state: "idle" },
-    });
-    // Le poste a un débit borné (1 appel / 5 s, 429) : les autres fichiers viennent d'appeler.
-    if (claim.status() === 429 || claim.status() === 204) {
-      await new Promise((r) => setTimeout(r, 5_500));
-      continue;
-    }
-    expect(claim.status()).toBe(200);
-    const job = (await claim.json()) as { request_id: string; lease: string };
+    const job = await claimOwn(worker, page, projectId, PNG);
     const done = await worker.post(`/api/worker/jobs/${job.request_id}/result`, {
       headers: { "X-Render-Lease": job.lease },
       multipart: {

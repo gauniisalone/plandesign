@@ -9,6 +9,7 @@ import {
 } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
 import { E2E_WORKER_TOKEN, RENDER_ACCOUNT } from "./render-account";
+import { claimOwn } from "./worker-queue";
 
 /** KAN-91 (lot L6) : galerie de taille fixe du cadre Rendus, visionneuse plein écran (curseur
  *  avant/après contre la photo réelle ou la vue 3D), « Rendre depuis la photo » (D5),
@@ -144,16 +145,18 @@ async function project(
   return { id: body.id, level, name };
 }
 
-/** Le poste simulé prend la plus ancienne demande, lit ses fichiers et dépose l'image. */
-async function deliver(worker: APIRequestContext): Promise<{
+/** Le poste simulé prend la demande en attente du projet (KAN-103 : la file est commune, celles
+ *  d'un autre fichier passées devant sont déposées sans compter), lit ses fichiers et dépose
+ *  l'image. */
+async function deliver(
+  worker: APIRequestContext,
+  page: Page,
+  projectId: string,
+): Promise<{
   request_id: string;
   camera: { width_px: number; height_px: number };
 }> {
-  const claim = await worker.post("/api/worker/claim", {
-    data: { state: "idle" },
-  });
-  expect(claim.status()).toBe(200);
-  const job = (await claim.json()) as { request_id: string; lease: string };
+  const job = await claimOwn(worker, page, projectId, PNG);
   const leased = { "X-Render-Lease": job.lease };
   let camera = { width_px: 0, height_px: 0 };
   for (const name of ["project", "bake", "camera"]) {
@@ -221,7 +224,7 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
       ),
   ).toBeVisible();
   await expect(frame.getByText("~2 min").first()).toBeVisible();
-  await deliver(worker);
+  await deliver(worker, page, id);
   const gallery = frame.getByRole("list", { name: "Galerie des rendus" });
   await expect(gallery.locator("img.rgal-img")).toHaveCount(1, {
     timeout: 15_000,
@@ -231,7 +234,7 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
   await menuButton.click();
   await frame.getByRole("menuitem", { name: /Depuis la photo 1/ }).click();
   await expect(frame.getByRole("status").first()).toBeVisible();
-  const fromPhoto = await deliver(worker);
+  const fromPhoto = await deliver(worker, page, id);
   expect(fromPhoto.camera.width_px / fromPhoto.camera.height_px).toBeCloseTo(
     SIZE[0] / SIZE[1],
     2,
@@ -325,13 +328,7 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
     .click();
   await viewer.getByRole("button", { name: /Nouvelle variante/ }).click();
   await expect(viewer).toHaveCount(0);
-  const claim = await worker.post("/api/worker/claim", {
-    data: { state: "idle" },
-  });
-  expect(claim.status()).toBe(200);
-  expect(typeof ((await claim.json()) as { seed?: number }).seed).toBe(
-    "number",
-  );
+  expect(typeof (await claimOwn(worker, page, id, PNG)).seed).toBe("number");
   await worker.dispose();
 
   // 7. La cloche : « Votre rendu est prêt » (KAN-52).
