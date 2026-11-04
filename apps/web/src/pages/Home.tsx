@@ -21,7 +21,9 @@ import {
   privacyLine,
   useHosting,
 } from "../state/hosting";
+import { ownedProjects, resultLine } from "../state/deleteAll";
 import { IconGear, IconPlan, IconPlus, IconTrash } from "../ui/icons";
+import { DeleteAllDialog } from "./DeleteAllDialog";
 
 interface Props {
   onOpen: (id: string, step?: Step) => void;
@@ -44,6 +46,12 @@ export function Home({ onOpen }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [homeSettings, setHomeSettings] = useState<HomeSettings | null>(null);
   const [creating, setCreating] = useState(false);
+  // KAN-119 : menu « Plus », fenêtre « Supprimer tous mes projets » et son message de fin.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const owned = ownedProjects(projects ?? []);
   const gemini = Boolean(
     homeSettings?.remote_model && homeSettings.gemini_text,
   );
@@ -71,6 +79,23 @@ export function Home({ onOpen }: Props) {
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Le menu « Plus » se ferme au clic ailleurs et sur Échap.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
 
   const toggleGemini = (on: boolean) => {
     setHomeSettings((s) => (s ? { ...s, gemini_text: on } : s));
@@ -145,7 +170,55 @@ export function Home({ onOpen }: Props) {
             recharge la page.
           </div>
         )}
-        <h1>Vos espaces de travail</h1>
+        <div className="boards-head">
+          <h1>Vos espaces de travail</h1>
+          <div className="boards-more" ref={moreRef}>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              ⋯ Plus
+            </button>
+            {moreOpen && (
+              <div className="boards-more-menu" role="menu" aria-label="Plus">
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={creating}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    void createProject();
+                  }}
+                >
+                  Nouveau projet
+                </button>
+                <hr />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger"
+                  // aria-disabled et non disabled : le survol garde son explication.
+                  aria-disabled={owned.length === 0}
+                  title={
+                    owned.length === 0
+                      ? "Vous n'êtes propriétaire d'aucun projet"
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (owned.length === 0) return;
+                    setMoreOpen(false);
+                    setNotice(null);
+                    setDeleting(true);
+                  }}
+                >
+                  Supprimer tous mes projets…
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <p className="muted">
           Un espace de travail par projet : vos exigences, vos photos, vos
           inspirations, le plan et les rendus au même endroit.
@@ -178,8 +251,27 @@ export function Home({ onOpen }: Props) {
             travail vide.
           </p>
         )}
+        {notice && (
+          <p className="boards-notice" role="status">
+            {notice}
+          </p>
+        )}
         {error && <p className="warn">{error}</p>}
       </main>
+      {deleting && (
+        <DeleteAllDialog
+          owned={owned}
+          shared={(projects?.length ?? 0) - owned.length}
+          accounts={account !== null}
+          remove={(id) => api.deleteProject(id)}
+          onDone={(result) => {
+            setDeleting(false);
+            setNotice(resultLine(result));
+            void refresh();
+          }}
+          onClose={() => setDeleting(false)}
+        />
+      )}
       {account ? (
         // B1e : avec les comptes, le pied ne dit que la mention (détail sur le site).
         <footer className="boards-foot">

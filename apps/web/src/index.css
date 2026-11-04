@@ -3992,6 +3992,90 @@ input:disabled {
   font-size: 22px;
 }
 
+/* KAN-119 : le titre et, à droite, le menu « Plus » (loin des cartes de projets). */
+.boards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.boards-more {
+  position: relative;
+}
+
+.boards-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: min(260px, calc(100vw - 32px));
+  background: var(--panel);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.boards-more-menu button {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  margin: 0;
+}
+
+.boards-more-menu button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.boards-more-menu hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 4px 0;
+  width: 100%;
+}
+
+.boards-notice {
+  margin: 16px 0 0;
+  font-weight: 600;
+}
+
+.delete-all {
+  width: min(440px, 100%);
+}
+
+.delete-all-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.delete-all-list details {
+  margin-top: 2px;
+}
+
+.delete-all .muted {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.delete-all-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.delete-all button.danger {
+  margin-top: 0;
+}
+
 .boards-cards {
   list-style: none;
   margin: 20px 0 0;
