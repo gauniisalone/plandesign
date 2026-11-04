@@ -260,7 +260,9 @@ def test_digests_and_salts_leave_after_48_hours_counts_stay(
 def test_routes_are_for_the_admin_only(tmp_path: Path, migrated_url: str) -> None:
     logs = tmp_path / "logs"
     logs.mkdir()
-    (logs / "site.log").write_text(line("/") + "\n", encoding="utf-8")
+    # Horloge réelle ici (pas de clock) : la ligne doit tomber dans les 7 derniers jours.
+    recent = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (logs / "site.log").write_text(line("/", ts=recent) + "\n", encoding="utf-8")
     client, service, mailer = accounts_client(tmp_path, migrated_url, access_log_dir=logs)
     assert client.get("/api/admin/audience").status_code == 401
     assert client.get("/api/admin/health").status_code == 401
