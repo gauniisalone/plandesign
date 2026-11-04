@@ -174,6 +174,10 @@ class AccountService(AccountsRepo, SharingMixin):
             {"invitation": settings.mail_daily_invites},
             lambda: self.clock(),  # noqa: PLW0108 - `clock` se remplace après coup (tests)
         )
+        from openplan.api.accounts.password_service import PasswordFlows
+
+        self.passwords = PasswordFlows(self)
+        """KAN-104 : mot de passe (routes derrière OPENPLAN_PASSWORD_LOGIN)."""
 
     def send_mail(self, message: MailMessage, kind: MailKind = "login") -> bool:
         """KAN-117 : chaque envoi compte dans le plafond du jour ; plafond atteint, rien ne
@@ -208,32 +212,50 @@ class AccountService(AccountsRepo, SharingMixin):
         if not self.ip_limiter.allow(ip or "-"):
             return None
         now = self.clock()
-        code = new_code()
-        row_id = uuid4()
         with self.session() as db, db.begin():
-            db.execute(delete(LoginToken).where(LoginToken.created_at < now - TOKEN_PURGE_AFTER))
             if not self._may_sign_in(db, address, invitation):
                 return None
-            recent = db.scalar(
-                select(func.count())
-                .select_from(LoginToken)
-                .where(LoginToken.email == address, LoginToken.created_at > now - LOGIN_TTL)
-            )
-            if (recent or 0) >= ADDRESS_LIMIT:
-                return None
-            db.add(
-                LoginToken(
-                    id=row_id,
-                    email=address,
-                    token_hash=hash_code(row_id, address, code),
-                    next=safe_next(next_path),
-                    created_at=now,
-                    expires_at=now + LOGIN_TTL,
-                    ip=short_ip(ip),
-                    attempts=0,
-                )
-            )
+            code = self._issue_code(db, address, "login", LOGIN_TTL, now, ip, next_path)
+        if code is None:
+            return None
         return login_message(address, code, int(LOGIN_TTL.total_seconds() // 60))
+
+    def _issue_code(
+        self,
+        db: Session,
+        address: str,
+        purpose: str,
+        ttl: timedelta,
+        now: datetime,
+        ip: str | None,
+        next_path: str | None = None,
+    ) -> str | None:
+        """Un code neuf pour cet usage (KAN-104 : `login`, `reset`, `reauth`…), ou None au-delà
+        de 3 codes par adresse par 15 min, tous usages confondus (pas de bombardement)."""
+        db.execute(delete(LoginToken).where(LoginToken.created_at < now - TOKEN_PURGE_AFTER))
+        recent = db.scalar(
+            select(func.count())
+            .select_from(LoginToken)
+            .where(LoginToken.email == address, LoginToken.created_at > now - LOGIN_TTL)
+        )
+        if (recent or 0) >= ADDRESS_LIMIT:
+            return None
+        code = new_code()
+        row_id = uuid4()
+        db.add(
+            LoginToken(
+                id=row_id,
+                email=address,
+                token_hash=hash_code(row_id, address, code),
+                next=safe_next(next_path),
+                created_at=now,
+                expires_at=now + ttl,
+                ip=short_ip(ip),
+                attempts=0,
+                purpose=purpose,
+            )
+        )
+        return code
 
     # --- code tapé dans la fenêtre « Se connecter » -----------------------------------
 
@@ -249,6 +271,16 @@ class AccountService(AccountsRepo, SharingMixin):
             address = checked_email(email)
         except InvalidEmailError:
             raise LoginRefusedError(LoginRefusal.INVALID) from None
+        next_path = self._consume_code(address, typed, "login", now)
+        user = self._user_for_login(address, now, invitation)
+        session_raw = self._open_session(user.id, user_agent, "code", now)
+        return user, session_raw, safe_next(next_path)
+
+    def _consume_code(self, address: str, typed: str, purpose: str, now: datetime) -> str:
+        """Le code tapé, parmi les codes encore valables de cette adresse POUR CET USAGE (tous
+        comparés en temps constant) ; juste : consommé (marqué utilisé avant tout), renvoie son
+        `next` ; faux : un essai de plus sur chacun, révoqué au 5e, et LoginRefusedError
+        (toujours INVALID)."""
         code = clean_code(typed)
         refused = False
         next_path = "/"
@@ -257,6 +289,7 @@ class AccountService(AccountsRepo, SharingMixin):
                 db.scalars(
                     select(LoginToken).where(
                         LoginToken.email == address,
+                        LoginToken.purpose == purpose,
                         LoginToken.used_at.is_(None),
                         LoginToken.revoked_at.is_(None),
                         LoginToken.attempts < MAX_ATTEMPTS,
@@ -294,20 +327,27 @@ class AccountService(AccountsRepo, SharingMixin):
                 next_path = matched.next
         if refused:
             raise LoginRefusedError(LoginRefusal.INVALID)
-        user = self._user_for_login(address, now, invitation)
+        return next_path
+
+    def _open_session(
+        self, user_id: UUID, user_agent: str, method: str, now: datetime, reauth: bool = False
+    ) -> str:
+        """Un jeton neuf à chaque connexion (pas de fixation de session) ; renvoie sa valeur."""
         session_raw = new_token()
         with self.session() as db, db.begin():
             db.add(
                 AuthSession(
-                    user_id=user.id,
+                    user_id=user_id,
                     token_hash=hash_token(session_raw),
                     created_at=now,
                     last_used_at=now,
                     expires_at=now + SESSION_TTL,
                     user_agent=user_agent[:200],
+                    auth_method=method,
+                    reauth_at=now if reauth else None,
                 )
             )
-        return user, session_raw, safe_next(next_path)
+        return session_raw
 
     def _user_for_login(self, email: str, now: datetime, invitation: str | None) -> AuthUser:
         is_admin_address = email == self.admin_email
@@ -323,7 +363,13 @@ class AccountService(AccountsRepo, SharingMixin):
                             or self.has_email_invitation(email)
                         ):
                             raise LoginRefusedError(LoginRefusal.CLOSED)
-                        user = User(email=email, name="", is_admin=False, created_at=now)
+                        user = User(
+                            email=email,
+                            name="",
+                            is_admin=False,
+                            created_at=now,
+                            email_verified_at=now,  # KAN-104 : le code prouve l'adresse
+                        )
                         db.add(user)
                         created = True
                     else:

@@ -63,6 +63,8 @@ comptes = [
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
     "sqlalchemy>=2.0.30",
+    # KAN-104 : empreintes de mot de passe argon2id (paramètres OWASP).
+    "argon2-cffi>=23.1",
 ]
 
 [dependency-groups]

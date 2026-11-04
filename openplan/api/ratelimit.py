@@ -25,6 +25,14 @@ class SlidingWindowLimiter:
         self._hits: OrderedDict[str, deque[float]] = OrderedDict()
         self._lock = Lock()
 
+    def full(self, key: str) -> bool:
+        """La limite est-elle atteinte pour cette clé ? Sans rien compter (KAN-104 : les
+        échecs de mot de passe sont comptés à part, après la vérification)."""
+        now = self.clock()
+        with self._lock:
+            hits = self._hits.get(key)
+            return hits is not None and sum(now - t < self.window_s for t in hits) >= self.limit
+
     def allow(self, key: str) -> bool:
         """Compte la demande et dit si elle passe (une demande refusée ne compte pas)."""
         now = self.clock()

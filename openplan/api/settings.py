@@ -90,6 +90,10 @@ class Settings:
     signup: str = "invite"
     """OPENPLAN_SIGNUP : `invite` (défaut : une adresse inconnue ne crée pas de compte) ou
     `open` ; « invitation » et « ouvert » sont acceptés."""
+    password_login: bool = False
+    """OPENPLAN_PASSWORD_LOGIN (KAN-104) : connexion par mot de passe, oubli, changement,
+    preuve récente et liste des sessions. Faux (défaut) : ces routes répondent 404 et la page
+    « Se connecter » n'a pas de champ mot de passe ; le code par e-mail est inchangé."""
     mailer: str = "console"
     """OPENPLAN_MAILER : `console` (le code de connexion va dans le journal du serveur, pour le
     développement), `fake` (boîte en mémoire, tests) ou `smtp_api` (API de Brevo, texte seul)."""
@@ -182,6 +186,8 @@ class Settings:
             database_url=merged.get("OPENPLAN_DATABASE_URL", "").strip() or None,
             admin_email=merged.get("OPENPLAN_ADMIN_EMAIL", "").strip() or None,
             signup=parse_signup(merged.get("OPENPLAN_SIGNUP")),
+            password_login=merged.get("OPENPLAN_PASSWORD_LOGIN", "").strip().lower()
+            in ("1", "true", "oui", "yes"),
             mailer=parse_mailer(merged.get("OPENPLAN_MAILER")),
             public_url=(merged.get("OPENPLAN_PUBLIC_URL") or DEFAULT_PUBLIC_URL).rstrip("/"),
             mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,

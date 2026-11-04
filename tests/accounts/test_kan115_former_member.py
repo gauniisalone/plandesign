@@ -12,8 +12,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy as sa
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import Engine, delete, inspect, select
 
 from openplan.api.accounts.db import (
     check_schema,
@@ -38,6 +39,27 @@ PREVIOUS = importlib.import_module(
     "openplan.api.accounts.migrations.versions.kan115_0013_rendus_ancien_membre"
 ).down_revision
 """La révision d'avant KAN-115, lue dans la migration (rechaînée à l'intégration)."""
+
+
+def _user_before_kan104(engine: Engine, email: str) -> UUID:
+    """Un compte posé à la révision d'avant KAN-115 : les colonnes de `users` d'alors
+    seulement (le modèle porte déjà celles de KAN-104, kan104_0012)."""
+    users = sa.table(
+        "users",
+        sa.column("id", sa.Uuid),
+        sa.column("email", sa.String),
+        sa.column("name", sa.String),
+        sa.column("is_admin", sa.Boolean),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+    )
+    user_id = uuid4()
+    with engine.begin() as db:
+        db.execute(
+            users.insert().values(
+                id=user_id, email=email, name="", is_admin=False, created_at=utcnow()
+            )
+        )
+    return user_id
 
 
 def _user_fk(engine: object) -> tuple[bool, str | None]:
@@ -91,8 +113,8 @@ def test_migration_kan115_up_and_down(db_url: str) -> None:
     assert current_revision(engine) == PREVIOUS
     assert _user_fk(engine) == (False, "CASCADE")
     repo = AccountsRepo(engine)
-    lea = repo.create_user("lea@example.org").id
-    bruno = repo.create_user("bruno@example.org").id
+    lea = _user_before_kan104(engine, "lea@example.org")
+    bruno = _user_before_kan104(engine, "bruno@example.org")
     pid = uuid4()
     repo.add_project(pid, bruno, "Atelier")
     kept, brunos = _row(pid, lea), _row(pid, bruno)
@@ -106,7 +128,7 @@ def test_migration_kan115_up_and_down(db_url: str) -> None:
     with repo.session() as db, db.begin():
         db.add_all([leas_link, kept_link, brunos_link])
     upgrade(engine)
-    assert current_revision(engine) == "kan115_0013" == head_revision()
+    assert current_revision(engine) == head_revision()  # KAN-104 (kan104_0012) vient après
     check_schema(engine)
     assert _user_fk(engine) == (True, "SET NULL")
     assert _link_ids(repo) == {leas_link.id, kept_link.id, brunos_link.id}, "rien ne part"

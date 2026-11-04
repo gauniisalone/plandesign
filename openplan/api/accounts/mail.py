@@ -161,6 +161,42 @@ def login_message(to: str, code: str, minutes: int) -> MailMessage:
     return MailMessage(to=to, subject=subject, text=text, code=code)
 
 
+def reset_message(to: str, code: str, minutes: int) -> MailMessage:
+    """KAN-104 : code de réinitialisation (D5 : un code, jamais un lien)."""
+    subject = f"Votre code pour changer de mot de passe ({APP_NAME}) : {code}"
+    text = (
+        f"Bonjour,\n\nVotre code pour choisir un nouveau mot de passe {APP_NAME} :\n\n"
+        f"    {code}\n\nCe code expire dans {minutes} minutes. Vos sessions ouvertes seront "
+        "fermées.\n\nSi vous n'avez rien demandé, ignorez ce message : votre mot de passe "
+        "ne change pas.\nCeci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text, code=code)
+
+
+def reauth_message(to: str, code: str, minutes: int) -> MailMessage:
+    """KAN-104 : preuve récente, avant de poser un mot de passe sur un compte qui n'en a pas."""
+    subject = f"Votre code de confirmation {APP_NAME} : {code}"
+    text = (
+        f"Bonjour,\n\nVotre code pour confirmer une action sur votre compte {APP_NAME} :\n\n"
+        f"    {code}\n\nCe code expire dans {minutes} minutes.\n\n"
+        "Si vous n'avez rien demandé, ignorez ce message.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text, code=code)
+
+
+def password_changed_message(to: str) -> MailMessage:
+    """KAN-104 : prévenir le titulaire qu'un mot de passe a été posé ou changé."""
+    subject = f"Votre mot de passe {APP_NAME} a changé"
+    text = (
+        f"Bonjour,\n\nLe mot de passe de votre compte {APP_NAME} vient d'être posé ou changé ; "
+        "vos autres sessions ont été fermées.\n\nSi ce n'est pas vous : demandez un code de "
+        "connexion avec cette adresse, puis « Mot de passe oublié » pour en choisir un autre.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text)
+
+
 def invitation_message(
     to: str, inviter: str, project: str, role: str, app_url: str, days: int
 ) -> MailMessage:

@@ -179,9 +179,25 @@ def _hidden(name: str, value: str) -> str:
     return f'<input type="hidden" name="{name}" value="{html.escape(value, quote=True)}">'
 
 
-def _email_step(next_path: str, error: str = "", status: int = 200) -> HTMLResponse:
-    """Premier temps : l'adresse."""
+def _email_step(
+    next_path: str, error: str = "", status: int = 200, *, password: bool = False
+) -> HTMLResponse:
+    """Premier temps : l'adresse. KAN-104 : `password` (OPENPLAN_PASSWORD_LOGIN posé), un
+    second formulaire, adresse et mot de passe ; sinon rien n'en paraît."""
     note = f'<p class="error">{html.escape(error)}</p>' if error else ""
+    with_password = (
+        f'<h2>Avec un mot de passe</h2><form method="post" action="{LOGIN_PAGE}/password">'
+        f"{_hidden('next', next_path)}"
+        '<label for="pw-email">Adresse e-mail</label>'
+        '<input id="pw-email" name="email" type="email" autocomplete="username" required '
+        'maxlength="320">'
+        '<label for="pw">Mot de passe</label>'
+        '<input id="pw" name="password" type="password" autocomplete="current-password" '
+        'required maxlength="128">'
+        '<button type="submit">Se connecter</button></form>'
+        if password
+        else ""
+    )
     return _page(
         f"Se connecter à {APP_NAME}",
         f'{note}<form method="post" action="{LOGIN_PAGE}/code">'
@@ -189,7 +205,7 @@ def _email_step(next_path: str, error: str = "", status: int = 200) -> HTMLRespo
         '<label for="email">Adresse e-mail</label>'
         '<input id="email" name="email" type="email" autocomplete="email" required '
         'maxlength="320">'
-        '<button type="submit">Recevoir un code</button></form>',
+        f'<button type="submit">Recevoir un code</button></form>{with_password}',
         status,
     )
 
@@ -221,9 +237,9 @@ def _client_ip(request: Request) -> str | None:
 
 
 @router.get("/auth/login", response_class=HTMLResponse)
-def login_page(next: str = "/") -> HTMLResponse:
-    """Fenêtre « Se connecter » (premier temps : l'adresse)."""
-    return _email_step(safe_next(next))
+def login_page(request: Request, next: str = "/") -> HTMLResponse:
+    """Fenêtre « Se connecter » (premier temps : l'adresse ; KAN-104 : ou le mot de passe)."""
+    return _email_step(safe_next(next), password=service(request).settings.password_login)
 
 
 @router.post("/auth/login/code", response_class=HTMLResponse)

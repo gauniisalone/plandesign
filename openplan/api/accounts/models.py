@@ -56,6 +56,20 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(_utc())
     last_seen_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    """KAN-104 : empreinte argon2id ; null tant que le compte n'a pas de mot de passe."""
+    password_set_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """Mots de passe faux d'affilée ; à partir du 5e, délai progressif (`locked_until`)."""
+    locked_until: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    accepted_terms_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+CODE_PURPOSES = ("login", "signup", "reset", "reauth")
+"""KAN-104 : un code ne sert qu'à son usage (un code `reset` n'ouvre pas une connexion)."""
 
 
 class LoginToken(Base):
@@ -78,6 +92,8 @@ class LoginToken(Base):
     """Adresse IP tronquée (/24 en IPv4, /48 en IPv6) : assez pour comprendre un abus."""
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     """B1b2 : essais de code faux ; au 5e, le code est révoqué."""
+    purpose: Mapped[str] = mapped_column(String(16), default="login", server_default="login")
+    """KAN-104 : `login`, `signup`, `reset` ou `reauth` (CODE_PURPOSES)."""
 
 
 class AuthSession(Base):
@@ -95,6 +111,10 @@ class AuthSession(Base):
     expires_at: Mapped[datetime] = mapped_column(_utc())
     revoked_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
     user_agent: Mapped[str] = mapped_column(String(200), default="")
+    auth_method: Mapped[str] = mapped_column(String(16), default="code", server_default="code")
+    """KAN-104 : `code` (e-mail) ou `password`."""
+    reauth_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    """KAN-104 : dernière preuve récente (code `reauth`), exigée pour poser un mot de passe."""
 
 
 class ProjectRow(Base):

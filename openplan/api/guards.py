@@ -262,6 +262,17 @@ GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
     ("PATCH", "/api/auth/me"): "user",
     ("POST", "/api/auth/logout-all"): "user",
     ("POST", "/api/auth/invitation/accept"): "user",
+    # KAN-104 : mot de passe, preuve récente, sessions ; 404 sans OPENPLAN_PASSWORD_LOGIN.
+    # Hors de SITE_MUTATIONS : origine de l'app seulement.
+    ("POST", "/api/auth/password/login"): "public",
+    ("POST", "/api/auth/login/password"): "public",
+    ("POST", "/api/auth/password/forgot"): "public",
+    ("POST", "/api/auth/password/reset"): "public",
+    ("PUT", "/api/auth/password"): "user",
+    ("POST", "/api/auth/reauth/start"): "user",
+    ("POST", "/api/auth/reauth/verify"): "user",
+    ("GET", "/api/auth/sessions"): "user",
+    ("DELETE", "/api/auth/sessions/{session_id}"): "user",
     # KAN-55 : mes invitations nominatives (cloche) ; filtrées par l'adresse du compte.
     ("GET", "/api/invitations"): "user",
     ("POST", "/api/invitations/{invitation_id}/accept"): "user",

@@ -228,6 +228,11 @@ ACCOUNTS_PUBLIC = frozenset(
         "/api/auth/login/code",
         "/api/auth/login/verify",
         "/api/auth/logout",
+        # KAN-104 (404 sans OPENPLAN_PASSWORD_LOGIN)
+        "/api/auth/password/login",
+        "/api/auth/login/password",
+        "/api/auth/password/forgot",
+        "/api/auth/password/reset",
         "/api/test/mail/last-code",
         "/api/contact",
     }

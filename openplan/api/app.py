@@ -375,6 +375,10 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
         # KAN-117 : 503, pas 429 (la prison fail2ban compte les 429 de /api/auth/*).
         return JSONResponse(status_code=503, content={"detail": QUOTA_TEXT}, headers=exc.headers)
 
+    # KAN-104 : mot de passe ; 404 tant qu'OPENPLAN_PASSWORD_LOGIN n'est pas posé.
+    from openplan.api.accounts.password_routes import router as password_router
+
+    app.include_router(password_router, prefix="/api", dependencies=guarded)
     app.include_router(sharing_router, prefix="/api", dependencies=guarded)
     app.include_router(contact_router, prefix="/api", dependencies=guarded)
     # Présence (B2a) : WebSocket hors de /api, qui fait ses propres contrôles.
