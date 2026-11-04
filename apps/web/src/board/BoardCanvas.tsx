@@ -3175,7 +3175,10 @@ export function BoardCanvas(props: Props) {
               .filter((f) => f.kind === "frame" && f.role === "photos")
               .map((frame) => {
                 const lid = plansFedBy(board, frame.id)[0];
-                const members = photoMembers(frame);
+                // Réseau lent (P37) : la photo entre dans le node dès son envoi, le projet qui
+                // la connaît arrive après (derived, validation). Cliquer entre les deux lançait
+                // le plan sans analyser la photo ni montrer l'envoi : le bouton l'attend.
+                const members = photoMembers(frame).filter((id) => project.images[id]);
                 if (!lid || members.length === 0) return null;
                 const level = project.levels[lid];
                 const progress =
