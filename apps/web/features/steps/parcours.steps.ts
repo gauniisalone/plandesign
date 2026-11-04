@@ -12,6 +12,7 @@ import {
   E2E_WORKER_TOKEN,
   RENDER_ACCOUNT_KAN103 as RENDER_ACCOUNT,
 } from "../../e2e-online/render-account";
+import { claimOwn } from "../../e2e-online/worker-queue";
 import { origin, signIn } from "./comptes";
 import { Given, Then, When, type Ctx } from "./fixtures";
 
@@ -112,7 +113,7 @@ Then("le rendu attend le poste de rendu", async ({ page }) => {
   await expect(tile.first().locator("strong")).toHaveText(QUEUED);
 });
 
-/** Une image simulée déposée par le poste pour la demande `job` (celle du parcours ou une autre). */
+/** Une image simulée déposée par le poste pour la demande du parcours. */
 async function deliver(api: APIRequestContext, job: { request_id: string; lease: string }): Promise<number> {
   const png = fs.readFileSync(PHOTO);
   const done = await api.post(`/api/worker/jobs/${job.request_id}/result`, {
@@ -144,22 +145,10 @@ When("le poste de rendu prend la demande", async ({ page, ctx, baseURL }) => {
     baseURL,
     extraHTTPHeaders: { Authorization: `Bearer ${E2E_WORKER_TOKEN}`, "X-Forwarded-For": "198.51.100.212" },
   });
-  let job: { request_id: string; lease: string } | undefined;
-  for (let i = 0; i < 8 && job?.request_id !== ours[0]; i++) {
-    if (job) expect(await deliver(api, job), "demande laissée par un autre fichier").toBe(200);
-    const claim = await api.post("/api/worker/claim", { data: { state: "idle" } });
-    if (claim.status() === 429) {
-      // Le débit du poste (un vrai poste appelle toutes les 10 à 15 s) : on attend son tour.
-      const wait = Math.min(Number(claim.headers()["retry-after"] ?? "5") || 5, 15);
-      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
-      job = undefined;
-      continue;
-    }
-    expect(claim.status()).toBe(200);
-    job = (await claim.json()) as { request_id: string; lease: string };
-  }
-  expect(job?.request_id).toBe(ours[0]);
-  if (!job) throw new Error("le poste n'a pris aucune demande");
+  // Un seul chemin pour toute la suite (e2e-online/worker-queue.ts) : celles d'un autre fichier
+  // passées devant sont déposées (120 s, la médiane « ~2 min »), 429/204 attendus.
+  const job = await claimOwn(api, page, project(ctx).id, fs.readFileSync(PHOTO));
+  expect(job.request_id).toBe(ours[0]);
   ctx.worker = { api, requestId: job.request_id, lease: job.lease };
   for (const name of ["project", "bake", "camera"]) {
     const file = await api.get(`/api/worker/jobs/${job.request_id}/files/${name}`, {
