@@ -151,6 +151,8 @@ test("tout supprimer : sans projet à soi, l'entrée est grisée et dit pourquoi
     "title",
     "Vous n'êtes propriétaire d'aucun projet",
   );
-  await item.click();
+  // Playwright attend « enabled » sur un aria-disabled : le clic forcé arrive bien au bouton,
+  // et c'est son gestionnaire qui ne fait rien.
+  await item.click({ force: true });
   await expect(page.getByRole("alertdialog")).toBeHidden();
 });
