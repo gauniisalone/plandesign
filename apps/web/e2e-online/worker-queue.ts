@@ -47,6 +47,9 @@ export async function claimOwn(
         .filter((r) => r.state === "pending")
         .map((r) => r.id),
     );
+  // La demande part souvent de l'interface (clic d'un menu) : on attend qu'elle soit
+  // enregistrée, sinon elle serait prise pour celle d'un autre fichier et déposée comme telle.
+  await expect.poll(async () => (await own()).size).toBeGreaterThan(0);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ids = await own();
