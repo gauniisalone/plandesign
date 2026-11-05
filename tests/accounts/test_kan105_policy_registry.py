@@ -71,9 +71,8 @@ def test_links_are_declared_where_their_check_runs() -> None:
         if Link.WORKER_RATE in links:
             assert entry.access.policy == "worker", entry.name
             assert worker_auth.WORKER_PATH.fullmatch(entry.path), entry.name
-        limited = entry.path.startswith(security.AUTH_PREFIX) and (
-            entry.path not in security.AUTH_RATE_EXEMPT
-        )
+        # KAN-105 L2 : seules les écritures de `/api/auth/*` comptent comme des tentatives.
+        limited = security.counts_as_attempt(entry.method, entry.path)
         assert (Link.AUTH_RATE in links) == limited, entry.name
         if entry.access.policy == "extension":
             sample = entry.path.replace("{project_id}", "00000000-0000-0000-0000-000000000000")

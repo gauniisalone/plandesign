@@ -5,10 +5,10 @@
   chaque demande : une suppression libère la place tout de suite.
 - Limite : OPENPLAN_QUOTA_MB (500 par défaut ; 0 = sans limite).
 - Un envoi (photo, fichier joint, plan importé) qui ferait dépasser la limite est refusé avant
-  toute écriture (413) ; un calcul qui écrit des fichiers (rendus, détections, chemin
-  automatique) est refusé AVANT son lancement quand la place est pleine : il n'échoue jamais à
-  moitié. Un membre invité consomme la place du propriétaire du projet ; le refus le dit, sans
-  révéler la place de ce dernier.
+  toute écriture (403 `space_full`, KAN-105 L2) ; un calcul qui écrit des fichiers (rendus,
+  détections, chemin automatique) est refusé AVANT son lancement quand la place est pleine : il
+  n'échoue jamais à moitié. Un membre invité consomme la place du propriétaire du projet ; le
+  refus le dit, sans révéler la place de ce dernier.
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from openplan.api.access import AccountsBackend, AuthUser, accounts_of, signed_in_user
 from openplan.api.policy.registry import LAUNCHES, LINKS, UPLOADS
+from openplan.api.refusal import Refusal
 
 router = APIRouter(tags=["comptes"])
 
@@ -73,7 +74,9 @@ def mb(n: int) -> str:
     return f"{n / MB:.0f} Mo"
 
 
-def full(user: AuthUser, payer: UUID, used: int, limit: int) -> HTTPException:
+def full(user: AuthUser, payer: UUID, used: int, limit: int) -> Refusal:
+    """KAN-105 L2 : 403 `space_full` (un quota du compte), et non plus 413, qui parle de la
+    taille de CETTE requête. Le texte affiché ne change pas."""
     if payer == user.id:
         detail = (
             f"Votre espace est plein ({mb(used)} sur {mb(limit)}) : "
@@ -84,14 +87,14 @@ def full(user: AuthUser, payer: UUID, used: int, limit: int) -> HTTPException:
             "L'espace du propriétaire de ce projet est plein : "
             "il doit libérer de la place avant tout ajout."
         )
-    return HTTPException(status_code=413, detail=detail)
+    return Refusal(403, detail, "space_full")
 
 
 def guard_space(
     request: Request, accounts: AccountsBackend, key: tuple[str, str], user: AuthUser
 ) -> None:
-    """Appelée par la garde des routes (comptes actifs) : envoi ou calcul refusé (413) quand
-    la place du propriétaire du projet serait dépassée."""
+    """Appelée par la garde des routes (comptes actifs) : envoi ou calcul refusé (403
+    `space_full`) quand la place du propriétaire du projet serait dépassée."""
     if key not in UPLOADS and key not in LAUNCHES and key not in LINKS:
         return
     payer = accounts.payer_of(UUID(str(request.path_params["project_id"])))

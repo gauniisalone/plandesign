@@ -704,7 +704,8 @@ class RemoteFakeModel:
 
 def test_brief_preview_and_intention_route(tmp_path: Path) -> None:
     """Aperçu sans modèle ni envoi ; brief avec un modèle simulé (texte seul, journal
-    `intention`, 0 image) ; 409 sans modèle ; 403 sans consentement pour un modèle distant."""
+    `intention`, 0 image) ; 503 sans modèle (KAN-105 L2) ; 403 sans consentement pour un
+    modèle distant."""
     from tests.unit.test_intention import GOOD, ScriptedModel
 
     store = ProjectStore(tmp_path / "data")
@@ -719,7 +720,7 @@ def test_brief_preview_and_intention_route(tmp_path: Path) -> None:
         assert preview["model_id"] is None and "m² au sol" in preview["room_description"]
         assert "bed_double" in preview["categories"]
         r = c.post(f"/api/projects/{pid}/levels/{lid}/brief", json={"text": "un lit"})
-        assert r.status_code == 409 and "aucun modèle" in r.json()["detail"]
+        assert r.status_code == 503 and "aucun modèle" in r.json()["detail"]
         r = c.post(f"/api/projects/{pid}/levels/{lid}/brief", json={"text": "ok"})
         assert r.status_code == 422
 
@@ -1062,7 +1063,7 @@ def test_ai_unconfigured(client: TestClient) -> None:
     }
     project = client.post("/api/projects", json={"name": "x"}).json()
     r = client.post(f"/api/projects/{project['id']}/images/{project['id']}/perceive")
-    assert r.status_code == 409 and "aucun modèle" in r.json()["detail"]
+    assert r.status_code == 503 and "aucun modèle" in r.json()["detail"]  # KAN-105 L2
 
 
 def test_update_settings(client: TestClient) -> None:

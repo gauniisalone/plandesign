@@ -53,6 +53,7 @@ from openplan.api.accounts.render_style import (
 from openplan.api.board_rules import render_inputs
 from openplan.api.deps import ActorDep
 from openplan.api.files import served_file
+from openplan.api.refusal import Refusal, retry_after
 from openplan.api.routes.comments import FORMER_MEMBER, YOU, AuthorNames, author_of
 from openplan.pipeline.cover import CHOSEN_COVER, COVER_QUALITY, COVER_WIDTH
 from openplan.pipeline.events import ProjectEvents
@@ -117,7 +118,7 @@ def store_of(request: Request) -> ProjectStore:
 def allowed_user(request: Request) -> AuthUser:
     user = signed_in_user(request)
     if not queue_of(request).config.allows(user.id):
-        raise HTTPException(status_code=403, detail=NOT_YET)
+        raise Refusal(403, NOT_YET, "renders_off")
     return user
 
 
@@ -127,7 +128,7 @@ def member_user(request: Request) -> AuthUser:
     désactivé (aucune variable du poste) les refuse à tous."""
     user = signed_in_user(request)
     if not queue_of(request).config.enabled:
-        raise HTTPException(status_code=403, detail=NOT_YET)
+        raise Refusal(403, NOT_YET, "renders_off")
     return user
 
 
@@ -516,7 +517,10 @@ def _create(
     try:
         row = queue.create(user.id, project_id, level_id, camera_id)
     except QuotaExceededError as exc:
-        raise HTTPException(status_code=429, detail=QUOTA_TEXT) from exc
+        # KAN-105 L2 : un quota du jour se rouvre tout seul (24 h glissantes) : 429 et le délai.
+        raise Refusal(
+            429, QUOTA_TEXT, "daily_quota", headers=retry_after(exc.retry_after_s)
+        ) from exc
     # KAN-97 : les images de style du moment du clic, lues plus tard par le poste.
     with contextlib.suppress(OSError):
         note_references(store, project, level_id, row.id)

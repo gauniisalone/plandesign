@@ -8,8 +8,8 @@ Chaque ligne déclare :
 - la **règle d'accès** : membre du projet avec un rôle minimal (`viewer` < `commenter` <
   `editor` < `owner` ; non-membre 404, rôle insuffisant 403), ou une politique globale
   (`public`, `user`, `admin`, `legacy`, `worker`, `extension`) ;
-- les **maillons en plus** de sa chaîne (`Link`) : bail du plan (409), place du propriétaire
-  (413), débit (429).
+- les **maillons en plus** de sa chaîne (`Link`) : fonction activée (404 pour tous, en tête),
+  bail du plan (409), place du propriétaire (403 `space_full`, KAN-105 L2), débit (429).
 
 La garde des routes (`openplan.api.policy.chain.route_guard`) lit ce registre et compose la
 chaîne de chaque route, dans l'ordre des maillons. Les tables d'avant en sont **dérivées**
@@ -50,16 +50,20 @@ autre route."""
 class Link(Enum):
     """Maillons en plus de la règle d'accès, dans l'ordre de la chaîne."""
 
+    FEATURE_SHARE_LINKS = "fonction activée : liens publics (OPENPLAN_SHARE_LINKS ; 404 pour tous)"
+    """KAN-105 L2 : EN TÊTE de la chaîne, avant la règle : éteinte, la route répond 404 à tous,
+    lecteur compris (sinon 403 ou 404 selon le rôle révélerait qu'elle existe)."""
     LEASE = "bail du plan de l'URL (409)"
     LEASE_IMAGE = "bail du plan estimé depuis la photo de l'URL (409)"
     LEASE_PROJECT = "aucun plan du projet tenu par un autre (409)"
-    SPACE_UPLOAD = "place du propriétaire : corps reçu (413)"
-    SPACE_LINK = "place du propriétaire : réserve d'une image par lien (413)"
-    SPACE_LAUNCH = "place du propriétaire : réserve d'un calcul (413)"
+    SPACE_UPLOAD = "place du propriétaire : corps reçu (403)"
+    SPACE_LINK = "place du propriétaire : réserve d'une image par lien (403)"
+    SPACE_LAUNCH = "place du propriétaire : réserve d'un calcul (403)"
     WORKER_RATE = "débit du poste : 1 appel / 5 s par jeton (429, porte du poste)"
     AUTH_RATE = "débit des tentatives : 10 / min par adresse (429, intergiciel de session)"
 
 
+FEATURE_SHARE_LINKS = Link.FEATURE_SHARE_LINKS
 LEASE = Link.LEASE
 LEASE_IMAGE = Link.LEASE_IMAGE
 LEASE_PROJECT = Link.LEASE_PROJECT
@@ -419,21 +423,29 @@ REGISTRY: tuple[UseCase, ...] = (
     # KAN-101 : liens publics d'un rendu : créer, lister, révoquer, éditeur et plus (lecteur
     # et commentateur 403, non-membre 404). Créer exige en plus un rendu fait de la personne
     # et la liste blanche des rendus. Tout répond 404 tant que OPENPLAN_SHARE_LINKS est éteint.
+    # KAN-105 L2 : ce 404 est le maillon FEATURE_SHARE_LINKS, en tête : le même pour tous.
     uc(
         "project.realistic.share-links:post",
         "POST",
         P + "/realistic/{request_id}/share-links",
         member(E),
+        FEATURE_SHARE_LINKS,
     ),
-    uc("project.share-links:get", "GET", P + "/share-links", member(E)),
-    uc("project.share-links:delete", "DELETE", P + "/share-links/{link_id}", member(E)),
+    uc("project.share-links:get", "GET", P + "/share-links", member(E), FEATURE_SHARE_LINKS),
+    uc(
+        "project.share-links:delete",
+        "DELETE",
+        P + "/share-links/{link_id}",
+        member(E),
+        FEATURE_SHARE_LINKS,
+    ),
     # --- routes globales : public, session, administrateur, poste, extension ---
     uc("health:get", "GET", "/api/health", PUBLIC),
     # Sondes (KAN-44) : déclarée pour l'audit ; à l'exécution, HEAD est lu comme GET.
     uc("health:head", "HEAD", "/api/health", PUBLIC),
     uc("auth.email.start:post", "POST", "/api/auth/email/start", PUBLIC, AUTH_RATE),
     uc("auth.email.verify:post", "POST", "/api/auth/email/verify", PUBLIC, AUTH_RATE),
-    uc("auth.login:get", "GET", "/api/auth/login", PUBLIC, AUTH_RATE),
+    uc("auth.login:get", "GET", "/api/auth/login", PUBLIC),
     uc("auth.login.code:post", "POST", "/api/auth/login/code", PUBLIC, AUTH_RATE),
     uc("auth.login.verify:post", "POST", "/api/auth/login/verify", PUBLIC, AUTH_RATE),
     uc("auth.logout:post", "POST", "/api/auth/logout", PUBLIC, AUTH_RATE),
@@ -457,7 +469,7 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("auth.password:put", "PUT", "/api/auth/password", USER, AUTH_RATE),
     uc("auth.reauth.start:post", "POST", "/api/auth/reauth/start", USER, AUTH_RATE),
     uc("auth.reauth.verify:post", "POST", "/api/auth/reauth/verify", USER, AUTH_RATE),
-    uc("auth.sessions:get", "GET", "/api/auth/sessions", USER, AUTH_RATE),
+    uc("auth.sessions:get", "GET", "/api/auth/sessions", USER),
     uc("auth.sessions:delete", "DELETE", "/api/auth/sessions/{session_id}", USER, AUTH_RATE),
     # KAN-55 : mes invitations nominatives (cloche) ; filtrées par l'adresse du compte.
     uc("invitations:get", "GET", "/api/invitations", USER),

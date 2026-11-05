@@ -130,15 +130,16 @@ def pick_in_render(
     y: float = Query(ge=0.0, le=1.0),
 ) -> PickResult:
     """P4 : l'élément vu en (x, y) dans un rendu (coordonnées relatives à l'image, 0 en haut à
-    gauche), d'après sa carte des éléments ; un rendu plus ancien la reçoit à la demande. 409
-    pour un rendu inconnu ou sans scène Blender."""
+    gauche), d'après sa carte des éléments ; un rendu plus ancien la reçoit à la demande. 404
+    pour un rendu inconnu ou sans scène Blender (KAN-105 L2 : une lecture ne crée pas de conflit ;
+    « rien à désigner ici »)."""
     render_dir = store.runs_dir(project.id) / str(run_id) / "blender"
     if not (render_dir / RENDER_SIDECAR).is_file():
-        raise HTTPException(status_code=409, detail=f"rendu introuvable : {run_id}")
+        raise HTTPException(status_code=404, detail=f"rendu introuvable : {run_id}")
     try:
         result = pick(project, render_dir, x, y, blender_bin=settings.blender_bin)
     except PickError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     # P4c : chaque désignation au journal local (sorte trouvée, jamais la position du clic).
     what = result.element_type or result.decor_kind or "rien"
     journal.record(
@@ -169,7 +170,7 @@ def outline_in_render(
     try:
         data = outline_png(render_dir, x, y)
     except PickError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return Response(content=data, media_type="image/png")
 
 

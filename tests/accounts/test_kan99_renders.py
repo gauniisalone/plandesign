@@ -194,7 +194,7 @@ def test_favorites_are_shared_free_and_never_refused_for_space(world: World) -> 
     assert other.status_code == 201
     assert world.client.put(f"{url}/realistic/{other.json()['id']}/favorite").status_code == 404
     assert world.client.delete(f"{url}/realistic/{other.json()['id']}/favorite").status_code == 404
-    # Espace plein (KAN-12) : lancer est refusé (413), l'étoile passe.
+    # Espace plein (KAN-12) : lancer est refusé, l'étoile passe.
     settings = world.client.app.state.settings  # type: ignore[attr-defined]
     world.client.app.state.settings = replace(settings, quota_mb=1)  # type: ignore[attr-defined]
     (project_dir / "remplissage.bin").write_bytes(b"x" * 2_000_000)
@@ -202,7 +202,8 @@ def test_favorites_are_shared_free_and_never_refused_for_space(world: World) -> 
     refused = world.client.post(
         f"/api/projects/{pid3}/levels/{lid3}/realistic", json={"camera_id": str(cid3)}
     )
-    assert refused.status_code == 413
+    # KAN-105 L2 : la place est un quota du compte (403 `space_full`), plus 413.
+    assert refused.status_code == 403 and refused.json()["reason"] == "space_full"
     assert world.client.put(f"{url}/realistic/{first}/favorite").status_code == 200
     world.close()
 

@@ -19,7 +19,8 @@ from openplan.api.change_events import author_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.files import served_file
 from openplan.api.guards import role_of
-from openplan.api.link_images import link_limiter, link_name
+from openplan.api.link_images import LINK_WINDOW_S, link_limiter, link_name
+from openplan.api.refusal import Refusal, retry_after
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
@@ -324,8 +325,11 @@ def media_link(
     le chemin d'un fichier envoyé (place du propriétaire, stockage) et garde son lien
     (`source_url`). Route synchrone : le réseau attend dans un fil, pas dans la boucle."""
     if not link_limiter(request).allow(author_of(actor)):
-        raise HTTPException(
-            status_code=429, detail="Trop de liens collés d'un coup : réessayez dans une minute."
+        raise Refusal(
+            429,
+            "Trop de liens collés d'un coup : réessayez dans une minute.",
+            "rate_limited",
+            headers=retry_after(LINK_WINDOW_S),
         )
     try:
         got = link_fetch.fetch_link_image(body.url)

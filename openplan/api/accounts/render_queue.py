@@ -22,6 +22,7 @@ compte, ni projet, ni identifiant de demande.
 from __future__ import annotations
 
 import json
+import math
 import statistics
 import threading
 from collections.abc import Callable
@@ -70,7 +71,11 @@ class QueueError(Exception):
 
 
 class QuotaExceededError(QueueError):
-    pass
+    """KAN-105 L2 : `retry_after_s`, le délai avant qu'une demande sorte des 24 h glissantes."""
+
+    def __init__(self, retry_after_s: int = 1) -> None:
+        super().__init__()
+        self.retry_after_s = retry_after_s
 
 
 class LeaseError(QueueError):
@@ -109,13 +114,29 @@ class RenderQueue:
             )
             return int(count or 0)
 
+    def _quota_retry_after_s(self, user_id: UUID, now: datetime) -> int:
+        """Secondes avant que le quota de 24 h glissantes se rouvre : la demande dont la sortie
+        de la fenêtre fait passer le compte sous le quota (la plus ancienne, d'ordinaire)."""
+        since = now - QUOTA_WINDOW
+        with self.session() as db:
+            times = db.scalars(
+                select(RenderRequest.created_at)
+                .where(RenderRequest.user_id == user_id, RenderRequest.created_at > since)
+                .order_by(RenderRequest.created_at)
+            ).all()
+        k = len(times) - self.config.daily_quota
+        if k < 0 or not times:
+            return 1
+        frees_at = aware(times[min(k, len(times) - 1)]) + QUOTA_WINDOW
+        return max(1, math.ceil((frees_at - now).total_seconds()))
+
     def create(
         self, user_id: UUID, project_id: UUID, level_id: UUID, camera_id: UUID
     ) -> RenderRequest:
         """La demande, en attente ; QuotaExceededError au-delà du quota de 24 h."""
         now = self.clock()
         if self.used_today(user_id) >= self.config.daily_quota:
-            raise QuotaExceededError
+            raise QuotaExceededError(self._quota_retry_after_s(user_id, now))
         row = RenderRequest(
             id=uuid4(),
             user_id=user_id,

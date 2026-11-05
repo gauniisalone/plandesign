@@ -29,7 +29,7 @@ from openplan.adapters.remote.critique import CritiqueParseError
 from openplan.adapters.remote.intention import IntentionParseError
 from openplan.adapters.remote.openai_compatible import ModelCallError
 from openplan.adapters.remote.vlm_detector import VlmParseError
-from openplan.api import change_events
+from openplan.api import change_events, refusal
 from openplan.api.doctor import DoctorReport, diagnose
 from openplan.api.guards import route_guard
 from openplan.api.jobs import (
@@ -39,6 +39,7 @@ from openplan.api.jobs import (
     JobRegistry,
 )
 from openplan.api.public_errors import public_detail
+from openplan.api.refusal import Refusal
 from openplan.api.routes import (
     ai,
     assistant,
@@ -78,7 +79,7 @@ from openplan.monitoring import is_active as monitoring_active
 from openplan.pipeline.blender_bridge import BlenderError, find_blender
 from openplan.pipeline.editing import InvalidEditError
 from openplan.pipeline.floorplan import DetectionError
-from openplan.pipeline.ingestion import ImageNotFoundError, IngestionError
+from openplan.pipeline.ingestion import ImageNotFoundError, ImageTooLargeError, IngestionError
 from openplan.pipeline.render import NoCameraError
 from openplan.scene.catalog import CatalogError
 from openplan.scene.history import HistoryError, PatchRejectedError
@@ -117,6 +118,26 @@ def _mount_web(app: FastAPI, web_dir: Path) -> None:
         )
         raise WebBuildMissingError(msg)
     app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+
+
+def _install_refusals(app: FastAPI) -> None:
+    """KAN-105 L2 : les refus avec leur raison, et la photo trop lourde (413)."""
+
+    @app.exception_handler(Refusal)
+    async def _refusal(_: Request, exc: Refusal) -> JSONResponse:
+        # `detail` (le texte affiché) et `reason` (l'étiquette lue par le front).
+        return refusal.as_response(exc)
+
+    @app.exception_handler(ImageTooLargeError)
+    async def _image_too_large(_: Request, exc: ImageTooLargeError) -> JSONResponse:
+        # La taille de la requête, comme un fichier joint (413) ; format inconnu ou image
+        # illisible restent 422 (IngestionError). Starlette prend le gestionnaire de la classe
+        # la plus proche dans le MRO : celui-ci passe avant `IngestionError`.
+        return JSONResponse(status_code=413, content={"detail": str(exc)})
+
+    @app.exception_handler(ConsentRequiredError)
+    async def _consent(_: Request, exc: ConsentRequiredError) -> JSONResponse:
+        return refusal.response(403, str(exc), "consent")
 
 
 @asynccontextmanager
@@ -172,6 +193,7 @@ def create_app(
 
     # Jetons nommés hors boucle locale, journal des accès, en-têtes de sécurité (4.6).
     install_security(app, settings)
+    _install_refusals(app)
 
     @app.exception_handler(JobBusyError)
     async def _busy(_: Request, exc: JobBusyError) -> JSONResponse:
@@ -210,10 +232,6 @@ def create_app(
     @app.exception_handler(IngestionError)
     async def _bad_image(_: Request, exc: IngestionError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": str(exc)})
-
-    @app.exception_handler(ConsentRequiredError)
-    async def _consent(_: Request, exc: ConsentRequiredError) -> JSONResponse:
-        return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     for upstream in (
         ModelCallError,

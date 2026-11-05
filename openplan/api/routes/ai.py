@@ -25,6 +25,13 @@ router = APIRouter(tags=["ai"])
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
 
 
+NO_MODEL = "aucun modèle IA configuré (OPENPLAN_AI_BASE_URL et OPENPLAN_AI_MODEL)"
+
+
+def _no_model() -> HTTPException:
+    return HTTPException(status_code=503, detail=NO_MODEL)
+
+
 class AiStatus(StrictModel):
     configured: bool
     model_id: str | None = None
@@ -50,12 +57,10 @@ def ai_status(model: LanguageModelDep) -> AiStatus:
 def perceive(
     image_id: UUID, project: ProjectDep, store: StoreDep, model: LanguageModelDep
 ) -> PerceptionRun:
-    """Envoie la photo au modèle configuré si le projet y consent ; ne modifie pas la scène."""
+    """Envoie la photo au modèle configuré si le projet y consent ; ne modifie pas la scène.
+    503 sans modèle configuré (KAN-105 L2 : le service manque, la requête n'y est pour rien)."""
     if model is None:
-        raise HTTPException(
-            status_code=409,
-            detail="aucun modèle IA configuré (OPENPLAN_AI_BASE_URL et OPENPLAN_AI_MODEL)",
-        )
+        raise _no_model()
     gateway = ModelGateway(store.project_dir(project.id) / NETWORK_LOG)
     return run_vlm_perception(
         project,
@@ -86,12 +91,9 @@ def brief(
 ) -> IntentionRun:
     """Rôle Intention (3.3) : souhait → brief structuré (meubles du catalogue, priorités,
     préférences ; aucune position). Consentement exigé pour un modèle distant ; ne modifie
-    pas la scène."""
+    pas la scène. 503 sans modèle configuré (KAN-105 L2)."""
     if model is None:
-        raise HTTPException(
-            status_code=409,
-            detail="aucun modèle IA configuré (OPENPLAN_AI_BASE_URL et OPENPLAN_AI_MODEL)",
-        )
+        raise _no_model()
     gateway = ModelGateway(store.project_dir(project.id) / NETWORK_LOG)
     return run_intention(
         project, level_id, body, store.runs_dir(project.id), model=model, gateway=gateway

@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from openplan.api.access import accounts_of
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
 from openplan.api.guards import role_of
+from openplan.api.refusal import Refusal
 from openplan.pipeline import board as b
 from openplan.pipeline.comments import CommentStore
 from openplan.scene.history import USER_ACTOR, USER_PREFIX
@@ -280,7 +281,7 @@ def edit_message(
         if message is None:
             raise HTTPException(status_code=404, detail="message inconnu")
         if message.author != me:
-            raise HTTPException(status_code=403, detail="seul l'auteur modifie son message")
+            raise Refusal(403, "seul l'auteur modifie son message", "not_author")
         message.text = _text(body.text)
         message.edited_at = now_utc()
         _refresh_positions(comments, store.project_dir(project.id))
@@ -303,7 +304,7 @@ def delete_message(
         if message is None:
             raise HTTPException(status_code=404, detail="message inconnu")
         if message.author != me:
-            raise HTTPException(status_code=403, detail="seul l'auteur supprime son message")
+            raise Refusal(403, "seul l'auteur supprime son message", "not_author")
         thread.messages.remove(message)
         if not thread.messages:
             comments.threads.remove(thread)
@@ -363,11 +364,10 @@ def delete_thread(
         thread = _find(comments, thread_id)
         first = thread.messages[0].author if thread.messages else None
         if not (owner or (first == me and len(thread.messages) <= 1)):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "seul le propriétaire du projet, ou l'auteur d'un fil sans réponse, le supprime"
-                ),
+            raise Refusal(
+                403,
+                "seul le propriétaire du projet, ou l'auteur d'un fil sans réponse, le supprime",
+                "not_author",
             )
         comments.threads.remove(thread)
         comments_store.save(comments)

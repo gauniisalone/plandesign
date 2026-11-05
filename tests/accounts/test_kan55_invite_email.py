@@ -195,6 +195,9 @@ def test_mh5_twenty_invitations_per_owner_per_day(tmp_path: Path, migrated_url: 
     refused = _invite(owner, pid, "q-de-trop.kan55@example.test")
     assert refused.status_code == 429
     assert refused.json()["detail"] == INVITE_QUOTA
+    # KAN-105 L2 : quota sur 24 h glissantes ; Retry-After = quand la plus ancienne en sort.
+    assert refused.json()["reason"] == "daily_quota"
+    assert 1 <= int(refused.headers["Retry-After"]) <= 24 * 3600
     assert "20 invitations par jour" in INVITE_QUOTA
     tomorrow = utcnow() + timedelta(days=1, minutes=1)
     service.clock = lambda: tomorrow

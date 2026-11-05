@@ -522,6 +522,9 @@ def test_daily_quota(tmp_path: Path, migrated_url: str) -> None:
     )
     assert over.status_code == 429
     assert "du jour" in over.json()["detail"]
+    # KAN-105 L2 : quota sur 24 h glissantes ; Retry-After = quand la plus ancienne en sort.
+    assert over.json()["reason"] == "daily_quota"
+    assert 1 <= int(over.headers["Retry-After"]) <= 24 * 3600
     unknown = world.client.post(
         f"/api/projects/{pid}/levels/{lid}/realistic", json={"camera_id": str(uuid4())}
     )

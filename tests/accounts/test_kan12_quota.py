@@ -72,14 +72,16 @@ def test_an_upload_over_the_limit_is_refused_before_any_write(
     assert len(big) > MB
     used = owner.get("/api/auth/usage").json()["used_bytes"]
     refused = _upload(owner, pid, big)
-    assert refused.status_code == 413  # type: ignore[attr-defined]
+    # KAN-105 L2 : la place est un quota du compte (403 `space_full`), plus 413.
+    assert refused.status_code == 403  # type: ignore[attr-defined]
+    assert refused.json()["reason"] == "space_full"  # type: ignore[attr-defined]
     assert "Votre espace est plein" in refused.json()["detail"]  # type: ignore[attr-defined]
     assert "sur 1 Mo" in refused.json()["detail"]  # type: ignore[attr-defined]
     assert owner.get("/api/auth/usage").json()["used_bytes"] == used  # rien d'écrit
     assert owner.get(f"/api/projects/{pid}/media").json() == []
     # L'invitée : refusée aussi, sans voir la place du propriétaire.
     hers = _upload(guest, pid, big)
-    assert hers.status_code == 413  # type: ignore[attr-defined]
+    assert hers.status_code == 403  # type: ignore[attr-defined]
     detail = hers.json()["detail"]  # type: ignore[attr-defined]
     assert "propriétaire" in detail and "Mo" not in detail
     # Un petit envoi passe.
@@ -97,7 +99,7 @@ def test_a_computation_is_refused_before_launch_when_full(
     (store.project_dir(project["id"]) / "runs").mkdir(exist_ok=True)
     (store.project_dir(project["id"]) / "runs" / "plein.bin").write_bytes(b"x" * (MB + 1))
     refused = owner.post(f"/api/projects/{pid}/levels/{level}/render")
-    assert refused.status_code == 413
+    assert refused.status_code == 403
     assert "Votre espace est plein" in refused.json()["detail"]
 
 
@@ -116,7 +118,7 @@ def test_a_computation_keeps_a_reserve_before_launch(tmp_path: Path, migrated_ur
     (runs / "presque.bin").write_bytes(b"x" * (30 * MB - LAUNCH_RESERVE + MB))
     assert owner.get("/api/auth/usage").json()["used_bytes"] < 30 * MB
     refused = owner.post(f"/api/projects/{pid}/levels/{level}/render")
-    assert refused.status_code == 413
+    assert refused.status_code == 403
 
 
 def test_unlimited_and_local_mode(tmp_path: Path, migrated_url: str) -> None:

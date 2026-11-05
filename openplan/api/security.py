@@ -35,8 +35,8 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
 
+from openplan.api import refusal
 from openplan.api.access import (
     LOGIN_REQUIRED,
     SESSION_COOKIE,
@@ -238,7 +238,22 @@ SITE_PREFLIGHT_MAX_AGE_S = 600
 AUTH_PREFIX = "/api/auth/"
 AUTH_RATE_EXEMPT = frozenset({"/api/auth/me", "/api/auth/usage"})
 """`/api/auth/me` est lu à chaque chargement du front, `/api/auth/usage` (KAN-12) à chaque
-changement d'un de mes projets : des lectures, hors de la limite des tentatives."""
+changement d'un de mes projets : hors de la limite des tentatives, toutes méthodes."""
+AUTH_RATE_READS = frozenset({"GET", "HEAD"})
+"""KAN-105 L2 : les autres lectures de `/api/auth/*` (les sessions, la page de connexion) ne
+sont pas des tentatives non plus : la liste des sessions (lot interface de KAN-104) ne consomme
+pas les 10 essais par minute. Seules les écritures (code, mot de passe, inscription…) comptent."""
+
+
+def counts_as_attempt(method: str, path: str) -> bool:
+    """Une requête comptée dans le débit des tentatives (`Link.AUTH_RATE` dans le registre)."""
+    return (
+        path.startswith(AUTH_PREFIX)
+        and path not in AUTH_RATE_EXEMPT
+        and method not in AUTH_RATE_READS
+    )
+
+
 AUTH_RATE_LIMIT = 10
 AUTH_RATE_WINDOW_S = 60.0
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -323,10 +338,8 @@ def install_security(app: FastAPI, settings: Settings) -> None:
             if name is None and cookie_allowed(request.method, path):
                 name = match_read_cookie(secret, tokens, request.cookies.get(READ_COOKIE, ""))
             if name is None:
-                refused = JSONResponse(
-                    status_code=401,
-                    content={"detail": UNAUTHORIZED_DETAIL},
-                    headers={"WWW-Authenticate": "Bearer"},
+                refused = refusal.response(
+                    401, UNAUTHORIZED_DETAIL, "token_required", headers=refusal.BEARER_CHALLENGE
                 )
                 if log is not None and logged_path(path):
                     log.write(
@@ -432,15 +445,17 @@ def _install_accounts_guard(  # noqa: PLR0915 - un intergiciel, une porte par cl
             (path == CONTACT_PATH and not site_mutation)
             or (request_origin(request) != allowed_origin and not site_mutation)
         ):
-            refused = JSONResponse(status_code=403, content={"detail": "origine refusée"})
+            refused = refusal.response(403, "origine refusée", "origin")
             return finish(refused, request, "-", started)
-        if path.startswith(AUTH_PREFIX) and path not in AUTH_RATE_EXEMPT:
+        if counts_as_attempt(request.method, path):
             client = request.client.host if request.client else "-"
             if not limiter.allow(client):
-                slow = JSONResponse(
-                    status_code=429,
-                    content={"detail": "trop de tentatives, réessayer dans une minute"},
-                    headers={"Retry-After": str(int(AUTH_RATE_WINDOW_S))},
+                slow = refusal.response(
+                    429,
+                    # KAN-105 L2 : le texte affiché tel quel par le front (et la fenêtre du site).
+                    "Trop de tentatives : réessayez dans une minute.",
+                    "rate_limited",
+                    headers=refusal.retry_after(AUTH_RATE_WINDOW_S),
                 )
                 return finish(slow, request, "-", started)
         raw = request.cookies.get(SESSION_COOKIE, "")
@@ -451,7 +466,9 @@ def _install_accounts_guard(  # noqa: PLR0915 - un intergiciel, une porte par cl
             actor = user_actor(str(resolved.user.id))
             request.state.actor = actor
         elif path not in ACCOUNTS_PUBLIC:
-            refused = JSONResponse(status_code=401, content={"detail": LOGIN_REQUIRED})
+            refused = refusal.response(
+                401, LOGIN_REQUIRED, "login_required", headers=refusal.COOKIE_CHALLENGE
+            )
             if raw:  # cookie expiré ou révoqué : il s'efface
                 refused.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
             return finish(refused, request, "-", started)

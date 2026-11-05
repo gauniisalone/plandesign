@@ -20,8 +20,8 @@ const NEUTRAL_INVITE =
 
 function message(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 429)
-      return "Trop de tentatives : réessayez dans une minute.";
+    // KAN-105 L2 : le texte du serveur tel quel, 429 compris (débit des tentatives : une
+    // minute ; mot de passe : une heure ; quota du jour : le sien).
     return e.message;
   }
   return "Le serveur ne répond pas : réessayez dans un instant.";

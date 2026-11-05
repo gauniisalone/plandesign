@@ -243,6 +243,7 @@ def test_signed_up_accounts_have_tighter_quotas(tmp_path: Path, migrated_url: st
         assert client.post("/api/projects", json={}).status_code == 201
     capped = client.post("/api/projects", json={})
     assert capped.status_code == 403 and "2 projets" in capped.json()["detail"]
+    assert capped.json()["reason"] == "project_cap"  # KAN-105 L2
     # Un compte d'avant (code, sur invitation) n'est pas touché.
     service.create_user("lea@example.org")
     other = TestClient(client.app, base_url=ORIGIN, headers={"Origin": ORIGIN})

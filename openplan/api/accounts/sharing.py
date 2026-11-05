@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -68,7 +69,11 @@ class InvitationRefusedError(Exception):
 
 
 class InviteQuotaError(Exception):
-    """KAN-55 : plus de 20 invitations nominatives en 24 h."""
+    """KAN-55 : plus de 20 invitations nominatives en 24 h. KAN-105 L2 : `retry_after_s`."""
+
+    def __init__(self, message: str = "", retry_after_s: int = 1) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
 
 
 class LastOwnerError(Exception):
@@ -266,7 +271,22 @@ class SharingMixin:
                 )
             )
             if (sent or 0) >= EMAIL_INVITE_DAILY_LIMIT:
-                raise InviteQuotaError(INVITE_QUOTA)
+                # KAN-105 L2 : le délai avant que l'invitation qui fait passer le compte sous la
+                # limite sorte des 24 h glissantes (la plus ancienne, d'ordinaire).
+                times = db.scalars(
+                    select(Invitation.created_at)
+                    .where(
+                        Invitation.created_by == created_by,
+                        Invitation.email.is_not(None),
+                        Invitation.created_at > now - timedelta(days=1),
+                    )
+                    .order_by(Invitation.created_at)
+                ).all()
+                k = min(max(len(times) - EMAIL_INVITE_DAILY_LIMIT, 0), len(times) - 1)
+                frees_at = aware(times[k]) + timedelta(days=1)
+                raise InviteQuotaError(
+                    INVITE_QUOTA, max(1, math.ceil((frees_at - now).total_seconds()))
+                )
             invitee = db.scalar(select(User.id).where(User.email == email))
             # Une seule invitation en attente par adresse et par projet : la nouvelle remplace.
             db.execute(

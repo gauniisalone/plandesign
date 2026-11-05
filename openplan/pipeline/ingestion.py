@@ -43,6 +43,14 @@ class ImageNotFoundError(IngestionError):
     """Identifiant d'image inconnu ou fichier absent du dossier du projet."""
 
 
+class ImageTooLargeError(IngestionError):
+    """KAN-105 L2 : la photo dépasse MAX_BYTES (l'API répond 413, comme un fichier joint)."""
+
+
+TOO_LARGE = "Fichier trop volumineux (50 Mo au plus)."
+"""Texte validé par augus (5 nov. 2026)."""
+
+
 def import_image(
     project: Project, project_dir: Path, data: bytes, *, original_name: str = ""
 ) -> tuple[Project, ImageRef, list[str]]:
@@ -52,8 +60,7 @@ def import_image(
     pas faire disparaître un fichier. La suppression est une action explicite.
     """
     if len(data) > MAX_BYTES:
-        msg = f"fichier trop volumineux ({len(data) / 1e6:.0f} Mo > {MAX_BYTES / 1e6:.0f} Mo)"
-        raise IngestionError(msg)
+        raise ImageTooLargeError(TOO_LARGE)
     if not data:
         msg = "fichier vide"
         raise IngestionError(msg)

@@ -15,8 +15,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Re
 from fastapi.responses import RedirectResponse
 from pydantic import Field
 
-from openplan.api.access import SESSION_COOKIE, AuthUser, SignedInDep
+from openplan.api.access import LOGIN_REQUIRED, SESSION_COOKIE, AuthUser, SignedInDep
 from openplan.api.accounts.password_service import (
+    IP_FAILURES_WINDOW_S,
     PasswordForbiddenError,
     PasswordRefusedError,
     PasswordThrottledError,
@@ -41,6 +42,7 @@ from openplan.api.accounts.service import (
     LoginRefusedError,
     safe_next,
 )
+from openplan.api.refusal import COOKIE_CHALLENGE, Refusal, retry_after
 from openplan.schemas.common import StrictModel
 
 WRONG = "Adresse ou mot de passe incorrect."
@@ -121,7 +123,7 @@ def _me(user: AuthUser) -> Me:
 def _session_raw(request: Request) -> str:
     raw = request.cookies.get(SESSION_COOKIE)
     if not raw:
-        raise HTTPException(status_code=401, detail="connexion requise")
+        raise Refusal(401, LOGIN_REQUIRED, "login_required", headers=COOKIE_CHALLENGE)
     return raw
 
 
@@ -135,9 +137,13 @@ def password_login(body: PasswordLoginBody, request: Request, response: Response
             body.email, body.password, agent, _client_ip(request)
         )
     except PasswordThrottledError as exc:
-        raise HTTPException(status_code=429, detail=THROTTLED) from exc
+        raise Refusal(
+            429, THROTTLED, "rate_limited", headers=retry_after(IP_FAILURES_WINDOW_S)
+        ) from exc
     except PasswordRefusedError as exc:
-        raise HTTPException(status_code=401, detail=WRONG) from exc
+        # KAN-105 L2 : « bad_credentials », et non « login_required » : le front ne prend pas un
+        # mot de passe faux pour une déconnexion.
+        raise Refusal(401, WRONG, "bad_credentials", headers=COOKIE_CHALLENGE) from exc
     record_login(request, user)
     set_session_cookie(response, raw)
     return _me(user)
@@ -155,9 +161,13 @@ def password_login_page(
     try:
         user, raw = service(request).passwords.login(email, password, agent, _client_ip(request))
     except PasswordThrottledError:
-        return _email_step(safe_next(next), THROTTLED, 429, password=True)
+        page = _email_step(safe_next(next), THROTTLED, 429, password=True)
+        page.headers.update(retry_after(IP_FAILURES_WINDOW_S))
+        return page
     except PasswordRefusedError:
-        return _email_step(safe_next(next), WRONG, 401, password=True)
+        page = _email_step(safe_next(next), WRONG, 401, password=True)
+        page.headers.update(COOKIE_CHALLENGE)
+        return page
     except HashBusyError as exc:
         page = _email_step(safe_next(next), BUSY, 503, password=True)
         page.headers["Retry-After"] = str(exc.retry_after_s)
@@ -265,7 +275,7 @@ def set_password(
             user.id, _session_raw(request), body.current, body.password, agent
         )
     except ReauthRequiredError as exc:
-        raise HTTPException(status_code=403, detail=REAUTH_FIRST) from exc
+        raise Refusal(403, REAUTH_FIRST, "reauth") from exc
     except PasswordForbiddenError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PasswordPolicyError as exc:

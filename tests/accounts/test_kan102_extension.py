@@ -163,7 +163,9 @@ def test_ten_tokens_at_most(tmp_path: Path, migrated_url: str) -> None:
     for n in range(ext.MAX_TOKENS):
         _token(owner, f"jeton {n}")
     refused = owner.post(TOKENS, json={"name": "un de trop"})
-    assert refused.status_code == 409 and "révoquez" in refused.json()["detail"]
+    # KAN-105 L2 : un quota du compte (403 `token_cap`), plus un conflit (409).
+    assert refused.status_code == 403 and "révoquez" in refused.json()["detail"]
+    assert refused.json()["reason"] == "token_cap"
 
 
 def test_the_token_is_compared_in_constant_time(
@@ -394,7 +396,8 @@ def test_the_space_of_the_owner_is_checked_before_the_site(
     runs.mkdir(exist_ok=True)
     (runs / "presque.bin").write_bytes(b"x" * (30 * MB - LINK_RESERVE + MB))
     refused = _add(_module(owner.app, _token(owner)), pid, node)
-    assert refused.status_code == 413 and seen == []  # type: ignore[attr-defined]
+    assert refused.status_code == 403 and seen == []  # type: ignore[attr-defined]
+    assert refused.json()["reason"] == "space_full"  # type: ignore[attr-defined]
 
 
 def test_route_tables() -> None:

@@ -12,14 +12,18 @@ import type {
 } from "./types.gen";
 import type { Op } from "./ops";
 import { tuned } from "../netTuning";
+import { type RefusalReason, reasonOf, sessionLost } from "./refusal";
 
 const BASE = "/api";
+
+export type { RefusalReason } from "./refusal";
 
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly report?: ValidationReport,
+    public readonly reason?: RefusalReason,
   ) {
     super(message);
     this.name = "ApiError";
@@ -197,9 +201,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (liveConn) headers.set("X-Live-Conn", liveConn);
   let response = await fetch(BASE + path, { ...init, headers });
-  if (response.status === 401 && accountsMode) {
-    signedOutHandler?.();
-  } else if (response.status === 401) {
+  if (response.status === 401 && !accountsMode) {
     const fresh = askToken();
     if (fresh) {
       headers.set("Authorization", `Bearer ${fresh}`);
@@ -209,6 +211,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     let report: ValidationReport | undefined;
+    let reason: RefusalReason | undefined;
     try {
       const body = (await response.json()) as {
         detail?: unknown;
@@ -217,10 +220,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       if (typeof body.detail === "string") detail = body.detail;
       else if (body.detail !== undefined) detail = JSON.stringify(body.detail);
       report = body.report;
+      reason = reasonOf(body);
     } catch {
       /* corps non JSON : on garde le statut */
     }
-    throw new ApiError(detail, response.status, report);
+    if (accountsMode && sessionLost(response.status, reason))
+      signedOutHandler?.();
+    throw new ApiError(detail, response.status, report, reason);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -310,18 +316,19 @@ function sendWithProgress<T>(
         resolve(body as T);
         return;
       }
-      if (xhr.status === 401 && accountsMode) signedOutHandler?.();
       const err = (body ?? {}) as {
         detail?: unknown;
         report?: ValidationReport;
       };
+      const reason = reasonOf(err);
+      if (accountsMode && sessionLost(xhr.status, reason)) signedOutHandler?.();
       const detail =
         typeof err.detail === "string"
           ? err.detail
           : err.detail !== undefined
             ? JSON.stringify(err.detail)
             : `${xhr.status} ${xhr.statusText}`;
-      reject(new ApiError(detail, xhr.status, err.report));
+      reject(new ApiError(detail, xhr.status, err.report, reason));
     };
     arm();
     xhr.send(init.body);
@@ -714,7 +721,8 @@ export const adminApi = {
   usage: (weeks = 12) => request<Usage>(`/admin/usage?weeks=${weeks}`),
 };
 
-/** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 413) ; connue
+/** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 403
+ *  `space_full` depuis KAN-105 L2) ; connue
  *  pour un projet dont je suis propriétaire, jamais pour celui d'un autre (sa place reste à
  *  lui). Sert à prévenir AVANT d'envoyer un fichier trop gros, pas après un long envoi. */
 const spaceLeft = new Map<string, number>();
@@ -731,7 +739,9 @@ function tooBig(pid: string, file: File): ApiError | null {
   const mo = (n: number) => `${Math.max(0, Math.round(n / MiB))} Mo`;
   return new ApiError(
     `Pas assez de place : ce fichier (${mo(file.size)}) dépasse la place qui reste (${mo(left)}). Supprimez des fichiers ou des projets.`,
-    413,
+    403,
+    undefined,
+    "space_full",
   );
 }
 

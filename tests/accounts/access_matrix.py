@@ -31,6 +31,7 @@ from openplan.api.accounts.lease import IMAGE_LEASED, LEASED_ROUTES, PROJECT_WID
 from openplan.api.accounts.quota import LAUNCHES, UPLOADS
 from openplan.api.app import create_app
 from openplan.api.guards import EXTENSION_ROLES, GLOBAL_ROUTES, PROJECT_ROUTES, ProjectMember
+from openplan.api.policy.registry import AUTH_RATE, BY_KEY, FEATURE_SHARE_LINKS, SPACE_LINK
 from openplan.api.settings import Settings
 from openplan.api.worker_auth import RATE_LIMITED, WORKER_PATH
 from tests.accounts.helpers import accounts_settings
@@ -47,13 +48,15 @@ BODY_CHECKS = {
     "propriétaire": r"_own_done\(|\.user_id != user\.id|\.author != me|\.owner != ",
     "place": r"\bfull\(|used_bytes\(",
 }
-REFUSAL = re.compile(r"status_code=(40[134]|409|410|413|429)")
+# KAN-105 L2 : un refus s'écrit aussi `Refusal(403, …)` (avec sa raison) ; 503 = service absent.
+REFUSAL = re.compile(r"(?:status_code=|Refusal\()(40[134]|409|410|413|429|503)")
 FIELDS = ("méthode", "chemin", "applis", "règle déclarée", "maillons en plus", "corps", "refus")
 HEADER = """# Matrice des droits de l'API (KAN-105, L0)
 
 Fichier généré par `tests/accounts/access_matrix.py`, comparé par `test_kan105_access_matrix` :
 ne pas l'éditer à la main. Colonnes : la règle déclarée (rôle minimal du membre, ou politique
-globale), les maillons en plus (bail du plan B2d, place KAN-12, porte et débit du poste), les
+globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-12, débit des
+tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 """
 
@@ -71,11 +74,18 @@ def _rule(key: tuple[str, str], guards: list[object]) -> str:
 
 def _links(key: tuple[str, str]) -> str:
     _method, path = key
+    declared = BY_KEY[key].links if key in BY_KEY else ()
     out = []
+    if FEATURE_SHARE_LINKS in declared:
+        out.append("fonction activée (404 pour tous)")
     if key in LEASED_ROUTES or key in IMAGE_LEASED or key in PROJECT_WIDE:
         out.append("bail du plan (409)")
     if key in UPLOADS or key in LAUNCHES:
-        out.append("place (413)")
+        out.append("place (403)")
+    if SPACE_LINK in declared and not path.startswith("/api/extension/"):
+        out.append("place : image par lien (403)")
+    if AUTH_RATE in declared:
+        out.append("débit des tentatives 10 / min (429)")
     if path.startswith("/api/worker/"):
         sample = path.replace("{request_id}", "00000000-0000-0000-0000-000000000000")
         # Exemples de valeurs des paramètres : un fichier (`{name}`), une image de style (KAN-97).
@@ -90,7 +100,7 @@ def _links(key: tuple[str, str]) -> str:
         exact = EXTENSION_PATH.fullmatch(sample) is not None
         out.append("porte de l'extension" if exact else "HORS porte de l'extension")
         if key in EXTENSION_ROLES:
-            out.append(f"membre ≥ {EXTENSION_ROLES[key].name.lower()} ; place (413)")
+            out.append(f"membre ≥ {EXTENSION_ROLES[key].name.lower()} ; place (403)")
     return " ; ".join(out)
 
 

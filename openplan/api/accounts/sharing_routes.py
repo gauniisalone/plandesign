@@ -28,6 +28,7 @@ from openplan.api.accounts.sharing import (
     MemberView,
     PendingInvitation,
 )
+from openplan.api.refusal import Refusal, retry_after
 from openplan.brand import APP_NAME
 from openplan.pipeline.board_views import ViewStore
 from openplan.scene.store import ProjectStore
@@ -142,7 +143,10 @@ def invite_by_email(
     try:
         done = accounts.invite_by_email(project_id, address, body.role, user.id)
     except InviteQuotaError as exc:
-        raise HTTPException(status_code=429, detail=INVITE_QUOTA) from exc
+        # KAN-105 L2 : quota du jour, 24 h glissantes : 429 et le délai.
+        raise Refusal(
+            429, INVITE_QUOTA, "daily_quota", headers=retry_after(exc.retry_after_s)
+        ) from exc
     emit_from(request, "invite_sent", user.id, project_id)  # KAN-109 L2
     if done.invitee is not None:
         from openplan.api.accounts.live import hub_of

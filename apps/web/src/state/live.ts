@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { setLiveConn } from "../api/client";
+import { reasonOf, sessionLost } from "../api/refusal";
 import { tuned } from "../netTuning";
 
 /** Présence en temps réel (B2a, note 14 § 7) : un WebSocket par projet ouvert, avec les
@@ -531,7 +532,10 @@ async function sessionAlive(): Promise<boolean> {
       credentials: "same-origin",
       signal: stop.signal,
     });
-    return response.status !== 401;
+    if (response.status !== 401) return true;
+    // KAN-105 L2 : seule une 401 `login_required` (ou sans raison) dit « session révoquée ».
+    const body: unknown = await response.json().catch(() => undefined);
+    return !sessionLost(response.status, reasonOf(body));
   } catch {
     return true;
   } finally {

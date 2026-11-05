@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ApiError,
   guidedLine,
   realisticApi,
   type ReactionKey,
@@ -329,9 +330,11 @@ export function RealisticRenders({
         requests: listed.requests.filter((r) => r.level_id === levelId),
       });
       setVisible(true);
-    } catch {
-      /* serveur injoignable, ou rendu désactivé (403) : on garde la dernière lecture */
-      setVisible((v) => v ?? false);
+    } catch (e) {
+      // KAN-105 L2 : rendu désactivé (`renders_off`) → rien à montrer ; serveur injoignable ou
+      // autre refus : on garde la dernière lecture.
+      if (e instanceof ApiError && e.reason === "renders_off") setVisible(false);
+      else setVisible((v) => v ?? false);
     }
   }, [project.id, levelId]);
 

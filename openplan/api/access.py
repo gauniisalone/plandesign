@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from typing import Annotated, Protocol
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
+
+from openplan.api.refusal import COOKIE_CHALLENGE, Refusal
 
 SESSION_COOKIE = "pd_session"
 SESSION_MAX_AGE_S = 30 * 24 * 3600
@@ -77,15 +79,21 @@ def current_user(request: Request) -> AuthUser | None:
         return None
     user = optional_user(request)
     if user is None:
-        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED)
+        raise login_required()
     return user
+
+
+def login_required() -> Refusal:
+    """KAN-105 L2 : le seul 401 de session, `reason` « login_required » (le front y lit une
+    déconnexion, et jamais dans un mot de passe faux)."""
+    return Refusal(401, LOGIN_REQUIRED, "login_required", headers=COOKIE_CHALLENGE)
 
 
 def signed_in_user(request: Request) -> AuthUser:
     """Pour les routes qui n'existent qu'avec les comptes (`/api/auth/me`…) : 401 sans session."""
     user = optional_user(request)
     if user is None:
-        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED)
+        raise login_required()
     return user
 
 
@@ -107,7 +115,7 @@ def usage_event(
 def admin_user(request: Request) -> AuthUser:
     user = signed_in_user(request)
     if not user.is_admin:
-        raise HTTPException(status_code=403, detail="réservé à un administrateur")
+        raise Refusal(403, "réservé à un administrateur", "admin")
     return user
 
 

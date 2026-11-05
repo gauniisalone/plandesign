@@ -924,10 +924,11 @@ test("KAN-12 : ma place affichée, un envoi trop gros refusé avant l'envoi et p
     },
     headers: origin,
   });
-  expect(refused.status()).toBe(413);
-  expect(((await refused.json()) as { detail: string }).detail).toContain(
-    "Votre espace est plein",
-  );
+  // KAN-105 L2 : la place du compte est un quota (403 `space_full`), pas la taille de l'envoi.
+  expect(refused.status()).toBe(403);
+  const body = (await refused.json()) as { detail: string; reason: string };
+  expect(body.detail).toContain("Votre espace est plein");
+  expect(body.reason).toBe("space_full");
   const media = (await (
     await page.request.get(`/api/projects/${id}/media`)
   ).json()) as unknown[];

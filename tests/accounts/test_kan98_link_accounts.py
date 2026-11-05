@@ -63,9 +63,11 @@ def test_a_full_space_is_refused_before_the_site_is_asked(
     # Il reste moins que la réserve d'un lien : refusé, alors que la limite n'est pas atteinte.
     (runs / "presque.bin").write_bytes(b"x" * (30 * MB - LINK_RESERVE + MB))
     refused = owner.post(f"/api/projects/{pid}/media/link", json={"url": "https://exemple.fr/a"})
-    assert refused.status_code == 413 and "Votre espace est plein" in refused.json()["detail"]
+    # KAN-105 L2 : 403 `space_full` (la place est un quota du compte).
+    assert refused.status_code == 403 and "Votre espace est plein" in refused.json()["detail"]
+    assert refused.json()["reason"] == "space_full"
     theirs = guest.post(f"/api/projects/{pid}/media/link", json={"url": "https://exemple.fr/b"})
-    assert theirs.status_code == 413 and "propriétaire" in theirs.json()["detail"]
+    assert theirs.status_code == 403 and "propriétaire" in theirs.json()["detail"]
     assert seen == [], "le site n'est jamais demandé"
     (runs / "presque.bin").unlink()
     assert _link(owner, pid) == 201

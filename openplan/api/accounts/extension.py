@@ -53,8 +53,10 @@ from openplan.api.accounts.models import ExtensionToken, User
 from openplan.api.accounts.repo import AccountsRepo
 from openplan.api.board_rules import board_now
 from openplan.api.change_events import author_of, record_board
-from openplan.api.link_images import link_limiter, link_name
+from openplan.api.link_images import LINK_WINDOW_S, link_limiter, link_name
 from openplan.api.ratelimit import SlidingWindowLimiter
+from openplan.api.refusal import BEARER_CHALLENGE, Refusal, retry_after
+from openplan.api.refusal import response as refused_response
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
 from openplan.pipeline.board import MediaError
@@ -222,15 +224,14 @@ class ExtensionGate:
         if user is None:
             client = request.client.host if request.client else "-"
             if not self.failures.allow(client):
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": "trop d'essais refusés, réessayer plus tard"},
-                    headers={"Retry-After": str(int(FAILED_AUTH_WINDOW_S))},
+                return refused_response(
+                    429,
+                    "trop d'essais refusés, réessayer plus tard",
+                    "rate_limited",
+                    headers=retry_after(FAILED_AUTH_WINDOW_S),
                 )
-            return JSONResponse(
-                status_code=401,
-                content={"detail": EXTENSION_REFUSED},
-                headers={"WWW-Authenticate": "Bearer"},
+            return refused_response(
+                401, EXTENSION_REFUSED, "token_required", headers=BEARER_CHALLENGE
             )
         if request.method == "POST":
             length = request.headers.get("content-length")
@@ -263,9 +264,7 @@ def require_extension(request: Request) -> AuthUser:
     """Garde de la route : le compte posé par la porte, sinon 401 (jamais la session)."""
     user = getattr(request.state, "extension_user", None)
     if not isinstance(user, AuthUser):
-        raise HTTPException(
-            status_code=401, detail=EXTENSION_REFUSED, headers={"WWW-Authenticate": "Bearer"}
-        )
+        raise Refusal(401, EXTENSION_REFUSED, "token_required", headers=BEARER_CHALLENGE)
     return user
 
 
@@ -305,7 +304,8 @@ def create_token(body: TokenIn, request: Request, user: SignedInDep) -> TokenCre
     try:
         view, raw = tokens_of(request).create(user.id, body.name)
     except TooManyTokensError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # KAN-105 L2 : un quota du compte, pas un conflit d'état (409 → 403).
+        raise Refusal(403, str(exc), "token_cap") from exc
     return TokenCreated(token=_out(view), secret=raw)
 
 
@@ -420,8 +420,11 @@ def extension_image(project_id: UUID, body: ImageIn, request: Request) -> ImageA
     user = require_extension(request)
     actor = f"user:{user.id}"
     if not link_limiter(request).allow(author_of(actor)):
-        raise HTTPException(
-            status_code=429, detail="Trop d'images ajoutées d'un coup : réessayez dans une minute."
+        raise Refusal(
+            429,
+            "Trop d'images ajoutées d'un coup : réessayez dans une minute.",
+            "rate_limited",
+            headers=retry_after(LINK_WINDOW_S),
         )
     store: ProjectStore = request.app.state.store
     _moodboard(store, project_id, body.node_id)  # avant toute requête vers le site

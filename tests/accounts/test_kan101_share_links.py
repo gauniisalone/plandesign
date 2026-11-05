@@ -155,6 +155,19 @@ def test_disabled_by_default_every_route_is_404(tmp_path: Path, migrated_url: st
     page = visitor.get(f"/api/share/{token}")
     assert page.status_code == 404 and "<img" not in page.text
     assert visitor.get(f"/api/share/{token}/image").status_code == 404
+    # KAN-105 L2 : le maillon « fonction activée » est en tête de chaîne : un lecteur et un
+    # non-membre reçoivent la même 404 que le propriétaire (avant : 403 pour le lecteur).
+    owner = world.service.user_by_email(AUGUS)
+    assert owner is not None
+    viewer = world.person("viewer@example.org")
+    seen = world.service.user_by_email("viewer@example.org")
+    assert seen is not None
+    world.service.set_member(world.project_id, seen.id, "viewer", added_by=owner.id)
+    stranger = world.person("stranger@example.org")
+    for who in (viewer, stranger):
+        assert who.post(f"{base}/realistic/{rid}/share-links", json={}).status_code == 404
+        assert who.get(f"{base}/share-links").status_code == 404
+        assert who.delete(f"{base}/share-links/{link.id}").status_code == 404
     # Allumé, le même lien s'ouvre (preuve que la 404 venait du réglage).
     _switch(world, True)
     assert visitor.get(f"/api/share/{token}").status_code == 200

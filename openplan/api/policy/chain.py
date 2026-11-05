@@ -4,10 +4,11 @@
 trouve le cas d'usage de la route (`registry.BY_KEY`) et passe ses maillons dans l'ordre ;
 chaque maillon a une seule responsabilité et laisse passer la requête ou l'arrête :
 
+0. (KAN-105 L2) la fonction activée, en tête (`FEATURE_SHARE_LINKS`) : éteinte, 404 pour tous ;
 1. la règle d'accès : session (`user`, `admin`), jeton du poste (`worker`), jeton du module
    (`extension`), ou membre du projet avec un rôle minimal (404 non-membre, 403 rôle) ;
 2. le bail du plan (B2d, 409) : il PREND ou prolonge le bail, il vient donc après la règle ;
-3. la place du propriétaire (KAN-12, 413) ;
+3. la place du propriétaire (KAN-12 ; 403 `space_full` depuis KAN-105 L2) ;
 4. la trace d'activité du jour (KAN-109 L2).
 
 Les maillons d'avant la route restent à la périphérie, dans l'intergiciel de session
@@ -32,6 +33,7 @@ from openplan.api.policy.registry import (
     API_PREFIX,
     BY_KEY,
     EXTENSION_SPACE_KEY,
+    FEATURE_SHARE_LINKS,
     LEASES,
     ROLE_BY_NAME,
     SPACE_LINK,
@@ -40,6 +42,7 @@ from openplan.api.policy.registry import (
     Role,
     UseCase,
 )
+from openplan.api.refusal import Refusal
 
 NOT_A_MEMBER = "projet inconnu : {}"
 NO_RULE = "route sans droits déclarés : refusée"
@@ -56,7 +59,7 @@ class Passage:
 
     def known_user(self) -> AuthUser:
         if self.user is None:  # pragma: no cover - un maillon de règle passe toujours avant
-            raise HTTPException(status_code=403, detail=NO_RULE)
+            raise Refusal(403, NO_RULE, "no_rule")
         return self.user
 
 
@@ -104,9 +107,7 @@ def check_role(accounts: AccountsBackend, project_id: UUID, user: AuthUser, role
     if name is None:
         raise HTTPException(status_code=404, detail=NOT_A_MEMBER.format(project_id))
     if ROLE_BY_NAME[name] < role:
-        raise HTTPException(
-            status_code=403, detail=f"droits insuffisants : rôle « {role.name.lower()} » requis"
-        )
+        raise Refusal(403, f"droits insuffisants : rôle « {role.name.lower()} » requis", "role")
 
 
 def mark_active(request: Request, user_id: UUID) -> None:
@@ -151,7 +152,7 @@ def _session(p: Passage) -> None:
 
 def _admin(p: Passage) -> None:
     if not p.known_user().is_admin:
-        raise HTTPException(status_code=403, detail="réservé à un administrateur")
+        raise Refusal(403, "réservé à un administrateur", "admin")
 
 
 def _worker(p: Passage) -> None:
@@ -180,7 +181,7 @@ def _extension_space(p: Passage) -> None:
 
 
 def _refuse(_p: Passage) -> None:
-    raise HTTPException(status_code=403, detail=NO_RULE)
+    raise Refusal(403, NO_RULE, "no_rule")
 
 
 REFUSED: tuple[Step, ...] = (Step("refus : aucune règle", _refuse),)
@@ -197,8 +198,25 @@ GLOBAL_CHAINS: dict[Policy, tuple[Step, ...]] = {
 """Les chaînes des politiques globales sans maillon en plus."""
 
 
+def _share_links_on(p: Passage) -> None:
+    from openplan.api.accounts.share_links import enabled
+
+    if not enabled(p.request):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+FEATURE_SHARE = Step("fonction activée : liens publics", _share_links_on)
+
+
 def chain_of(entry: UseCase) -> tuple[Step, ...]:
-    """Les maillons de la route, dans l'ordre, d'après sa ligne du registre."""
+    """Les maillons de la route, dans l'ordre, d'après sa ligne du registre. KAN-105 L2 : une
+    fonction éteinte (`FEATURE_SHARE_LINKS`) arrête la requête en tête, avant la règle d'accès :
+    le même 404 pour tous, quel que soit le rôle."""
+    head = (FEATURE_SHARE,) if FEATURE_SHARE_LINKS in entry.links else ()
+    return (*head, *_chain_after_feature(entry))
+
+
+def _chain_after_feature(entry: UseCase) -> tuple[Step, ...]:
     access, links = entry.access, set(entry.links)
     if access.policy is None and access.role is not None:
         steps = [_member(access.role)]

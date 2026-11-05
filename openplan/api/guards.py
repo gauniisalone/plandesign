@@ -49,6 +49,7 @@ from openplan.api.policy.registry import (
     Policy,
     Role,
 )
+from openplan.api.refusal import Refusal
 from openplan.scene.store import ProjectStore, ProjectSummary
 
 __all__ = [
@@ -153,11 +154,10 @@ def _check_project_cap(request: Request, accounts: object, user_id: UUID) -> Non
     if cap <= 0 or not isinstance(accounts, AccountsRepo) or not accounts.self_signed_up(user_id):
         return
     if accounts.owned_project_count(user_id) >= cap:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Votre compte peut avoir {cap} projets : supprimez-en un pour en créer un autre."
-            ),
+        raise Refusal(
+            403,
+            f"Votre compte peut avoir {cap} projets : supprimez-en un pour en créer un autre.",
+            "project_cap",
         )
 
 
