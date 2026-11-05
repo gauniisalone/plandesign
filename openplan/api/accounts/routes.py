@@ -111,6 +111,10 @@ class Me(StrictModel):
     is_admin: bool
     first_login: bool = False
     """B2a : compte créé par cette connexion (la fenêtre propose « Votre nom »)."""
+    has_password: bool | None = None
+    """KAN-104 : le compte a un mot de passe (Réglages › Compte : « Définir » ou « Changer »).
+    Rempli par GET /auth/me seulement, et seulement si le mot de passe est ouvert
+    (OPENPLAN_PASSWORD_LOGIN) ; None ailleurs : inconnu."""
 
 
 class NameBody(StrictModel):
@@ -363,8 +367,18 @@ def claim_invitations(request: Request, user: AuthUser) -> None:
 
 
 @router.get("/auth/me")
-def me(user: SignedInDep) -> Me:
-    return Me(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+def me(request: Request, user: SignedInDep) -> Me:
+    accounts = service(request)
+    has_password = (
+        accounts.passwords.has_password(user.id) if accounts.settings.password_login else None
+    )
+    return Me(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.is_admin,
+        has_password=has_password,
+    )
 
 
 @router.patch("/auth/me")

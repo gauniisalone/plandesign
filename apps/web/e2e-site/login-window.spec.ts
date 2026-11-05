@@ -191,6 +191,93 @@ test("sans session : « Ouvrir mon espace » ouvre la fenêtre de connexion", as
   expect(page.url().startsWith(APP)).toBe(false);
 });
 
+/** KAN-104 : la fenêtre n'offre le mot de passe que si /api/health de l'app le dit ouvert ;
+ *  fermé, ou santé muette, rien n'en paraît (le site est statique : c'est le navigateur qui
+ *  lit la santé). Adresses 198.51.100.109 à .111. */
+const PASSWORD_LINK = "Se connecter avec un mot de passe";
+
+async function openDialog(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Se lancer" }).click();
+  const dialog = page.getByRole("dialog", { name: "Se connecter à PlanDesign" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+for (const [what, health] of [
+  ["mot de passe fermé", false],
+  ["santé muette", null],
+] as const) {
+  test(`KAN-104 : ${what}, la fenêtre ne montre rien du mot de passe`, async ({ page }) => {
+    await page.setExtraHTTPHeaders({
+      "X-Forwarded-For": health === null ? "198.51.100.111" : "198.51.100.110",
+    });
+    await page.route(`${APP}/api/health`, async (route) => {
+      if (health === null) return route.abort("failed");
+      const response = await route.fetch();
+      const json = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...json, password_login: health } });
+    });
+    const dialog = await openDialog(page);
+    await expect(dialog.getByText("Sans mot de passe.")).toBeVisible();
+    await expect(dialog.getByText("Un code vous est envoyé par e-mail.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: PASSWORD_LINK })).toHaveCount(0);
+    await expect(dialog.getByText("ou votre mot de passe")).toBeHidden();
+    await expect(page.getByText("Un code ou votre mot de passe.")).toBeHidden();
+  });
+}
+
+test("KAN-104 : mot de passe ouvert, connexion par mot de passe, refus unique, arrivée sur l'app", async ({
+  page,
+}) => {
+  const ip = "198.51.100.109";
+  const headers = { "X-Forwarded-For": ip, Origin: APP };
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": ip });
+  const email = "site-mot-de-passe@example.org";
+  const password = "cerisier en fleur sous la pluie";
+  // Le compte et son mot de passe, par l'API : code, preuve récente, mot de passe.
+  const api = page.request;
+  expect((await api.post(`${APP}/api/auth/email/start`, { data: { email }, headers })).ok()).toBe(true);
+  const login = await lastCode(page, email);
+  expect(
+    (await api.post(`${APP}/api/auth/email/verify`, { data: { email, code: login }, headers })).ok(),
+  ).toBe(true);
+  expect((await api.post(`${APP}/api/auth/reauth/start`, { headers })).status()).toBe(202);
+  let reauth = "";
+  await expect
+    .poll(async () => (reauth = await lastCode(page, email)))
+    .not.toBe(login);
+  expect(
+    (await api.post(`${APP}/api/auth/reauth/verify`, { data: { code: reauth }, headers })).status(),
+  ).toBe(204);
+  expect(
+    (await api.put(`${APP}/api/auth/password`, { data: { password }, headers })).status(),
+  ).toBe(204);
+  await page.context().clearCookies(); // déconnecté : la fenêtre s'ouvrira
+
+  const dialog = await openDialog(page);
+  await expect(dialog.getByText("Avec un code reçu par e-mail, ou votre mot de passe.")).toBeVisible();
+  await expect(dialog.getByText("Sans mot de passe.")).toBeHidden();
+  await dialog.getByRole("button", { name: PASSWORD_LINK }).click();
+  await expect(dialog.getByRole("link", { name: "Mot de passe oublié ?" })).toHaveAttribute(
+    "href",
+    `${APP}/#/mot-de-passe-oublie`,
+  );
+  await dialog.getByLabel("Votre e-mail").fill(email);
+  await dialog.getByLabel("Mot de passe", { exact: true }).fill("pas le bon mot de passe");
+  await dialog.getByRole("button", { name: "Se connecter", exact: true }).click();
+  await expect(dialog.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(
+    "Adresse ou mot de passe incorrect.",
+  );
+  expect(page.url().startsWith(APP)).toBe(false);
+  await dialog.getByLabel("Mot de passe", { exact: true }).fill(password);
+  await dialog.getByRole("button", { name: "Se connecter", exact: true }).click();
+  await expect(page).toHaveURL(`${APP}/`);
+  await expect(page.getByRole("heading", { name: "Vos espaces de travail" })).toBeVisible({
+    timeout: 30_000,
+  });
+});
+
 test("mode « invite » : ligne bêta, réponse neutre pour une adresse inconnue", async ({
   page,
 }) => {

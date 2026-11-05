@@ -25,6 +25,9 @@ const env = [
   `OPENPLAN_SITE_ORIGIN=http://localhost:${sitePort}`,
   // KAN-109 : journal d'accès d'uvicorn rallumé pour ce serveur jetable (garde des 500).
   "OPENPLAN_UVICORN_ACCESS_LOG=1",
+  // KAN-104 : le mot de passe ouvert, comme en production ; les cas « fermé » et « santé
+  // muette » sont simulés dans login-window.spec.
+  "OPENPLAN_PASSWORD_LOGIN=1",
 ].join(" ");
 
 export default defineConfig({

@@ -49,7 +49,9 @@
 }
 /* Bêta sur invitation : affichées par login.js seulement en mode « invite ». */
 [data-signup-invite][hidden],
-[data-signup-open][hidden] {
+[data-signup-open][hidden],
+[data-password][hidden],
+[data-password-off][hidden] {
   display: none;
 }
 .login-text.login-beta {

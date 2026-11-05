@@ -45,6 +45,8 @@ const env = [
   `OPENPLAN_RENDER_ACCOUNTS=${SHARE_ACCOUNT.id}`,
   `OPENPLAN_WORKER_TOKEN_SHA256=${workerHash}`,
   "OPENPLAN_SHARE_LINKS=1",
+  // KAN-104 : le mot de passe ouvert, comme en production depuis le 5 nov. (password.spec).
+  "OPENPLAN_PASSWORD_LOGIN=1",
 ].join(" ");
 
 export default defineConfig({

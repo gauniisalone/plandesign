@@ -7476,6 +7476,38 @@ input:disabled {
 .login-card .link {
   align-self: flex-start;
 }
+/* KAN-104 : la seconde voie (mot de passe), sous « Recevoir un code ». */
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.login-or::before,
+.login-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.login-card h2.login-step {
+  font-size: 16px;
+  margin: 4px 0 0;
+}
+/* KAN-104 : champ de mot de passe et son « Afficher ». */
+.password-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.password-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.password-input .link {
+  flex: none;
+  align-self: center;
+}
 .login-foot {
   width: min(560px, 100%);
   font-size: 13px;
@@ -7496,16 +7528,59 @@ input:disabled {
   align-items: center;
   gap: 12px;
 }
-/* KAN-102 : jetons du module navigateur, repliés sous la section Compte. */
-.account-extension {
+/* KAN-102 : jetons du module navigateur, repliés sous la section Compte. KAN-104 : « Mot de
+   passe » et « Sessions ouvertes », repliés de même. */
+.account-extension,
+.account-more {
   margin-top: 10px;
 }
-.account-extension summary {
+.account-extension summary,
+.account-more summary {
   cursor: pointer;
   font-weight: 600;
 }
-.account-extension[open] > * + * {
+.account-extension[open] > * + *,
+.account-more[open] > * + * {
   margin-top: 8px;
+}
+.account-password {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.account-password label {
+  font-weight: 600;
+}
+.account-notice {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.account-sessions ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.account-sessions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.account-sessions li > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.account-sessions li .muted {
+  font-size: 12px;
+}
+.account-sessions-here {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 .account-extension-row {
   display: flex;

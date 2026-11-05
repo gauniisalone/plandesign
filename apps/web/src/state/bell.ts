@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { bellApi, type BellLine } from "../api/client";
-import { retryDelay } from "./live";
+import { retryDelay, sessionAlive } from "./live";
 
 /** KAN-52 : la cloche. Le compteur se relit à l'ouverture, au retour sur l'onglet et, avec
  *  les comptes, à chaque « bell » du canal de mon compte (`/ws/me`, en direct, sur tous mes
@@ -55,11 +55,22 @@ export function useBell(accounts: boolean): {
             attempt = 0;
           }
         };
-        current.onclose = (event) => {
-          // Session perdue ou autre site : rien à retenter (la page de connexion suit).
-          if (stopped || event.code === 4401 || event.code === 4403) return;
+        const again = () => {
           timer = window.setTimeout(connect, retryDelay(attempt));
           attempt += 1;
+        };
+        current.onclose = (event) => {
+          // Autre site : rien à retenter.
+          if (stopped || event.code === 4403) return;
+          if (event.code === 4401) {
+            // Session perdue (la page de connexion suit), ou jeton renouvelé par un mot de
+            // passe défini ou changé (KAN-104) : /api/auth/me tranche.
+            void sessionAlive().then((alive) => {
+              if (alive && !stopped) again();
+            });
+            return;
+          }
+          again();
         };
       };
       connect();

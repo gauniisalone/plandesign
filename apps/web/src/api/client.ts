@@ -191,6 +191,11 @@ export function signalSignedOut(): void {
   if (accountsMode) signedOutHandler?.();
 }
 
+/** KAN-104 : chemins publics dont le 401 dit « refusé », pas « session perdue » (mot de passe
+ *  faux à la connexion). Une personne connectée, elle, n'a jamais de 401 pour une erreur de
+ *  saisie (400, 403 ou 422 : test_kan104_password.py). */
+const PUBLIC_401 = new Set(["/auth/password/login"]);
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // Un corps texte est du JSON ; un FormData (import de fichier) laisse le navigateur fixer le type.
   const headers = new Headers(init.headers);
@@ -224,7 +229,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* corps non JSON : on garde le statut */
     }
-    if (accountsMode && sessionLost(response.status, reason))
+    // KAN-105 L2 + KAN-104 : les deux protections (raison `login_required`, et les chemins
+    // publics dont le 401 dit « refusé »).
+    if (
+      accountsMode &&
+      sessionLost(response.status, reason) &&
+      !PUBLIC_401.has(path)
+    )
       signedOutHandler?.();
     throw new ApiError(detail, response.status, report, reason);
   }
@@ -348,6 +359,19 @@ export interface Me {
   is_admin: boolean;
   /** Compte créé par cette connexion : la fenêtre propose « Votre nom ». */
   first_login?: boolean;
+  /** KAN-104 : le compte a un mot de passe (GET /auth/me seulement) ; null : mot de passe
+   *  fermé sur ce serveur, ou inconnu. */
+  has_password?: boolean | null;
+}
+
+/** KAN-104 : une de mes sessions ouvertes (Réglages › Compte). */
+export interface SessionOut {
+  id: string;
+  created_at: string;
+  last_used_at: string;
+  user_agent: string;
+  auth_method: string;
+  current: boolean;
 }
 
 export type Role = "viewer" | "commenter" | "editor" | "owner";
@@ -624,6 +648,32 @@ export const authApi = {
     }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   logoutAll: () => request<void>("/auth/logout-all", { method: "POST" }),
+  /** KAN-104 : connexion par mot de passe. Refus : 401 avec un texte unique (sans session,
+   *  `request` ne déconnecte pas sur ce chemin, voir PUBLIC_401). */
+  passwordLogin: (email: string, password: string) =>
+    request<Me>("/auth/password/login", json({ email, password })),
+  /** Même réponse que l'adresse ait un compte ou non ; le code part par e-mail (30 min). */
+  forgot: (email: string) =>
+    request<{ detail: string }>("/auth/password/forgot", json({ email })),
+  /** Le code reçu et le nouveau mot de passe : la session s'ouvre, les autres sont fermées. */
+  reset: (email: string, code: string, password: string) =>
+    request<Me>("/auth/password/reset", json({ email, code, password })),
+  /** Preuve récente avant de définir un mot de passe (code de confirmation, 15 min). */
+  reauthStart: () =>
+    request<{ detail: string }>("/auth/reauth/start", { method: "POST" }),
+  reauthVerify: (code: string) =>
+    request<void>("/auth/reauth/verify", json({ code })),
+  /** Définir (sans `current`, après la preuve) ou changer (avec `current`). */
+  setPassword: (password: string, current?: string) =>
+    request<void>("/auth/password", {
+      method: "PUT",
+      body: JSON.stringify({ password, current: current ?? null }),
+    }),
+  sessions: () => request<SessionOut[]>("/auth/sessions"),
+  closeSession: (id: string) =>
+    request<void>(`/auth/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   role: (pid: string) => request<{ role: Role }>(`/projects/${pid}/role`),
   /** KAN-12 : ma place disque (octets) ; `quota_bytes` null : sans limite. */
   usage: () =>
@@ -774,6 +824,8 @@ export const api = {
       signup?: "invite" | "open";
       /** KAN-101 : liens publics d'un rendu activés (OPENPLAN_SHARE_LINKS). */
       share_links?: boolean;
+      /** KAN-104 : connexion par mot de passe ouverte (OPENPLAN_PASSWORD_LOGIN). */
+      password_login?: boolean;
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),

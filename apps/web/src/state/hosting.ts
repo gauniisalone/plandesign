@@ -15,6 +15,9 @@ export interface Hosting {
   /** KAN-101 : « Partager » un rendu par lien public (OPENPLAN_SHARE_LINKS, éteint par
    *  défaut) ; sinon le bouton n'existe pas. */
   shareLinks: boolean;
+  /** KAN-104 : connexion par mot de passe ouverte (OPENPLAN_PASSWORD_LOGIN) ; sinon ni lien
+   *  ni bloc « Mot de passe ». */
+  passwordLogin: boolean;
 }
 
 const LOCAL: Hosting = {
@@ -23,6 +26,7 @@ const LOCAL: Hosting = {
   accounts: false,
   inviteOnly: false,
   shareLinks: false,
+  passwordLogin: false,
 };
 let pending: Promise<Hosting> | null = null;
 
@@ -34,6 +38,7 @@ export function loadHosting(): Promise<Hosting> {
       accounts: Boolean(h.accounts),
       inviteOnly: Boolean(h.accounts) && h.signup === "invite",
       shareLinks: Boolean(h.accounts) && h.share_links === true,
+      passwordLogin: Boolean(h.accounts) && h.password_login === true,
     }),
     () => LOCAL,
   );
@@ -60,6 +65,9 @@ export function useHosting(): Hosting | null {
  *  la page Confidentialité du site. */
 export const ACCOUNTS_LINE =
   "Un code vous est envoyé par e-mail. Vos données restent en France.";
+/** KAN-104 : la même, quand le mot de passe est ouvert. */
+export const ACCOUNTS_LINE_PASSWORD =
+  "Un code ou votre mot de passe. Vos données restent en France.";
 /** Pied de l'application connectée. */
 export const ACCOUNTS_FOOT = "Vos données restent en France";
 export const PRIVACY_URL = "https://plandesign.fr/confidentialite/";

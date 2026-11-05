@@ -271,6 +271,13 @@ class PasswordFlows:
             row.locked_until = None
             return _auth_user(row)
 
+    def has_password(self, user_id: UUID) -> bool:
+        """Le compte a-t-il un mot de passe ? (Réglages › Compte : « Définir » ou « Changer ».)
+        Jamais vrai pour l'administrateur, qui se connecte par code seulement."""
+        with self.accounts.session() as db:
+            user = db.get(User, user_id)
+        return user is not None and user.password_hash is not None and not self._is_admin(user)
+
     # --- preuve récente ---------------------------------------------------------------
 
     def start_reauth(self, user_id: UUID, ip: str | None) -> MailMessage | None:

@@ -511,6 +511,83 @@ def test_no_password_in_the_logs(
     assert GOOD not in caplog.text and OTHER not in caplog.text
 
 
+# --- interface (lot UI) -------------------------------------------------------------------
+
+
+def test_me_has_no_password_field_value_while_closed(
+    off: tuple[TestClient, AccountService, FakeMailer],
+) -> None:
+    client, _, mailer = off
+    assert client.get("/api/health").json()["password_login"] is False  # le lien est caché
+    sign_in(client, mailer, LEA)
+    assert client.get("/api/auth/me").json()["has_password"] is None  # mot de passe fermé
+
+
+def test_health_says_the_password_is_open(
+    on: tuple[TestClient, AccountService, FakeMailer],
+) -> None:
+    """Ajout au contrat de GET /api/health (public) : `password_login`, comme `signup` et
+    `share_links` ; la page de connexion et la fenêtre du site n'offrent le lien qu'ouvert."""
+    client, _, _ = on
+    assert client.get("/api/health").json()["password_login"] is True
+
+
+def test_me_says_whether_the_account_has_a_password(
+    on: tuple[TestClient, AccountService, FakeMailer],
+) -> None:
+    """Ajout au contrat de GET /auth/me : `has_password`, pour « Définir » ou « Changer »."""
+    client, service, mailer = on
+    sign_in(client, mailer, LEA)
+    assert client.get("/api/auth/me").json()["has_password"] is False
+    _with_password(client, mailer)
+    assert client.get("/api/auth/me").json()["has_password"] is True
+    admin = _second(client)
+    sign_in(admin, mailer, ADMIN)
+    _hash_directly(service, ADMIN, GOOD)  # posé à la main : l'administrateur reste « par code »
+    assert admin.get("/api/auth/me").json()["has_password"] is False
+
+
+def test_input_errors_of_a_signed_in_person_are_never_401(
+    on: tuple[TestClient, AccountService, FakeMailer],
+) -> None:
+    """Règle du lot UI : une erreur de saisie d'une personne connectée répond 400, 403, 404 ou
+    422, jamais 401. Le front lit un 401 comme une session perdue et déconnecte (client.ts)."""
+    client, _, mailer = on
+    sign_in(client, mailer, LEA)
+    answers = {
+        "PUT sans preuve récente": client.put("/api/auth/password", json={"password": GOOD}),
+        "preuve : code faux": client.post("/api/auth/reauth/verify", json={"code": "000000"}),
+        "fermer une session inconnue": client.delete(
+            "/api/auth/sessions/00000000-0000-4000-8000-000000000000"
+        ),
+    }
+    assert client.post("/api/auth/reauth/start").status_code == 202
+    assert (
+        client.post("/api/auth/reauth/verify", json={"code": code_of(mailer, LEA)}).status_code
+        == 204
+    )
+    answers["mot de passe trop court"] = client.put("/api/auth/password", json={"password": "x"})
+    answers["mot de passe fuité"] = client.put("/api/auth/password", json={"password": PWNED})
+    assert client.put("/api/auth/password", json={"password": GOOD}).status_code == 204
+    answers["ancien mot de passe faux"] = client.put(
+        "/api/auth/password", json={"current": OTHER, "password": OTHER + "!"}
+    )
+    answers["ancien mot de passe absent"] = client.put(
+        "/api/auth/password", json={"password": OTHER}
+    )
+    statuses = {what: r.status_code for what, r in answers.items()}
+    assert statuses == {
+        "PUT sans preuve récente": 403,
+        "preuve : code faux": 400,
+        "fermer une session inconnue": 404,
+        "mot de passe trop court": 422,
+        "mot de passe fuité": 422,
+        "ancien mot de passe faux": 403,
+        "ancien mot de passe absent": 403,
+    }
+    assert client.get("/api/auth/me").status_code == 200  # toujours connectée
+
+
 # --- migration ----------------------------------------------------------------------------
 
 

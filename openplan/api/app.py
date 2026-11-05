@@ -284,7 +284,13 @@ def create_app(
             # Bêta sur invitation (PO, 19 oct.) : le front et la fenêtre du site disent « sur
             # invitation » tant que le mode est « invite » ; ouvert, les mentions disparaissent.
             # KAN-101 : le front n'offre « Partager » (lien public d'un rendu) qu'activé.
-            extra = {"signup": settings.signup, "share_links": settings.share_links}
+            # KAN-104 : la page de connexion et la fenêtre du site n'offrent le mot de passe
+            # qu'ouvert (sinon ses routes répondent 404).
+            extra = {
+                "signup": settings.signup,
+                "share_links": settings.share_links,
+                "password_login": settings.password_login,
+            }
         return {
             "status": "ok",
             "version": __version__,

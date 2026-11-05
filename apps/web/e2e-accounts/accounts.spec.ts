@@ -101,10 +101,11 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   // Serveur de test en inscription ouverte : aucune mention « bêta ».
   await expect(page.getByText(/en bêta, sur invitation/)).toHaveCount(0);
   await shot(page, "1-connexion-adresse");
-  // Mention en une ligne (B1e), avec le lien vers la page Confidentialité du site.
+  // Mention en une ligne (B1e), avec le lien vers la page Confidentialité du site. KAN-104 :
+  // le mot de passe est ouvert dans ces e2e (OPENPLAN_PASSWORD_LOGIN=1), la ligne le dit.
   await expect(
     page.getByText(
-      "Un code vous est envoyé par e-mail. Vos données restent en France.",
+      "Un code ou votre mot de passe. Vos données restent en France.",
     ),
   ).toBeVisible();
   await expect(

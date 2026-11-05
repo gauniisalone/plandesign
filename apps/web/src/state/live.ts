@@ -265,7 +265,16 @@ export function useLive(
       clearTimers();
       if (stopped) return;
       if (code === 4401) {
-        handlersRef.current.onSignedOut();
+        // KAN-104 : la connexion garde le cookie de son ouverture. Après un mot de passe
+        // défini ou changé (les autres sessions fermées, un jeton neuf pour celle-ci), elle
+        // se ferme en 4401 alors que la page, elle, est toujours connectée : /api/auth/me
+        // tranche. Encore connecté : on se reconnecte avec le jeton neuf ; sinon, la page de
+        // connexion, tout de suite comme avant.
+        void sessionAlive().then((alive) => {
+          if (stopped) return;
+          if (alive) retry();
+          else handlersRef.current.onSignedOut();
+        });
         return;
       }
       if (FINAL_CODES.has(code)) {
@@ -522,7 +531,7 @@ function withLease(
 
 /** /api/auth/me répond-il encore ? Une 401 dit « session révoquée » ; une panne réseau ou un
  *  serveur absent, non (on continue d'attendre). */
-async function sessionAlive(): Promise<boolean> {
+export async function sessionAlive(): Promise<boolean> {
   // Connexion lente (25 oct.) : sans réponse en 10 s, on continue d'attendre (réessai), au
   // lieu de rester suspendu à une requête qui ne revient pas.
   const stop = new AbortController();
