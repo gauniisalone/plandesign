@@ -114,6 +114,30 @@ def test_area_guard_rescales_beyond_15_percent_and_undoes_in_one_click() -> None
     assert big.factor == 1.6
 
 
+def test_area_guard_routes_answer_404_for_an_unknown_level_or_project(tmp_path: Path) -> None:
+    """Un niveau inconnu donnait une 500 (KeyError dans le pipeline) ; un 404 propre, sur le
+    recalage comme sur son annulation, et le projet n'est pas touché."""
+    unknown = "00000000-0000-4000-8000-000000000000"
+    with _home_client(tmp_path, None) as c:
+        made = c.post("/api/projects", json={"name": "Essai"})
+        assert made.status_code in (200, 201), made.text
+        pid = made.json()["id"]
+        before = c.get(f"/api/projects/{pid}").json()
+        level = next(iter(before["levels"]))
+        undo = c.post(f"/api/projects/{pid}/levels/{unknown}/area-guard/undo")
+        guard = c.post(f"/api/projects/{pid}/levels/{unknown}/area-guard", json={"area_m2": 20.0})
+        for answer in (undo, guard):
+            assert answer.status_code == 404, answer.text
+            assert answer.json()["detail"] == f"niveau inconnu : {unknown}"
+        assert c.get(f"/api/projects/{pid}").json()["updated_at"] == before["updated_at"]
+        # Projet inconnu : 404 aussi (ProjectDep), jamais une 500.
+        gone = c.post(f"/api/projects/{unknown}/levels/{level}/area-guard/undo")
+        assert gone.status_code == 404, gone.text
+        # Niveau connu, sans recalage à annuler : le projet revient tel quel (200).
+        same = c.post(f"/api/projects/{pid}/levels/{level}/area-guard/undo")
+        assert same.status_code == 200 and same.json()["updated_at"] == before["updated_at"]
+
+
 def test_area_guard_leaves_a_starter_plan_alone() -> None:
     project = new_project("Essai")
     level_id = only_level(project).id

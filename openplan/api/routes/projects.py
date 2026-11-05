@@ -239,6 +239,12 @@ class AreaGuardBody(StrictModel):
     area_m2: float = Field(ge=MIN_AREA_M2, le=MAX_AREA_M2)
 
 
+def _known_level(project: Project, level_id: UUID) -> None:
+    """Niveau inconnu : 404 propre (le pipeline lit `project.levels[level_id]`, une 500 sinon)."""
+    if level_id not in project.levels:
+        raise HTTPException(status_code=404, detail=f"niveau inconnu : {level_id}")
+
+
 @router.post("/projects/{project_id}/levels/{level_id}/area-guard")
 def area_guard_route(
     level_id: UUID, body: AreaGuardBody, project: ProjectDep, store: StoreDep
@@ -247,6 +253,7 @@ def area_guard_route(
     quand l'écart dépasse 15 % (facteur borné de 0,6 à 1,6), en un pas du pipeline."""
     with store.lock(project.id):
         current = store.load(project.id)
+        _known_level(current, level_id)
         after, result = area_guard(current, level_id, body.area_m2, actor=GUARD_ACTOR)
         if result.applied:
             store.save(after)
@@ -258,6 +265,7 @@ def area_guard_undo(level_id: UUID, project: ProjectDep, store: StoreDep) -> Pro
     """Annule le recalage en un clic (échelle inverse), même si d'autres pas ont suivi."""
     with store.lock(project.id):
         current = store.load(project.id)
+        _known_level(current, level_id)
         after = undo_area_guard(current, level_id, actor=USER_ACTOR)
         if after is None:
             return current
