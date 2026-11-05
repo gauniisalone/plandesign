@@ -327,23 +327,56 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
   await owner.goto(`/#/projects/${id}`);
   await owner.getByRole("button", { name: "Partager" }).click();
   const share = owner.getByRole("dialog", { name: "Partager le projet" });
-  await share
+  // KAN-128 : deux sections distinctes, chacune avec sa phrase « qui pourra entrer », son rôle
+  // et un seul bouton principal.
+  const person1 = share.getByRole("region", { name: "Inviter une personne" });
+  const bySend = share.getByRole("region", { name: "Lien d'invitation" });
+  await expect(person1).toContainText(
+    "Elle reçoit un e-mail ; seule cette adresse pourra entrer.",
+  );
+  await expect(bySend).toContainText(
+    "Toute personne qui a ce lien peut rejoindre le projet tant qu'il est actif.",
+  );
+  await expect(person1.locator("button.primary")).toHaveText(["Inviter"]);
+  await expect(bySend.locator("button.primary")).toHaveText([
+    "Créer un lien d'invitation",
+  ]);
+  await expect(person1.getByLabel("Rôle de l'invité")).toBeVisible();
+  await expect(bySend.getByLabel("Rôle du lien")).toBeVisible();
+  await expect(person1.getByLabel("Rôle du lien")).toHaveCount(0);
+  await expect(bySend.getByLabel("Rôle de l'invité")).toHaveCount(0);
+  await bySend
     .getByRole("button", { name: "Créer un lien d'invitation" })
     .click();
-  const link = await share.getByLabel("Lien d'invitation").inputValue();
+  const field = bySend.getByLabel("Lien d'invitation à copier");
+  const link = await field.inputValue();
   expect(link).toMatch(/\/#\/invitation\/[A-Za-z0-9_-]{43}$/);
+  await expect(bySend.getByRole("button", { name: "Copier" })).toBeVisible();
   await shot(owner, "6-partager-lien");
-  // Un second lien, révoqué aussitôt (on attend que le champ montre le nouveau lien).
-  await share
+  // Un second lien, désactivé aussitôt par « Désactiver » à côté du champ (on attend que le
+  // champ montre le nouveau lien).
+  await bySend
     .getByRole("button", { name: "Créer un lien d'invitation" })
     .click();
-  await expect(share.getByLabel("Lien d'invitation")).not.toHaveValue(link);
-  const revoked = await share.getByLabel("Lien d'invitation").inputValue();
+  await expect(field).not.toHaveValue(link);
+  const revoked = await field.inputValue();
   expect(revoked).not.toBe(link);
-  const pending = share.getByRole("list", { name: "Liens en attente" });
+  const pending = bySend.getByRole("list", { name: "Liens en attente" });
   await expect(pending.getByRole("listitem")).toHaveCount(2);
-  await pending.getByRole("button", { name: "Révoquer" }).last().click();
+  await bySend.getByRole("button", { name: "Désactiver ce lien" }).click();
   await expect(pending.getByRole("listitem")).toHaveCount(1);
+  await expect(field).toHaveCount(0);
+  await expect(bySend.getByRole("status")).toHaveText(
+    "Lien désactivé : il ne permet plus d'entrer.",
+  );
+  // Un troisième, désactivé depuis la liste des liens en attente : le champ disparaît aussi.
+  await bySend
+    .getByRole("button", { name: "Créer un lien d'invitation" })
+    .click();
+  await expect(pending.getByRole("listitem")).toHaveCount(2);
+  await pending.getByRole("button", { name: "Désactiver" }).last().click();
+  await expect(pending.getByRole("listitem")).toHaveCount(1);
+  await expect(field).toHaveCount(0);
 
   // L'invité, sans compte : la page de connexion seule, avec la ligne d'invitation, et rien
   // du projet avant la connexion.

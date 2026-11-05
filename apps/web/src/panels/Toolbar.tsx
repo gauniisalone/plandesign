@@ -316,7 +316,7 @@ export function TopBar({
           type="button"
           className="new-plan-btn share-btn"
           onClick={onShare}
-          title="Inviter quelqu'un par un lien, gérer les membres"
+          title="Inviter une personne ou créer un lien d'invitation, gérer les membres"
         >
           Partager
         </button>

@@ -7614,6 +7614,37 @@ input:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* KAN-128 : deux sections distinctes (inviter une personne, lien d'invitation), chacune
+   avec son titre, sa phrase « qui pourra entrer » et son bouton principal. */
+.share-section {
+  margin-top: 14px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.share-dialog .share-section h3 {
+  margin: 0;
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: inherit;
+}
+.share-who {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.share-section h4 {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.share-link-actions {
+  display: flex;
+  gap: 6px;
+}
 .login-invite,
 .login-beta {
   margin: 0;
