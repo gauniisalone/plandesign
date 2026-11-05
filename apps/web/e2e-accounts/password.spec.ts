@@ -13,8 +13,8 @@ import { gotoApp } from "../e2e/app-ready";
  *  changer, sessions ouvertes et « Fermer » ; la page de connexion : mot de passe, refus
  *  unique, « Mot de passe oublié » par un code (jamais un lien) ; une erreur de saisie d'une
  *  personne connectée ne la déconnecte jamais ; la connexion de présence survit au jeton
- *  renouvelé. Adresses 198.51.100.104 à .108, propres à ce fichier. HIBP : le serveur des e2e
- *  le consulte vraiment (5 caractères d'empreinte) ; sans réseau, il accepte. */
+ *  renouvelé. Adresses 198.51.100.104 à .108, propres à ce fichier. HIBP éteint
+ *  (OPENPLAN_HIBP=off dans la config) : aucun appel à un tiers depuis les tests. */
 
 const RUN = Date.now().toString(36);
 const GOOD = "cerisier en fleur sous la pluie";

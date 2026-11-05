@@ -93,14 +93,19 @@ def lock_delay(failures: int) -> timedelta | None:
     return min(timedelta(seconds=2 ** min(failures - LOCK_AFTER, 20)), LOCK_MAX)
 
 
+def _hibp_off(_password: str) -> bool | None:
+    """OPENPLAN_HIBP=off : rien n'est demandé à HIBP ; « inconnu », donc accepté."""
+    return None
+
+
 class PasswordFlows:
     """Rattaché à `AccountService` (`service.passwords`)."""
 
     def __init__(self, accounts: AccountService) -> None:
         self.accounts = accounts
         self.failures = SlidingWindowLimiter(IP_FAILURES, IP_FAILURES_WINDOW_S)
-        self.pwned: Callable[[str], bool | None] = is_pwned
-        """Remplacé dans les tests (HIBP simulé) : jamais d'appel réseau en test."""
+        self.pwned: Callable[[str], bool | None] = is_pwned if accounts.settings.hibp else _hibp_off
+        """OPENPLAN_HIBP éteint : aucun appel. Les tests qui l'allument simulent HIBP."""
 
     def _now(self) -> datetime:
         return self.accounts.clock()

@@ -47,6 +47,8 @@ const env = [
   "OPENPLAN_SHARE_LINKS=1",
   // KAN-104 : le mot de passe ouvert, comme en production depuis le 5 nov. (password.spec).
   "OPENPLAN_PASSWORD_LOGIN=1",
+  // Jamais HIBP depuis les tests : ni réseau ni tiers (le mot de passe est alors accepté).
+  "OPENPLAN_HIBP=off",
 ].join(" ");
 
 export default defineConfig({

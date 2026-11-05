@@ -94,6 +94,12 @@ class Settings:
     """OPENPLAN_PASSWORD_LOGIN (KAN-104) : connexion par mot de passe, oubli, changement,
     preuve récente et liste des sessions. Faux (défaut) : ces routes répondent 404 et la page
     « Se connecter » n'a pas de champ mot de passe ; le code par e-mail est inchangé."""
+    hibp: bool = True
+    """OPENPLAN_HIBP (KAN-104) : vérifier qu'un nouveau mot de passe ne figure pas dans des
+    fuites connues (Have I Been Pwned, k-anonymat : 5 caractères de l'empreinte SHA-1). Allumé
+    par défaut, et en production ; `off` (ou `0`, `false`, `non`, `no`) : aucun appel réseau,
+    le mot de passe est accepté. Éteint dans les tests (e2e et pytest) : pas de tiers ni de
+    réseau."""
     mailer: str = "console"
     """OPENPLAN_MAILER : `console` (le code de connexion va dans le journal du serveur, pour le
     développement), `fake` (boîte en mémoire, tests) ou `smtp_api` (API de Brevo, texte seul)."""
@@ -198,6 +204,8 @@ class Settings:
             signup=parse_signup(merged.get("OPENPLAN_SIGNUP")),
             password_login=merged.get("OPENPLAN_PASSWORD_LOGIN", "").strip().lower()
             in ("1", "true", "oui", "yes"),
+            hibp=merged.get("OPENPLAN_HIBP", "").strip().lower()
+            not in ("0", "off", "false", "non", "no"),
             mailer=parse_mailer(merged.get("OPENPLAN_MAILER")),
             public_url=(merged.get("OPENPLAN_PUBLIC_URL") or DEFAULT_PUBLIC_URL).rstrip("/"),
             mail_from=merged.get("OPENPLAN_MAIL_FROM") or DEFAULT_MAIL_FROM,

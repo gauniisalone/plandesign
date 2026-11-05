@@ -25,6 +25,9 @@ def accounts_settings(tmp_path: Path, url: str, **overrides: object) -> Settings
         mailer="fake",
         public_url=ORIGIN,
         auto_path=False,
+        # KAN-104 : jamais HIBP en test (OPENPLAN_HIBP=off) ; les tests du mot de passe qui
+        # l'allument le simulent (fetch_range remplacé, httpx.get refusé).
+        hibp=False,
     )
     return replace(base, **overrides)  # type: ignore[arg-type]
 

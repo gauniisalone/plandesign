@@ -93,7 +93,8 @@ def _with_accounts(
 
 @pytest.fixture
 def on(tmp_path: Path, migrated_url: str) -> tuple[TestClient, AccountService, FakeMailer]:
-    return _with_accounts(accounts_client(tmp_path, migrated_url, password_login=True))
+    # HIBP allumé mais simulé (simulated_hibp) : PWNED y figure.
+    return _with_accounts(accounts_client(tmp_path, migrated_url, password_login=True, hibp=True))
 
 
 @pytest.fixture
@@ -521,6 +522,35 @@ def test_me_has_no_password_field_value_while_closed(
     assert client.get("/api/health").json()["password_login"] is False  # le lien est caché
     sign_in(client, mailer, LEA)
     assert client.get("/api/auth/me").json()["has_password"] is None  # mot de passe fermé
+
+
+def test_hibp_off_makes_no_network_call(
+    tmp_path: Path, migrated_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OPENPLAN_HIBP : allumé par défaut (production) ; `off` : aucun appel, ni par
+    fetch_range ni par httpx, et un mot de passe connu des fuites est accepté."""
+    assert Settings().hibp is True
+    assert Settings.from_env({}, dotenv=None).hibp is True
+    for off in ("off", "0", "false", "non", "no", " OFF "):
+        assert Settings.from_env({"OPENPLAN_HIBP": off}, dotenv=None).hibp is False, off
+    assert Settings.from_env({"OPENPLAN_HIBP": "on"}, dotenv=None).hibp is True
+    calls: list[str] = []
+
+    def spy(*args: object, **_k: object) -> None:
+        calls.append(repr(args)[:20])
+        raise AssertionError("appel à HIBP alors qu'il est éteint")
+
+    monkeypatch.setattr(passwords, "fetch_range", spy)
+    monkeypatch.setattr("httpx.get", spy)
+    client, _, mailer = _with_accounts(
+        accounts_client(tmp_path, migrated_url, password_login=True, hibp=False)
+    )
+    sign_in(client, mailer, LEA)
+    assert client.post("/api/auth/reauth/start").status_code == 202
+    code = code_of(mailer, LEA)
+    assert client.post("/api/auth/reauth/verify", json={"code": code}).status_code == 204
+    assert client.put("/api/auth/password", json={"password": PWNED}).status_code == 204
+    assert calls == []
 
 
 def test_health_says_the_password_is_open(
