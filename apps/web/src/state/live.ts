@@ -3,6 +3,7 @@ import { setLiveConn } from "../api/client";
 import { reasonOf, sessionLost } from "../api/refusal";
 import { tuned } from "../netTuning";
 import { LIVE_OPEN_EVENT } from "./renderStatusState";
+import { FRESH, heard, tick, type Beat } from "./heartbeat";
 
 /** Présence en temps réel (B2a, note 14 § 7) : un WebSocket par projet ouvert, avec les
  *  comptes. Il reçoit qui est là et « le projet a changé ». Coupé (redémarrage du serveur,
@@ -76,8 +77,9 @@ const MAX_DELAY_MS = 30_000;
 /** Connexion lente (25 oct.) : une poignée de main sans « hello » dans ce délai est
  *  abandonnée et retentée (avant, elle pouvait rester ouverte pour toujours). */
 export const HELLO_TIMEOUT_MS = 20_000;
-/** Battement de cœur : un ping toutes les 25 s ; sans aucun message pendant 60 s, la
- *  connexion est tenue pour morte et refaite. */
+/** Battement de cœur : un ping toutes les 25 s ; un ping resté sans réponse pendant 60 s, la
+ *  connexion est tenue pour morte et refaite (KAN-138 : compté depuis ce ping, et non plus
+ *  depuis le dernier message, qu'une minuterie bridée en arrière-plan faisait paraître vieux). */
 export const PING_EVERY_MS = 25_000;
 export const SILENCE_MS = 60_000;
 /** Après autant d'essais ratés d'affilée, le message « Connexion instable » remplace
@@ -241,7 +243,8 @@ export function useLive(
     let dropped = false;
     let helloTimer: number | null = null;
     let heartbeat: number | null = null;
-    let lastSeen = Date.now();
+    /** KAN-138 : l'attente d'une réponse à un ping (heartbeat.ts), pas le temps sans message. */
+    let beat: Beat = FRESH;
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${scheme}://${window.location.host}/ws/projects/${projectId}`;
 
@@ -325,7 +328,7 @@ export function useLive(
         tuned("helloMs", HELLO_TIMEOUT_MS),
       );
       current.onmessage = (event) => {
-        lastSeen = Date.now();
+        beat = heard();
         let message: Message;
         try {
           message = JSON.parse(String(event.data)) as Message;
@@ -339,14 +342,20 @@ export function useLive(
           setUnstable(false);
           if (helloTimer !== null) window.clearTimeout(helloTimer);
           helloTimer = null;
+          beat = FRESH;
           heartbeat = window.setInterval(
             () => {
-              if (Date.now() - lastSeen > tuned("silenceMs", SILENCE_MS)) {
+              // KAN-138 : morte seulement si un ping est resté sans réponse plus de
+              // `silenceMs` (un onglet en arrière-plan, minuterie bridée, n'est plus coupé).
+              const next = tick(beat, Date.now(), tuned("silenceMs", SILENCE_MS));
+              if (next.dead) {
                 abandon(current, true);
                 return;
               }
-              if (current.readyState === WebSocket.OPEN)
+              if (current.readyState === WebSocket.OPEN) {
+                beat = next.beat;
                 current.send('{"type":"ping"}');
+              }
             },
             tuned("pingMs", PING_EVERY_MS),
           );
