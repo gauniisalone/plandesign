@@ -27,6 +27,15 @@ type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 /** La session du compte autorisé : une seule connexion pour tout le fichier (3 codes par
  *  adresse et par quart d'heure), reprise par chaque test avec sa propre adresse IP. */
 let editorState: State | undefined;
+/** Les pages qui portent la route de /api/health : retirée en fin de test, sinon un
+ *  route.fetch encore en vol tombe hors de tout test (« Test ended »). */
+const routed: Page[] = [];
+
+test.afterEach(async () => {
+  for (const page of routed.splice(0)) {
+    if (!page.isClosed()) await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
 
 async function person(
   browser: Browser,
@@ -47,6 +56,7 @@ async function person(
     const json = { ...(await response.json()), blender: false };
     await route.fulfill({ response, json });
   });
+  routed.push(page);
   return page;
 }
 
