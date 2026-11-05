@@ -21,9 +21,17 @@ MAX_IMAGES = 6
 MAX_WORDS = 8
 CAPS: dict[Group, int] = {"style": 2, "mood": 3, "palette": 2, "touch": 1}
 """Au plus 2 styles, 3 ambiances, 2 palettes, 1 touche : 8 mots."""
-MIN_SCORE = 0.10
-"""Probabilité zéro-shot moyenne (sigmoïde de SigLIP2) en dessous de laquelle un mot n'est pas
-retenu : une image sans style marqué ne force aucun mot."""
+RELATIVE = 0.15
+"""KAN-97b : un mot est retenu s'il atteint cette part du score du meilleur mot. Les scores de
+SigLIP2 (sigmoïde, moyennée sur les images) n'ont pas la même échelle d'une image à l'autre :
+essai du 5 nov., A (japandi) en tête à 0,61, B (industriel) à 0,26 avec tout le reste sous
+0,05. Le seuil absolu de 0,10 gardait 5 mots pour A et le seul « moody » pour B. À 0,15 du
+premier : A garde les mêmes 5 mots (le 5e, « serene », à 0,101 pour un seuil de 0,092 ; le 6e,
+« earthy tones », à 0,072, reste dehors), B en gagne un (« black accents », 0,045 pour 0,039)
+sans le bruit qui suit (« minimalist », 0,032, et tout ce qui est sous 0,01)."""
+MIN_SCORE = 0.02
+"""Le plancher : en dessous, un mot n'est jamais retenu, même premier. Une image sans style
+marqué (meilleur score bas) ne force donc aucun mot ; dans l'essai, le bruit est sous 0,01."""
 PROMPT = "a photo of a {} interior"
 """Gabarit des textes comparés aux images (anglais : la langue d'entraînement de SigLIP2)."""
 
@@ -106,17 +114,20 @@ def key_of(tag: str) -> str | None:
 def choose(
     scores: Mapping[str, float], scene_words: Iterable[str] = (), ignored: Iterable[str] = ()
 ) -> list[str]:
-    """Les mots retenus (clés du vocabulaire), du plus probable au moins probable : au-dessus
-    de MIN_SCORE, au plus CAPS par groupe et MAX_WORDS en tout ; un mot de palette qui nomme
-    une couleur déjà présente dans la description de la scène est écarté. KAN-130 : un mot
-    désactivé (`ignored`) n'est jamais retenu ; le suivant de son groupe prend sa place."""
+    """Les mots retenus (clés du vocabulaire), du plus probable au moins probable : au moins
+    RELATIVE du meilleur score et MIN_SCORE (KAN-97b), au plus CAPS par groupe et MAX_WORDS en
+    tout ; un mot de palette qui nomme une couleur déjà présente dans la description de la
+    scène est écarté. KAN-130 : un mot désactivé (`ignored`) n'est jamais retenu ; le suivant
+    de son groupe prend sa place, et le meilleur score se lit sans lui."""
     scene = " ".join(scene_words).lower()
     off = frozenset(ignored)
+    best = max((s for k, s in scores.items() if k in BY_KEY and k not in off), default=0.0)
+    cut = max(MIN_SCORE, RELATIVE * best)
     taken: dict[Group, int] = dict.fromkeys(CAPS, 0)
     out: list[str] = []
     for key, score in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0])):
         word = BY_KEY.get(key)
-        if word is None or key in off or score < MIN_SCORE or len(out) >= MAX_WORDS:
+        if word is None or key in off or score < cut or len(out) >= MAX_WORDS:
             continue
         if taken[word.group] >= CAPS[word.group]:
             continue
