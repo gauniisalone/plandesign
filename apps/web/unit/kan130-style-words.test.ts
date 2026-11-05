@@ -6,7 +6,9 @@ import { test } from "node:test";
 import type { BoardItem, BoardLink } from "../src/api/client.ts";
 import type { Level } from "../src/api/types.gen.ts";
 import { photoCamera } from "../src/board/photoCamera.ts";
+import type { RealisticRequest } from "../src/api/client.ts";
 import {
+  guidedWords,
   ignoredKeys,
   styleMembers,
   tagOf,
@@ -70,6 +72,49 @@ test("un clic désactive le mot sur chaque image, un second le réactive", () =>
   assert.deepEqual(again[3].ignored_tags, ["s:white_and_beige"], "pas de doublon");
   const on = toggleWord(off, offMembers, "white and beige", false);
   assert.equal(ignoredKeys(styleMembers(on, links, "renders")).size, 0);
+});
+
+const rendered = (keys: string[], words: string[]): RealisticRequest =>
+  ({
+    guided_kind: "words",
+    guided_keys: keys,
+    guided_by: words,
+  }) as RealisticRequest;
+
+test("un mot désactivé reste dans « Guidé par », barré, après le rendu suivant", () => {
+  // Le dernier rendu (fait après le clic) ne nomme plus « lumineux » : il suit, barré.
+  const after = rendered(["scandinavian"], ["scandinave"]);
+  assert.deepEqual(guidedWords(after, new Set(["bright"])), [
+    { key: "scandinavian", word: "scandinave", off: false },
+    { key: "bright", word: "lumineux", off: true },
+  ]);
+  // Encore nommé par le dernier rendu : à sa place, barré, sans doublon.
+  const before = rendered(["scandinavian", "bright"], ["scandinave", "lumineux"]);
+  assert.deepEqual(
+    guidedWords(before, new Set(["bright"])).map((w) => [w.key, w.off]),
+    [
+      ["scandinavian", false],
+      ["bright", true],
+    ],
+  );
+});
+
+test("sans rendu, les mots désactivés s'affichent quand même, barrés", () => {
+  assert.deepEqual(guidedWords(undefined, new Set(["white and beige", "inconnu"])), [
+    { key: "white and beige", word: "blanc et beige", off: true },
+  ]);
+  assert.deepEqual(guidedWords(undefined, new Set()), []);
+});
+
+test("un rendu sans mots lus ne donne que les mots désactivés", () => {
+  const unread = {
+    guided_kind: "unread",
+    guided_by: ["salon.png"],
+  } as RealisticRequest;
+  assert.deepEqual(
+    guidedWords(unread, new Set(["cozy"])).map((w) => w.word),
+    ["chaleureux"],
+  );
 });
 
 test("une étiquette de matière n'est pas un mot de style", () => {

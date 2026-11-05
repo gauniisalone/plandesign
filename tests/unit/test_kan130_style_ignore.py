@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,17 @@ def test_every_word_fits_the_tag_pattern_and_comes_back(word: sw.StyleWord) -> N
         }
     )
     assert sw.key_of(tag) == word.key
+
+
+def test_the_web_mirror_of_the_vocabulary_is_equal() -> None:
+    """Le front lit les mots désactivés sur le tableau, sans rendu : son miroir (clé → mot
+    affiché) doit rester celui du poste."""
+    source = (Path(__file__).resolve().parents[2] / "apps/web/src/board/styleWords.ts").read_text(
+        encoding="utf-8"
+    )
+    block = source.split("STYLE_FRENCH: Record<string, string> = {", 1)[1].split("};", 1)[0]
+    pairs = re.findall(r'^\s*"?([a-z][a-z -]*?)"?: "([^"]+)",$', block, re.MULTILINE)
+    assert pairs == [(w.key, w.french) for w in sw.VOCABULARY]
 
 
 def test_no_key_holds_the_space_marker() -> None:

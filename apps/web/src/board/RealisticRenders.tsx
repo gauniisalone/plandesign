@@ -20,7 +20,7 @@ import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
 import { RenderCompare } from "./RenderCompare";
 import { RenderViewer } from "./RenderViewer";
 import { useRetryImage } from "./retryImage";
-import { ACTIVE_TITLE, IGNORED_TITLE } from "./styleWords";
+import { ACTIVE_TITLE, guidedWords, IGNORED_TITLE } from "./styleWords";
 import {
   etaText,
   gallery,
@@ -187,35 +187,33 @@ export function RenderFromPhotoButton({
 }
 
 /** KAN-97 : « Guidé par » du dernier rendu. KAN-130 : ses mots lus par le poste sont des
- *  boutons ; un mot désactivé est barré, et un second clic le réactive. */
+ *  boutons ; un mot désactivé est barré, et un second clic le réactive. Les mots désactivés
+ *  que le dernier rendu ne nomme pas (ou sans rendu) suivent, barrés, lus sur le tableau. */
 function GuidedBy({
   render,
   line,
   styleWords,
 }: {
-  render: RealisticRequest;
-  line: string;
+  render: RealisticRequest | undefined;
+  line: string | null;
   styleWords?: {
     ignored: ReadonlySet<string>;
     onToggle?: (key: string, off: boolean) => void;
   };
 }) {
-  const keys = render.guided_keys ?? [];
-  const words = render.guided_by ?? [];
-  if (
-    !styleWords ||
-    render.guided_kind !== "words" ||
-    keys.length !== words.length
-  )
-    return <p className="rgal-guided">{line}</p>;
-  const { ignored, onToggle } = styleWords;
+  const list = styleWords ? guidedWords(render, styleWords.ignored) : [];
+  if (list.length === 0)
+    return line ? <p className="rgal-guided">{line}</p> : null;
+  const onToggle = styleWords?.onToggle;
+  // Le dernier rendu n'a pas de mots lus (images non lues, rien de net, pas de rendu) : sa
+  // ligne reste, et les mots désactivés suivent sur la leur.
+  const own = render?.guided_kind === "words" ? null : line;
   return (
-    <p className="rgal-guided">
-      Guidé par :{" "}
-      {keys.map((key, k) => {
-        const off = ignored.has(key);
-        const word = words[k];
-        return (
+    <>
+      {own && <p className="rgal-guided">{own}</p>}
+      <p className="rgal-guided">
+        Guidé par :{" "}
+        {list.map(({ key, word, off }, k) => (
           <span key={key}>
             {k > 0 && ", "}
             {onToggle ? (
@@ -237,9 +235,9 @@ function GuidedBy({
               </span>
             )}
           </span>
-        );
-      })}
-    </p>
+        ))}
+      </p>
+    </>
   );
 }
 
@@ -594,9 +592,7 @@ export function RealisticRenders({
           {NO_PLAN_TEXT}
         </p>
       )}
-      {guided && latest && (
-        <GuidedBy render={latest} line={guided} styleWords={styleWords} />
-      )}
+      <GuidedBy render={latest} line={guided} styleWords={styleWords} />
       {canLaunch && linked && cameras.length === 0 && (
         <p className="realistic-empty">
           Aucune vue : posez un point de vue sur le plan.
