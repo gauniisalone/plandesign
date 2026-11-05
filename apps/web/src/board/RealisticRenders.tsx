@@ -188,7 +188,7 @@ export function RenderFromPhotoButton({
 
 /** KAN-97 : « Guidé par » du dernier rendu. KAN-130 : ses mots lus par le poste sont des
  *  boutons ; un mot désactivé est barré, et un second clic le réactive. Les mots désactivés
- *  que le dernier rendu ne nomme pas (ou sans rendu) suivent, barrés, lus sur le tableau. */
+ *  que le dernier rendu ne nomme pas (ou sans rendu) suivent, barrés, lus sur l'espace de travail. */
 function GuidedBy({
   render,
   line,

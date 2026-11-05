@@ -106,7 +106,7 @@ export function ignoredKeys(members: BoardItem[]): Set<string> {
   return out;
 }
 
-/** Le tableau après un clic sur `key` : désactivé, il l'est sur toutes ces images ; réactivé,
+/** La liste après un clic sur `key` : désactivé, il l'est sur toutes ces images ; réactivé,
  *  il quitte chacune. Les autres éléments ne changent pas (même objet). */
 export function toggleWord(
   items: BoardItem[],
