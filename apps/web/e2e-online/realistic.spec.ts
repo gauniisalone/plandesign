@@ -184,9 +184,14 @@ test("rendu réaliste : un autre compte n'a ni le bouton ni l'API", async ({
   await expect(
     board.getByText("Rendus réalistes : bientôt en ligne"),
   ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    board.getByRole("region", { name: "Rendus réalistes" }),
-  ).toHaveCount(0);
+  // KAN-134 : la note est dans la région du node (visible à tout palier de zoom) ; la région
+  // ne contient qu'elle : ni bouton, ni image de la galerie.
+  const renders = board.getByRole("region", { name: "Rendus réalistes" });
+  await expect(renders.getByRole("note")).toHaveText(
+    "Rendus réalistes : bientôt en ligne",
+  );
+  await expect(renders.getByRole("button")).toHaveCount(0);
+  await expect(renders.getByRole("img")).toHaveCount(0);
   await expect(
     board.getByRole("button", { name: "Rendre ▾", exact: true }),
   ).toHaveCount(0);
