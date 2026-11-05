@@ -221,13 +221,15 @@ for (const [what, health] of [
     const dialog = await openDialog(page);
     await expect(dialog.getByText("Sans mot de passe.")).toBeVisible();
     await expect(dialog.getByText("Un code vous est envoyé par e-mail.")).toBeVisible();
-    await expect(dialog.getByRole("button", { name: PASSWORD_LINK })).toHaveCount(0);
-    await expect(dialog.getByText("ou votre mot de passe")).toBeHidden();
-    await expect(page.getByText("Un code ou votre mot de passe.")).toBeHidden();
+    await expect(dialog.getByRole("link", { name: PASSWORD_LINK })).toHaveCount(0);
+    await expect(
+      dialog.getByText("Avec un code reçu par e-mail, ou votre mot de passe."),
+    ).toBeHidden();
+    await expect(dialog.getByText("Un code ou votre mot de passe.")).toBeHidden();
   });
 }
 
-test("KAN-104 : mot de passe ouvert, connexion par mot de passe, refus unique, arrivée sur l'app", async ({
+test("KAN-104 : mot de passe ouvert, le lien mène à la connexion de l'app, refus unique, arrivée sur l'accueil", async ({
   page,
 }) => {
   const ip = "198.51.100.109";
@@ -258,20 +260,24 @@ test("KAN-104 : mot de passe ouvert, connexion par mot de passe, refus unique, a
   const dialog = await openDialog(page);
   await expect(dialog.getByText("Avec un code reçu par e-mail, ou votre mot de passe.")).toBeVisible();
   await expect(dialog.getByText("Sans mot de passe.")).toBeHidden();
-  await dialog.getByRole("button", { name: PASSWORD_LINK }).click();
-  await expect(dialog.getByRole("link", { name: "Mot de passe oublié ?" })).toHaveAttribute(
-    "href",
-    `${APP}/#/mot-de-passe-oublie`,
-  );
-  await dialog.getByLabel("Votre e-mail").fill(email);
-  await dialog.getByLabel("Mot de passe", { exact: true }).fill("pas le bon mot de passe");
-  await dialog.getByRole("button", { name: "Se connecter", exact: true }).click();
-  await expect(dialog.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(
-    "Adresse ou mot de passe incorrect.",
-  );
-  expect(page.url().startsWith(APP)).toBe(false);
-  await dialog.getByLabel("Mot de passe", { exact: true }).fill(password);
-  await dialog.getByRole("button", { name: "Se connecter", exact: true }).click();
+  await expect(dialog.getByText("Un code ou votre mot de passe.")).toBeVisible();
+  // Le site ne tape ni n'envoie le mot de passe (conception L1 : aucune de ses routes n'est
+  // ouverte au site) : le lien ouvre la page de connexion de l'app sur cette étape.
+  const passwordCalls: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/auth/password")) passwordCalls.push(new URL(r.url()).origin);
+  });
+  const link = dialog.getByRole("link", { name: PASSWORD_LINK });
+  await expect(link).toHaveAttribute("href", `${APP}/#/mot-de-passe`);
+  await link.click();
+  await expect(page).toHaveURL(`${APP}/#/mot-de-passe`);
+  await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("Mot de passe", { exact: true }).fill("pas le bon mot de passe");
+  await page.getByRole("button", { name: "Se connecter", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Adresse ou mot de passe incorrect.");
+  await page.getByLabel("Mot de passe", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Se connecter", exact: true }).click();
+  expect(new Set(passwordCalls)).toEqual(new Set([APP])); // seulement depuis l'app
   await expect(page).toHaveURL(`${APP}/`);
   await expect(page.getByRole("heading", { name: "Vos espaces de travail" })).toBeVisible({
     timeout: 30_000,

@@ -8,8 +8,9 @@
 // formulaire de l'accueil est rempli, sinon sur son accueil. Déjà connecté : pas de fenêtre,
 // on part tout de suite vers l'app (GET /api/auth/me, statut seulement).
 //
-// KAN-104 : si /api/health dit `password_login`, une seconde voie, le mot de passe (POST
-// /api/auth/password/login, avec les cookies). Fermé, ou sans réponse : rien n'en paraît.
+// KAN-104 : si /api/health dit `password_login`, le lien « Se connecter avec un mot de passe »
+// paraît ; il ouvre la page de connexion de l'app (le site n'appelle aucune route du mot de
+// passe). Fermé, ou sans réponse : rien n'en paraît.
 (function () {
   "use strict";
   var dialog = document.getElementById("connexion");
@@ -41,11 +42,8 @@
   }
   var emailForm = dialog.querySelector('[data-step="email"]');
   var codeForm = dialog.querySelector('[data-step="code"]');
-  var passwordForm = dialog.querySelector('[data-step="password"]');
   var emailInput = document.getElementById("connexion-email");
   var codeInput = document.getElementById("connexion-code");
-  var pwEmailInput = document.getElementById("connexion-pw-email");
-  var passwordInput = document.getElementById("connexion-password");
   var email = "";
 
   function errorOf(form) {
@@ -63,16 +61,8 @@
   function step(name) {
     emailForm.hidden = name !== "email";
     codeForm.hidden = name !== "code";
-    passwordForm.hidden = name !== "password";
     say(emailForm, "");
     say(codeForm, "");
-    say(passwordForm, "");
-    if (name === "password") {
-      // L'adresse déjà tapée suit d'un écran à l'autre.
-      if (!pwEmailInput.value) pwEmailInput.value = emailInput.value;
-      (pwEmailInput.value ? passwordInput : pwEmailInput).focus();
-      return;
-    }
     (name === "email" ? emailInput : codeInput).focus();
   }
   function post(path, body) {
@@ -189,39 +179,8 @@
       });
   });
 
-  passwordForm.addEventListener("submit", function (event) {
-    event.preventDefault();
-    busy(passwordForm, true);
-    post("/api/auth/password/login", {
-      email: pwEmailInput.value.trim(),
-      password: passwordInput.value,
-    })
-      .then(function (response) {
-        if (response.ok) {
-          window.location.assign(target());
-          return;
-        }
-        busy(passwordForm, false);
-        passwordInput.value = "";
-        // Le texte du serveur, tel quel : refus unique (401), limite d'une heure (429).
-        if (response.status === 401 || response.status === 429 || response.status === 503) {
-          return detail(response).then(function (text) {
-            say(passwordForm, text || DOWN);
-          });
-        }
-        say(passwordForm, DOWN);
-      })
-      .catch(function () {
-        busy(passwordForm, false);
-        say(passwordForm, DOWN);
-      });
-  });
-
-  dialog.querySelectorAll("[data-go]").forEach(function (button) {
-    button.addEventListener("click", function () {
-      var to = button.getAttribute("data-go");
-      if (to === "email") email = "";
-      step(to);
-    });
+  dialog.querySelector(".login-back[data-go]").addEventListener("click", function () {
+    email = "";
+    step("email");
   });
 })();

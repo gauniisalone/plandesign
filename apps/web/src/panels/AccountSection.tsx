@@ -122,9 +122,12 @@ export function AccountSection() {
       {passwordOpen && (
         <details
           className="account-more"
-          onToggle={(e) =>
-            setSessionsOpen((e.currentTarget as HTMLDetailsElement).open)
-          }
+          onToggle={(e) => {
+            // Relue à chaque ouverture : une session ouverte ailleurs entre-temps y paraît.
+            const open = (e.currentTarget as HTMLDetailsElement).open;
+            setSessionsOpen(open);
+            if (open) setSessionsVersion((v) => v + 1);
+          }}
         >
           <summary>Sessions ouvertes</summary>
           {sessionsOpen && (

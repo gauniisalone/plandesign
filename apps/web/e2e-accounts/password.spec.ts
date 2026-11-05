@@ -151,6 +151,7 @@ test("KAN-104 : définir un mot de passe dans Réglages › Compte, le changer, 
 
   // Retour sur la première : la nouvelle session apparaît (relue à l'ouverture), on la ferme.
   await panel.getByText("Sessions ouvertes", { exact: true }).click();
+  await expect(list).toBeHidden();
   await panel.getByText("Sessions ouvertes", { exact: true }).click();
   await expect(list.getByRole("listitem")).toHaveCount(2);
   await expect(list.getByText(/par mot de passe/)).toBeVisible();
@@ -168,9 +169,12 @@ test("KAN-104 : mot de passe oublié, depuis le lien du site, par un code", asyn
 }) => {
   test.setTimeout(120_000);
   const email = `kan104-oubli-${RUN}@example.org`;
-  const page = await person(browser, "198.51.100.106");
-  const loginCode = await signInByCode(page, email); // le compte existe, sans mot de passe
-  await page.context().clearCookies();
+  const first = await person(browser, "198.51.100.106");
+  const loginCode = await signInByCode(first, email); // le compte existe, sans mot de passe
+  await first.context().clearCookies();
+  // Une page neuve (sans cookie) : changer l'ancre seule ne recharge pas l'app, qui resterait
+  // connectée en mémoire.
+  const page = await first.context().newPage();
 
   await gotoApp(page, "/#/mot-de-passe-oublie");
   await expect(page.getByRole("heading", { name: "Mot de passe oublié" })).toBeVisible();

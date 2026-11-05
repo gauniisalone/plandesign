@@ -54,8 +54,17 @@ function emailError(e: unknown, otherwise: (e: unknown) => string): string {
 
 type Step = "email" | "code" | "name" | "password" | "forgot" | "reset";
 const PASSWORD_STEPS: ReadonlySet<Step> = new Set(["password", "forgot", "reset"]);
-/** Le lien « Mot de passe oublié ? » de la fenêtre du site (LoginDialog.astro). */
-const FORGOT_HASH = "#/mot-de-passe-oublie";
+/** Les ancres qui ouvrent la page sur une étape du mot de passe : le lien de la fenêtre du
+ *  site (LoginDialog.astro), et « oublié » ; effacées une fois connecté. */
+const HASH_STEPS: Readonly<Record<string, Step>> = {
+  "#/mot-de-passe": "password",
+  "#/mot-de-passe-oublie": "forgot",
+};
+
+function clearStepHash(): void {
+  if (window.location.hash in HASH_STEPS)
+    window.history.replaceState(null, "", window.location.pathname);
+}
 
 export function Login({
   onSignedIn,
@@ -65,9 +74,10 @@ export function Login({
   /** Jeton d'un lien d'invitation (lu dans l'ancre). */
   invitation?: string;
 }) {
-  // KAN-104 : « Mot de passe oublié ? » de la fenêtre du site arrive ici sur cette étape.
-  const [step, setStep] = useState<Step>(() =>
-    window.location.hash === FORGOT_HASH ? "forgot" : "email",
+  // KAN-104 : le lien « Se connecter avec un mot de passe » de la fenêtre du site arrive ici
+  // sur cette étape (le site n'appelle aucune route du mot de passe) ; « oublié » de même.
+  const [step, setStep] = useState<Step>(
+    () => HASH_STEPS[window.location.hash] ?? "email",
   );
   /** B2a : compte tout juste créé ; « Votre nom » est proposé avant d'entrer. */
   const [fresh, setFresh] = useState<Me | null>(null);
@@ -155,7 +165,9 @@ export function Login({
   const signInWithPassword = (e: React.FormEvent) => {
     e.preventDefault();
     void run(async () => {
-      onSignedIn(await authApi.passwordLogin(email.trim(), password));
+      const me = await authApi.passwordLogin(email.trim(), password);
+      clearStepHash();
+      onSignedIn(me);
     }, serverText);
   };
 
@@ -176,9 +188,7 @@ export function Login({
     e.preventDefault();
     void run(async () => {
       const me = await authApi.reset(email.trim(), code, password);
-      // Arrivé par le lien du site : l'accueil, sans l'ancre de l'étape.
-      if (window.location.hash === FORGOT_HASH)
-        window.history.replaceState(null, "", window.location.pathname);
+      clearStepHash(); // arrivé par le lien du site : l'accueil, sans l'ancre de l'étape
       onSignedIn(me);
     }, serverText);
   };

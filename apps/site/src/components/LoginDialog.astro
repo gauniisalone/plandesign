@@ -3,8 +3,9 @@
 // l'adresse, puis le code reçu par e-mail. Le comportement est dans login/login.js (fichier
 // externe : pas de script en ligne, CSP stricte), qui appelle l'API de l'application.
 // KAN-104 : la seconde voie, le mot de passe, cachée tant que /api/health de l'app ne dit pas
-// `password_login` (fermé, ou pas de réponse : rien n'en paraît). « Mot de passe oublié »
-// mène à l'application, qui envoie le code et reçoit le nouveau mot de passe.
+// `password_login` (fermé, ou pas de réponse : rien n'en paraît). Le mot de passe ne se tape
+// pas ici : le lien ouvre la page de connexion de l'application sur cette étape (conception
+// L1 : aucune route du mot de passe n'est ouverte au site, pas de CORS à cookies en plus).
 import { APP_ORIGIN } from "../config";
 ---
 <dialog id="connexion" class="login-dialog" aria-labelledby="connexion-titre" data-app-origin={APP_ORIGIN}>
@@ -19,7 +20,7 @@ import { APP_ORIGIN } from "../config";
     <input id="connexion-email" name="email" type="email" autocomplete="email" required maxlength="320" />
     <p class="login-error" role="alert" hidden></p>
     <button type="submit" class="btn btn-primary btn-block">Recevoir un code</button>
-    <button type="button" class="login-back" data-password data-go="password" hidden>Se connecter avec un mot de passe</button>
+    <a class="login-back" data-password hidden href={`${APP_ORIGIN}/#/mot-de-passe`}>Se connecter avec un mot de passe</a>
   </form>
   <form class="login-step" data-step="code" hidden>
     <p class="login-text" role="status"><span data-signup-open>Si cette adresse peut se connecter, un code vient de partir.</span><span data-signup-invite hidden>Si cette adresse a un compte ou une invitation, un code vient de partir.</span> Il expire dans 15 minutes.</p>
@@ -29,16 +30,6 @@ import { APP_ORIGIN } from "../config";
     <p class="login-error" role="alert" hidden></p>
     <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
     <button type="button" class="login-back" data-go="email">Changer d'adresse ou recevoir un nouveau code</button>
-  </form>
-  <form class="login-step" data-step="password" hidden>
-    <label class="mono" for="connexion-pw-email">Votre e-mail</label>
-    <input id="connexion-pw-email" name="email" type="email" autocomplete="username" required maxlength="320" />
-    <label class="mono" for="connexion-password">Mot de passe</label>
-    <input id="connexion-password" name="password" type="password" autocomplete="current-password" required maxlength="128" />
-    <p class="login-error" role="alert" hidden></p>
-    <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
-    <a class="login-back" href={`${APP_ORIGIN}/#/mot-de-passe-oublie`}>Mot de passe oublié ?</a>
-    <button type="button" class="login-back" data-go="email">Recevoir un code plutôt</button>
   </form>
   <p class="login-mention">
     <span data-password-off>Un code vous est envoyé par e-mail.</span><span data-password hidden>Un code ou votre mot de passe.</span> Vos données restent en France. <a href="/confidentialite/">Confidentialité</a>
