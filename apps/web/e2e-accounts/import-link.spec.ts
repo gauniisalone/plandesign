@@ -77,10 +77,12 @@ test("KAN-47 : lien direct vers l'import, l'éditeur arrive sur l'import après 
   await expect(
     page.getByRole("button", { name: "Continuer vers le plan" }),
   ).toHaveCount(0);
-  await expect(page.locator(".editor")).toHaveAttribute(
-    "data-space",
-    "loading",
-  );
+  // L'attente se dit sur l'écran de chargement (projet pas encore posé, sans `.editor`) ou
+  // dans l'atelier (`data-space="loading"`), selon ce qui arrive d'abord, du projet ou du
+  // rôle (serveur lent) : un atelier hors attente serait le défaut.
+  await expect(
+    page.locator('.editor:not([data-space="loading"])'),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Espace de travail" }),
   ).toHaveCount(0);
