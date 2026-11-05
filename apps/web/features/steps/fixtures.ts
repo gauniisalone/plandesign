@@ -34,6 +34,10 @@ export const test = base.extend<{ ctx: Ctx }>({
     const ctx: Ctx = { suffix, people: new Map(), invitations: new Map() };
     await provide(ctx);
     await ctx.worker?.api.dispose();
+    // Les navigateurs ouverts par person() (comptes.ts) : fermés en fin de scénario, sinon
+    // leurs pages et leurs WebSockets s'accumulent d'un scénario à l'autre (un seul worker).
+    // Fermer un contexte déjà fermé ne fait rien.
+    for (const who of ctx.people.values()) await who.page.context().close();
   },
 });
 
