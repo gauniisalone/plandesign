@@ -1,4 +1,5 @@
 import { useCapabilities, type Capabilities } from "../state/capabilities";
+import { STATUS_DOWN } from "../state/renderStatusState";
 import type { Requirements } from "../guided";
 import { useReadOnly } from "../state/account";
 import {
@@ -366,6 +367,8 @@ function inside(item: BoardItem, frame: BoardItem): boolean {
  *  périmées, les voir en grand, ouvrir le volet Rendus de son plan. */
 /** Ligne courte d'un cadre quand la capacité manque (lot MVP en ligne sans GPU). */
 function missingHint(role: string, caps: Capabilities): string | null {
+  // KAN-134 : /api/health n'a pas répondu : on ne sait pas encore, on le dit (nouvel essai).
+  if (!caps.known) return role === "renders" ? STATUS_DOWN : null;
   if (role === "renders" && !caps.renders)
     return caps.online
       ? "Rendus réalistes : bientôt en ligne"

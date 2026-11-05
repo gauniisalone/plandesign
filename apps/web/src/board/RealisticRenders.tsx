@@ -12,11 +12,12 @@ import {
   type ReactionKey,
   type RealisticListing,
   type RealisticRequest,
-  type RealisticStatus,
 } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { allCameras, isFreeCamera } from "../model";
 import { useHosting } from "../state/hosting";
+import { useRenderStatus } from "../state/renderStatus";
+import { allowedOf, STATUS_DOWN, statusDown } from "../state/renderStatusState";
 import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
 import { RenderCompare } from "./RenderCompare";
 import { RenderViewer } from "./RenderViewer";
@@ -59,8 +60,8 @@ const POLL_BUSY_MS = 5_000;
 const POLL_IDLE_MS = 30_000;
 const TICK_MS = 1_000;
 
-/** Lu une fois par session de page : le droit ne change pas en cours de route. */
-let allowedOnce: Promise<RealisticStatus | null> | null = null;
+/** Ligne d'un lecteur quand le projet n'a encore aucun rendu (le node ne paraît pas vide). */
+const NONE_YET = "Aucun rendu pour l'instant.";
 /** Une case de la galerie (connexion lente, 25 oct.) : l'image se recharge seule quand elle
  *  échoue, puis laisse une case grise « Image non chargée · Réessayer » au lieu du texte
  *  de remplacement brut ; un clic sur la case réessaie alors au lieu d'ouvrir le rendu. */
@@ -112,14 +113,6 @@ function RetryTile({
   );
 }
 
-function statusOnce(): Promise<RealisticStatus | null> {
-  allowedOnce ??= realisticApi.status().catch(() => {
-    allowedOnce = null; // relue au prochain affichage
-    return null;
-  });
-  return allowedOnce;
-}
-
 function problemText(request: RealisticRequest): string {
   return request.state === "expired"
     ? "Expiré : non calculé à temps, relancez « Rendre »"
@@ -145,17 +138,10 @@ export function RenderFromPhotoButton({
   imageId: string;
   readOnly: boolean;
 }) {
-  const [allowed, setAllowed] = useState(false);
+  // KAN-134 : le statut partagé, relu à l'ouverture, au retour sur l'onglet, après une
+  // reconnexion et après un échec (plus jamais figé pour toute la page).
+  const allowed = Boolean(allowedOf(useRenderStatus()));
   const [said, setSaid] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void statusOnce().then((s) => {
-      if (alive) setAllowed(Boolean(s?.allowed));
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
   const levelId = Object.entries(project.levels).find(([, level]) =>
     allCameras(level).some((c) => c.image_id === imageId),
   )?.[0];
@@ -271,7 +257,11 @@ export function RealisticRenders({
   frameId?: string;
   title?: string;
 }) {
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  // KAN-134 : le statut partagé (renderStatus.ts), relu à l'ouverture de ce node, au retour
+  // sur l'onglet, après une reconnexion et après un échec ; null tant que rien n'est lu.
+  const statusState = useRenderStatus();
+  const allowed = allowedOf(statusState);
+  const down = statusDown(statusState);
   /** KAN-99 : la liste des rendus du projet a répondu (null : pas encore ; false : refusée,
    *  rendu désactivé sur ce serveur). */
   const [visible, setVisible] = useState<boolean | null>(null);
@@ -298,16 +288,6 @@ export function RealisticRenders({
    *  « Reliez un plan pour rendre ») ; null : pas de réponse, repli `hasLinkedPlan`. */
   const [serverLinked, setServerLinked] = useState<boolean | null>(null);
   const linked = serverLinked ?? hasLinkedPlan(project, levelId, frameId);
-
-  useEffect(() => {
-    let alive = true;
-    void statusOnce().then((s) => {
-      if (alive) setAllowed(Boolean(s?.allowed));
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   // Relu à chaque modification du projet (un lien posé ou coupé change la réponse).
   const version = project.updated_at;
@@ -381,14 +361,24 @@ export function RealisticRenders({
 
   const favorites = new Set(listing.favorite_ids ?? []);
   const all = gallery(requests);
+  // Le tout premier statut n'est pas encore là (un instant) : rien à dire encore.
+  if (allowed === null) return null;
   // Hors liste blanche, sans rendu du projet à montrer : la même ligne qu'avant KAN-99.
+  // KAN-134 : un échec de lecture n'est pas un refus, il se dit (et l'on réessaie) ; la ligne
+  // est dans la région du node (et non une consigne de cadre) : visible à tout palier de zoom.
   const nothingToShow =
     !allowed && (visible !== true || (all.done.length === 0 && all.tiles.length === 0));
   if (nothingToShow) {
     return (
-      <span className="board-frame-hint board-frame-missing" role="note">
-        {NOT_YET}
-      </span>
+      <div
+        className="realistic-renders rgal"
+        role="region"
+        aria-label="Rendus réalistes"
+      >
+        <p className="rgal-hint" role="note">
+          {down ? STATUS_DOWN : NOT_YET}
+        </p>
+      </div>
     );
   }
 
@@ -589,6 +579,13 @@ export function RealisticRenders({
             )}
           </div>
         )
+      )}
+      {/* KAN-134 : un lecteur (ou autre droit sans « Rendre »), projet sans rendu : une
+          ligne plutôt qu'un node vide. */}
+      {!canLaunch && !hasDone && all.tiles.length === 0 && (
+        <p className="rgal-hint" role="note">
+          {NONE_YET}
+        </p>
       )}
       {canLaunch && !linked && (
         <p className="rgal-hint" role="note">

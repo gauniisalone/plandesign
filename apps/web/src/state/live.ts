@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { setLiveConn } from "../api/client";
 import { reasonOf, sessionLost } from "../api/refusal";
 import { tuned } from "../netTuning";
+import { LIVE_OPEN_EVENT } from "./renderStatusState";
 
 /** Présence en temps réel (B2a, note 14 § 7) : un WebSocket par projet ouvert, avec les
  *  comptes. Il reçoit qui est là et « le projet a changé ». Coupé (redémarrage du serveur,
@@ -350,6 +351,9 @@ export function useLive(
             tuned("pingMs", PING_EVERY_MS),
           );
           setLiveConn(message.conn);
+          // KAN-134 : (re)connecté : ce qui a pu changer pendant la coupure (le statut des
+          // rendus, relu par renderStatus.ts) se relit.
+          window.dispatchEvent(new Event(LIVE_OPEN_EVENT));
           setMe(message.you);
           setPeers(message.peers);
           followedRef.current = message.followed ?? 0;

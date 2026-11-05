@@ -6539,16 +6539,17 @@ input:disabled {
 /* KAN-98 L2 : paliers de dézoom (classes tier-* de la toile, lues sur la largeur à l'écran du
    node le plus étroit). Vignettes : titre gardé à 14 px, compteurs, consignes et « auto »
    masqués. Titres : tuiles pleines à la couleur du type, titre 15 px et compteur 14 px, sans
-   contenu ni étiquette de lien. */
+   contenu ni étiquette de lien. KAN-134 : le node Rendus garde sa ligne (« Rendre », ou la
+   raison : pas autorisé, statut indisponible, pas de vue), sinon il paraît vide. */
 .board-stage.tier-thumbs .board-item.kind-frame.role-photos,
 .board-stage.tier-thumbs .board-item.kind-frame.role-inspirations,
 .board-stage.tier-thumbs .board-item.kind-frame.role-renders {
   --head-font: min(calc(14px * max(1, var(--inv, 1))), 7cqw);
 }
 .board-stage.tier-thumbs .board-frame-count,
-.board-stage.tier-thumbs .board-frame-hint,
+.board-stage.tier-thumbs .board-item:not(.role-renders) .board-frame-hint,
 .board-stage.tier-thumbs .board-wire-auto,
-.board-stage.tier-titles .board-frame-hint,
+.board-stage.tier-titles .board-item:not(.role-renders) .board-frame-hint,
 .board-stage.tier-titles .board-wire-auto,
 .board-stage.tier-titles .board-wire-label,
 .board-stage.tier-titles .board-item.in-node {
