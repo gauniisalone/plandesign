@@ -13,7 +13,7 @@ import { gotoApp } from "../e2e/app-ready";
  *  changer, sessions ouvertes et « Fermer » ; la page de connexion : mot de passe, refus
  *  unique, « Mot de passe oublié » par un code (jamais un lien) ; une erreur de saisie d'une
  *  personne connectée ne la déconnecte jamais ; la connexion de présence survit au jeton
- *  renouvelé. Adresses 198.51.100.104 à .108, propres à ce fichier. HIBP éteint
+ *  renouvelé. Adresses 198.51.100.104 à .108 et .112, propres à ce fichier. HIBP éteint
  *  (OPENPLAN_HIBP=off dans la config) : aucun appel à un tiers depuis les tests. */
 
 const RUN = Date.now().toString(36);
@@ -150,6 +150,9 @@ test("KAN-104 : définir un mot de passe dans Réglages › Compte, le changer, 
   await expect(other.getByRole("heading", { name: HOME })).toBeVisible({ timeout: 30_000 });
 
   // Retour sur la première : la nouvelle session apparaît (relue à l'ouverture), on la ferme.
+  // Cette page a déjà fait une dizaine d'appels /api/auth en une minute (10 par minute et par
+  // adresse, AUTH_RATE_LIMIT) : la suite part d'une autre adresse, propre à ce fichier.
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.112" });
   await panel.getByText("Sessions ouvertes", { exact: true }).click();
   await expect(list).toBeHidden();
   await panel.getByText("Sessions ouvertes", { exact: true }).click();
