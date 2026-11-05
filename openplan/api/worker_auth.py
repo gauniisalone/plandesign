@@ -34,6 +34,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
+from openplan.api.policy.registry import RATE_LIMITED
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.schemas.render_queue import MAX_IMAGE_BYTES, MAX_STYLE_IMAGES
 
@@ -47,7 +48,7 @@ WORKER_PATH = re.compile(
 WORKER_REFUSED = "jeton du poste de rendu requis"
 MAX_WORKER_BODY = MAX_IMAGE_BYTES + 64 * 1024
 """Le plus gros envoi du poste : une image et son résultat (en-têtes multipart compris)."""
-RATE_LIMITED = frozenset({"/api/worker/claim"})
+# RATE_LIMITED (KAN-105 L1) : chemins au maillon `WORKER_RATE` du registre des politiques.
 RATE_WINDOW_S = 5.0
 """Le poste appelle `claim` toutes les 10 à 15 s : plus d'un appel par 5 s et par jeton = 429."""
 FAILED_AUTH_LIMIT = 10

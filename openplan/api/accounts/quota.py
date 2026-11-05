@@ -21,49 +21,20 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 
 from openplan.api.access import AccountsBackend, AuthUser, accounts_of, signed_in_user
+from openplan.api.policy.registry import LAUNCHES, LINKS, UPLOADS
 
 router = APIRouter(tags=["comptes"])
 
 MB = 1024 * 1024
-P = "/api/projects/{project_id}"
-L = P + "/levels/{level_id}"
-UPLOADS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("POST", P + "/images"),
-        ("POST", P + "/media"),
-        ("PUT", L + "/images/{image_id}/depth"),  # KAN-79 : profondeur du navigateur
-    }
-)
-"""Envois : refusés si la place utilisée plus le corps reçu dépasserait la limite."""
-LINKS: frozenset[tuple[str, str]] = frozenset({("POST", P + "/media/link")})
-"""KAN-98 L3 : une image d'un lien collé ; le corps reçu n'est que l'adresse, la place
-réservée est donc la taille la plus grande permise pour cette image."""
+# KAN-105 (L1) : les trois tables sont dérivées du registre des politiques (maillons
+# `SPACE_UPLOAD`, `SPACE_LINK`, `SPACE_LAUNCH`), plus écrites ici.
+# - UPLOADS : envois, refusés si la place utilisée plus le corps reçu dépasserait la limite ;
+# - LINKS (KAN-98 L3) : une image d'un lien collé ; le corps reçu n'est que l'adresse, la place
+#   réservée est donc la taille la plus grande permise pour cette image (LINK_RESERVE) ;
+# - LAUNCHES : calculs qui écrivent des fichiers, refusés avant le lancement si la place est
+#   pleine (LAUNCH_RESERVE).
 LINK_RESERVE = 10 * MB
 """Comme `link_fetch.MAX_IMAGE_BYTES` (l'API ne lit pas l'adaptateur réseau ici)."""
-LAUNCHES: frozenset[tuple[str, str]] = frozenset(
-    ("POST", route)
-    for route in (
-        P + "/images/{image_id}/perceive",
-        P + "/images/{image_id}/inspire",
-        P + "/images/{image_id}/depth",
-        P + "/images/{image_id}/attic",
-        P + "/renders/{run_id}/finish",
-        P + "/renders/{run_id}/catalogue",
-        L + "/detect",
-        L + "/detect-depth",
-        L + "/images/{image_id}/openings",
-        L + "/images/{image_id}/autoplan",
-        L + "/layouts/render",
-        L + "/contextual",
-        L + "/autopilot",
-        L + "/render/all",
-        L + "/render/views",
-        L + "/cameras/{camera_id}/render",
-        L + "/blender",
-        L + "/render",
-    )
-)
-"""Calculs qui écrivent des fichiers : refusés avant le lancement si la place est pleine."""
 LAUNCH_RESERVE = 20 * MB
 """Place réservée à un calcul avant son lancement (un jeu de rendus et leurs vignettes) : il
 est refusé si la place utilisée plus cette réserve dépasserait la limite."""

@@ -1,7 +1,8 @@
 """Bail d'édition du plan (B2d, KAN-11) : une seule personne modifie un plan (un niveau) à la
 fois, avec les comptes seulement.
 
-- Prise implicite : une écriture d'une personne sur un plan (table `LEASED_ROUTES`) prend le
+- Prise implicite : une écriture d'une personne sur un plan (maillon `LEASE` du registre des
+  politiques, table dérivée `LEASED_ROUTES`) prend le
   bail s'il est libre ou expiré, et le prolonge ; seule, elle ne voit aucune différence.
 - Tenu par un autre : l'écriture est refusée en 409 (« Bruno modifie ce plan »).
 - Rendu : en quittant l'onglet Plan (`DELETE …/lease`), quand la personne n'a plus aucune
@@ -27,6 +28,7 @@ from anyio.from_thread import run as run_from_thread
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from openplan.api.access import AuthUser, signed_in_user
+from openplan.api.policy.registry import IMAGE_LEASED, LEASED_ROUTES, PROJECT_WIDE
 
 router = APIRouter(tags=["présence"])
 
@@ -36,39 +38,13 @@ RENEW_NOTICE_S = 20.0
 """Une prolongation est annoncée aux autres au plus toutes les 20 s (l'expiration qu'ils
 affichent reste juste à 20 s près)."""
 
-L = "/api/projects/{project_id}/levels/{level_id}"
-LEASED_ROUTES: frozenset[tuple[str, str]] = frozenset(
-    ("POST", L + suffix)
-    for suffix in (
-        "/ops",
-        "/calibrate",
-        "/recalibrate",
-        "/recalibrate/dimensions",
-        "/area-guard",
-        "/area-guard/undo",
-        "/layouts/apply",
-        "/assistant/act",
-        "/assistant/say",
-        "/rooms/{room_id}/instruction",
-        "/attic",
-        "/import-plan",
-        "/starter",
-        "/programme",
-        "/images/{image_id}/reestimate",
-    )
-) | {("PUT", L + "/images/{image_id}/depth")}  # KAN-79 : profondeur du navigateur
-"""Écritures d'une personne sur un plan : elles prennent ou prolongent son bail."""
-IMG = "/api/projects/{project_id}/images/{image_id}"
-IMAGE_LEASED: frozenset[tuple[str, str]] = frozenset(
-    {("PUT", IMG + "/reference"), ("DELETE", IMG + "/reference/{segment_id}")}
-)
-"""KAN-66 : une mesure de référence change l'échelle de tout le plan estimé depuis la photo ;
-son URL ne nomme pas le plan, retrouvé par `scale_basis.image_id`."""
-PROJECT_WIDE: frozenset[tuple[str, str]] = frozenset(
-    {("POST", "/api/projects/{project_id}/undo"), ("POST", "/api/projects/{project_id}/redo")}
-)
-"""Annuler / rétablir du plan (historique du projet, tous plans confondus) : refusés tant
-qu'une autre personne tient un plan du projet ; ils ne prennent pas de bail."""
+# KAN-105 (L1) : les trois tables sont dérivées du registre des politiques (maillons `LEASE`,
+# `LEASE_IMAGE`, `LEASE_PROJECT`), plus écrites ici.
+# - LEASED_ROUTES : écritures d'une personne sur un plan ; elles prennent ou prolongent son bail.
+# - IMAGE_LEASED (KAN-66) : une mesure de référence change l'échelle de tout le plan estimé
+#   depuis la photo ; son URL ne nomme pas le plan, retrouvé par `scale_basis.image_id`.
+# - PROJECT_WIDE : annuler / rétablir du plan (historique du projet, tous plans confondus) :
+#   refusés tant qu'une autre personne tient un plan du projet ; ils ne prennent pas de bail.
 
 
 @dataclass

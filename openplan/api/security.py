@@ -44,6 +44,7 @@ from openplan.api.access import (
     AccountsBackend,
 )
 from openplan.api.guards import route_guard
+from openplan.api.policy.registry import PUBLIC_PATHS
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 from openplan.api.share_page import SHARE_CSP, is_share_path, logged_form
@@ -219,26 +220,10 @@ def with_security_headers(response: Response, path: str) -> Response:
     return response
 
 
-ACCOUNTS_PUBLIC = frozenset(
-    {
-        "/api/health",
-        "/api/auth/email/start",
-        "/api/auth/email/verify",
-        "/api/auth/login",
-        "/api/auth/login/code",
-        "/api/auth/login/verify",
-        "/api/auth/logout",
-        # KAN-104 (404 sans OPENPLAN_PASSWORD_LOGIN)
-        "/api/auth/password/login",
-        "/api/auth/login/password",
-        "/api/auth/password/forgot",
-        "/api/auth/password/reset",
-        "/api/auth/signup/start",
-        "/api/auth/signup/verify",
-        "/api/test/mail/last-code",
-        "/api/contact",
-    }
-)
+ACCOUNTS_PUBLIC = PUBLIC_PATHS
+"""Comptes actifs : les seules routes `/api` ouvertes sans session (note 17, § 4) ; KAN-105
+(L1) : les routes `public` du registre des politiques (sans paramètre de chemin), et non plus
+une seconde liste écrite à la main."""
 CONTACT_PATH = "/api/contact"
 """Formulaire de contact du site : l'origine du site SEULEMENT, CORS sans cookies."""
 SITE_MUTATIONS = frozenset({"/api/auth/email/start", "/api/auth/email/verify"})

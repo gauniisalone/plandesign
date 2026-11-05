@@ -1,393 +1,81 @@
 """Droits route par route (note 17, § 4) : **tout est refusé par défaut**.
 
-Chaque route `/api` passe par `route_guard` (posé sur chaque routeur à l'inclusion) qui cherche
-la route dans l'une des deux tables ci-dessous :
+KAN-105 (L1) : les droits se déclarent dans le registre `openplan.api.policy.registry`, une
+ligne par route (cas d'usage, règle d'accès, maillons en plus) ; la garde `route_guard`
+(`openplan.api.policy.chain`, posée sur chaque routeur à l'inclusion) en compose la chaîne. Ce
+module en garde les noms d'avant, dérivés du registre :
 
 - `PROJECT_ROUTES` : les routes `/api/projects/{project_id}/…` et le rôle minimal du membre
   (`viewer` < `commenter` < `editor` < `owner`) ; non-membre → 404 (on ne révèle pas qu'un
   projet existe), rôle insuffisant → 403 ;
-- `GLOBAL_ROUTES` : les autres, `public` (sans session), `user` (session) ou `admin`.
+- `GLOBAL_ROUTES` : les autres, `public` (sans session), `user` (session) ou `admin`, et les
+  jetons du poste (`worker`) et du module navigateur (`extension`, rôle dans `EXTENSION_ROLES`).
 
-Une route absente des deux tables est refusée (403) quand les comptes sont actifs. Un test
+Une route absente du registre est refusée (403) quand les comptes sont actifs. Un test
 parcourt toutes les routes de l'application et échoue si l'une d'elles n'a pas la garde, n'est
-pas dans une table, ou si une table nomme une route qui n'existe plus. Une route nouvelle peut
+pas déclarée, ou si le registre nomme une route qui n'existe plus. Une route nouvelle peut
 aussi déclarer `Depends(project_member(Role.EDITOR))` elle-même.
+
+Les contrôles faits à l'intérieur des routes passent par ici (`require_role`, `role_of`,
+`visible_ids`…), en attendant d'entrer dans la chaîne (KAN-105, L2).
 
 Sans comptes (mode local, ou API exposée par jeton) : la garde ne refuse rien, comme avant.
 """
 
 from __future__ import annotations
 
-from enum import IntEnum
-from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException, Request
 
-from openplan.api.access import AccountsBackend, AuthUser, accounts_of, signed_in_user
+from openplan.api.access import accounts_of, signed_in_user
+from openplan.api.policy.chain import (
+    NO_RULE,
+    NOT_A_MEMBER,
+    check_member,
+    check_role,
+    project_id_of,
+    route_guard,
+)
+from openplan.api.policy.registry import (
+    API_PREFIX,
+    EXTENSION_ROLES,
+    EXTENSION_SPACE_KEY,
+    GLOBAL_ROUTES,
+    PROJECT_ROUTES,
+    ROLE_BY_NAME,
+    L,
+    P,
+    Policy,
+    Role,
+)
 from openplan.scene.store import ProjectStore, ProjectSummary
 
-
-class Role(IntEnum):
-    VIEWER = 1
-    COMMENTER = 2
-    EDITOR = 3
-    OWNER = 4
-
-
-ROLE_BY_NAME = {role.name.lower(): role for role in Role}
-
-Policy = Literal["public", "user", "admin", "legacy", "worker", "extension"]
-"""`worker` (KAN-89) : le jeton du poste de rendu seulement (`api.worker_auth`), jamais une
-session ; ce jeton n'ouvre aucune autre route. `extension` (KAN-102) : le jeton du module
-navigateur seulement (`api.accounts.extension`), jamais la session ; ce jeton n'ouvre aucune
-autre route."""
-
-API_PREFIX = "/api"
-P = API_PREFIX + "/projects/{project_id}"
-L = P + "/levels/{level_id}"
-V, C, E, O = Role.VIEWER, Role.COMMENTER, Role.EDITOR, Role.OWNER  # noqa: E741 - lisibilité de la table
-
-PROJECT_ROUTES: dict[tuple[str, str], Role] = {
-    # Projet
-    ("GET", P): V,
-    ("GET", P + "/role"): V,  # B1d : le front masque ce que le rôle ne permet pas
-    # Partage (B1e) : le propriétaire seul
-    ("GET", P + "/invitations"): O,
-    ("POST", P + "/invitations"): O,
-    ("DELETE", P + "/invitations/{invitation_id}"): O,
-    ("POST", P + "/invitations/email"): O,  # KAN-55 : invitation nominative
-    ("GET", P + "/members"): O,
-    ("PATCH", P + "/members/{user_id}"): O,
-    ("DELETE", P + "/members/{user_id}"): O,
-    ("PATCH", P): E,  # l'accord pour un modèle distant exige en plus `owner` (settings.py)
-    ("DELETE", P): O,
-    ("POST", P + "/name/auto"): E,
-    ("GET", P + "/thumbnail"): V,
-    ("GET", P + "/cover"): V,
-    ("GET", P + "/journal"): V,
-    ("DELETE", P + "/journal"): O,
-    ("POST", P + "/journal/ui"): V,  # mesure d'usage de l'écran, ne touche pas le projet
-    ("GET", P + "/metrics"): V,
-    ("GET", P + "/network-log"): V,
-    ("GET", P + "/validation"): V,
-    ("POST", P + "/undo"): E,
-    ("POST", P + "/redo"): E,
-    ("POST", P + "/levels"): E,
-    ("DELETE", P + "/levels/{level_id}"): E,  # KAN-91 : « Supprimer le plan »
-    ("GET", P + "/jobs/{job_id}"): V,
-    ("DELETE", P + "/jobs/{job_id}"): E,  # annuler un calcul en attente (file d'attente)
-    # Espace de travail et fichiers joints
-    ("GET", P + "/board"): V,
-    ("PUT", P + "/board"): E,  # compatibilité (onglets d'avant B2c)
-    ("PATCH", P + "/board/items"): E,  # B2c : écritures par élément (KAN-91 : et liens, D3)
-    ("GET", P + "/board/inputs/{target_id}"): V,  # KAN-91 : ce qu'une génération lit
-    ("GET", P + "/board/links/{link_id}"): V,  # KAN-91 : la phrase de survol d'un lien
-    # Commentaires (KAN-51) : lire, lecteur ; écrire, commentateur et plus. L'auteur seul
-    # modifie ou supprime son message ; le propriétaire supprime tout fil (vérifié dans la route).
-    ("GET", P + "/activity"): V,  # KAN-58 : le journal d'activité, lecteur compris
-    # KAN-43 : ma vue de l'espace de travail ; tout membre garde la sienne, lecteur compris.
-    ("GET", P + "/view"): V,
-    ("PUT", P + "/view"): V,
-    ("GET", P + "/comments"): V,
-    ("POST", P + "/comments"): C,
-    ("POST", P + "/comments/{thread_id}/replies"): C,
-    ("PATCH", P + "/comments/{thread_id}/messages/{message_id}"): C,
-    ("DELETE", P + "/comments/{thread_id}/messages/{message_id}"): C,
-    ("POST", P + "/comments/{thread_id}/resolve"): C,
-    ("POST", P + "/comments/{thread_id}/reopen"): C,
-    ("DELETE", P + "/comments/{thread_id}"): C,
-    # Réactions (KAN-78) : lire, lecteur ; réagir, commentateur et plus ; chacun ne retire que
-    # la sienne (la route ne touche qu'à celle de l'appelant).
-    ("GET", P + "/reactions"): V,
-    ("PUT", P + "/reactions/{item_id}/{key}"): C,
-    ("DELETE", P + "/reactions/{item_id}/{key}"): C,
-    ("GET", P + "/media"): V,
-    ("POST", P + "/media"): E,
-    # KAN-98 L3 : un lien collé, récupéré par le serveur (garde anti-SSRF) : éditeur.
-    ("POST", P + "/media/link"): E,
-    ("GET", P + "/media/{media_id}/thumb"): V,
-    ("GET", P + "/media/{media_id}/file"): V,
-    ("DELETE", P + "/media/{media_id}"): E,
-    # Photos
-    ("POST", P + "/images"): E,
-    ("GET", P + "/images/{image_id}/file"): V,
-    ("GET", P + "/images/{image_id}/quality"): V,
-    ("DELETE", P + "/images/{image_id}"): E,
-    ("POST", P + "/images/{image_id}/perceive"): E,
-    ("POST", P + "/images/{image_id}/inspire"): E,
-    ("POST", P + "/images/{image_id}/depth"): E,
-    ("POST", P + "/images/{image_id}/attic"): E,
-    # Mesure de référence sur une photo (KAN-66)
-    ("PUT", P + "/images/{image_id}/reference"): E,
-    ("DELETE", P + "/images/{image_id}/reference/{segment_id}"): E,
-    ("POST", L + "/images/{image_id}/reestimate"): E,
-    # KAN-79 : profondeur calculée par le navigateur (bail du plan, place disque)
-    ("PUT", L + "/images/{image_id}/depth"): E,
-    # Mesures
-    ("POST", P + "/measurements"): E,
-    ("DELETE", P + "/measurements/{measurement_id}"): E,
-    # Exports
-    ("GET", P + "/exports/json"): V,
-    ("GET", P + "/exports/svg"): V,
-    ("GET", P + "/exports/dxf"): V,
-    ("GET", P + "/exports/section-pdf"): V,
-    ("GET", P + "/exports/pdf"): V,
-    ("GET", P + "/exports/glb"): V,
-    ("GET", P + "/exports/archive"): V,
-    # Rendus
-    ("GET", P + "/renders"): V,
-    ("PATCH", P + "/renders/{run_id}"): E,
-    ("DELETE", P + "/renders/{run_id}"): E,
-    ("POST", P + "/renders/{run_id}/restore"): E,
-    ("GET", P + "/renders/{run_id}/pick"): V,
-    ("GET", P + "/renders/{run_id}/outline.png"): V,
-    ("GET", P + "/renders/favorites.zip"): V,
-    ("POST", P + "/renders/{run_id}/finish"): E,
-    ("POST", P + "/renders/{run_id}/catalogue"): E,
-    ("GET", P + "/contextual"): V,
-    # Artefacts des calculs
-    ("GET", P + "/runs/{run_id}/blender/{name}"): V,
-    ("GET", P + "/runs/{run_id}/openings/{name}"): V,
-    ("GET", P + "/runs/{run_id}/detection/{name}"): V,
-    ("GET", P + "/runs/{run_id}/intention/{name}"): V,
-    ("GET", P + "/runs/{run_id}/perception/{name}"): V,
-    ("GET", P + "/runs/{run_id}/inspiration/{name}"): V,
-    ("GET", P + "/runs/{run_id}/depth/{name}"): V,
-    ("GET", P + "/runs/{run_id}/attic/{name}"): V,
-    ("GET", P + "/runs/{run_id}/layout/{name}"): V,
-    ("GET", P + "/runs/{run_id}/contextual/{name}"): V,
-    # Assistant
-    ("GET", P + "/assistant/thread"): V,
-    ("POST", L + "/assistant/preview"): E,
-    ("POST", L + "/assistant/say"): E,
-    ("POST", L + "/assistant/act"): E,
-    ("POST", L + "/rooms/{room_id}/instruction"): E,
-    # Niveau : plan, calibration, détection, aménagement, rendu
-    ("POST", L + "/starter"): E,
-    ("POST", L + "/programme"): E,
-    ("POST", L + "/area-guard"): E,
-    ("POST", L + "/area-guard/undo"): E,
-    ("POST", L + "/ops"): E,
-    ("GET", L + "/derived"): V,
-    ("GET", L + "/bake"): V,
-    ("POST", L + "/calibrate"): E,
-    ("POST", L + "/recalibrate/dimensions/preview"): E,
-    ("POST", L + "/recalibrate/dimensions"): E,
-    ("POST", L + "/recalibrate"): E,
-    ("POST", L + "/detect"): E,
-    ("POST", L + "/detect-depth"): E,
-    ("POST", L + "/images/{image_id}/openings"): E,
-    ("POST", L + "/images/{image_id}/autoplan"): E,
-    # KAN-95 : le plan recoupé sur plusieurs photos (combles, pièce droite), comme autoplan.
-    ("POST", L + "/attic-fusion"): E,
-    ("POST", L + "/photo-fusion"): E,
-    ("POST", L + "/views/{camera_id}/adopt"): E,
-    ("POST", L + "/views/{camera_id}/rotate"): E,
-    ("POST", L + "/views/auto"): E,
-    ("POST", L + "/brief/preview"): E,
-    ("POST", L + "/brief"): E,
-    ("POST", L + "/brief/zones"): E,
-    ("POST", L + "/layouts"): E,
-    ("POST", L + "/layouts/apply"): E,
-    ("POST", L + "/layouts/critique/preview"): E,
-    ("POST", L + "/layouts/critique"): E,
-    ("POST", L + "/layouts/revise"): E,
-    ("POST", L + "/layouts/render"): E,
-    ("POST", L + "/furniture/check"): E,
-    ("POST", L + "/furniture/{element_id}/check"): E,
-    ("POST", L + "/elements/{element_id}/check"): E,
-    ("POST", L + "/attic"): E,
-    ("POST", L + "/import-plan/preview"): E,
-    ("POST", L + "/import-plan/preview-image"): E,
-    ("POST", L + "/import-plan"): E,
-    ("POST", L + "/contextual/prompt"): E,
-    ("POST", L + "/contextual"): E,
-    ("GET", L + "/render/estimate"): V,
-    ("GET", L + "/cameras/architect"): V,
-    ("GET", L + "/cameras/section"): V,
-    ("POST", L + "/autopilot"): E,
-    ("POST", L + "/render/all"): E,
-    ("POST", L + "/render/views"): E,
-    ("POST", L + "/cameras/{camera_id}/render"): E,
-    ("POST", L + "/blender"): E,
-    ("POST", L + "/render"): E,
-    # Bail d'édition du plan (B2d, comptes seulement) : prendre, rendre, demander la main
-    ("POST", L + "/lease"): E,
-    ("DELETE", L + "/lease"): E,
-    ("POST", L + "/lease/request"): E,
-    # KAN-89 : rendus réalistes par le poste d'augus ; en plus du rôle, lancer exige un compte
-    # de OPENPLAN_RENDER_ACCOUNTS (403 sinon). KAN-99 : voir (liste, image) ne l'exige plus.
-    ("GET", P + "/realistic"): V,
-    ("GET", P + "/realistic/{request_id}/image"): V,
-    ("POST", L + "/realistic"): E,
-    # KAN-91 : rendre depuis la photo (D5), variante, couverture du projet, réactions ; même
-    # liste blanche en plus du rôle.
-    ("POST", L + "/realistic/from-photo"): E,
-    ("POST", P + "/realistic/{request_id}/variant"): E,
-    ("PUT", P + "/realistic/{request_id}/cover"): E,
-    ("DELETE", P + "/realistic/cover"): E,
-    # KAN-99 (3 nov.) : réagir, tout commentateur ou plus, hors liste blanche, à tout rendu
-    # fait du projet (le rôle seul suffit).
-    ("PUT", P + "/realistic/{request_id}/reactions/{key}"): C,
-    ("DELETE", P + "/realistic/{request_id}/reactions/{key}"): C,
-    # KAN-99 : la liste et l'image s'ouvrent à tout membre (lecteur compris), hors liste
-    # blanche ; l'étoile (« Favoris », commune au projet) à tout éditeur. Lancer, variante et
-    # couverture gardent la liste blanche et le lanceur.
-    ("PUT", P + "/realistic/{request_id}/favorite"): E,
-    ("DELETE", P + "/realistic/{request_id}/favorite"): E,
-    # KAN-101 : liens publics d'un rendu : créer, lister, révoquer, éditeur et plus (lecteur
-    # et commentateur 403, non-membre 404). Créer exige en plus un rendu fait de la personne
-    # et la liste blanche des rendus. Tout répond 404 tant que OPENPLAN_SHARE_LINKS est éteint.
-    ("POST", P + "/realistic/{request_id}/share-links"): E,
-    ("GET", P + "/share-links"): E,
-    ("DELETE", P + "/share-links/{link_id}"): E,
-}
-
-GLOBAL_ROUTES: dict[tuple[str, str], Policy] = {
-    ("GET", "/api/health"): "public",
-    # Sondes (KAN-44) : déclarée pour l'audit ; à l'exécution, HEAD est lu comme GET.
-    ("HEAD", "/api/health"): "public",
-    ("POST", "/api/auth/email/start"): "public",
-    ("POST", "/api/auth/email/verify"): "public",
-    ("GET", "/api/auth/login"): "public",
-    ("POST", "/api/auth/login/code"): "public",
-    ("POST", "/api/auth/login/verify"): "public",
-    ("POST", "/api/auth/logout"): "public",
-    # Mailer `fake` seulement (tests sur la boucle locale) : absente sinon.
-    ("GET", "/api/test/mail/last-code"): "public",
-    # Formulaire de contact du site (origine du site seulement, voir security.py)
-    ("POST", "/api/contact"): "public",
-    ("GET", "/api/auth/me"): "user",
-    ("PATCH", "/api/auth/me"): "user",
-    ("POST", "/api/auth/logout-all"): "user",
-    ("POST", "/api/auth/invitation/accept"): "user",
-    # KAN-104 : mot de passe, preuve récente, sessions ; 404 sans OPENPLAN_PASSWORD_LOGIN.
-    # Hors de SITE_MUTATIONS : origine de l'app seulement.
-    ("POST", "/api/auth/password/login"): "public",
-    ("POST", "/api/auth/login/password"): "public",
-    ("POST", "/api/auth/password/forgot"): "public",
-    ("POST", "/api/auth/password/reset"): "public",
-    # KAN-104 L2 : inscription (de plus fermée par OPENPLAN_SIGNUP=invite).
-    ("POST", "/api/auth/signup/start"): "public",
-    ("POST", "/api/auth/signup/verify"): "public",
-    ("PUT", "/api/auth/password"): "user",
-    ("POST", "/api/auth/reauth/start"): "user",
-    ("POST", "/api/auth/reauth/verify"): "user",
-    ("GET", "/api/auth/sessions"): "user",
-    ("DELETE", "/api/auth/sessions/{session_id}"): "user",
-    # KAN-55 : mes invitations nominatives (cloche) ; filtrées par l'adresse du compte.
-    ("GET", "/api/invitations"): "user",
-    ("POST", "/api/invitations/{invitation_id}/accept"): "user",
-    ("POST", "/api/invitations/{invitation_id}/decline"): "user",
-    ("POST", "/api/admin/users/{user_id}/sessions/revoke"): "admin",
-    # KAN-109 : back-office d'augus (audience du site, santé technique).
-    ("GET", "/api/admin/audience"): "admin",
-    ("GET", "/api/admin/health"): "admin",
-    ("GET", "/api/admin/usage"): "admin",  # KAN-109 L2 : indicateurs d'usage (agrégats)
-    # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
-    ("GET", "/api/projects"): "user",
-    ("POST", "/api/projects"): "user",
-    # KAN-119 : « Supprimer tous mes projets » ; le propriétaire de chacun, vu dans la route.
-    ("POST", "/api/projects/delete-all"): "user",
-    ("GET", "/api/auth/usage"): "user",  # KAN-12 : ma place disque
-    # KAN-52 : la cloche ne lit que les projets dont la personne est membre.
-    ("GET", "/api/notifications"): "user",
-    ("GET", "/api/notifications/count"): "user",
-    ("POST", "/api/notifications/read"): "user",
-    ("POST", "/api/notifications/read-all"): "user",
-    # Lecture de l'installation et du catalogue
-    ("GET", "/api/ai"): "user",
-    ("GET", "/api/models"): "user",
-    ("GET", "/api/device"): "user",
-    ("GET", "/api/blender"): "user",
-    ("GET", "/api/jobs/running"): "user",
-    ("GET", "/api/catalog"): "user",
-    ("GET", "/api/catalog/symbols"): "user",
-    ("GET", "/api/catalog/{asset_id}/preview"): "user",
-    ("GET", "/api/catalog/{asset_id}/model"): "user",
-    ("GET", "/api/web-models/depth"): "user",  # KAN-79 : modèle de profondeur du navigateur
-    ("POST", "/api/instruction/preview"): "user",
-    ("GET", "/api/home/settings"): "user",
-    # Réglages du serveur et bilan de l'installation
-    ("PUT", "/api/home/settings"): "admin",
-    ("GET", "/api/doctor"): "admin",
-    # Cookie de lecture de l'API exposée par jeton (note 16) : absent avec les comptes
-    ("POST", "/api/session"): "legacy",
-    ("DELETE", "/api/session"): "legacy",
-    # KAN-89 : ce que le cadre Rendus montre (autorisé ou non, poste en ligne, quota).
-    ("GET", "/api/realistic/status"): "user",
-    # KAN-89 : API du poste de rendu (jeton du poste, appels sortants du poste).
-    ("POST", "/api/worker/claim"): "worker",
-    ("GET", "/api/worker/jobs/{request_id}/files/{name}"): "worker",
-    ("POST", "/api/worker/jobs/{request_id}/result"): "worker",
-    ("POST", "/api/worker/jobs/{request_id}/fail"): "worker",
-    # KAN-96 : battement du poste pour sa prise (calcul et envoi).
-    ("POST", "/api/worker/jobs/{request_id}/beat"): "worker",
-    # KAN-97 : images de style d'une demande prise (sous bail).
-    ("GET", "/api/worker/jobs/{request_id}/style/{index}"): "worker",
-    # KAN-101 : page publique d'un rendu partagé et son image, SANS compte (le jeton du lien
-    # fait foi ; 404 si inconnu, révoqué, expiré ou réglage éteint ; débit limité).
-    ("GET", "/api/share/{token}"): "public",
-    ("GET", "/api/share/{token}/image"): "public",
-    # KAN-102 : les jetons du module navigateur, gérés depuis la section Compte (session).
-    ("GET", "/api/account/extension-tokens"): "user",
-    ("POST", "/api/account/extension-tokens"): "user",
-    ("DELETE", "/api/account/extension-tokens/{token_id}"): "user",
-    # KAN-102 : le module lui-même (son jeton seulement) ; rôle exigé dans EXTENSION_ROLES.
-    ("GET", "/api/extension/targets"): "extension",
-    ("POST", "/api/extension/projects/{project_id}/images"): "extension",
-}
-
-EXTENSION_ROLES: dict[tuple[str, str], Role] = {
-    # L'image n'entre que dans un projet où le compte du jeton est éditeur (404 non-membre,
-    # 403 lecteur ou commentateur), et la place du propriétaire est réservée comme pour un
-    # lien collé (KAN-98 L3). `targets` filtre elle-même : projets où il est éditeur.
-    ("POST", "/api/extension/projects/{project_id}/images"): Role.EDITOR,
-}
-EXTENSION_SPACE_KEY = ("POST", P + "/media/link")
-"""La réserve de place d'une image ajoutée par le module : celle d'un lien collé."""
-
-NOT_A_MEMBER = "projet inconnu : {}"
-NO_RULE = "route sans droits déclarés : refusée"
-
-
-def _route_key(request: Request) -> tuple[str, str]:
-    route = request.scope.get("route")
-    path = getattr(route, "path", None) or request.url.path
-    if not path.startswith(API_PREFIX + "/"):
-        # Les routeurs inclus gardent leur chemin sans le préfixe d'inclusion (`/api`).
-        path = API_PREFIX + path
-    method = "GET" if request.method == "HEAD" else request.method
-    return method, path
-
-
-def _project_id(request: Request) -> UUID:
-    raw = request.path_params.get("project_id", "")
-    try:
-        return UUID(str(raw))
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=NOT_A_MEMBER.format(raw)) from exc
-
-
-def check_member(
-    request: Request, accounts: AccountsBackend, project_id: UUID, role: Role
-) -> AuthUser:
-    """Membre du projet avec au moins `role` : sinon 404 (non-membre) ou 403 (rôle)."""
-    user = signed_in_user(request)
-    check_role(accounts, project_id, user, role)
-    return user
-
-
-def check_role(accounts: AccountsBackend, project_id: UUID, user: AuthUser, role: Role) -> None:
-    """Le contrôle de `check_member` pour un compte déjà connu (session ou jeton du module)."""
-    name = accounts.role_name(project_id, user.id)
-    if name is None:
-        raise HTTPException(status_code=404, detail=NOT_A_MEMBER.format(project_id))
-    if ROLE_BY_NAME[name] < role:
-        raise HTTPException(
-            status_code=403, detail=f"droits insuffisants : rôle « {role.name.lower()} » requis"
-        )
+__all__ = [
+    "API_PREFIX",
+    "EXTENSION_ROLES",
+    "EXTENSION_SPACE_KEY",
+    "GLOBAL_ROUTES",
+    "NOT_A_MEMBER",
+    "NO_RULE",
+    "PROJECT_ROUTES",
+    "ROLE_BY_NAME",
+    "L",
+    "P",
+    "Policy",
+    "ProjectMember",
+    "Role",
+    "check_member",
+    "check_role",
+    "forget_project",
+    "project_member",
+    "register_project",
+    "require_role",
+    "role_of",
+    "route_guard",
+    "visible_ids",
+    "visible_summaries",
+]
 
 
 def require_role(request: Request, project_id: UUID, role: Role) -> None:
@@ -407,73 +95,11 @@ class ProjectMember:
     def __call__(self, request: Request) -> None:
         accounts = accounts_of(request)
         if accounts is not None:
-            check_member(request, accounts, _project_id(request), self.role)
+            check_member(request, accounts, project_id_of(request), self.role)
 
 
 def project_member(role: Role) -> ProjectMember:
     return ProjectMember(role)
-
-
-def route_guard(request: Request) -> None:
-    """Garde de toutes les routes `/api` (voir le haut du module)."""
-    accounts = accounts_of(request)
-    if accounts is None:
-        return
-    key = _route_key(request)
-    role = PROJECT_ROUTES.get(key)
-    if role is not None:
-        user = check_member(request, accounts, _project_id(request), role)
-        # B2d : une écriture d'une personne sur un plan prend ou prolonge son bail, ou 409.
-        from openplan.api.accounts.lease import guard_plan_write
-        from openplan.api.accounts.quota import guard_space
-
-        guard_plan_write(request, key, user)
-        # KAN-12 : un envoi ou un calcul qui dépasserait la place du propriétaire : 413.
-        guard_space(request, accounts, key, user)
-        _mark_active(request, user.id)
-        return
-    policy = GLOBAL_ROUTES.get(key)
-    if policy == "public":
-        return
-    if policy == "worker":
-        from openplan.api.worker_auth import require_worker
-
-        require_worker(request)
-        return
-    if policy == "extension":
-        _guard_extension(request, accounts, key)
-        return
-    if policy is None or policy == "legacy":
-        raise HTTPException(status_code=403, detail=NO_RULE)
-    user = signed_in_user(request)
-    if policy == "admin" and not user.is_admin:
-        raise HTTPException(status_code=403, detail="réservé à un administrateur")
-    _mark_active(request, user.id)
-
-
-def _guard_extension(request: Request, accounts: AccountsBackend, key: tuple[str, str]) -> None:
-    """KAN-102 : le jeton du module (401 sinon, jamais la session), puis, pour l'ajout d'une
-    image, le rôle sur le projet de la route et la place de son propriétaire (413)."""
-    from openplan.api.accounts.extension import require_extension
-
-    user = require_extension(request)
-    role = EXTENSION_ROLES.get(key)
-    if role is not None:
-        check_role(accounts, _project_id(request), user, role)
-        from openplan.api.accounts.quota import guard_space
-
-        guard_space(request, accounts, EXTENSION_SPACE_KEY, user)
-    _mark_active(request, user.id)
-
-
-def _mark_active(request: Request, user_id: UUID) -> None:
-    """KAN-109 L2 : la personne a utilisé l'application aujourd'hui (au plus un « active » par
-    jour et par compte ; cache en mémoire)."""
-    from openplan.api.accounts.events import EventLog
-
-    events = getattr(request.app.state, "events", None)
-    if isinstance(events, EventLog):
-        events.active(user_id)
 
 
 # --- liste et création des projets --------------------------------------------------
