@@ -75,18 +75,33 @@ function ViewsChart({ days, period }: { days: AudienceDay[]; period: Period }) {
 export function Admin({ onHome }: { onHome: () => void }) {
   const account = useAccount();
   const [period, setPeriod] = useState<Period>(30);
-  const [audience, setAudience] = useState<Audience | null>(null);
+  // La réponse de /api/admin/audience, rangée avec sa période : tant qu'elle ne répond pas
+  // pour la période choisie, la carte dit « Chargement… » (jamais vide) ; en échec, une alerte.
+  const [answer, setAnswer] = useState<{
+    period: Period;
+    audience: Audience | null;
+  } | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const allowed = account?.me.is_admin ?? false;
+  const current = answer?.period === period ? answer : null;
+  const loading = current === null;
+  const audience = current?.audience ?? null;
+  const failed = current !== null && current.audience === null;
 
   useEffect(() => {
     if (!allowed) return;
-    adminApi
-      .audience(period)
-      .then(setAudience, (e: unknown) =>
-        setError(e instanceof Error ? e.message : String(e)),
-      );
+    let live = true;
+    adminApi.audience(period).then(
+      (a) => {
+        if (live) setAnswer({ period, audience: a });
+      },
+      () => {
+        if (live) setAnswer({ period, audience: null });
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [allowed, period]);
   useEffect(() => {
     if (!allowed) return;
@@ -139,12 +154,15 @@ export function Admin({ onHome }: { onHome: () => void }) {
               Vues, pages et sources du 28 oct. au 2 nov. comptées en double
               (bogue de rotation corrigé le 2 nov.) ; visiteurs uniques justes.
             </p>
-            {error && (
-              <p className="admin-empty" role="alert">
-                {error}
+            {loading ? (
+              <p className="admin-empty" role="status">
+                Chargement…
               </p>
-            )}
-            {audience && !audience.connected ? (
+            ) : failed ? (
+              <p className="admin-empty" role="alert">
+                Audience indisponible.
+              </p>
+            ) : audience && !audience.connected ? (
               <p className="admin-empty">Journal du site non branché.</p>
             ) : audience && days.length === 0 ? (
               <p className="admin-empty">Aucune donnée pour l'instant.</p>

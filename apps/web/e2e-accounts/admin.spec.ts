@@ -118,6 +118,25 @@ test("KAN-109 : l'administrateur voit l'audience et la santé ; un membre, non",
   await expect(health).toContainText("Version déployée");
   await expect(health).toContainText("Poste de rendu");
   await shot(admin, "kan109-back-office");
+  // Petit défaut du 4 nov. : tant que /api/admin/audience n'a pas répondu, la carte dit
+  // « Chargement… » (plus jamais vide) ; en échec, une alerte.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await admin.route(
+    (url) =>
+      url.pathname === "/api/admin/audience" &&
+      url.searchParams.get("days") === "7",
+    async (route) => {
+      await held;
+      await route.fulfill({ status: 500, json: { detail: "panne simulée" } });
+    },
+  );
+  await audience.getByRole("button", { name: "7 jours" }).click();
+  await expect(audience.getByRole("status")).toHaveText("Chargement…");
+  release();
+  await expect(audience.getByRole("alert")).toHaveText("Audience indisponible.");
+  await expect(audience.getByRole("status")).toHaveCount(0);
+  await admin.unrouteAll({ behavior: "ignoreErrors" });
   // KAN-110 : ses Réglages de l'accueil, avec « Back-office », s'ouvrent entiers (même
   // session : l'adresse de l'administrateur a déjà épuisé ses 3 codes par 15 min).
   await gotoApp(admin, "/");
