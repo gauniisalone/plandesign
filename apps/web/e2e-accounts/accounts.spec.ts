@@ -335,7 +335,7 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
     "Elle reçoit un e-mail ; seule cette adresse pourra entrer.",
   );
   await expect(bySend).toContainText(
-    "Toute personne qui a ce lien peut rejoindre le projet tant qu'il est actif.",
+    "La première personne qui ouvre ce lien rejoint le projet ; il ne sert qu'une fois.",
   );
   await expect(person1.locator("button.primary")).toHaveText(["Inviter"]);
   await expect(bySend.locator("button.primary")).toHaveText([
@@ -352,6 +352,10 @@ test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué re
   const link = await field.inputValue();
   expect(link).toMatch(/\/#\/invitation\/[A-Za-z0-9_-]{43}$/);
   await expect(bySend.getByRole("button", { name: "Copier" })).toBeVisible();
+  await expect(bySend).toContainText(
+    "Ce lien n'est montré qu'une fois : copiez-le et envoyez-le vous-même.",
+  );
+  await expect(bySend).not.toContainText("sert à une seule personne");
   await shot(owner, "6-partager-lien");
   // Un second lien, désactivé aussitôt par « Désactiver » à côté du champ (on attend que le
   // champ montre le nouveau lien).

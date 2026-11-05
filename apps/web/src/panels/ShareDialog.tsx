@@ -228,8 +228,8 @@ export function ShareDialog({
         <section className="share-section" aria-labelledby={linkTitle}>
           <h3 id={linkTitle}>Lien d'invitation</h3>
           <p className="share-who">
-            Toute personne qui a ce lien peut rejoindre le projet tant qu'il est
-            actif.
+            La première personne qui ouvre ce lien rejoint le projet ; il ne sert
+            qu'une fois.
           </p>
           <div className="share-new" role="group" aria-label="Nouveau lien">
             <label>
@@ -291,8 +291,8 @@ export function ShareDialog({
                 </button>
               </span>
               <p className="muted">
-                Ce lien n'est montré qu'une fois et sert à une seule personne :
-                envoyez-le-lui vous-même.
+                Ce lien n'est montré qu'une fois : copiez-le et envoyez-le
+                vous-même.
               </p>
             </div>
           )}
