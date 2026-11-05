@@ -748,9 +748,9 @@ export function useProject(projectId: string) {
       void (async () => {
         const failed: string[] = [];
         // Réseau lent (P37) : une photo entre dans le node dès son envoi, le projet qui la
-        // connaît n'est posé qu'après (derived, validation). Une photo du tableau encore
-        // inconnue n'est plus passée sans analyse : le projet est relu d'abord ; celle qui
-        // reste inconnue n'est pas prête (« non analysée »).
+        // connaît n'est posé qu'après (derived, validation). Une photo de l'espace de
+        // travail encore inconnue n'est plus passée sans analyse : le projet est relu
+        // d'abord ; celle qui reste inconnue n'est pas prête (« non analysée »).
         let project = shown;
         if (photos.some((id) => !project.images[id])) {
           show(n > 1 ? `Analyse de la photo 1 sur ${n}…` : "Analyse de la photo…", null);
