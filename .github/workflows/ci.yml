@@ -22,12 +22,31 @@ permissions:
   contents: read
 
 jobs:
-  python:
-    name: python (import-linter, ruff, mypy, pytest)
+  # KAN-112 (5 nov. 2026) : l'ancien job « python » (≈ 15 min, dont pytest ≈ 14,5) est découpé en
+  # 2 parts parallèles de pytest (le lint, ≈ 1 min, dans la part 1 : pas de job de plus à
+  # facturer), puis le job « python », qui garde son nom (check lu par le robot de MEP et
+  # la protection de branche éventuelle) : il fusionne la couverture et ne réussit que si les
+  # 2 parts, lint compris, ont réussi.
+  pytest:
+    name: pytest ${{ matrix.part }}
     runs-on: ubuntu-24.04
-    # 29 oct. 2026 : 15 -> 25 min. pytest (1584 tests) a atteint 100 % puis le job a été coupé à
-    # 15 min pendant l'écriture de coverage.xml (ci de 70774b2) ; à découper en 2 jobs (KAN-112).
-    timeout-minutes: 25
+    # Une part dure ≈ 8 min (mesure du 5 nov.) ; marge pour la croissance des tests.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Part 1 : liste explicite de dossiers. Part 2 : TOUT le reste de tests/ (--ignore de la
+          # part 1), pour qu'un nouveau dossier ou fichier de tests ne soit jamais oublié.
+          # Mesure locale du 5 nov. (72b815a, couverture comprise) : integration 191 tests 169 s,
+          # accounts 334 tests 231 s, geometry 52 tests 11 s ; unit (≈ 1 050 tests) déduit du
+          # pytest de ci (≈ 14,5 min) : ≈ 7 min. Part 1 ≈ 7 min + lint ≈ 1 min, part 2 ≈ 7 min.
+          - { part: "1/2 + lint", n: 1, lint: true, args: "tests/unit tests/geometry" }
+          - { part: 2/2, n: 2, lint: false, args: "tests --ignore=tests/unit --ignore=tests/geometry" }
+    env:
+      # Un fichier de données de couverture par part, sans point initial (upload-artifact écarte
+      # les fichiers cachés). Chemins relatifs : relative_files = true dans pyproject.toml.
+      COVERAGE_FILE: coverage-part${{ matrix.n }}.data
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0   # pas de tag flottant v10 chez setup-uv
@@ -35,13 +54,61 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: uv sync --extra api --extra vision --extra ai --extra monitoring --extra comptes
-      - run: uv run lint-imports
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy
+      - if: matrix.lint
+        run: uv run lint-imports
+      - if: matrix.lint
+        run: uv run ruff check .
+      - if: matrix.lint
+        run: uv run ruff format --check .
+      - if: matrix.lint
+        run: uv run mypy
       # Sans les tests marqués `slow` (modèles, rendu) ; ceux marqués `blender` s'ignorent d'eux-mêmes
-      # quand le binaire est absent. KAN-107 : couverture en XML pour SonarQube Cloud.
-      - run: uv run pytest -m "not slow" --cov-report=xml:coverage.xml
+      # quand le binaire est absent. Données brutes de couverture seulement : le XML est écrit
+      # après fusion, dans le job « python ».
+      - run: uv run pytest ${{ matrix.args }} -m "not slow" --cov-report=
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.n }}
+          path: coverage-part${{ matrix.n }}.data
+          retention-days: 1
+          if-no-files-found: error
+
+  python:
+    name: python (import-linter, ruff, mypy, pytest)
+    needs: [pytest]
+    # !cancelled() : si une part échoue, ce job ÉCHOUE (au lieu d'être « skipped », qu'une
+    # protection de branche compterait comme réussi) ; un run annulé (cancel-in-progress) ne le
+    # lance pas, pour ne pas facturer une minute de plus.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Les 2 parts de pytest (lint compris) ont réussi
+        env:
+          TESTS: ${{ needs.pytest.result }}
+        run: |
+          echo "pytest (2 parts, lint compris) : $TESTS"
+          [ "$TESTS" = success ]
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0   # pas de tag flottant v10 chez setup-uv
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      # coverage seul suffit (pytest-cov, groupe dev) : le XML relit les sources de openplan/ du
+      # checkout, pas le paquet installé.
+      - run: uv sync --only-group dev
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+      # KAN-107 : couverture fusionnée en XML, chemins relatifs, pour SonarQube Cloud (sonar.yml
+      # reprend l'artefact coverage-python, même nom et même chemin qu'avant).
+      - run: uv run --no-sync coverage combine coverage-part1.data coverage-part2.data
+      - run: uv run --no-sync coverage xml -o coverage.xml
+      - name: Couverture dans le résumé du run
+        run: |
+          total=$(uv run --no-sync coverage report --format=total)
+          echo "Couverture python (2 parts fusionnées) : ${total} %" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: coverage-python
