@@ -255,7 +255,10 @@ def test_the_description_names_no_other_address(world: dict[str, object]) -> Non
     lines: list[str] = []
     describe(_plan(world, transfer_to=BRUNO), lines.append)
     text = "\n".join(lines)
-    assert "simulation" in text and "rien n'est écrit" in text and LEA in text
+    assert "simulation" in text and "rien n'est écrit" in text
+    # Masquée comme en --apply (petit défaut du 4 nov.) : jamais l'adresse en clair.
+    assert "Effacement de l***@example.org : simulation (--dry-run)" in text
+    assert LEA not in text
     assert "Ancien membre" in text and "Possible tel quel." in text
     assert not any(other in text for other in OTHERS)
     assert "« Grenier »" in text and "« Cuisine »" in text and "Atelier" in text
@@ -278,6 +281,7 @@ def test_the_command(
     assert "Confirmation manquée : rien n'est écrit." in out
     assert "sqlite" not in out and "postgres" not in out  # jamais l'URL de la base
     assert CHLOE not in out and ADMIN not in out
+    assert LEA not in out and "l***@example.org" in out  # masquée, dry-run compris
     with pytest.raises(SystemExit):
         main(["accounts", "forget", LEA, "--transfer-to", BRUNO, "--delete-shared"])
     with pytest.raises(SystemExit):

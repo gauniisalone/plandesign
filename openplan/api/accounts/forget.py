@@ -6,9 +6,9 @@ sans rien écrire, ni dans la base ni sur le disque. L'effacement (`--apply`, d�
 agit dans UNE transaction, dans cet ordre : sessions révoquées d'abord, demandes de rendu en
 attente annulées (`cancel_pending_renders`), puis le reste, et la ligne `users` en dernier.
 Les dossiers des projets supprimés partent après la validation de la transaction. Un second
-`--apply` sur la même adresse ne trouve « rien à faire ». La sortie de `--apply` masque
-l'adresse (`a***@example.org`) ; le journal ne garde que les 8 premiers caractères de
-l'identifiant du compte, qui ne se relient plus à personne.
+`--apply` sur la même adresse ne trouve « rien à faire ». La sortie (`--dry-run` comme
+`--apply`) masque l'adresse (`a***@example.org`) ; le journal ne garde que les 8 premiers
+caractères de l'identifiant du compte, qui ne se relient plus à personne.
 
 Ce qui partirait (décisions du PO, 30 oct. 2026) :
 - le compte, ses sessions, ses codes de connexion (par adresse : sans clé étrangère) ;
@@ -326,12 +326,12 @@ def _describe_projects(plan: ForgetPlan, say: Callable[[str], None]) -> None:
 
 
 def describe(plan: ForgetPlan, say: Callable[[str], None] = print, *, apply: bool = False) -> None:
-    """Le plan, lisible ; aucune autre adresse que celle tapée. `apply` : avant l'effacement,
-    l'adresse est masquée."""
+    """Le plan, lisible ; aucune autre adresse que celle tapée, et masquée (`a***@example.org`)
+    en `--dry-run` comme en `--apply`."""
     if apply:
         say(f"Effacement de {mask_address(plan.email)} (--apply) : ce qui va être fait.")
     else:
-        say(f"Effacement de {plan.email} : simulation (--dry-run), rien n'est écrit.")
+        say(f"Effacement de {mask_address(plan.email)} : simulation (--dry-run), rien n'est écrit.")
     if plan.user_id is None:
         say("  aucun compte pour cette adresse.")
     else:
