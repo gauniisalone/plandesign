@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoApp, reloadApp } from "../e2e/app-ready";
 import { goSpace } from "../e2e/helpers";
 import {
@@ -8,21 +8,13 @@ import {
   SEG_ID,
   smallPhoto,
 } from "../e2e/photo-measure-mock";
+import { person, test } from "./people";
 
 /** KAN-66 MH7 (lecteur) : un lecteur voit la mesure de référence posée sur une photo (segment,
  *  cote, échelle) en lecture seule : ni « Mesurer sur la photo », ni « Modifier » ni
  *  « Supprimer », aucune écriture. Le rôle « lecteur » est simulé côté navigateur (même
  *  procédé que KAN-50) ; l'API de la mesure est simulée (contrat du 20 oct.). Adresse et
  *  X-Forwarded-For propres à ce test. */
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");

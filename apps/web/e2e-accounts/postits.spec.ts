@@ -1,5 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person as openPerson, test } from "./people";
 
 /** KAN-65, avec les comptes : la couleur d'un post-it changée par un éditeur arrive en direct
  *  chez le propriétaire (sans recharger) ; le journal d'activité dit « a changé la couleur
@@ -11,14 +12,8 @@ async function shot(page: Page, name: string): Promise<void> {
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
 }
 
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1280, height: 800 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
+const person = (browser: Browser, ip: string) =>
+  openPerson(browser, ip, { viewport: { width: 1280, height: 800 } });
 
 /** Connexion par code, sur l'accueil ou sur une invitation. */
 async function signIn(page: Page, email: string, path = "/"): Promise<void> {

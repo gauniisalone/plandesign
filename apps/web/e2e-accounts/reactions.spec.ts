@@ -1,20 +1,12 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoApp, reloadApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-78, à plusieurs : Gilles (propriétaire) réagit 😍 à la note de Fanny (éditrice) ; Fanny
  *  voit la pastille en direct (WebSocket, sans recharger) et sa cloche la prévient (« Gilles a
  *  réagi 😍 à « … » ») ; Gilles n'est pas notifié de sa propre réaction ; Kim, lectrice, voit la
  *  pastille sans pouvoir réagir (aucun bouton « Réagir »). Comptes, adresses et X-Forwarded-For
  *  propres à ce test. Aucune vérification de couleur. */
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 async function signInHere(page: Page, email: string, name: string) {
   await page.getByLabel("Adresse e-mail").fill(email);

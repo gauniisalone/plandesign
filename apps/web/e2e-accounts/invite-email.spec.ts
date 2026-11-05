@@ -1,5 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-55 : inviter par adresse e-mail. Deux personnes par test, chacune avec sa propre
  *  adresse (domaine réservé example.test) et sa propre X-Forwarded-For. Aucun e-mail réel :
@@ -8,15 +9,6 @@ import { gotoApp } from "../e2e/app-ready";
 async function shot(page: Page, name: string): Promise<void> {
   const dir = process.env.E2E_CAPTURE_DIR;
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
-}
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
 }
 
 async function signIn(page: Page, email: string, name?: string): Promise<void> {

@@ -1,11 +1,6 @@
-import {
-  expect,
-  test,
-  type Browser,
-  type Locator,
-  type Page,
-} from "@playwright/test";
+import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-50 : en lecture seule, l'espace de travail n'offre aucun ajout. Ni bouton « Importer »
  *  dans les cadres Photos et Inspirations, ni envoi par glisser-déposer, ni note ou lien
@@ -22,15 +17,6 @@ const NOTICE = "Lecture seule : rien n'est ajouté à ce projet.";
 async function shot(page: Page, name: string): Promise<void> {
   const dir = process.env.E2E_CAPTURE_DIR;
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
-}
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
 }
 
 async function signIn(page: Page, email: string): Promise<void> {

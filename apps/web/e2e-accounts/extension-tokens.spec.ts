@@ -1,25 +1,11 @@
-import {
-  expect,
-  request as apiRequest,
-  test,
-  type Browser,
-  type Page,
-} from "@playwright/test";
+import { expect, request as apiRequest, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
 import { expectHomeSettingsWhole } from "./settings-check";
+import { person, test } from "./people";
 
 /** KAN-102 : les jetons du module navigateur « Ajouter à PlanDesign », dans Réglages › Compte :
  *  créer (montré une fois), lister, révoquer. Le jeton ouvre les routes du module et rien
  *  d'autre ; la session de la page n'ouvre pas les routes du module. Une IP par test. */
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");

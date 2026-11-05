@@ -3,12 +3,12 @@ import path from "node:path";
 import {
   expect,
   request as playwrightRequest,
-  test,
   type Browser,
   type BrowserContext,
   type Page,
 } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person as openPerson, test } from "./people";
 import { SHARE_ACCOUNT } from "./share-account";
 
 /** KAN-101 : partager UN rendu réaliste par un lien public. L'éditeur (compte autorisé aux
@@ -32,6 +32,7 @@ let editorState: State | undefined;
  *  route.fetch encore en vol tombe hors de tout test (« Test ended »). */
 const routed: Page[] = [];
 
+// Avant la fermeture des contextes par la fixture de ./people (qui vient après afterEach).
 test.afterEach(async () => {
   for (const page of routed.splice(0)) {
     if (!page.isClosed()) await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -43,13 +44,7 @@ async function person(
   ip: string,
   storageState?: State,
 ): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-    storageState,
-  });
-  const page = await context.newPage();
+  const page = await openPerson(browser, ip, { storageState });
   // Comme la production (ni Blender ni GPU) : le cadre Rendus montre les rendus réalistes du
   // poste. Le serveur des e2e-accounts, lui, peut trouver Blender sur la machine.
   await page.route("**/api/health", async (route) => {

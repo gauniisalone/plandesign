@@ -1,5 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-119 : « Supprimer tous mes projets » sur le vrai serveur à comptes. Le propriétaire
  *  vide sa galerie ; une invitée ne supprime que ses projets, le projet partagé avec elle reste
@@ -8,15 +9,6 @@ import { gotoApp } from "../e2e/app-ready";
  *  passage (la route est limitée à 5 demandes par heure et par compte). */
 
 const RUN = Date.now().toString(36);
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");

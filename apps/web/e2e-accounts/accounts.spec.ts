@@ -1,11 +1,6 @@
-import {
-  expect,
-  test,
-  type Browser,
-  type Page,
-  type WebSocketRoute,
-} from "@playwright/test";
+import { expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { gotoApp, reloadApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** B1d-a : comptes actifs. Sans session, la page de connexion et rien d'autre ; connexion en
  *  deux temps (adresse, puis code) ; galerie ; « Me déconnecter » ; arrivée par /nouveau
@@ -300,17 +295,6 @@ test("lecteur : ni outils ni « Générer » (le propriétaire, si)", async ({
   ).toBeHidden();
   await shot(page, "5-lecteur-sans-outils");
 });
-
-/** Un navigateur à part, vu par l'API depuis sa propre adresse (plage de documentation,
- *  transmise par le mandataire de Vite) : chacun a sa limite de tentatives de connexion. */
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 test("B1e : lien d'invitation, invité sans compte en lecteur, lien révoqué refusé", async ({
   browser,

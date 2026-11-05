@@ -1,11 +1,6 @@
-import {
-  expect,
-  test,
-  type Browser,
-  type Page,
-  type WebSocketRoute,
-} from "@playwright/test";
+import { expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-56 : zoomer ou déplacer la vue ne relit ni les médias ni les rendus contextualisés
  *  de l'espace de travail ; un média ajouté (chez moi ou chez un autre membre) ou un rendu
@@ -22,15 +17,6 @@ const PNG = Buffer.from(
 async function shot(page: Page, name: string): Promise<void> {
   const dir = process.env.E2E_CAPTURE_DIR;
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
-}
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
 }
 
 /** Connexion par code, sur l'accueil ou sur une invitation déjà ouverte. */

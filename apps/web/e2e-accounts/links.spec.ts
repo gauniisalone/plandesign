@@ -1,5 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person as openPerson, test } from "./people";
 
 /** KAN-91, avec les comptes : un lien coupé par une éditrice disparaît en direct chez le
  *  propriétaire (sans recharger), et le propriétaire peut couper un lien qu'elle a retendu
@@ -7,14 +8,8 @@ import { gotoApp } from "../e2e/app-ready";
  *  ni « Couper ». Chaque personne a sa propre IP ; les adresses sont uniques à chaque exécution
  *  (le test se rejoue dans une même base). */
 
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1280, height: 800 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
+const person = (browser: Browser, ip: string) =>
+  openPerson(browser, ip, { viewport: { width: 1280, height: 800 } });
 
 async function signIn(page: Page, email: string, path = "/"): Promise<void> {
   await gotoApp(page, path);

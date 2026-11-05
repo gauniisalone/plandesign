@@ -1,11 +1,6 @@
-import {
-  expect,
-  test,
-  type Browser,
-  type Page,
-  type WebSocketRoute,
-} from "@playwright/test";
+import { expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-48 : le bandeau « Reconnexion… » apparaît puis s'en va sans remonter l'espace de
  *  travail. Un repère posé sur son élément survit, les lectures faites au montage (médias,
@@ -17,15 +12,6 @@ import { gotoApp } from "../e2e/app-ready";
 async function shot(page: Page, name: string): Promise<void> {
   const dir = process.env.E2E_CAPTURE_DIR;
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
-}
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
 }
 
 async function signIn(page: Page, email: string): Promise<void> {

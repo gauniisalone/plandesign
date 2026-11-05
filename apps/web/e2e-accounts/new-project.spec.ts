@@ -1,18 +1,10 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoApp } from "../e2e/app-ready";
+import { person, test } from "./people";
 
 /** KAN-80 : juste après la connexion, un seul clic sur « Nouveau projet » crée le projet et
  *  ouvre son espace de travail (il fallait parfois cliquer deux fois : la page se rechargeait
  *  d'elle-même et le premier clic se perdait). */
-
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1400, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
 
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");

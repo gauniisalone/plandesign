@@ -1,8 +1,9 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { gotoApp, reloadApp } from "../e2e/app-ready";
 import { expectHomeSettingsWhole } from "./settings-check";
+import { person as openPerson, test } from "./people";
 
 /** KAN-109 L1 : le back-office d'augus. L'administrateur voit l'audience du site, tirée d'un
  *  journal de test au format de Caddy (IP déjà tronquée, adresses de documentation), et la
@@ -15,14 +16,8 @@ async function shot(page: Page, name: string): Promise<void> {
   if (dir) await page.screenshot({ path: `${dir}/${name}.png` });
 }
 
-async function person(browser: Browser, ip: string): Promise<Page> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    viewport: { width: 1280, height: 900 },
-    extraHTTPHeaders: { "X-Forwarded-For": ip },
-  });
-  return context.newPage();
-}
+const person = (browser: Browser, ip: string) =>
+  openPerson(browser, ip, { viewport: { width: 1280, height: 900 } });
 
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");
