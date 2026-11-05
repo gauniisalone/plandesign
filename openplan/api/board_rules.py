@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from openplan.pipeline import board as b
 from openplan.pipeline import board_links as bl
+from openplan.pipeline.style_words import VOCABULARY, key_of
 from openplan.scene.store import ProjectStore
 from openplan.schemas.board import Board
 from openplan.schemas.scene import Project
@@ -124,6 +125,20 @@ def style_references(
             if queue and len(out) < limit:
                 out.append(queue.pop(0))
     return out
+
+
+def style_ignored(project: Project, store: ProjectStore, level_id: UUID) -> list[str]:
+    """KAN-130 : les mots du vocabulaire de style désactivés sur au moins une image des cartes
+    Inspirations reliées à la carte Rendus de ce niveau (C1), dans l'ordre du vocabulaire ; les
+    autres étiquettes (`m:…`, mot inconnu) sont ignorées."""
+    board = board_now(project, store)
+    first = str(next(iter(project.levels))) if project.levels else None
+    card = bl.renders_card(board, level_id, first)
+    if card is None:
+        return []
+    inputs = bl.generation_inputs(board, card.id)
+    off = {key_of(tag) for i in inputs.inspirations for tag in i.ignored_tags}
+    return [w.key for w in VOCABULARY if w.key in off]
 
 
 def render_inputs(

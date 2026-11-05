@@ -35,6 +35,7 @@ from openplan.pipeline.derived import compute_derived
 from openplan.schemas.common import Point2, Source
 from openplan.schemas.derived import DerivedLevel, DerivedRoom, DerivedStairs, DerivedWall
 from openplan.schemas.elements import (
+    Camera,
     FloorZone,
     Furniture,
     Opening,
@@ -50,6 +51,10 @@ from openplan.schemas.scene import Level, Project
 
 PX_PER_M = 100.0
 MARGIN_PX = 60.0
+FOV_LENGTH_M = 1.5
+FOV_DEFAULT_HALF_ANGLE = math.pi / 5
+"""KAN-130 : le cône d'une caméra de photo, comme dans le plan (PlanCanvas) : demi-angle
+depuis la focale et la largeur de la photo (sinon 36°), sur 1,5 m."""
 UNCERTAIN = frozenset({Source.ESTIMATED, Source.INFERRED, Source.GENERATED})
 
 _STYLE = """
@@ -93,6 +98,9 @@ _STYLE = """
 .timber-post { fill: #7a5230; stroke: #4a3019; stroke-width: 1; }
 .timber-beam { fill: none; stroke: #7a5230; stroke-width: 1.2; stroke-dasharray: 8 3 2 3; }
 .timber-label { font: 10px sans-serif; fill: #4a3019; text-anchor: middle; }
+.camera-cone { fill: #2a6fb0; fill-opacity: 0.2; stroke: #2a6fb0; stroke-width: 2;
+  stroke-dasharray: 6 4; }
+.camera-dot { fill: #2a6fb0; stroke: #ffffff; stroke-width: 2; }
 """
 _DARK_STYLE = """
 .wall { fill: #c9ccd6; stroke: #e6e8ef; }
@@ -107,6 +115,8 @@ _DARK_STYLE = """
 .dim { fill: #ff8a8a; }
 .dim.uncertain { fill: #e0c060; }
 .legend { fill: #9aa0ad; }
+.camera-cone { fill: #7fb5ea; stroke: #7fb5ea; }
+.camera-dot { fill: #7fb5ea; stroke: #1f2028; }
 .roof-label { fill: #e0a860; }
 .furniture-outline { fill: #2c2e38; stroke: #a3a7b3; }
 .furniture-symbol { stroke: #a3a7b3; }
@@ -250,7 +260,51 @@ def is_oblique(normal: Point2) -> bool:
     return min(abs(normal.x), abs(normal.y)) > math.sin(math.radians(0.1))
 
 
-def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> str:
+def camera_cone(project: Project, level: Level, camera_id: UUID) -> list[Point2] | None:
+    """KAN-130 : le cône (sommet, bord gauche, bord droit) de la caméra `camera_id` du niveau,
+    dans le plan ; None si ce n'est pas une caméra de ce niveau."""
+    camera = level.elements.get(camera_id)
+    if not isinstance(camera, Camera):
+        return None
+    image = project.images.get(camera.image_id) if camera.image_id else None
+    width = image.width_px if image is not None else None
+    half = (
+        math.atan(width / (2 * camera.focal_px))
+        if camera.focal_px and width
+        else FOV_DEFAULT_HALF_ANGLE
+    )
+    x, y = camera.position.x, camera.position.y
+
+    def edge(angle: float) -> Point2:
+        return Point2(x=x + FOV_LENGTH_M * math.cos(angle), y=y + FOV_LENGTH_M * math.sin(angle))
+
+    return [Point2(x=x, y=y), edge(camera.yaw - half), edge(camera.yaw + half)]
+
+
+def _cone_svg(
+    project: Project,
+    level: Level,
+    camera_id: UUID | None,
+    pts: Callable[[list[Point2]], str],
+    sx: Callable[[float], float],
+    sy: Callable[[float], float],
+) -> list[str]:
+    """KAN-130 : le cône de `camera_id` et son sommet ; rien sans caméra de ce niveau."""
+    cone = camera_cone(project, level, camera_id) if camera_id is not None else None
+    if cone is None:
+        return []
+    tip = cone[0]
+    return [
+        f'<polygon class="camera-cone" points="{pts(cone)}"/>',
+        f'<circle class="camera-dot" cx="{sx(tip.x):.1f}" cy="{sy(tip.y):.1f}" r="9"/>',
+    ]
+
+
+def render_svg(
+    project: Project, level_id: UUID, theme: SvgTheme = "light", camera_id: UUID | None = None
+) -> str:
+    # KAN-130 : avec `camera_id`, le cône de cette caméra par-dessus (survol d'une photo dans
+    # l'espace de travail).
     level = project.levels.get(level_id)
     if level is None:
         msg = f"niveau inconnu : {level_id}"
@@ -352,6 +406,7 @@ def render_svg(project: Project, level_id: UUID, theme: SvgTheme = "light") -> s
     )
     out.extend(
         [
+            *_cone_svg(project, level, camera_id, pts, sx, sy),
             f'<text class="legend" x="{MARGIN_PX / 4:.0f}" y="{height - 8:.0f}">'
             "Trait plein : mesuré ou saisi · pointillé et ≈ : estimé, inféré ou généré · "
             "reconstruction estimée, pas un relevé certifié</text>",

@@ -450,6 +450,9 @@ export interface RealisticRequest {
   /** KAN-97 : `words` mots lus ; `unread` noms des images non lues par le poste ;
    * `no_style` noms des images lues sans style net retenu. */
   guided_kind?: "words" | "unread" | "no_style" | null;
+  /** KAN-130 : avec `words`, les clés du vocabulaire de ces mots, dans le même ordre (un clic
+   *  sur un mot le désactive) ; absent sinon. */
+  guided_keys?: string[] | null;
   /** KAN-99 : la personne connectée l'a lancé (variante, couverture). Les rendus d'un projet
    *  sont montrés à tous ses membres. Absent (serveur d'avant) : le sien. */
   mine?: boolean;
@@ -855,8 +858,14 @@ export const api = {
       `/projects/${pid}/levels/${lid}/calibrate?dry_run=${dryRun ? "true" : "false"}`,
       { method: "POST" },
     ),
-  exportSvgUrl: (pid: string, lid: string, theme: "light" | "dark" = "light") =>
-    `${BASE}/projects/${pid}/exports/svg?level_id=${lid}${theme === "dark" ? "&theme=dark" : ""}`,
+  /** KAN-130 : `cameraId`, le cône de cette caméra par-dessus (survol de sa photo). */
+  exportSvgUrl: (
+    pid: string,
+    lid: string,
+    theme: "light" | "dark" = "light",
+    cameraId?: string,
+  ) =>
+    `${BASE}/projects/${pid}/exports/svg?level_id=${lid}${theme === "dark" ? "&theme=dark" : ""}${cameraId ? `&camera_id=${cameraId}` : ""}`,
   exportPdfUrl: (pid: string, lid: string) =>
     `${BASE}/projects/${pid}/exports/pdf?level_id=${lid}`,
   exportSectionPdfUrl: (

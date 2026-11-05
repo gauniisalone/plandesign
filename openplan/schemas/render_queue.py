@@ -40,6 +40,8 @@ MAX_STYLE_IMAGE_BYTES = 2 * 1024 * 1024
 """KAN-97 : une image de style servie au poste (JPEG réduit à STYLE_IMAGE_SIDE), au plus."""
 STYLE_IMAGE_SIDE = 512
 MAX_STYLE_WORDS = 8
+MAX_STYLE_IGNORED = 64
+"""KAN-130 : mots désactivés envoyés au poste, au plus (le vocabulaire en compte moins)."""
 StyleName = Annotated[str, Field(min_length=1, max_length=120)]
 StyleKey = Annotated[str, Field(min_length=1, max_length=32, pattern=r"^[a-z][a-z -]*$")]
 """Un mot du vocabulaire de style (`pipeline.style_words`), tel que le poste le renvoie."""
@@ -61,6 +63,10 @@ class WorkerJob(StrictModel):
     """KAN-97 : les noms des images de style (cartes Inspirations reliées à la carte Rendus,
     C1), dans l'ordre de `/style/{k}` ; envoyé seulement à un poste qui annonce `STYLE` (un
     ancien poste refuserait ce champ)."""
+    style_ignored: list[StyleKey] | None = Field(default=None, max_length=MAX_STYLE_IGNORED)
+    """KAN-130 : les mots du vocabulaire désactivés sur ces images (« Guidé par »), que le poste
+    ne retient jamais ; envoyé seulement à un poste qui annonce `STYLE_IGNORE`, et absent quand
+    aucun mot n'est désactivé (le message reste celui de KAN-97)."""
 
 
 class WorkerClaim(StrictModel):
@@ -119,6 +125,9 @@ class RealisticRequest(StrictModel):
     guided_kind: Literal["words", "unread", "no_style"] | None = None
     """`words` : mots lus ; `unread` : noms des images, non lues par le poste (ancien poste,
     SigLIP2 absent) ; `no_style` : noms des images, lues sans style net retenu."""
+    guided_keys: list[StyleKey] | None = None
+    """KAN-130 : avec `words`, les clés du vocabulaire de ces mots, dans le même ordre (un clic
+    sur un mot le désactive ou le réactive) ; None sinon."""
     mine: bool = False
     """KAN-99 : la personne connectée a lancé ce rendu. Les rendus d'un projet sont montrés à
     tous ses membres ; variante et couverture restent au lanceur."""
@@ -208,6 +217,8 @@ HEARTBEAT = "heartbeat"
 STYLE = "style"
 """KAN-97 : le poste lit les images de style (`WorkerJob.style`, `/style/{k}`) et renvoie ses
 mots (`WorkerResult.style_words`)."""
+STYLE_IGNORE = "style-ignore"
+"""KAN-130 : le poste sait écarter les mots désactivés (`WorkerJob.style_ignored`)."""
 BEAT_EVERY_S = 30
 """KAN-96 : cadence du battement d'un rendu pris (calcul et envoi compris)."""
 

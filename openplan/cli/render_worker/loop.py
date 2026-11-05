@@ -17,6 +17,7 @@ qui vaut battement de cœur ; un rendu à la fois.
 
 from __future__ import annotations
 
+import json
 import random
 import shutil
 import signal
@@ -45,6 +46,7 @@ from openplan.cli.render_worker.sandbox import (
     PROJECT,
     SEED,
     STYLE_DIR,
+    STYLE_IGNORED,
     Sandbox,
 )
 from openplan.schemas.render_queue import (
@@ -52,6 +54,7 @@ from openplan.schemas.render_queue import (
     MAX_IMAGE_SIDE,
     MAX_STYLE_WORDS,
     STYLE,
+    STYLE_IGNORE,
     WorkerFailure,
     WorkerJob,
     WorkerResult,
@@ -272,6 +275,9 @@ class Worker:
             return False
         for index in range(len(job.style)):
             self.client.fetch_style(job, index, work / STYLE_DIR)
+        # KAN-130 : les mots désactivés, lus par le calcul (qui n'a pas de réseau).
+        if job.style_ignored and STYLE_IGNORE in served:
+            (work / STYLE_IGNORED).write_text(json.dumps(job.style_ignored), encoding="utf-8")
         return True
 
     def _render(self, job: WorkerJob, work: Path, heart: Heartbeat) -> float:  # noqa: PLR0911 - une sortie par issue

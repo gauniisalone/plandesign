@@ -84,16 +84,39 @@ def prompts() -> list[str]:
     return [PROMPT.format(w.key) for w in VOCABULARY]
 
 
-def choose(scores: Mapping[str, float], scene_words: Iterable[str] = ()) -> list[str]:
+TAG_PREFIX = "s:"
+"""KAN-130 : un mot désactivé sur une image d'inspiration (`BoardItem.ignored_tags`), au motif
+du schéma (`s:<style>`, sans espace) : les espaces de la clé deviennent « _ », qu'aucune clé du
+vocabulaire ne contient."""
+
+
+def tag_of(key: str) -> str:
+    """L'étiquette d'`ignored_tags` d'un mot du vocabulaire (`s:white_and_beige`)."""
+    return TAG_PREFIX + key.replace(" ", "_")
+
+
+def key_of(tag: str) -> str | None:
+    """Le mot du vocabulaire d'une étiquette d'`ignored_tags`, ou None (autre étiquette)."""
+    if not tag.startswith(TAG_PREFIX) or " " in tag:
+        return None
+    key = tag[len(TAG_PREFIX) :].replace("_", " ")
+    return key if key in BY_KEY else None
+
+
+def choose(
+    scores: Mapping[str, float], scene_words: Iterable[str] = (), ignored: Iterable[str] = ()
+) -> list[str]:
     """Les mots retenus (clés du vocabulaire), du plus probable au moins probable : au-dessus
     de MIN_SCORE, au plus CAPS par groupe et MAX_WORDS en tout ; un mot de palette qui nomme
-    une couleur déjà présente dans la description de la scène est écarté."""
+    une couleur déjà présente dans la description de la scène est écarté. KAN-130 : un mot
+    désactivé (`ignored`) n'est jamais retenu ; le suivant de son groupe prend sa place."""
     scene = " ".join(scene_words).lower()
+    off = frozenset(ignored)
     taken: dict[Group, int] = dict.fromkeys(CAPS, 0)
     out: list[str] = []
     for key, score in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0])):
         word = BY_KEY.get(key)
-        if word is None or score < MIN_SCORE or len(out) >= MAX_WORDS:
+        if word is None or key in off or score < MIN_SCORE or len(out) >= MAX_WORDS:
             continue
         if taken[word.group] >= CAPS[word.group]:
             continue

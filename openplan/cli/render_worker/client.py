@@ -29,6 +29,7 @@ from openplan.schemas.render_queue import (
     JSON_FILES,
     MAX_STYLE_IMAGE_BYTES,
     STYLE,
+    STYLE_IGNORE,
     WorkerClaim,
     WorkerFailure,
     WorkerJob,
@@ -40,8 +41,9 @@ from openplan.schemas.scene import Project
 FileName = Literal["project", "bake", "camera"]
 SCHEMAS: dict[str, type[BaseModel]] = {"project": Project, "bake": Bake, "camera": RenderCamera}
 USER_AGENT = "plandesign-worker/1"
-CAPABILITIES = (HEARTBEAT, STYLE)
-"""Ce que ce poste sait faire, annoncé dans chaque prise (jetons joints par « + »)."""
+CAPABILITIES = (HEARTBEAT, STYLE, STYLE_IGNORE)
+"""Ce que ce poste sait faire, annoncé dans chaque prise (jetons joints par « + », 32
+caractères au plus dans `WorkerClaim.version`)."""
 STYLE_SUFFIX = {"image/jpeg": ".jpg", "image/png": ".png"}
 WRITE_TIMEOUT_S = 120.0
 """KAN-96 : un envoi de 2 à 3 Mo a pris 25,7 s sur le lien montant du domicile ; une écriture

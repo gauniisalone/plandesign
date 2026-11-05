@@ -92,6 +92,7 @@ def zimage_render(
     out_png: Path,
     seed: int | None = None,
     style_dir: Path | None = None,
+    style_ignored: tuple[str, ...] = (),
 ) -> RenderOutcome:
     try:
         module = importlib.import_module(ZIMAGE_MODULE)
@@ -103,6 +104,8 @@ def zimage_render(
     extra: dict[str, object] = {} if seed is None else {"seed": seed}
     if style_dir is not None:  # KAN-97 : images d'inspiration déposées par le poste
         extra["style_dir"] = style_dir
+        if style_ignored:  # KAN-130 : sans mot désactivé, l'appel reste celui de KAN-97
+            extra["style_ignored"] = style_ignored
     try:
         result = module.render_scene(bake, camera, out_png, project_path=project, **extra)
     except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
@@ -138,13 +141,16 @@ def render(
     *,
     seed: int | None = None,
     style_dir: Path | None = None,
+    style_ignored: tuple[str, ...] = (),
 ) -> RenderOutcome:
     if engine == "fake":
         outcome = fake_render(camera, out_png)
-        # Le moteur factice des tests lit les images de style sans modèle : un mot fixe.
+        # Le moteur factice des tests lit les images de style sans modèle : des mots fixes,
+        # moins ceux désactivés (KAN-130).
         if style_dir is not None and any(style_dir.iterdir()):
-            return replace(outcome, style_words=list(FAKE_STYLE_WORDS))
+            words = [w for w in FAKE_STYLE_WORDS if w not in style_ignored]
+            return replace(outcome, style_words=words)
         return outcome
     if engine == "zimage":
-        return zimage_render(project, bake, camera, out_png, seed, style_dir)
+        return zimage_render(project, bake, camera, out_png, seed, style_dir, style_ignored)
     raise EngineFailedError("unavailable")

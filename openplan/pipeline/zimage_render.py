@@ -84,10 +84,15 @@ def style_images(style_dir: Path | None) -> list[ImageArray]:
 
 
 def describe_style(
-    images: list[ImageArray], scene: SceneWords, weights_root: Path, scorer: Any = None
+    images: list[ImageArray],
+    scene: SceneWords,
+    weights_root: Path,
+    scorer: Any = None,
+    ignored: tuple[str, ...] = (),
 ) -> list[str]:
     """KAN-97 : les mots de style des images (SigLIP2 sur le processeur, libéré ensuite pour
-    laisser la carte à Z-Image), sans contredire les couleurs de la scène."""
+    laisser la carte à Z-Image), sans contredire les couleurs de la scène. KAN-130 : sans les
+    mots désactivés dans l'espace de travail (`ignored`)."""
     if not images:
         return []
     describer = scorer if scorer is not None else SigLipStyleScorer(weights_root)
@@ -96,7 +101,7 @@ def describe_style(
     finally:
         describer.release()
     scores = {w.key: s for w, s in zip(sw.VOCABULARY, values, strict=True)}
-    return sw.choose(scores, [*scene.surfaces, *scene.textiles])
+    return sw.choose(scores, [*scene.surfaces, *scene.textiles], ignored)
 
 
 def models_root() -> Path:
@@ -123,11 +128,13 @@ def render_scene(
     seed: int = DEFAULT_SEED,
     weights_root: Path | None = None,
     style_dir: Path | None = None,
+    style_ignored: tuple[str, ...] = (),
 ) -> ZImageResult:
     """Image Z-Image de la vue `camera_path` de la scène `bake_path`, écrite dans `out_png`
     (taille de génération : grand côté 1 024, format de la caméra). KAN-97 : avec `style_dir`
     (images d'inspiration déposées par le poste), leurs mots de style entrent dans la
-    description ; SigLIP2 absent, le rendu se fait sans eux (`style_words` None : non lues)."""
+    description ; SigLIP2 absent, le rendu se fait sans eux (`style_words` None : non lues).
+    KAN-130 : les mots de `style_ignored` (désactivés dans l'espace de travail) n'y entrent pas."""
     if prompt is None and project_path is None:
         msg = "render_scene : il faut le prompt, ou le projet pour le dériver de la scène"
         raise ValueError(msg)
@@ -147,7 +154,7 @@ def render_scene(
         words = scene_words(bake, project, bake.level_id, camera)
         if images:
             try:
-                chosen = describe_style(images, words, root)
+                chosen = describe_style(images, words, root, ignored=style_ignored)
             except AdapterUnavailableError:
                 # Non lues (None), jamais « aucun style » ([]) : la carte dit « non lues ».
                 logging.getLogger(__name__).warning("SigLIP2 non installé : rendu sans mots.")

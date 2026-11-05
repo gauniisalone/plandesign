@@ -38,10 +38,16 @@ def export_json(project: ProjectDep, share: bool = False) -> Response:
 
 @router.get("/projects/{project_id}/exports/svg")
 def export_svg(
-    level_id: UUID, project: ProjectDep, theme: Literal["light", "dark"] = "light"
+    level_id: UUID,
+    project: ProjectDep,
+    theme: Literal["light", "dark"] = "light",
+    camera_id: UUID | None = None,
 ) -> Response:
-    """Plan du niveau en SVG ; `theme=dark` (C1) pour la vignette du tableau en thème sombre."""
-    return Response(content=render_svg(project, level_id, theme), media_type="image/svg+xml")
+    """Plan du niveau en SVG ; `theme=dark` (C1) pour la vignette du tableau en thème sombre ;
+    `camera_id` (KAN-130) : le cône de cette caméra, au survol de sa photo."""
+    return Response(
+        content=render_svg(project, level_id, theme, camera_id), media_type="image/svg+xml"
+    )
 
 
 @router.get("/projects/{project_id}/exports/dxf")

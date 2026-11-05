@@ -69,7 +69,9 @@ import {
 } from "./postits";
 import { PhotoMeasure } from "./PhotoMeasure";
 import { PhotosGenerate } from "./PhotosGenerate";
+import { photoCamera } from "./photoCamera";
 import { PHOTO_TAGS, photosState } from "./photoStatus";
+import { ignoredKeys, styleMembers, toggleWord } from "./styleWords";
 import { CLOSE_UP_TEXT, PHOTO_GUIDE_LINK, PhotoGuide } from "./PhotoGuide";
 import { RealisticRenders } from "./RealisticRenders";
 import { WireBanner, WireLayer, WireToast, type WireDrag } from "./BoardLinks";
@@ -2315,12 +2317,24 @@ export function BoardCanvas(props: Props) {
                 )}
               </span>
             ) : level ? (
-              <img
-                className="board-plan"
-                src={`${api.exportSvgUrl(project.id, item.ref ?? "", dark ? "dark" : "light")}&v=${props.planVersion}`}
-                alt={`Plan ${level.name}`}
-                draggable={false}
-              />
+              // KAN-130 : le même plan avec le cône de la photo survolée, posé par-dessus
+              // (empilés dans une seule case : rien ne bouge).
+              <span className="board-plan-stack">
+                <img
+                  className="board-plan"
+                  src={`${api.exportSvgUrl(project.id, item.ref ?? "", dark ? "dark" : "light")}&v=${props.planVersion}`}
+                  alt={`Plan ${level.name}`}
+                  draggable={false}
+                />
+                {cone?.levelId === item.ref && (
+                  <img
+                    className="board-plan-cone"
+                    src={`${api.exportSvgUrl(project.id, item.ref, dark ? "dark" : "light", cone.cameraId)}&v=${props.planVersion}`}
+                    alt="Champ de la photo survolée"
+                    draggable={false}
+                  />
+                )}
+              </span>
             ) : (
               <span className="board-missing">niveau introuvable</span>
             )}
@@ -2488,6 +2502,7 @@ export function BoardCanvas(props: Props) {
                 canReact={props.reactions?.canReact ?? !readOnly}
                 frameId={item.id}
                 title={item.text}
+                styleWords={styleOf(item.id)}
               />
             ) : missingHint(item.role ?? "", caps) ? (
               <span
@@ -2731,6 +2746,26 @@ export function BoardCanvas(props: Props) {
   // Retours de la MEP 14 : une carte métier posée sur une autre (déplacement à la main,
   // permis) le montre ; rien n'est déplacé d'office.
   const overlaps = overlapping(items.filter((i) => cardRole(i) !== null));
+  // KAN-130 : une photo survolée qui a servi au plan montre le cône de sa caméra sur le node
+  // Plan de son niveau.
+  const hoveredPhoto = hover.hovered ? byId.get(hover.hovered) : undefined;
+  const cone =
+    hoveredPhoto?.kind === "photo" && hoveredPhoto.ref
+      ? photoCamera(project.levels, hoveredPhoto.ref)
+      : null;
+  // KAN-130 : les mots de « Guidé par » d'une carte Rendus, désactivés sur les images de ses
+  // Moodboards (un clic, un pas d'historique) ; rien sans Moodboard relié.
+  const styleOf = (cardId: string) => {
+    const members = styleMembers(items, board.links ?? [], cardId);
+    if (members.length === 0) return undefined;
+    return {
+      ignored: ignoredKeys(members),
+      onToggle: readOnly
+        ? undefined
+        : (key: string, off: boolean) =>
+            commit(toggleWord(items, members, key, off)),
+    };
+  };
   const box =
     selection.length > 0
       ? {

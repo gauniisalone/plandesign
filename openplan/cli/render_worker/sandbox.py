@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 import openplan
 from openplan.cli.render_worker.engine import EngineFailedError, RenderOutcome, render
-from openplan.schemas.render_queue import MAX_SEED
+from openplan.schemas.render_queue import MAX_SEED, MAX_STYLE_IGNORED
 
 PROJECT, BAKE, CAMERA, OUT, RESULT = (
     "project.json",
@@ -39,6 +39,8 @@ SEED = "seed.txt"
 """KAN-91 : tirage d'une variante (entier écrit par le poste), absent pour un premier rendu."""
 STYLE_DIR = "style"
 """KAN-97 : images d'inspiration téléchargées par le poste (`0.jpg`, `1.jpg`…), absent sans."""
+STYLE_IGNORED = "style-ignored.json"
+"""KAN-130 : mots du vocabulaire désactivés (liste JSON écrite par le poste), absent sans."""
 TIMEOUT_S = 20 * 60
 """Le moteur a sa propre garde (15 min) ; au-delà de 20 min, le poste tue le calcul."""
 Mode = Literal["unshare", "socket"]
@@ -167,6 +169,17 @@ def read_seed(job_dir: Path) -> int | None:
     return int(text) if text.isdigit() and int(text) <= MAX_SEED else None
 
 
+def read_ignored(job_dir: Path) -> tuple[str, ...]:
+    """KAN-130 : les mots désactivés écrits par le poste ; () sans fichier ou s'il est illisible."""
+    try:
+        data = json.loads((job_dir / STYLE_IGNORED).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    if not isinstance(data, list):
+        return ()
+    return tuple(w for w in data[:MAX_STYLE_IGNORED] if isinstance(w, str))
+
+
 def _answer(job_dir: Path, data: dict[str, object]) -> None:
     # Sonar S8707, faux positif : l'enfant isolé (réseau bloqué) reçoit son dossier de tâche de
     # son parent (Sandbox.run) et y écrit sous un nom fixe.
@@ -184,6 +197,7 @@ def child(job_dir: Path, engine: str) -> int:
             job_dir / OUT,
             seed=read_seed(job_dir),
             style_dir=style if (style := job_dir / STYLE_DIR).is_dir() else None,
+            style_ignored=read_ignored(job_dir),
         )
     except EngineFailedError as exc:
         _answer(job_dir, {"ok": False, "reason": exc.reason})

@@ -43,6 +43,7 @@ from openplan.api.accounts.render_queue import (
     public_request,
 )
 from openplan.api.accounts.render_style import (
+    ignored_words,
     note_references,
     note_words,
     style_image,
@@ -69,6 +70,7 @@ from openplan.schemas.render_queue import (
     JSON_FILES,
     MAX_IMAGE_BYTES,
     STYLE,
+    STYLE_IGNORE,
     RealisticCover,
     RealisticCreate,
     RealisticFavorites,
@@ -98,7 +100,7 @@ NO_PHOTO_VIEW = "Cette photo n'a pas encore de point de vue estimé : analysez-l
 COVER_META = Path(IMAGES_DIR) / "cover.json"
 """KAN-91 : quel rendu est la couverture (à côté de sa réduction, `CHOSEN_COVER`)."""
 RENDER_LABEL = "Rendu réaliste"
-SERVED_CAPABILITIES = frozenset({HEARTBEAT, STYLE})
+SERVED_CAPABILITIES = frozenset({HEARTBEAT, STYLE, STYLE_IGNORE})
 """Les capacités du poste que ce serveur sait servir (renvoyées dans `CAPABILITIES_HEADER`)."""
 
 
@@ -574,6 +576,15 @@ def worker_claim(
         names = [] if row is None else style_names(store_of(request), row.project_id, row.id)
         if names:
             job = job.model_copy(update={"style": names})
+        # KAN-130 : les mots désactivés, seulement à un poste qui sait les écarter (un poste
+        # sans « style-ignore » reçoit le message de KAN-97, à l'identique).
+        off = (
+            ignored_words(store_of(request), row.project_id, row.id)
+            if names and row is not None and STYLE_IGNORE in served
+            else []
+        )
+        if off:
+            job = job.model_copy(update={"style_ignored": off})
     # KAN-91 : `seed` n'est envoyé que pour une variante (un premier rendu garde le message de
     # KAN-89, qu'un poste d'avant KAN-91 lit toujours).
     return Response(

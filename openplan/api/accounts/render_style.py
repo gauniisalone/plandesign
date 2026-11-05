@@ -5,6 +5,8 @@
 annonce `STYLE` reçoit leurs noms dans `WorkerJob.style` et lit chaque image par
 `/api/worker/jobs/{id}/style/{k}`, réduite (STYLE_IMAGE_SIDE, JPEG). Il renvoie les mots
 retenus, gardés dans `realistic-style/<id>.words.json` : la carte Rendus dit « Guidé par ».
+KAN-130 : les mots désactivés du moment du clic (`<id>.ignored.json`) partent aussi, vers un
+poste qui annonce `STYLE_IGNORE` seulement (`WorkerJob.style_ignored`).
 """
 
 from __future__ import annotations
@@ -16,9 +18,9 @@ import os
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from openplan.api.board_rules import style_references
+from openplan.api.board_rules import style_ignored, style_references
 from openplan.pipeline.contextual import ContextualError, ContextualReference, reference_path
-from openplan.pipeline.style_words import french
+from openplan.pipeline.style_words import BY_KEY, french
 from openplan.scene.store import ProjectStore
 from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.render_queue import (
@@ -62,6 +64,17 @@ def note_references(
         _sidecar(store, project.id, request_id, "style"),
         [{"kind": k, "ref": r, "label": label} for k, r, label in refs],
     )
+    off = style_ignored(project, store, level_id) if refs else []
+    if off:  # KAN-130 : absent sans mot désactivé
+        _write(_sidecar(store, project.id, request_id, "ignored"), off)
+
+
+def ignored_words(store: ProjectStore, project_id: UUID, request_id: UUID) -> list[str]:
+    """KAN-130 : les mots désactivés notés à la demande (clés du vocabulaire), [] sans."""
+    data = _read(_sidecar(store, project_id, request_id, "ignored"))
+    if not isinstance(data, list):
+        return []
+    return [w for w in data if isinstance(w, str) and w in BY_KEY]
 
 
 def references(
@@ -119,9 +132,12 @@ def with_guidance(
     fait) : leurs noms (`unread`) ; [] sans inspiration ; rien pour une demande d'avant KAN-97."""
     refs = references(store, project_id, public.id)
     words = _read(_sidecar(store, project_id, public.id, "words"))
-    shown = french(str(w) for w in words) if isinstance(words, list) else []
-    if shown:
-        return public.model_copy(update={"guided_by": shown, "guided_kind": "words"})
+    keys = [str(w) for w in words if str(w) in BY_KEY] if isinstance(words, list) else []
+    if keys:
+        # KAN-130 : les clés, dans l'ordre des mots, pour les désactiver d'un clic.
+        return public.model_copy(
+            update={"guided_by": french(keys), "guided_kind": "words", "guided_keys": keys}
+        )
     if refs is None:
         return public
     names = [r.label or "Image" for r in refs]
