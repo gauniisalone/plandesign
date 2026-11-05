@@ -53,6 +53,7 @@ from openplan.pipeline.photo_fusion import (
     fused_basis,
     grid_focal,
     jackknife,
+    photo_focal_px,
     read_photos,
     reference_scale,
     scale_source,
@@ -153,6 +154,7 @@ def _analyse(readings: list[_Reading]) -> bool:
     for r in readings:
         if r.stored is None:
             continue
+        r.focal_px = photo_focal_px(r, common)
         estimate, _planes, cls, _pixels, _warnings = analyse_attic(
             r.stored.depth,
             grid_focal(r, common),
@@ -365,19 +367,21 @@ def _place_cameras(
 ) -> dict[UUID, Element]:
     """Caméra de chaque photo (celle de la photo principale est posée par apply_attic), avec sa
     contribution en métadonnées ; la structure prend toutes les photos retenues en
-    provenance."""
+    provenance. KAN-136 : chaque caméra porte la focale qui a lu sa photo."""
     for c in contributions:
         meta = camera_metadata(c, summary, spread)
+        reading = next(r for r in readings if r.image_id == c.image_id)
         existing = next(
             (e for e in elements.values() if isinstance(e, Camera) and e.image_id == c.image_id),
             None,
         )
         if existing is not None:
-            elements[existing.id] = existing.model_copy(
-                update={"metadata": {**existing.metadata, **meta}}
-            )
+            update: dict[str, object] = {"metadata": {**existing.metadata, **meta}}
+            if reading.focal_px is not None:
+                update["focal_px"] = reading.focal_px
+            elements[existing.id] = existing.model_copy(update=update)
             continue
-        est = next(r.estimate for r in readings if r.image_id == c.image_id)
+        est = reading.estimate
         x = geometry.length.value / 2.0
         if (
             est is not None
@@ -396,6 +400,7 @@ def _place_cameras(
             ),
             yaw=0.0,
             pitch=0.0,
+            focal_px=reading.focal_px,
             image_id=c.image_id,
             source=Source.ESTIMATED,
             confidence=0.4,
@@ -573,6 +578,7 @@ def fuse_attic(  # noqa: PLR0911, PLR0912, PLR0915
             gable_distance=gable if gable is not None and gable.value < length_e.value else None,
             image_id=main.image_id,
             run_id=rid,
+            focal_px=main_reading.focal_px,
         )
     except ValueError as exc:
         return done(False, project, [f"Combles recoupés invraisemblables : {exc}"], fusion)

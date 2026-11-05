@@ -72,6 +72,9 @@ class AtticGeometry(StrictModel):
     """De la caméra au pignon visible (x = longueur)."""
     image_id: UUID | None = None
     run_id: UUID | None = None
+    focal_px: float | None = Field(default=None, gt=0.0)
+    """KAN-136 : focale, en pixels de la photo `image_id`, qui a lu ces combles ; la caméra
+    « Photo » la porte. None : celle du rendu par défaut (0,8 × grand côté)."""
     thickness: float = Field(default=0.15, gt=0.0, lt=1.0)
     roof_windows: list[RoofWindowSighting] = Field(default_factory=list)
     """Fenêtres de toit vues sur la photo (C2), posées comme `RoofWindow` estimés."""
@@ -256,6 +259,7 @@ def apply_attic(
             position=Point3(x=min(max(x, 0.0), length), y=width / 2.0, z=g.camera_height.value),
             yaw=0.0,
             pitch=0.0,
+            focal_px=g.focal_px,
             image_id=g.image_id,
             source=g.camera_height.source,
             confidence=CONFIDENCE[g.camera_height.source],

@@ -62,6 +62,7 @@ from openplan.pipeline.photo_fusion import (
     fused_basis,
     grid_focal,
     jackknife,
+    photo_focal_px,
     read_photos,
     reference_scale,
     scale_source,
@@ -362,6 +363,7 @@ def _analyse(readings: list[_Reading], height: float, *, use_common: bool = True
     for r in readings:
         if r.stored is None:
             continue
+        r.focal_px = photo_focal_px(r, common)
         obs, _planes = observe_room(
             r.stored.depth, grid_focal(r, common), r.stored.principal, stride=FUSION_STRIDE
         )
@@ -462,6 +464,7 @@ def _rebuild(
         image_id=reading.image_id,
         camera_height_m=height,
         camera_height_entered=entered,
+        focal_px=reading.focal_px,
         run_id=run_id,
     )
     level = built.levels[level_id]
@@ -485,17 +488,21 @@ def _place_cameras(
     summary: str,
     spread: float | None,
     height: float,
+    focals: dict[UUID, float | None],
 ) -> dict[UUID, Element]:
+    """KAN-136 : chaque caméra « Photo » porte la focale qui a lu sa photo (`focals`)."""
     for c in contributions:
         meta = camera_metadata(c, summary, spread)
+        focal = focals.get(c.image_id)
         existing = next(
             (e for e in elements.values() if isinstance(e, Camera) and e.image_id == c.image_id),
             None,
         )
         if existing is not None:
-            elements[existing.id] = existing.model_copy(
-                update={"metadata": {**existing.metadata, **meta}}
-            )
+            update: dict[str, object] = {"metadata": {**existing.metadata, **meta}}
+            if focal is not None:
+                update["focal_px"] = focal
+            elements[existing.id] = existing.model_copy(update=update)
             continue
         p = placements.get(c.image_id)
         x, y = (shift[0] + p.shift[0], shift[1] + p.shift[1]) if p else shift
@@ -504,6 +511,7 @@ def _place_cameras(
             position=Point3(x=x, y=y, z=c.camera_height_m or height),
             yaw=0.0,
             pitch=0.0,
+            focal_px=focal,
             image_id=c.image_id,
             source=Source.ESTIMATED,
             confidence=0.4,
@@ -689,7 +697,14 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
     level = built.levels[level_id]
     placements = union.placements if registered else {best: union.placements[best]}
     elements = _place_cameras(
-        dict(level.elements), contributions, placements, shift, summary, measured_spread, height
+        dict(level.elements),
+        contributions,
+        placements,
+        shift,
+        summary,
+        measured_spread,
+        height,
+        {r.image_id: r.focal_px for r in readings},
     )
     inputs = ConfidenceInputs(focal_from_vps=common_focal or readings_by(readings, best).from_vps)
     basis = fused_basis(

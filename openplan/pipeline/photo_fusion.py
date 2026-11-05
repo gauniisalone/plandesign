@@ -86,6 +86,9 @@ class PhotoReading:
     """Hauteur de l'appareil au-dessus du sol vu, unités du modèle (None : sol non vu)."""
     reach: float | None = None
     close_up: bool = False
+    focal_px: float | None = None
+    """KAN-136 : la focale qui a lu sa géométrie (`photo_focal_px`), en pixels de la photo ; la
+    caméra « Photo » la porte, pour que le rendu voie la pièce comme elle a été lue."""
 
     @property
     def usable(self) -> bool:
@@ -176,6 +179,16 @@ def grid_focal(reading: PhotoReading, common: float | None) -> float:
     norm = common if common is not None else reading.focal_norm
     focal = (norm or 0.0) * reading.long_side * reading.stored.scale[0]
     return focal if focal > 0 else reading.stored.focal_px
+
+
+def photo_focal_px(reading: PhotoReading, common: float | None) -> float | None:
+    """KAN-136 : `grid_focal` ramenée aux pixels de la photo, celle de sa caméra « Photo ». La
+    géométrie et le rendu partagent ainsi une seule focale : la commune si la série en donne
+    une, sinon celle de la photo (lignes de fuite, sinon EXIF, sinon le repli 0,8). None sans
+    profondeur gardée (photo non lue)."""
+    if reading.stored is None or reading.stored.scale[0] <= 0:
+        return None
+    return grid_focal(reading, common) / reading.stored.scale[0]
 
 
 def set_camera_height(reading: PhotoReading, camera_h: float | None) -> None:

@@ -50,9 +50,16 @@ DEFAULT_SIZE = (1280, 960)
 PORTRAIT_SIZE = (1024, 1280)
 """Format 4:5 (V1) d'un point de vue marqué `metadata["aspect"] = "4:5"`."""
 DEFAULT_FOCAL_RATIO = 0.8
-"""Focale par défaut en fraction de la largeur, comme l'estimateur EXIF."""
+"""Focale par défaut en fraction du GRAND CÔTÉ, comme l'estimateur EXIF (KAN-136 : jusqu'au
+6 nov. 2026, de la largeur ; une photo en portrait était rendue à 21,6 mm équivalent au lieu
+des 28,8 mm qui avaient lu sa géométrie)."""
 MAX_RENDER_PX = 1600
 """Grand côté maximal du rendu : au-delà, la photo est réduite (temps de rendu)."""
+
+
+def default_focal_px(width: int, height: int) -> float:
+    """KAN-136 : la focale d'une caméra sans focale, celle de `exif_camera` sans EXIF."""
+    return DEFAULT_FOCAL_RATIO * max(width, height)
 
 
 class NoCameraError(ValueError):
@@ -78,7 +85,7 @@ def photo_camera(project: Project, level_id: UUID) -> tuple[Camera, RenderCamera
         ref = project.images[camera.image_id]
         width, height = ref.width_px, ref.height_px
     scale = min(1.0, MAX_RENDER_PX / max(width, height))
-    focal = camera.focal_px if camera.focal_px is not None else DEFAULT_FOCAL_RATIO * width
+    focal = camera.focal_px if camera.focal_px is not None else default_focal_px(width, height)
     return camera, RenderCamera(
         position=camera.position,
         yaw=camera.yaw,
@@ -109,7 +116,7 @@ def camera_view(project: Project, level_id: UUID, camera_id: UUID) -> tuple[Came
     scale = min(1.0, MAX_RENDER_PX / max(width, height))
     # La focale d'un point de vue libre est donnée pour 1280 px de grand côté, en paysage
     # comme en portrait.
-    focal = camera.focal_px if camera.focal_px is not None else DEFAULT_FOCAL_RATIO * width
+    focal = camera.focal_px if camera.focal_px is not None else default_focal_px(width, height)
     return camera, RenderCamera(
         position=camera.position,
         yaw=camera.yaw,
