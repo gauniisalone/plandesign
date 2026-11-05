@@ -16,7 +16,8 @@ import { SHARE_ACCOUNT } from "./share-account";
  *  projet quand il est décoché, avec `noindex` et une CSP stricte ; un lecteur est refusé ;
  *  « Révoquer » rend le lien 404 ; réglage éteint (second serveur sur la même base, sans
  *  OPENPLAN_SHARE_LINKS) : 404. Le rendu fait est posé par seed_done_render.py (la place
- *  d'un Mo des e2e-accounts refuserait une demande). Chaque test a sa propre adresse. */
+ *  d'un Mo des e2e-accounts refuserait une demande). Chaque test a sa propre adresse, de
+ *  198.51.100.123 à 131 (libres ; .101 à .103 sont à accounts.spec). */
 
 const ROOT = path.resolve("../..");
 const DIR = "apps/web/.e2e-accounts";
@@ -87,7 +88,7 @@ async function signIn(page: Page, email: string): Promise<void> {
 /** Le compte autorisé, connecté (une fois par fichier), sur la page d'accueil. */
 async function editor(browser: Browser, ip: string): Promise<Page> {
   if (!editorState) {
-    const first = await person(browser, "198.51.100.100");
+    const first = await person(browser, "198.51.100.123");
     await signIn(first, SHARE_ACCOUNT.email);
     editorState = await first.context().storageState();
     await first.context().close();
@@ -183,7 +184,7 @@ test("un éditeur partage un rendu ; la page s'ouvre sans compte, sans nom de pr
   browser,
 }) => {
   test.setTimeout(120_000);
-  const page = await editor(browser, "198.51.100.101");
+  const page = await editor(browser, "198.51.100.124");
   const { id } = await renderedProject(page, "Chambre de Léa (KAN-101)");
   const viewer = await openViewer(page, id);
   const named = viewer.getByLabel("Afficher le nom du projet");
@@ -199,7 +200,7 @@ test("un éditeur partage un rendu ; la page s'ouvre sans compte, sans nom de pr
 
   // Un visiteur sans compte, ailleurs.
   const visitor = await browser.newContext({
-    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.102" },
+    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.125" },
   });
   const anonymous = await visitor.newPage();
   const opened = await anonymous.goto(url);
@@ -229,7 +230,7 @@ test("un lecteur ne peut ni créer ni lister de lien ; un non-membre non plus", 
   browser,
 }) => {
   test.setTimeout(120_000);
-  const owner = await editor(browser, "198.51.100.103");
+  const owner = await editor(browser, "198.51.100.126");
   const { id, rid } = await renderedProject(owner, "Salon (KAN-101)");
   const invited = await owner.request.post(`/api/projects/${id}/invitations`, {
     data: { role: "viewer" },
@@ -238,7 +239,7 @@ test("un lecteur ne peut ni créer ni lister de lien ; un non-membre non plus", 
   expect(invited.status()).toBe(201);
   const { token } = (await invited.json()) as { token: string };
 
-  const reader = await person(browser, "198.51.100.104");
+  const reader = await person(browser, "198.51.100.127");
   await signIn(reader, "lecteur-kan101@example.org");
   const create = `/api/projects/${id}/realistic/${rid}/share-links`;
   const list = `/api/projects/${id}/share-links`;
@@ -267,7 +268,7 @@ test("un lecteur ne peut ni créer ni lister de lien ; un non-membre non plus", 
 
 test("« Révoquer » : le lien répond 404 aussitôt", async ({ browser }) => {
   test.setTimeout(120_000);
-  const page = await editor(browser, "198.51.100.105");
+  const page = await editor(browser, "198.51.100.128");
   const { id } = await renderedProject(page, "Bureau (KAN-101)");
   const viewer = await openViewer(page, id);
   await viewer.getByRole("button", { name: "Partager", exact: true }).click();
@@ -275,7 +276,7 @@ test("« Révoquer » : le lien répond 404 aussitôt", async ({ browser }) => {
   await expect(link).toHaveValue(TOKEN_URL);
   const url = await link.inputValue();
   const visitor = await playwrightRequest.newContext({
-    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.106" },
+    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.129" },
   });
   expect((await visitor.get(url)).status()).toBe(200);
   await viewer.getByRole("button", { name: /^Révoquer le lien/ }).click();
@@ -294,7 +295,7 @@ test("réglage éteint : la page publique et les routes répondent 404", async (
   browser,
 }) => {
   test.setTimeout(120_000);
-  const page = await editor(browser, "198.51.100.107");
+  const page = await editor(browser, "198.51.100.130");
   const { id, rid } = await renderedProject(page, "Entrée (KAN-101)");
   const made = await page.request.post(
     `/api/projects/${id}/realistic/${rid}/share-links`,
@@ -335,7 +336,7 @@ test("réglage éteint : la page publique et les routes répondent 404", async (
   );
   const off = await playwrightRequest.newContext({
     baseURL: `http://127.0.0.1:${port}`,
-    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.108" },
+    extraHTTPHeaders: { "X-Forwarded-For": "198.51.100.131" },
   });
   try {
     await expect
