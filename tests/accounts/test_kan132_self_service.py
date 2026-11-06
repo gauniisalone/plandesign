@@ -270,6 +270,25 @@ def test_exports_inside_the_backed_up_data_refuse_to_start(
     assert off.get("/api/health").status_code == 200
 
 
+def test_the_last_link_test_route_exists_only_with_the_fake_mailer(
+    tmp_path: Path, migrated_url: str
+) -> None:
+    """Comme `last-code` (test_b1d_site) : la route de test du lien n'existe qu'avec le mailer
+    `fake`, lui-même refusé hors boucle locale."""
+    from openplan.api.app import create_app
+    from tests.accounts.helpers import accounts_settings
+
+    lea, _, _ = _client(tmp_path, migrated_url)
+    missing = lea.get("/api/test/mail/last-link", params={"email": "x@example.org"})
+    assert missing.status_code == 404
+    console = create_app(settings=accounts_settings(tmp_path / "c", migrated_url, mailer="console"))
+    assert "/api/test/mail/last-link" not in {getattr(r, "path", "") for r in console.routes}
+    other = TestClient(console, base_url=ORIGIN).get(
+        "/api/test/mail/last-link", params={"email": LEA}
+    )
+    assert other.status_code in (401, 404)
+
+
 def test_error_reports_never_carry_the_link_token() -> None:
     """Revue Infra : une erreur dans la route du lien n'envoie pas `t=` à GlitchTip."""
     from openplan.monitoring import before_send
