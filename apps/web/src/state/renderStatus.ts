@@ -66,9 +66,11 @@ function watch(): void {
   });
 }
 
-/** Le statut, relu à chaque montage (ouverture d'un node) et tenu à jour ensuite. */
-export function useRenderStatus(): StatusState {
+/** Le statut, relu à chaque montage (ouverture d'un node) et tenu à jour ensuite. KAN-134 :
+ *  `read` faux (l'Assistant hors ligne) : le dernier statut connu, sans lecture. */
+export function useRenderStatus(read = true): StatusState {
   useEffect(() => {
+    if (!read) return;
     readers += 1;
     watch();
     void refreshRenderStatus();
@@ -76,7 +78,7 @@ export function useRenderStatus(): StatusState {
       readers -= 1;
       if (readers === 0) schedule(); // plus personne : le nouvel essai s'arrête
     };
-  }, []);
+  }, [read]);
   return useSyncExternalStore(
     (listener) => {
       listeners.add(listener);

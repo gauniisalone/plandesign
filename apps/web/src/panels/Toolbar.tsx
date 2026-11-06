@@ -111,7 +111,7 @@ function IconButton({
       aria-label={locked ? `${label} (${PRO_LABEL})` : label}
       aria-pressed={pressed}
       aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : undefined}
-      title={locked ? tip(label, undefined, PRO_LABEL) : tip(label, shortcut, more)}
+      data-tip={locked ? tip(label, undefined, PRO_LABEL) : tip(label, shortcut, more)}
       disabled={disabled || locked}
     >
       <Icon />
@@ -305,7 +305,7 @@ export function TopBar({
           type="button"
           className="icon comments-btn"
           aria-label={`Commentaires, ${commentsCount ?? 0} ouvert${(commentsCount ?? 0) > 1 ? "s" : ""}`}
-          title="Commentaires de l'espace de travail"
+          data-tip="Commentaires de l'espace de travail"
           onClick={onComments}
         >
           <IconComment />
@@ -876,7 +876,7 @@ export function BottomBar({
           onClick={() => setExportsOpen((o) => !o)}
           aria-label="Exporter"
           aria-expanded={exportsOpen}
-          title="Exporter : SVG, PDF, DXF, GLB, JSON"
+          data-tip="Exporter : SVG, PDF, DXF, GLB, JSON"
         >
           <IconDownload />
         </button>

@@ -1565,7 +1565,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
               }}
               onVariant={(text) => {
                 openAssistant();
-                if (text.trim()) actions.askAssistant(text.trim(), null);
+                // KAN-134 : « Rendre » attend la fin de ce tour (l'ambiance) avant les rendus.
+                return text.trim()
+                  ? actions.askAssistant(text.trim(), null)
+                  : Promise.resolve(true);
               }}
               onSettings={actions.updateSettings}
               onGeneratePlan={() => {

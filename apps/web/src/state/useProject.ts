@@ -1843,15 +1843,17 @@ export function useProject(projectId: string) {
   /** Une phrase à l'assistant : il agit sur le plan (commits « assistant »), le tour
    *  est ajouté à la conversation, les éléments touchés sont surlignés. */
   const askAssistant = useCallback(
-    (text: string, contextId: string | null = null) => {
+    /** KAN-134 : la promesse dit si le tour a abouti (« Rendre » de l'Assistant attend
+     *  l'ambiance avant d'envoyer les demandes de rendu). */
+    (text: string, contextId: string | null = null): Promise<boolean> => {
       const { project, levelId } = state;
-      if (!project || !levelId) return;
+      if (!project || !levelId) return Promise.resolve(false);
       const id = Date.now();
       setState((s) => ({
         ...s,
         assistant: [...s.assistant, { id, role: "user", text }],
       }));
-      void run(async () => {
+      return run(async () => {
         // Assistant unifié (P5) : ambiance de la pièce en contexte et gestes, en un tour.
         const result = await assistantApi.say(
           project.id,
@@ -1891,7 +1893,8 @@ export function useProject(projectId: string) {
           ghost: layouts?.proposals[0] ?? s.ghost,
           selection: pruneSelection(s.selection, result.project, s.levelId),
         }));
-      });
+        return true;
+      }).then((done) => done === true);
     },
     [state, run],
   );

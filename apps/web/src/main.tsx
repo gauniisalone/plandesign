@@ -4,6 +4,7 @@ import { App } from "./App.tsx";
 import { startPwa } from "./pwa";
 import { applyTheme, forgetAccent, loadTheme } from "./theme";
 import { UpdateBanner } from "./UpdateBanner";
+import { AppTip } from "./ui/AppTip";
 import "./index.css";
 
 // Version du front construit (lue par le test de mise à jour PWA) ; « dev » en développement.
@@ -24,5 +25,6 @@ createRoot(root).render(
   <StrictMode>
     <App />
     <UpdateBanner />
+    <AppTip />
   </StrictMode>,
 );

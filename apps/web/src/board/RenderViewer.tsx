@@ -250,6 +250,7 @@ export function RenderViewer(props: RenderViewerProps) {
           type="button"
           className="icon rview-close"
           aria-label="Fermer la visionneuse"
+          data-tip="Fermer la visionneuse (Échap)"
           onClick={onClose}
         >
           ×
@@ -268,6 +269,7 @@ export function RenderViewer(props: RenderViewerProps) {
           type="button"
           className="icon rview-nav rview-prev"
           aria-label="Rendu précédent"
+          data-tip="Rendu précédent (←)"
           disabled={index === 0}
           onClick={() => onIndex(index - 1)}
         >
@@ -337,6 +339,7 @@ export function RenderViewer(props: RenderViewerProps) {
           type="button"
           className="icon rview-nav rview-next"
           aria-label="Rendu suivant"
+          data-tip="Rendu suivant (→)"
           disabled={index >= renders.length - 1}
           onClick={() => onIndex(index + 1)}
         >

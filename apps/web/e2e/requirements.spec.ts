@@ -82,7 +82,8 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
     "grenier chaleureux, bois et lin",
   );
 
-  // Réouverture de la page : mêmes valeurs ; « Nouvelle variante » envoie à l'assistant.
+  // Réouverture de la page : mêmes valeurs ; KAN-134 : « Appliquer à l'ambiance » (sans
+  // rendus réalistes ici) envoie à l'assistant et le dit sous le bouton.
   await reloadApp(page);
   await expectSpace(page, "board");
   await expect(composer).toHaveCount(1);
@@ -92,12 +93,20 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
   await composer.getByRole("tab", { name: "Questions guidées" }).click();
   await expect(composer.getByLabel("Surface (m²)")).toHaveValue("24");
   await expect(composer.getByLabel("Style")).toHaveValue("chalet");
-  await composer
-    .getByRole("button", { name: "Nouvelle variante → assistant" })
-    .click();
+  await expect(
+    composer.getByRole("button", { name: "Nouvelle variante → assistant" }),
+  ).toHaveCount(0);
+  const apply = composer
+    .getByRole("group", { name: "Déclencheur" })
+    .getByRole("button", { name: "Appliquer à l'ambiance" });
+  await expect(apply).toHaveAccessibleDescription(/Ambiance changée, sans rendu/);
+  await apply.click();
   await expect(page.getByLabel("Votre demande à l'assistant")).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Assistant" }),
   ).toContainText("grenier chaleureux, bois et lin");
+  await expect(composer.locator(".board-composer-said")).toContainText(
+    "Ambiance mise à jour",
+  );
   expect(outside).toEqual([]);
 });

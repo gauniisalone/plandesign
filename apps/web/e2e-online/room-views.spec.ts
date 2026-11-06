@@ -4,7 +4,8 @@ import { RENDER_ACCOUNT_KAN137 } from "./render-account";
 
 /** KAN-137 : dans le node Rendus, « Proposer une vue par pièce » pose une vue calculée par
  *  pièce du plan, puis « Rendre toutes les pièces (n) » envoie une demande par pièce cochée
- *  au poste de rendu (hors ligne ici : aucun GPU), chacune décomptée du quota du jour. */
+ *  au poste de rendu (hors ligne ici : aucun GPU), chacune décomptée du quota du jour.
+ *  KAN-134 : « Réglages des rendus » (focale, tirages) et « Rendre » de l'Assistant. */
 
 async function signIn(page: Page, email: string, ip: string): Promise<void> {
   await page.setExtraHTTPHeaders({ "X-Forwarded-For": ip });
@@ -163,5 +164,53 @@ test("vues par pièce : proposer, puis rendre toutes les pièces (une demande ch
   await panel.getByRole("button", { name: "Recalculer" }).click();
   await expect(row).toContainText("du sol visible", { timeout: 15_000 });
   await expect(panel.getByRole("button", { name: "Recalculer" })).toBeDisabled();
+
+  // KAN-134 : l'icône curseurs ouvre « Réglages des rendus » dans le node (en ligne).
+  const head = board.locator(".board-item.kind-frame.role-renders .board-frame-actions");
+  const sliders = head.getByRole("button", { name: "Réglages des rendus" });
+  await expect(sliders).toHaveAttribute("data-tip", /ambiance, focale, nombre de rendus/);
+  await sliders.click();
+  const settings = frame.getByRole("region", { name: "Réglages des rendus" });
+  await expect(settings).toBeVisible();
+  // Focale imposée : les vues calculées sont recalculées à 30 mm, leur note reste.
+  await settings.getByLabel("Focale des vues de pièce").selectOption("30");
+  await expect(rooms.getByRole("listitem").first()).toContainText("30 mm", {
+    timeout: 15_000,
+  });
+  await expect(rooms.getByRole("listitem").first()).toContainText("du sol visible");
+  // Deux tirages par pièce : le compteur le dit AVANT le clic (1 pièce cochée × 2).
+  await settings.getByLabel("Nombre de rendus par pièce").selectOption("2");
+  await expect(frame.locator(".rgal-quota")).toContainText(
+    `2 rendus seront pris · ${usedAfter} sur`,
+  );
+  // Gardés dans le navigateur : rouverts, les réglages sont là.
+  await sliders.click();
+  await expect(settings).toHaveCount(0);
+  await sliders.click();
+  await expect(settings.getByLabel("Nombre de rendus par pièce")).toHaveValue("2");
+
+  // L'Assistant : « Rendre » applique le texte à l'ambiance, puis 2 tirages de la pièce cochée.
+  const composer = page.getByRole("region", { name: "Compositeur", exact: true });
+  await expect(
+    composer.getByRole("button", { name: "Nouvelle variante → assistant" }),
+  ).toHaveCount(0);
+  await composer.getByLabel("Vos envies et contraintes").fill("plus chaleureux, du bois clair");
+  const renderBtn = composer
+    .getByRole("group", { name: "Déclencheur" })
+    .getByRole("button", { name: "Rendre", exact: true });
+  await expect(renderBtn).toHaveAccessibleDescription(/2 rendus seront pris/);
+  await renderBtn.click();
+  await expect(composer.locator(".board-composer-said")).toContainText(
+    "2 rendus demandés",
+    { timeout: 30_000 },
+  );
+  await expect
+    .poll(async () => {
+      const s = (await (await page.request.get("/api/realistic/status")).json()) as {
+        used_today: number;
+      };
+      return s.used_today - usedBefore;
+    })
+    .toBe(4);
   expect(failures).toEqual([]);
 });

@@ -239,7 +239,8 @@ interface Props {
    *  le délai d'« Annuler ») : le plan se recalcule. */
   onPlanMembers?: (levelId: string, added: string[], removed: string[]) => void;
   onEditPlan: (levelId: string) => void;
-  onVariant: (text: string) => void;
+  /** Résout à vrai quand l'Assistant a fini son tour (KAN-134 : « Rendre » l'attend). */
+  onVariant: (text: string) => Promise<boolean>;
   /** T1 : la note Exigences écrit la consigne et les réponses gardées dans le projet. */
   onSettings: (body: ProjectSettingsUpdate) => void;
   /** T3 : « Générer le plan » depuis le cadre Plan vide ; `planProgress` : la phrase de la
@@ -445,6 +446,8 @@ function RendersFrameActions({
   onRerender,
   onOpenViewer,
   onOpenRendersPane,
+  settingsOpen,
+  onToggleSettings,
 }: {
   levelId: string;
   stale: string[];
@@ -454,6 +457,10 @@ function RendersFrameActions({
   onRerender: (cameraIds: string[], levelId?: string) => void;
   onOpenViewer: (levelId: string) => void;
   onOpenRendersPane: (levelId?: string) => void;
+  /** KAN-134 : en ligne (rendus réalistes), l'icône curseurs ouvre « Réglages des rendus »
+   *  dans le node ; en local, le volet du rendu Blender, comme avant. */
+  settingsOpen?: boolean;
+  onToggleSettings?: () => void;
 }) {
   const n = useCapabilities().renders ? stale.length : 0;
   return (
@@ -491,15 +498,28 @@ function RendersFrameActions({
         </button>
       )}
       {/* T7a : en icône seule, le nom dans l'infobulle et pour les lecteurs d'écran. */}
-      <button
-        type="button"
-        className="icon board-frame-icon"
-        aria-label="Réglages et galerie"
-        onClick={() => onOpenRendersPane(levelId)}
-        title="Réglages et galerie : vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
-      >
-        <IconSliders />
-      </button>
+      {onToggleSettings ? (
+        <button
+          type="button"
+          className={`icon board-frame-icon${settingsOpen ? " active" : ""}`}
+          aria-label="Réglages des rendus"
+          aria-expanded={Boolean(settingsOpen)}
+          onClick={onToggleSettings}
+          data-tip="Réglages des rendus : ambiance, focale, nombre de rendus"
+        >
+          <IconSliders />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="icon board-frame-icon"
+          aria-label="Réglages et galerie"
+          onClick={() => onOpenRendersPane(levelId)}
+          data-tip="Réglages et galerie : vues automatiques, points de vue, qualité et éclairage, « Rendre toutes les vues », galerie"
+        >
+          <IconSliders />
+        </button>
+      )}
     </span>
   );
 }
@@ -515,6 +535,8 @@ export function BoardCanvas(props: Props) {
   const [tool, setTool] = useState<Tool>("select");
   /** KAN-64 : la zone « Assistant » du panneau, repliable. */
   const [assistantOpen, setAssistantOpen] = useState(true);
+  /** KAN-134 : le node Rendus dont « Réglages des rendus » est ouvert (en ligne). */
+  const [settingsFrame, setSettingsFrame] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
   const [live, setLive] = useState<BoardItem[] | null>(null);
@@ -2464,7 +2486,7 @@ export function BoardCanvas(props: Props) {
                 type="button"
                 className="primary board-variant"
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => props.onVariant(item.text)}
+                onClick={() => void props.onVariant(item.text)}
                 title="Envoie le texte de la note à l'assistant (un seul moteur)"
               >
                 Nouvelle variante → assistant
@@ -2507,6 +2529,8 @@ export function BoardCanvas(props: Props) {
                 title={item.text}
                 styleWords={styleOf(item.id)}
                 onProjectChanged={readOnly ? undefined : props.onProjectChanged}
+                settingsOpen={settingsFrame === item.id}
+                onCloseSettings={() => setSettingsFrame(null)}
               />
             ) : missingHint(item.role ?? "", caps) ? (
               <span
@@ -2619,7 +2643,7 @@ export function BoardCanvas(props: Props) {
                         type="button"
                         className="icon board-frame-icon"
                         aria-label={FRAME_IMPORT[item.role ?? ""]!.tip}
-                        title={FRAME_IMPORT[item.role ?? ""]!.tip}
+                        data-tip={FRAME_IMPORT[item.role ?? ""]!.tip}
                         onClick={() => pickInto(item)}
                       >
                         <IconPlus />
@@ -2643,7 +2667,7 @@ export function BoardCanvas(props: Props) {
                         type="button"
                         className="icon board-frame-icon"
                         aria-label="Ajouter un lien"
-                        title="Ajouter un lien (la page n'est jamais récupérée)"
+                        data-tip="Ajouter un lien (la page n'est jamais récupérée)"
                         onClick={() =>
                           setLinkForm({ url: "", title: "", frame: item.id })
                         }
@@ -2672,6 +2696,13 @@ export function BoardCanvas(props: Props) {
                   onRerender={props.onRerender}
                   onOpenViewer={props.onOpenViewer}
                   onOpenRendersPane={props.onOpenRendersPane}
+                  settingsOpen={settingsFrame === item.id}
+                  onToggleSettings={
+                    caps.online && !caps.renders
+                      ? () =>
+                          setSettingsFrame((f) => (f === item.id ? null : item.id))
+                      : undefined
+                  }
                 />
               )}
             </span>
@@ -2941,7 +2972,7 @@ export function BoardCanvas(props: Props) {
                 className={`icon${tool === id ? " active" : ""}`}
                 aria-label={label.split(" ")[0]}
                 aria-pressed={tool === id}
-                title={label}
+                data-tip={label}
                 onClick={() => setTool(id)}
               >
                 <Icon />
@@ -2968,7 +2999,7 @@ export function BoardCanvas(props: Props) {
             className={`icon${tool === id ? " active" : ""}`}
             aria-label={label.split(" ")[0]}
             aria-pressed={tool === id}
-            title={label}
+            data-tip={label}
             onClick={() => setTool(id)}
           >
             <Icon />
@@ -2979,7 +3010,7 @@ export function BoardCanvas(props: Props) {
           type="button"
           className="icon"
           aria-label="Annuler dans l'espace de travail"
-          title="Annuler dans l'espace de travail (Ctrl+Z)"
+          data-tip="Annuler dans l'espace de travail (Ctrl+Z)"
           disabled={!props.canUndo}
           onClick={props.onUndo}
         >
@@ -2989,7 +3020,7 @@ export function BoardCanvas(props: Props) {
           type="button"
           className="icon"
           aria-label="Rétablir dans l'espace de travail"
-          title="Rétablir dans l'espace de travail (Ctrl+Maj+Z)"
+          data-tip="Rétablir dans l'espace de travail (Ctrl+Maj+Z)"
           disabled={!props.canRedo}
           onClick={props.onRedo}
         >
@@ -3311,6 +3342,8 @@ export function BoardCanvas(props: Props) {
                       onSettings={props.onSettings}
                       onVariant={props.onVariant}
                       onGenerateNow={props.onGenerateNow}
+                      levelId={props.activeLevelId ?? firstLevelId}
+                      onProjectChanged={readOnly ? undefined : props.onProjectChanged}
                     />
                   )}
                 </section>
@@ -3458,6 +3491,7 @@ export function BoardCanvas(props: Props) {
             type="button"
             className="icon"
             aria-label="Dézoomer"
+            data-tip="Dézoomer"
             onClick={() => zoomAt(1 / 1.2)}
           >
             −
@@ -3469,6 +3503,7 @@ export function BoardCanvas(props: Props) {
             type="button"
             className="icon"
             aria-label="Zoomer"
+            data-tip="Zoomer"
             onClick={() => zoomAt(1.2)}
           >
             +

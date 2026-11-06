@@ -156,6 +156,7 @@ export function RenderCompare(props: RenderCompareProps) {
           type="button"
           className="icon rview-close"
           aria-label="Fermer la comparaison"
+          data-tip="Fermer la comparaison (Échap)"
           onClick={onClose}
         >
           ×

@@ -10307,3 +10307,78 @@ button.icon.pro-locked::after {
   color: var(--muted);
   cursor: default;
 }
+
+/* ---- KAN-134 : infobulle de l'app (data-tip), la même partout ---- */
+.app-tip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 4px 8px;
+  border-radius: var(--r-control);
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
+/* ---- KAN-134 : « Rendre » de l'Assistant ---- */
+.board-composer-act {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  margin-left: auto;
+}
+.board-composer-act .primary {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.board-composer-hint,
+.board-composer-said {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: right;
+}
+.board-composer-said {
+  color: var(--pd-olive, var(--text));
+}
+.board-composer-said.failed {
+  color: var(--primary);
+}
+.board-composer.compact .board-composer-hint {
+  display: none;
+}
+
+/* ---- KAN-134 : « Réglages des rendus » du node Rendus ---- */
+.rgal-settings {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+.rgal-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.rgal-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.rgal-settings-row select {
+  min-width: 0;
+  max-width: 100%;
+}
+.rgal-settings .rgal-hint,
+.rgal-quota {
+  margin: 0;
+}

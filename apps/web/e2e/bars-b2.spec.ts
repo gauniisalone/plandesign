@@ -53,11 +53,12 @@ test("b2 : commandes 3D en plan seul, nom de pièce hors de l'escalier, champs l
   await expect(page.locator(".viewbar")).toHaveClass(/plan-only/);
   const roof = button(page, "Masquer le toit");
   await expect(roof).toHaveAttribute("aria-pressed", "true");
-  await expect(roof).toHaveAttribute("title", /^Masquer le toit \(R\) : actif/);
+  // KAN-134 : l'infobulle de l'app (data-tip), plus le title natif.
+  await expect(roof).toHaveAttribute("data-tip", /^Masquer le toit \(R\) : actif/);
   for (const name of ["Rayons X", "Maison de poupée", "Plafonds", "Matières"])
     await expect(button(page, name)).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("r");
-  await expect(roof).toHaveAttribute("title", /: inactif/);
+  await expect(roof).toHaveAttribute("data-tip", /: inactif/);
   await expect(page.locator(".viewbar")).not.toHaveClass(/plan-only/);
   await button(page, "Plan").click();
 

@@ -72,6 +72,9 @@ EYE_LOW_M = 1.40
 FOCAL_MM = 26.0
 NEAR_FOCAL_MM = 24.0
 FAR_FOCAL_MM = 28.0
+FOCAL_MIN_MM = 24
+FOCAL_MAX_MM = 35
+"""KAN-134 : bornes de la focale demandée (« Réglages des rendus »), celles de KAN-141."""
 NEAR_DEPTH_M = 3.0
 FAR_DEPTH_M = 6.0
 PITCH_DEG = 4.0
@@ -368,6 +371,7 @@ def _best_for_spot(
     floor_area: float,
     spot: _Spot,
     avoid: list[tuple[float, float, float]],
+    wanted_mm: float | None = None,
 ) -> _Choice | None:
     clearance = room.clearance(spot.x, spot.y)
     z = min(EYE_M, clearance - HEADROOM_M)
@@ -375,7 +379,8 @@ def _best_for_spot(
         return None
     low = z < EYE_MIN_M - 1e-9
     rays = _rays(room, walls, spot.x, spot.y)
-    focal_mm = _focal_mm(float(rays.depth.max()))
+    # KAN-134 : la focale demandée (« Réglages des rendus ») ; sans elle, selon la profondeur.
+    focal_mm = float(wanted_mm) if wanted_mm is not None else _focal_mm(float(rays.depth.max()))
     focal = focal_px(focal_mm)
     width, _ = SIZES[ASPECT]
     half = math.atan(width / 2.0 / focal)
@@ -421,9 +426,12 @@ def plan_room_view(
     name: str,
     area_m2: float,
     avoid: list[tuple[float, float, float]] | None = None,
+    focal_mm: float | None = None,
 ) -> RoomView | None:
     """La meilleure vue de la pièce `target` ; `avoid` : vues déjà posées (x, y, lacet) dont
-    la nouvelle doit se distinguer (« Ajouter une vue »). None si aucune place ne convient."""
+    la nouvelle doit se distinguer (« Ajouter une vue ») ; `focal_mm` : focale imposée (KAN-134),
+    sinon choisie selon la profondeur de la pièce. None si aucune place ne convient."""
+    check_focal(focal_mm)
     room = _room(level, target)
     graph = WallGraph.from_level(level)
     walls = [graph.wall_polygon(w) for w in target.boundary_walls if w in graph.walls]
@@ -432,7 +440,8 @@ def plan_room_view(
     choices = [
         c
         for spot in _spots(level, target, room)
-        if (c := _best_for_spot(room, walls, lights, floor_area, spot, avoid or [])) is not None
+        if (c := _best_for_spot(room, walls, lights, floor_area, spot, avoid or [], focal_mm))
+        is not None
     ]
     if not choices:
         return None
@@ -456,8 +465,18 @@ def plan_room_view(
     )
 
 
-def plan_room_views(level: Level) -> tuple[list[RoomView], list[str]]:
-    """Une vue par pièce du niveau, et la raison de chaque pièce sans vue."""
+def check_focal(focal_mm: float | None) -> None:
+    """KAN-134 : une focale demandée hors de 24 à 35 mm est refusée (ValueError)."""
+    if focal_mm is not None and not FOCAL_MIN_MM <= focal_mm <= FOCAL_MAX_MM:
+        msg = f"focale hors bornes : {focal_mm} mm (de {FOCAL_MIN_MM} à {FOCAL_MAX_MM} mm)"
+        raise ValueError(msg)
+
+
+def plan_room_views(
+    level: Level, focal_mm: float | None = None
+) -> tuple[list[RoomView], list[str]]:
+    """Une vue par pièce du niveau, et la raison de chaque pièce sans vue ; `focal_mm` : focale
+    imposée à toutes (KAN-134), sinon celle du calcul."""
     names = room_names(level)
     areas = compute_derived(level).rooms
     views: list[RoomView] = []
@@ -466,7 +485,7 @@ def plan_room_views(level: Level) -> tuple[list[RoomView], list[str]]:
         name = names[str(room.id)]
         area = areas[room.id].area_m2 if room.id in areas else 0.0
         try:
-            view = plan_room_view(level, room, name, area)
+            view = plan_room_view(level, room, name, area, focal_mm=focal_mm)
         except (NoCameraError, GeometryError):
             view = None
         if view is None:
@@ -515,10 +534,14 @@ def _camera(view: RoomView, run_id: UUID, *, on: bool, added: bool = False) -> C
     )
 
 
-def apply_room_views(project: Project, level_id: UUID, *, actor: str) -> tuple[Project, RoomViews]:
+def apply_room_views(
+    project: Project, level_id: UUID, *, actor: str, focal_mm: float | None = None
+) -> tuple[Project, RoomViews]:
     """Pose une vue calculée par pièce (un seul pas d'historique, annulable). Les vues de pièce
     calculées d'avant sont remplacées ; celles modifiées à la main ou ajoutées restent. La case
-    de chaque pièce est gardée ; une pièce nouvelle est cochée dès 3 m²."""
+    de chaque pièce est gardée ; une pièce nouvelle est cochée dès 3 m². KAN-134 : `focal_mm`,
+    la focale des « Réglages des rendus », vaut pour les vues recalculées seulement."""
+    check_focal(focal_mm)
     level = project.levels.get(level_id)
     if level is None:
         msg = f"niveau inconnu : {level_id}"
@@ -542,7 +565,7 @@ def apply_room_views(project: Project, level_id: UUID, *, actor: str) -> tuple[P
             kept.append(f"{e.name} : vue ajoutée, gardée")
         else:
             del elements[e.id]
-    views, skipped = plan_room_views(level)
+    views, skipped = plan_room_views(level, focal_mm)
     run_id = uuid4()
     added: list[str] = []
     for view in views:

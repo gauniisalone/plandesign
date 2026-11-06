@@ -15,7 +15,8 @@ import {
   type RealisticListing,
   type RealisticRequest,
 } from "../api/client";
-import type { Project } from "../api/types.gen";
+import type { Project, Room } from "../api/types.gen";
+import { intentOf } from "../intent";
 import { allCameras, isFreeCamera } from "../model";
 import { useHosting } from "../state/hosting";
 import { useRenderStatus } from "../state/renderStatus";
@@ -38,6 +39,17 @@ import {
   type RoomRow,
 } from "./roomViews";
 import { RoomViewEditor } from "./RoomViewEditor";
+import { askRooms as sendRooms } from "./askRooms";
+import { RenderSettingsPanel } from "./RenderSettingsPanel";
+import {
+  fits,
+  quotaText,
+  readSettings,
+  RENDERS_EVENT,
+  takes,
+  writeSettings,
+  type RenderSettings,
+} from "./renderSettings";
 import {
   etaText,
   gallery,
@@ -257,7 +269,12 @@ export function RealisticRenders({
   title = "Rendus",
   styleWords,
   onProjectChanged,
+  settingsOpen = false,
+  onCloseSettings,
 }: {
+  /** KAN-134 : « Réglages des rendus » ouverts par l'icône curseurs de l'en-tête du node. */
+  settingsOpen?: boolean;
+  onCloseSettings?: () => void;
   /** KAN-137 : le projet après « Proposer une vue par pièce », une case ou « Ajouter une
    *  vue » (absent : le node ne modifie pas le plan). */
   onProjectChanged?: (project: Project) => void;
@@ -302,6 +319,10 @@ export function RealisticRenders({
   const [ticks, setTicks] = useState<Record<string, boolean>>({});
   /** KAN-141 : la vue de pièce dont le panneau « Modifier » est ouvert (sa caméra). */
   const [editing, setEditing] = useState<string | null>(null);
+  /** KAN-134 : focale et tirages, gardés dans le navigateur pour ce projet. */
+  const [settings, setSettings] = useState<RenderSettings>(() =>
+    readSettings(project.id),
+  );
   // KAN-101 : « Partager » n'existe que si le serveur a les liens publics allumés.
   const hosting = useHosting();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -317,6 +338,13 @@ export function RealisticRenders({
   const photos = Object.keys(project.images).filter((id) =>
     cameras.some((c) => c.image_id === id),
   );
+  /** KAN-134 : l'ambiance des réglages, celle des pièces du plan (null : elles diffèrent). */
+  const roomEls = level
+    ? Object.values(level.elements).filter((e): e is Room => e.type === "room")
+    : [];
+  const roomIds = roomEls.map((r) => r.id);
+  const styles = new Set(roomEls.map((r) => intentOf(r).style));
+  const commonStyle = styles.size === 1 ? [...styles][0]! : null;
   /** D2 : la réponse du serveur prime (GET …/board/inputs/{frameId} du lot L1, ou un 409
    *  « Reliez un plan pour rendre ») ; null : pas de réponse, repli `hasLinkedPlan`. */
   const [serverLinked, setServerLinked] = useState<boolean | null>(null);
@@ -367,6 +395,16 @@ export function RealisticRenders({
       window.clearInterval(timer);
     };
   }, [known, busy, refresh]);
+
+  // KAN-134 : l'Assistant a envoyé des demandes, ou les réglages ont changé ailleurs.
+  useEffect(() => {
+    const again = () => {
+      setSettings(readSettings(project.id));
+      void refresh();
+    };
+    window.addEventListener(RENDERS_EVENT, again);
+    return () => window.removeEventListener(RENDERS_EVENT, again);
+  }, [project.id, refresh]);
 
   // La barre d'avancement avance entre deux lectures.
   useEffect(() => {
@@ -444,11 +482,19 @@ export function RealisticRenders({
     run(async () => {
       for (const v of otherViews) await realisticApi.ask(project.id, levelId, v.id);
     });
-  /** KAN-137 : une demande par pièce cochée (chacune compte au quota du jour). */
+  /** KAN-137 : une demande par pièce cochée ; KAN-134 : autant de tirages que réglé, chacun
+   *  compté au quota du jour. */
   const askRooms = () =>
-    run(async () => {
-      for (const r of ticked) await realisticApi.ask(project.id, levelId, r.camera.id);
-    });
+    run(() =>
+      sendRooms(
+        project.id,
+        levelId,
+        ticked.map((r) => r.camera.id),
+        settings.draws,
+      ),
+    );
+  const askRoom = (cameraId: string) =>
+    run(() => sendRooms(project.id, levelId, [cameraId], settings.draws));
   /** KAN-137 : le plan change (vues posées, case, vue ajoutée) ; l'erreur se dit dans le node. */
   const edit = async (job: () => Promise<{ project: Project }>) => {
     setMessage(null);
@@ -460,14 +506,36 @@ export function RealisticRenders({
       setMessage(e instanceof Error ? e.message : String(e));
     }
   };
-  const proposeRooms = async () => {
+  const proposeRooms = async (focal: number | null = settings.focal) => {
     setProposing(true);
     try {
-      await edit(() => renderApi.roomViews(project.id, levelId));
+      await edit(() => renderApi.roomViews(project.id, levelId, focal));
     } finally {
       setProposing(false);
     }
   };
+  /** KAN-134 : un réglage change ; une focale nouvelle recalcule tout de suite les vues de
+   *  pièce (celles modifiées à la main gardent la leur), en un pas annulable. */
+  const changeSettings = (next: RenderSettings) => {
+    const focalChanged = next.focal !== settings.focal;
+    setSettings(next);
+    writeSettings(project.id, next);
+    // L'Assistant relit les tirages (son compteur « n rendus seront pris »).
+    window.dispatchEvent(new Event(RENDERS_EVENT));
+    if (focalChanged && rooms.length > 0) void proposeRooms(next.focal);
+  };
+  const setStyle = (style: string) =>
+    void edit(async () => {
+      let last: { project: Project } | null = null;
+      for (const id of roomIds)
+        last = await api.applyOp(project.id, levelId, {
+          op: "set_intent",
+          room_id: id,
+          fields: { style },
+        });
+      if (!last) throw new Error("Aucune pièce fermée : l'ambiance se règle par pièce.");
+      return last;
+    });
   const tick = (row: RoomRow, on: boolean) => {
     const id = row.camera.id;
     setTicks((t) => ({ ...t, [id]: on }));
@@ -521,6 +589,10 @@ export function RealisticRenders({
   const canLaunch = !readOnly && Boolean(allowed);
   const canRender =
     canLaunch && linked && (views.length > 0 || photos.length > 0);
+  /** KAN-134 : ce que prend « Rendre toutes les pièces », et le quota du jour. */
+  const { quota, used_today: used } = listing.status;
+  const roomsTake = takes(ticked.length, settings.draws);
+  const roomsFit = fits(roomsTake, used, quota);
   const viewName = (r: RealisticRequest) => {
     if (r.photo_id) {
       const n = photoNumber(project, r.photo_id);
@@ -545,6 +617,18 @@ export function RealisticRenders({
       aria-label="Rendus réalistes"
       onPointerDown={(e) => e.stopPropagation()}
     >
+      {settingsOpen && (
+        <RenderSettingsPanel
+          settings={settings}
+          style={commonStyle}
+          canEdit={canLaunch}
+          hasRoomViews={rooms.length > 0}
+          busy={proposing}
+          onChange={changeSettings}
+          onStyle={roomIds.length > 0 ? setStyle : undefined}
+          onClose={onCloseSettings}
+        />
+      )}
       {picking ? (
         <div className="rgal-tools" role="group" aria-label="Comparer">
           <span className="rgal-hint">Choisissez 2 à 4 rendus</span>
@@ -649,7 +733,7 @@ export function RealisticRenders({
                         key={r.camera.id}
                         type="button"
                         role="menuitem"
-                        onClick={() => void askView(r.camera.id)}
+                        onClick={() => void askRoom(r.camera.id)}
                       >
                         <span>Rendre la pièce « {r.name} »</span>
                         <small>sa vue calculée · {eta}</small>
@@ -743,7 +827,7 @@ export function RealisticRenders({
               <button
                 type="button"
                 className="primary"
-                disabled={!canRender || ticked.length === 0}
+                disabled={!canRender || ticked.length === 0 || !roomsFit}
                 onClick={() => void askRooms()}
               >
                 Rendre toutes les pièces ({ticked.length})
@@ -759,6 +843,10 @@ export function RealisticRenders({
                 Recalculer les vues
               </button>
             </div>
+            {/* KAN-134 : le quota dit AVANT le clic (pièces cochées × tirages). */}
+            <p className="rgal-hint rgal-quota" aria-live="polite">
+              {quotaText(roomsTake, used, quota)}
+            </p>
             <ul className="rgal-room-list">
               {rooms.map((r) => (
                 <li key={r.camera.id} className={r.on ? undefined : "off"}>
@@ -780,7 +868,7 @@ export function RealisticRenders({
                       type="button"
                       aria-label={`Rendre la pièce « ${r.name} »`}
                       disabled={!canRender}
-                      onClick={() => void askView(r.camera.id)}
+                      onClick={() => void askRoom(r.camera.id)}
                     >
                       Rendre
                     </button>
@@ -810,7 +898,7 @@ export function RealisticRenders({
                       onEye={(z) => setEye(r, z)}
                       onFocal={(mm) => setFocal(r, mm)}
                       onReset={() => resetView(r)}
-                      onRender={() => void askView(r.camera.id)}
+                      onRender={() => void askRoom(r.camera.id)}
                     />
                   )}
                 </li>

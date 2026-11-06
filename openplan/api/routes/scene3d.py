@@ -62,6 +62,8 @@ from openplan.pipeline.render import (
 )
 from openplan.pipeline.rerender import MAX_VIEWS, RerenderRun, plan_views, rerender
 from openplan.pipeline.room_views import (
+    FOCAL_MAX_MM,
+    FOCAL_MIN_MM,
     RoomViews,
     add_room_view,
     apply_room_views,
@@ -188,14 +190,26 @@ class RoomViewsResult(EditResult):
     views: RoomViews
 
 
+class RoomViewsBody(StrictModel):
+    focal_mm: int | None = Field(default=None, ge=FOCAL_MIN_MM, le=FOCAL_MAX_MM)
+    """KAN-134 : focale des « Réglages des rendus » (24 à 35 mm, sinon 422) ; None =
+    « Automatique », la focale choisie par pièce selon sa profondeur."""
+
+
 @router.post("/projects/{project_id}/levels/{level_id}/views/rooms")
 def room_views(
-    level_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep
+    level_id: UUID,
+    project: ProjectDep,
+    store: StoreDep,
+    actor: ActorDep,
+    body: RoomViewsBody | None = None,
 ) -> RoomViewsResult:
     """KAN-137 : une vue calculée par pièce (« Proposer une vue par pièce »), en un pas
     d'historique annulable ; les vues de pièce modifiées à la main ou ajoutées restent, la case
-    de chaque pièce aussi. 409 sans pièce fermée."""
-    after, views = apply_room_views(project, level_id, actor=actor)
+    de chaque pièce aussi. 409 sans pièce fermée. KAN-134 : `focal_mm` impose la focale des
+    vues recalculées."""
+    focal = body.focal_mm if body else None
+    after, views = apply_room_views(project, level_id, actor=actor, focal_mm=focal)
     report = validate_invariants(after)
     if not report.valid:
         raise InvalidEditError(report)

@@ -40,6 +40,16 @@ export function allowedOf(state: StatusState): boolean | null {
   return state.last ? state.last.allowed : false;
 }
 
+/** KAN-134 : le quota du jour et ce qui en est pris, tels qu'on les connaît (0 et 0 : rien
+ *  de lu ; le compteur ne dit alors que ce qui sera pris). */
+export function quotaOf(state: StatusState): { quota: number; used: number } {
+  const status =
+    state.kind === "ok" ? state.status : state.kind === "failed" ? state.last : null;
+  return status
+    ? { quota: status.quota, used: status.used_today }
+    : { quota: 0, used: 0 };
+}
+
 /** L'échec se dit seulement s'il n'y a aucune réponse d'avant à montrer. */
 export function statusDown(state: StatusState): boolean {
   return state.kind === "failed" && state.last === null;

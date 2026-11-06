@@ -2387,10 +2387,12 @@ export interface RoomViews {
 
 export const renderApi = {
   /** KAN-137 : une vue calculée par pièce, en un pas d'historique annulable. */
-  roomViews: (pid: string, lid: string) =>
+  /** KAN-134 : `focalMm`, la focale des « Réglages des rendus » (24 à 35 mm) imposée aux vues
+   *  recalculées ; null : « Automatique », la focale du calcul pièce par pièce. */
+  roomViews: (pid: string, lid: string, focalMm: number | null = null) =>
     request<EditResult & { views: RoomViews }>(
       `/projects/${pid}/levels/${lid}/views/rooms`,
-      json({}),
+      json(focalMm === null ? {} : { focal_mm: focalMm }),
     ),
   /** KAN-141 : « Recalculer » une vue de pièce modifiée à la main. */
   resetRoomView: (pid: string, lid: string, cameraId: string) =>

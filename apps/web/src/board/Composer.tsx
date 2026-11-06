@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   homeApi,
   instructionApi,
@@ -10,7 +10,21 @@ import type { Project } from "../api/types.gen";
 import { answersSummary, type Requirements } from "../guided";
 import { walls } from "../model";
 import { useCapabilities } from "../state/capabilities";
+import { useRenderStatus } from "../state/renderStatus";
+import { allowedOf, quotaOf } from "../state/renderStatusState";
 import { GuidedFields } from "../panels/GuidedFields";
+import { renderApi } from "../api/client";
+import { askRooms } from "./askRooms";
+import { hasLinkedPlan, isNoPlan, NO_PLAN_TEXT } from "./linkedPlan";
+import {
+  fits,
+  quotaText,
+  readSettings,
+  RENDERS_EVENT,
+  takes,
+  todayText,
+} from "./renderSettings";
+import { hasRooms, roomRows } from "./roomViews";
 
 /** Le compositeur flottant du tableau (T7b, maquette d'augus du 16 octobre) : il remplace la
  *  note Exigences (T1) et la barre « Déclencheur » (T4). Deux onglets, « Prompt libre » et
@@ -60,7 +74,13 @@ export function Composer({
   onVariant,
   onGenerateNow,
   docked = false,
+  levelId,
+  onProjectChanged,
 }: {
+  /** KAN-134 : le plan ouvert, celui que « Rendre » rend (ses vues de pièce cochées). */
+  levelId?: string;
+  /** KAN-134 : le projet après « Rendre » quand les vues de pièce ont dû être calculées. */
+  onProjectChanged?: (project: Project) => void;
   /** KAN-64 : rangé dans la zone « Assistant » du panneau de droite : toujours ouvert et
    *  déplié, sans bouton de fermeture (la zone se replie). */
   docked?: boolean;
@@ -69,8 +89,9 @@ export function Composer({
   /** Construction du plan en cours : l'étape remplace les boutons. */
   planProgress: string | null;
   onSettings: (body: ProjectSettingsUpdate) => void;
-  /** Envoie le texte à l'assistant (« Nouvelle variante »), comme l'ancienne note. */
-  onVariant: (text: string) => void;
+  /** Envoie le texte à l'assistant (l'ambiance) ; résout à vrai quand il a fini. KAN-134 :
+   *  « Appliquer à l'ambiance », ou la première moitié de « Rendre ». */
+  onVariant: (text: string) => Promise<boolean>;
   /** Les exigences au moment du clic : le texte du champ n'est peut-être pas encore
    *  revenu du serveur (il part quand le champ est quitté, donc par ce même clic). */
   onGenerateNow: (fresh: Requirements) => void;
@@ -132,6 +153,22 @@ export function Composer({
   );
   const lastModelCall = useRef(0);
   const gemini = Boolean(home?.remote_model && home.gemini_text);
+  // KAN-134 : en ligne, plan posé : « Rendre » (ambiance puis une demande par pièce cochée)
+  // si les rendus sont ouverts à ce compte, sinon « Appliquer à l'ambiance ».
+  const statusState = useRenderStatus(caps.online && !caps.renders);
+  const realistic =
+    caps.online && !caps.renders && Boolean(allowedOf(statusState));
+  const { quota, used } = quotaOf(statusState);
+  const [sending, setSending] = useState(false);
+  const hintId = useId();
+  /** Les tirages réglés dans le node Rendus (relus quand ils changent). */
+  const [draws, setDraws] = useState(() => readSettings(project.id).draws);
+  useEffect(() => {
+    const again = () => setDraws(readSettings(project.id).draws);
+    window.addEventListener(RENDERS_EVENT, again);
+    return () => window.removeEventListener(RENDERS_EVENT, again);
+  }, [project.id]);
+  const [said, setSaid] = useState<{ text: string; failed?: boolean } | null>(null);
 
   useEffect(() => {
     homeApi.settings().then(setHome, () => undefined);
@@ -201,6 +238,113 @@ export function Composer({
   };
   const stop = (e: React.PointerEvent) => e.stopPropagation();
 
+  // KAN-134 : le pied quand le plan est posé. En local avec Blender, « Générer maintenant »
+  // reste à côté (le chemin complet, rendu Blender compris).
+  const level = levelId ? project.levels[levelId] : undefined;
+  const planMode = hasWalls;
+  const rows = roomRows(level);
+  const ticked = rows.filter((r) => r.on);
+  const needViews = rows.length === 0 && hasRooms(level);
+  const take = takes(ticked.length, draws);
+  const linked = Boolean(levelId && hasLinkedPlan(project, levelId));
+  const canRender =
+    realistic &&
+    linked &&
+    !sending &&
+    (needViews || (ticked.length > 0 && fits(take, used, quota)));
+  const value = () => text.trim().slice(0, MAX_TEXT);
+  const fail = (e: unknown) =>
+    setSaid({
+      text: isNoPlan(e) ? NO_PLAN_TEXT : e instanceof Error ? e.message : String(e),
+      failed: true,
+    });
+  /** « Rendre » : l'ambiance d'abord (s'il y a un texte), puis une demande par pièce cochée et
+   *  par tirage ; sans vue de pièce encore, elles sont calculées d'abord (focale réglée). */
+  const render = async () => {
+    if (!levelId || !canRender) return;
+    saveText();
+    setSending(true);
+    setSaid(null);
+    try {
+      const wish = value();
+      if (wish && !(await onVariant(wish))) {
+        setSaid({
+          text: "L'ambiance n'a pas pu être mise à jour : rien n'est rendu.",
+          failed: true,
+        });
+        return;
+      }
+      let ids = ticked.map((r) => r.camera.id);
+      if (needViews) {
+        const done = await renderApi.roomViews(
+          project.id,
+          levelId,
+          readSettings(project.id).focal,
+        );
+        onProjectChanged?.(done.project);
+        ids = roomRows(done.project.levels[levelId])
+          .filter((r) => r.on)
+          .map((r) => r.camera.id);
+      }
+      if (ids.length === 0) {
+        setSaid({
+          text: "Aucune pièce cochée : cochez une pièce dans le node Rendus.",
+          failed: true,
+        });
+        return;
+      }
+      const n = await askRooms(project.id, levelId, ids, draws);
+      setSaid({
+        text:
+          (wish ? "Ambiance mise à jour. " : "") +
+          (n > 1
+            ? `${n} rendus demandés : ils arrivent dans le node Rendus.`
+            : "1 rendu demandé : il arrive dans le node Rendus."),
+      });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSending(false);
+    }
+  };
+  /** « Appliquer à l'ambiance » : la consigne traduite en intention, sans rendu. */
+  const apply = async () => {
+    const wish = value();
+    if (!wish || sending) return;
+    saveText();
+    setSending(true);
+    setSaid(null);
+    try {
+      setSaid(
+        (await onVariant(wish))
+          ? { text: "Ambiance mise à jour. Les rendus existants ne changent pas." }
+          : { text: "L'ambiance n'a pas pu être mise à jour.", failed: true },
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSending(false);
+    }
+  };
+  const primary = () => {
+    if (!planMode) return;
+    void (realistic ? render() : apply());
+  };
+  const renderHint = !linked
+    ? NO_PLAN_TEXT
+    : needViews
+      ? ["Ambiance selon votre texte, puis une vue calculée et rendue par pièce.", todayText(used, quota)]
+          .filter(Boolean)
+          .join(" · ")
+      : ticked.length === 0
+        ? "Aucune pièce cochée dans le node Rendus."
+        : `Ambiance selon votre texte, puis une demande par pièce cochée. ${quotaText(take, used, quota)}`;
+  const applyHint = !text.trim()
+    ? "Écrivez une envie (style, matières, couleurs…)."
+    : caps.online
+      ? "Ambiance changée, sans rendu. Les rendus réalistes ne sont pas encore ouverts à ce compte."
+      : "Ambiance changée, sans rendu.";
+
   if (!open && !docked)
     return (
       <button
@@ -256,22 +400,14 @@ export function Composer({
           ))}
         </div>
         <span className="board-composer-sp" />
-        {text.trim() && (
-          <button
-            type="button"
-            className="link"
-            onClick={() => onVariant(text.trim())}
-            title="Envoie le texte à l'assistant (un seul moteur)"
-          >
-            Nouvelle variante → assistant
-          </button>
-        )}
+        {/* KAN-134 : « Nouvelle variante → assistant » est devenu le bouton du pied, nommé
+            par son effet (« Rendre » ou « Appliquer à l'ambiance »). */}
         {!docked && (
           <button
             type="button"
             className="icon board-composer-close"
             aria-label="Fermer le compositeur"
-            title="Fermer (vos exigences sont gardées)"
+            data-tip="Fermer (vos exigences sont gardées)"
             onClick={() => toggle(false)}
           >
             ×
@@ -298,6 +434,13 @@ export function Composer({
               drafts.set(project.id, e.target.value);
             }}
             onBlur={saveText}
+            onKeyDown={(e) => {
+              // KAN-134 : Ctrl + Entrée, le bouton principal du pied.
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                primary();
+              }
+            }}
           />
         </div>
       ) : (
@@ -335,6 +478,24 @@ export function Composer({
           <>
             {/* KAN-120 : plus de « Générer automatiquement au dépôt d'une photo ». */}
             <span className="board-composer-sp" />
+            {planMode && (
+              <div className="board-composer-act">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={realistic ? !canRender : !text.trim() || sending}
+                  aria-describedby={hintId}
+                  onClick={primary}
+                >
+                  {sending && <span className="spinner" aria-hidden="true" />}
+                  {realistic ? "Rendre" : "Appliquer à l'ambiance"}
+                </button>
+                <p id={hintId} className="board-composer-hint">
+                  {realistic ? renderHint : applyHint}
+                  {" · Ctrl + Entrée"}
+                </p>
+              </div>
+            )}
             {(caps.renders || !hasWalls) && (
               <button
                 type="button"
@@ -354,6 +515,15 @@ export function Composer({
           </>
         )}
       </footer>
+      {said && (
+        <p
+          className={`board-composer-said${said.failed ? " failed" : ""}`}
+          role={said.failed ? "alert" : "status"}
+        >
+          {said.failed ? "" : "✓ "}
+          {said.text}
+        </p>
+      )}
     </section>
   );
 }

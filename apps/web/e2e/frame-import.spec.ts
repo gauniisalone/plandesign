@@ -88,7 +88,14 @@ test("T7a : importer dans les cadres Photos et Inspirations", async ({
 
   // Cadre rempli : le « + » de l'en-tête, avec son infobulle.
   const add = photos.getByRole("button", { name: "Ajouter des photos" });
-  await expect(add).toHaveAttribute("title", "Ajouter des photos");
+  // KAN-134 : l'infobulle de l'app, au survol.
+  await expect(add).toHaveAttribute("data-tip", "Ajouter des photos");
+  await add.hover();
+  const tip = page.locator("#app-tip");
+  await expect(tip).toHaveText("Ajouter des photos");
+  await expect(tip).toHaveAttribute("role", "tooltip");
+  await page.mouse.move(0, 0);
+  await expect(tip).toHaveCount(0);
   await expect(
     inspirations.getByRole("button", { name: "Ajouter des images d'ambiance" }),
   ).toBeVisible();
