@@ -170,6 +170,9 @@ apps/web/e2e/screenshots/
 apps/web/test-results-audit/
 apps/web/.e2e-site/
 apps/web/test-results-site/
+# KAN-124 : e2e de l'assistant de calage (faux modèle)
+apps/web/.e2e-assistant/
+apps/web/test-results-assistant/
 # KAN-103 : tests générés par bddgen depuis apps/web/features/*.feature
 apps/web/.features-gen/
 # KAN-79 : onnxruntime-web copié de node_modules par vite.config.ts (dev et build)

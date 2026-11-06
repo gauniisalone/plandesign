@@ -24,6 +24,7 @@ from pydantic import Field, JsonValue
 from openplan.adapters.protocols import AssistantBackend
 from openplan.api.deps import ProjectDep
 from openplan.pipeline.calage.extraction import Outcome, Reason, extract
+from openplan.pipeline.calage.fake_backend import FAKE_URL, FakeAssistant
 from openplan.pipeline.calage.missing import (
     Question,
     QuestionField,
@@ -52,7 +53,10 @@ def assistant_backend(request: Request) -> AssistantBackend | None:
     if not hasattr(state, "assistant_backend"):
         settings = state.settings
         backend: AssistantBackend | None = None
-        if settings.assistant_url:
+        if settings.assistant_url == FAKE_URL:
+            # Le faux modèle (e2e) : boucle locale seulement, jamais sur une API exposée.
+            backend = FakeAssistant() if settings.local_only else None
+        elif settings.assistant_url:
             from openplan.adapters.remote.assistant_backend import OpenAICompatibleAssistant
 
             backend = OpenAICompatibleAssistant(

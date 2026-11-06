@@ -38,6 +38,8 @@ import { PhotoPanel } from "../panels/PhotoPanel";
 import { PhotoStrip } from "../panels/PhotoStrip";
 import { RenderPanel } from "../panels/RenderPanel";
 import { RecalibrateCard } from "../panels/RecalibrateCard";
+import { CalagePanel } from "../panels/CalagePanel";
+import { useHosting } from "../state/hosting";
 import { AccountSection } from "../panels/AccountSection";
 import {
   InstallState,
@@ -202,6 +204,8 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
   // n'est pas connu, rien d'éditable n'est montré.
   const role = useRole(projectId);
   const readOnly = !canEdit(role);
+  /** KAN-124 : le panneau « Assistant » seulement si OPENPLAN_ASSISTANT est allumé. */
+  const assistantOn = useHosting()?.assistant ?? false;
   /** KAN-47 : lien direct vers l'import, rôle pas encore lu → l'atelier attend. */
   const gate = importGate(role);
   // B1e : « Partager » pour le propriétaire, avec les comptes seulement.
@@ -2200,6 +2204,17 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
             <div className="side-card">
               {
                 <>
+                  {/* KAN-124 : l'assistant de calage, en tête du panneau (drapeau allumé). */}
+                  {assistantOn && !readOnly && state.levelId && (
+                    <CalagePanel
+                      projectId={state.project.id}
+                      levelId={state.levelId}
+                      revision={state.project.history_cursor}
+                      busy={state.busy}
+                      onRecalibrate={actions.recalibrateDimensions}
+                      onRan={actions.reload}
+                    />
+                  )}
                   {/* Recalibrer : la carte se range dans le panneau, hors du plan à cliquer. */}
                   {showScaleCard && panelOpen && (
                     <RecalibrateCard

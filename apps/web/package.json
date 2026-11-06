@@ -15,7 +15,8 @@
     "e2e": "bddgen && playwright test",
     "e2e:accounts": "bddgen -c playwright.accounts.config.ts && playwright test -c playwright.accounts.config.ts",
     "e2e:online": "bddgen -c playwright.online.config.ts && playwright test -c playwright.online.config.ts",
-    "e2e:site": "playwright test -c playwright.site.config.ts"
+    "e2e:site": "playwright test -c playwright.site.config.ts",
+    "e2e:assistant": "playwright test -c playwright.assistant.config.ts"
   },
   "dependencies": {
     "onnxruntime-web": "1.30.0",

@@ -21,6 +21,9 @@ export interface Hosting {
   /** KAN-132 : « Supprimer mon compte » et « Exporter mes données » ouverts
    *  (OPENPLAN_ACCOUNT_SELF_SERVICE, éteint par défaut) ; sinon les blocs n'existent pas. */
   accountSelfService: boolean;
+  /** KAN-124 : l'assistant de calage (OPENPLAN_ASSISTANT, éteint par défaut) ; sinon aucun
+   *  panneau « Assistant » dans l'espace. Avec ou sans les comptes. */
+  assistant: boolean;
 }
 
 const LOCAL: Hosting = {
@@ -31,6 +34,7 @@ const LOCAL: Hosting = {
   shareLinks: false,
   passwordLogin: false,
   accountSelfService: false,
+  assistant: false,
 };
 let pending: Promise<Hosting> | null = null;
 
@@ -45,6 +49,7 @@ export function loadHosting(): Promise<Hosting> {
       passwordLogin: Boolean(h.accounts) && h.password_login === true,
       accountSelfService:
         Boolean(h.accounts) && h.account_self_service === true,
+      assistant: h.assistant === true,
     }),
     () => LOCAL,
   );

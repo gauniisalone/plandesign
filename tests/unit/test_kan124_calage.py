@@ -372,3 +372,53 @@ def test_the_model_is_constrained_without_the_cross_rules_but_validated_with_the
     assert "allOf" in full and "allOf" not in sent and "$schema" not in sent
     assert sent["required"] == full["required"] and sent["properties"] == full["properties"]
     assert not is_valid({**HEIGHT, "valeur": 1.5})  # la règle croisée reste vérifiée par l'app
+
+
+# ------------------------------------------------------------------ phase 2 : faux modèle, santé
+
+
+def _fake(field: str, message: str) -> dict[str, Any]:
+    from openplan.pipeline.calage.extraction import SYSTEM, user_message
+    from openplan.pipeline.calage.fake_backend import FakeAssistant
+
+    out = FakeAssistant().extract(SYSTEM, user_message(field, {}, message), None, 20.0)
+    data: dict[str, Any] = json.loads(out)
+    assert is_valid(data), data
+    return data
+
+
+@pytest.mark.parametrize(
+    ("message", "value"), [("2m45", 2.45), ("plutôt 2,60", 2.6), ("245 cm", 2.45), ("250", 2.5)]
+)
+def test_phase2_the_fake_model_reads_a_height(message: str, value: float) -> None:
+    out = _fake("hauteur_plafond", message)
+    assert out["outil"] == "set_dimension" and out["valeur"] == pytest.approx(value)
+
+
+def test_phase2_the_fake_model_skips_asks_and_is_slow_on_demand() -> None:
+    assert _fake("hauteur_plafond", "je passe")["outil"] == "skip"
+    assert _fake("hauteur_plafond", "aucune idée")["besoin_clarification"] is True
+    assert _fake("hauteur_plafond", "1m20")["besoin_clarification"] is True
+    with pytest.raises(AssistantTimeoutError):
+        _fake("hauteur_plafond", "trop lent")
+
+
+def test_phase2_health_says_whether_the_assistant_is_on(tmp_path: Path) -> None:
+    for flag in (False, True):
+        store = ProjectStore(tmp_path / f"d{flag}")
+        app = create_app(store=store, settings=Settings(data_dir=store.root, assistant=flag))
+        with TestClient(app) as client:
+            assert client.get("/api/health").json()["assistant"] is flag
+
+
+def test_phase2_the_fake_model_is_refused_on_an_exposed_api(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from openplan.api.routes.calage import assistant_backend
+
+    exposed = Settings(data_dir=tmp_path, assistant=True, assistant_url="fake", host="0.0.0.0")
+    local = Settings(data_dir=tmp_path, assistant=True, assistant_url="fake")
+    for settings, expected in ((exposed, None), (local, "assistant:fake")):
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
+        backend = assistant_backend(request)  # type: ignore[arg-type]
+        assert (backend.model_id if backend else None) == expected

@@ -906,6 +906,8 @@ export const api = {
       password_login?: boolean;
       /** KAN-132 : supprimer son compte, exporter ses données (OPENPLAN_ACCOUNT_SELF_SERVICE). */
       account_self_service?: boolean;
+      /** KAN-124 : assistant de calage activé (OPENPLAN_ASSISTANT). */
+      assistant?: boolean;
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),
@@ -1696,6 +1698,90 @@ export const recalibrateApi = {
       `/projects/${pid}/levels/${lid}/recalibrate/dimensions`,
       json(body),
     ),
+};
+
+/* KAN-124 : l'assistant de calage (OPENPLAN_ASSISTANT). L'app calcule ce qui manque ; le modèle
+   n'extrait que la réponse libre ; l'action proposée est un cas d'usage du registre, lancé par
+   le front après le clic sur « Oui ». */
+export type CalageField = "cote_connue" | "hauteur_plafond" | "type_piece";
+
+export interface CalageQuestion {
+  field: CalageField;
+  text: string;
+  reason: string;
+  assumption: string;
+  skippable: boolean;
+  unit: "m" | null;
+  minimum: number | null;
+  maximum: number | null;
+  choices: { value: string; label: string }[];
+}
+
+export interface CalageAction {
+  use_case: string;
+  method: "POST";
+  path: string;
+  body: Record<string, unknown>;
+  query: Record<string, string>;
+}
+
+export interface CalageButton {
+  label: string;
+  kind: "confirm" | "correct" | "skip";
+  action: CalageAction | null;
+}
+
+export interface CalageProposal {
+  kind: "action" | "valeur" | "supposition" | "precision" | "rien";
+  field: CalageField | null;
+  text: string;
+  value: number | string | null;
+  estimated: boolean;
+  buttons: CalageButton[];
+}
+
+export type CalageReason =
+  | ""
+  | "absent"
+  | "indisponible"
+  | "trop_lent"
+  | "sortie_invalide";
+
+export interface CalageAnswer {
+  mode: "assistant" | "formulaire";
+  reason: CalageReason;
+  question: CalageQuestion;
+  proposal: CalageProposal | null;
+  attempts: number;
+  elapsed_ms: number;
+}
+
+export const calageApi = {
+  missing: (pid: string, lid: string) =>
+    request<{ questions: CalageQuestion[] }>(
+      `/projects/${pid}/levels/${lid}/calage/missing`,
+    ),
+  answer: (
+    pid: string,
+    lid: string,
+    body: {
+      field: CalageField;
+      message?: string;
+      skip?: boolean;
+      previous?: unknown;
+    },
+  ) =>
+    request<CalageAnswer>(
+      `/projects/${pid}/levels/${lid}/calage/answer`,
+      json(body),
+    ),
+  /** Une action du registre autre que le recalage (régénérer, rendre) : la route existante,
+   *  telle que l'app l'a décrite (chemin sous /api). */
+  run: (action: CalageAction) => {
+    const query = new URLSearchParams(action.query).toString();
+    const path = action.path.replace(/^\/api/, "") + (query ? `?${query}` : "");
+    return request<unknown>(path, json(action.body));
+  },
 };
 
 /* KAN-66 : mesure de référence sur une photo (une par photo : le PUT remplace) ; le PUT et

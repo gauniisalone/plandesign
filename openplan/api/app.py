@@ -297,6 +297,8 @@ def create_app(
         return {
             "status": "ok",
             "version": __version__,
+            # KAN-124 : le front n'affiche le panneau de l'assistant de calage qu'activé.
+            "assistant": settings.assistant,
             "device": device,
             "device_label": device_label,
             "blender": find_blender(settings.blender_bin) is not None,

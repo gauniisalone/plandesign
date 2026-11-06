@@ -10405,3 +10405,79 @@ button.icon.pro-locked::after {
 .admin-note.admin-alert {
   color: var(--primary);
 }
+
+/* ---- KAN-124 : panneau « Assistant » de calage (maquette KAN-123, écran 2) ---- */
+.calage {
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.calage-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.calage-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent, currentColor);
+  flex: none;
+}
+.calage-body {
+  padding: 10px 12px;
+  display: grid;
+  gap: 10px;
+}
+.calage-msg,
+.calage-proposal,
+.calage-done,
+.calage-reason {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.calage-done {
+  color: var(--muted);
+}
+.calage-q {
+  border: 1px solid var(--line);
+  border-radius: var(--r-control, 8px);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.calage-ql {
+  font-size: 0.86rem;
+  font-weight: 600;
+  display: grid;
+  gap: 2px;
+}
+.calage-ql span {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.calage-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.calage-input {
+  font: inherit;
+  padding: 0.35em 0.6em;
+  flex: 1 1 8em;
+  min-width: 0;
+}
+.calage-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.82rem;
+  flex: 1 1 10em;
+}
