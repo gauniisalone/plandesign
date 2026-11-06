@@ -27,6 +27,8 @@ MAX_IMAGE_BYTES = 8 * 1024 * 1024
 """Plafond d'un rendu déposé (PNG) ; l'intergiciel refuse un envoi plus gros avant de le lire."""
 MAX_IMAGE_SIDE = 2048
 """Plus grand côté d'un rendu déposé (Z-Image rend en 1024 px de grand côté)."""
+MAX_DRAW = 2
+"""KAN-134 : rang le plus haut d'un tirage d'une même vue (« 1 à 3 rendus par pièce »)."""
 JSON_FILES: dict[str, int] = {
     "project": MAX_PROJECT_BYTES,
     "bake": MAX_BAKE_BYTES,
@@ -138,6 +140,10 @@ class RealisticRequest(StrictModel):
 
 class RealisticCreate(StrictModel):
     camera_id: UUID
+    draw: int = Field(default=0, ge=0, le=MAX_DRAW)
+    """KAN-134 : rang du tirage de cette vue dans un même envoi (0 : le premier). Une vue garde
+    au plus `draw + 1` demandes en attente : le double clic reste fusionné, « 2 rendus par
+    pièce » donne 2 demandes (chacune au quota du jour)."""
 
 
 class RealisticFromPhoto(StrictModel):

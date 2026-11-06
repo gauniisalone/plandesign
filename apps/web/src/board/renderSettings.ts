@@ -109,6 +109,23 @@ export function fits(take: number, used: number, quota: number): boolean {
   return quota <= 0 || take <= Math.max(0, quota - used);
 }
 
+/** Ce qu'un envoi de vues de pièce a vraiment donné (askRooms) : `sent` demandes distinctes
+ *  sur `asked` ; `full` : le quota du jour a arrêté l'envoi en route. */
+export interface RoomsSent {
+  sent: number;
+  asked: number;
+  full: boolean;
+}
+
+/** Le retour sous le bouton : ce qui est vraiment parti, et pourquoi pas plus. */
+export function sentText({ sent, asked, full }: RoomsSent): string {
+  if (full)
+    return `${plural(sent, "rendu demandé", "rendus demandés")} sur ${asked} : quota du jour atteint.`;
+  return sent > 1
+    ? `${sent} rendus demandés : ils arrivent dans le node Rendus.`
+    : "1 rendu demandé : il arrive dans le node Rendus.";
+}
+
 /** Les libellés du choix de focale : « Automatique », puis 24 à 35 mm. */
 export function focalChoices(): { value: number | null; label: string }[] {
   const out: { value: number | null; label: string }[] = [

@@ -552,10 +552,12 @@ export const realisticApi = {
   status: () => request<RealisticStatus>("/realistic/status"),
   list: (pid: string) =>
     request<RealisticListing>(`/projects/${pid}/realistic`),
-  ask: (pid: string, levelId: string, cameraId: string) =>
+  /** KAN-134 : `draw` est le rang du tirage d'une même vue dans un envoi (0 : le premier) ;
+   *  sans lui, la garde du double clic d'avant. */
+  ask: (pid: string, levelId: string, cameraId: string, draw = 0) =>
     request<RealisticRequest>(
       `/projects/${pid}/levels/${levelId}/realistic`,
-      json({ camera_id: cameraId }),
+      json(draw > 0 ? { camera_id: cameraId, draw } : { camera_id: cameraId }),
     ),
   imageUrl: (pid: string, requestId: string) =>
     `${BASE}/projects/${pid}/realistic/${requestId}/image`,

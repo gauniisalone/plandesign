@@ -69,6 +69,7 @@ from openplan.schemas.render_queue import (
     CAPABILITIES_HEADER,
     HEARTBEAT,
     JSON_FILES,
+    MAX_DRAW,
     MAX_IMAGE_BYTES,
     STYLE,
     STYLE_IGNORE,
@@ -289,10 +290,11 @@ def list_realistic(project_id: UUID, request: Request, actor: ActorDep) -> Reali
 def create_realistic(
     project_id: UUID, level_id: UUID, body: RealisticCreate, request: Request, response: Response
 ) -> RealisticRequest:
-    """Une demande pour une vue, stockée sans calcul ; la même vue déjà en attente ou en cours
-    est rendue telle quelle (double clic)."""
+    """Une demande pour une vue, stockée sans calcul. KAN-134 : `draw` est le rang du tirage ;
+    la vue a déjà `draw + 1` demandes en attente ou en cours → la plus récente est rendue
+    telle quelle (double clic, 200), sinon une demande de plus (201, au quota du jour)."""
     user = allowed_user(request)
-    return _create(request, response, user, project_id, level_id, body.camera_id)
+    return _create(request, response, user, project_id, level_id, body.camera_id, draw=body.draw)
 
 
 @router.post(L + "/realistic/from-photo", status_code=201)
@@ -484,9 +486,12 @@ def _create(
     camera_id: UUID,
     *,
     project: Project | None = None,
+    draw: int = 0,
 ) -> RealisticRequest:
     """La demande d'une vue (création, D5, variante) : vue connue, plan présent (D2), la même
-    vue déjà en attente ou en cours rendue telle quelle (double clic), place et quota."""
+    vue déjà en attente ou en cours rendue telle quelle (double clic), place et quota.
+    KAN-134 : `draw` (0 à MAX_DRAW, borné par le schéma) admet `draw + 1` demandes en attente
+    pour la vue ; au-delà, c'est un double clic."""
     store = store_of(request)
     project = project or _load(store, project_id)
     try:
@@ -499,13 +504,15 @@ def _create(
     inputs = render_inputs(project, store, level_id)
     photo = photo_cameras(project).get(camera_id)
     queue = queue_of(request)
-    for row in queue.list_for(user.id, project_id):
-        if (row.level_id, row.camera_id) == (level_id, camera_id) and row.state in (
-            "pending",
-            "taken",
-        ):
-            response.status_code = 200
-            return public_request(row, False, photo, mine=True)
+    waiting = [
+        row
+        for row in queue.list_for(user.id, project_id)
+        if (row.level_id, row.camera_id) == (level_id, camera_id)
+        and row.state in ("pending", "taken")
+    ]
+    if len(waiting) > max(0, min(draw, MAX_DRAW)):
+        response.status_code = 200
+        return public_request(waiting[0], False, photo, mine=True)
     accounts = accounts_of(request)
     limit = quota_bytes(request)
     payer = None if accounts is None else accounts.payer_of(project_id)

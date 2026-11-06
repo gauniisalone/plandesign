@@ -21,6 +21,7 @@ import {
   quotaText,
   readSettings,
   RENDERS_EVENT,
+  sentText,
   takes,
   todayText,
 } from "./renderSettings";
@@ -293,14 +294,9 @@ export function Composer({
         });
         return;
       }
-      const n = await askRooms(project.id, levelId, ids, draws);
-      setSaid({
-        text:
-          (wish ? "Ambiance mise à jour. " : "") +
-          (n > 1
-            ? `${n} rendus demandés : ils arrivent dans le node Rendus.`
-            : "1 rendu demandé : il arrive dans le node Rendus."),
-      });
+      // Ce qui est vraiment parti (le quota peut arrêter l'envoi en route : il le dit).
+      const sent = await askRooms(project.id, levelId, ids, draws);
+      setSaid({ text: (wish ? "Ambiance mise à jour. " : "") + sentText(sent) });
     } catch (e) {
       fail(e);
     } finally {

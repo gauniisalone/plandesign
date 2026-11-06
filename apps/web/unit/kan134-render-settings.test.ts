@@ -10,6 +10,7 @@ import {
   focalChoices,
   quotaText,
   readSettings,
+  sentText,
   takes,
   todayText,
   writeSettings,
@@ -77,6 +78,25 @@ test("au-delà du quota du jour, « Rendre » ne part pas", () => {
   assert.equal(fits(3, 17, 20), true);
   assert.equal(fits(4, 17, 20), false);
   assert.equal(fits(9, 0, 0), true, "quota inconnu : le serveur tranche");
+});
+
+test("le retour sous le bouton dit ce qui est vraiment parti", () => {
+  assert.equal(
+    sentText({ sent: 2, asked: 2, full: false }),
+    "2 rendus demandés : ils arrivent dans le node Rendus.",
+  );
+  assert.equal(
+    sentText({ sent: 1, asked: 1, full: false }),
+    "1 rendu demandé : il arrive dans le node Rendus.",
+  );
+  assert.equal(
+    sentText({ sent: 1, asked: 2, full: true }),
+    "1 rendu demandé sur 2 : quota du jour atteint.",
+  );
+  assert.equal(
+    sentText({ sent: 2, asked: 3, full: true }),
+    "2 rendus demandés sur 3 : quota du jour atteint.",
+  );
 });
 
 test("le choix de focale : Automatique puis 24 à 35 mm", () => {
