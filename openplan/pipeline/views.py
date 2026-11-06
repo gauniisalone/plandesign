@@ -1252,8 +1252,13 @@ MAX_RENDER_ALL = 8
 
 def views_to_render(level: Level) -> list[Camera]:
     """« Rendre toutes les vues » : les vues automatiques (ensemble, zone, détail), puis les
-    autres points de vue libres ; pas les caméras des photos ; huit au plus."""
-    free = [e for e in level.elements.values() if isinstance(e, Camera) and e.image_id is None]
+    autres points de vue libres ; pas les caméras des photos ni les vues de pièce (KAN-137 :
+    elles ont leur « Rendre toutes les pièces ») ; huit au plus."""
+    free = [
+        e
+        for e in level.elements.values()
+        if isinstance(e, Camera) and e.image_id is None and "room_view" not in e.metadata
+    ]
     auto = sorted(
         (c for c in free if c.metadata.get(AUTO_KEY) in ROLES),
         key=lambda c: ROLES.index(c.metadata[AUTO_KEY]),

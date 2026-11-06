@@ -61,6 +61,7 @@ from openplan.pipeline.render import (
     section_view,
 )
 from openplan.pipeline.rerender import MAX_VIEWS, RerenderRun, plan_views, rerender
+from openplan.pipeline.room_views import RoomViews, add_room_view, apply_room_views
 from openplan.pipeline.scene3d import bake_level, glb_bytes
 from openplan.pipeline.timings import TIMINGS_FILE, Timings
 from openplan.pipeline.views import AutoViews, apply_auto_views, views_to_render
@@ -176,6 +177,45 @@ def auto_views(
     store.save(after)
     edit = _result(after, level_id, report)
     return AutoViewsResult(**edit.model_dump(), views=views)
+
+
+class RoomViewsResult(EditResult):
+    views: RoomViews
+
+
+@router.post("/projects/{project_id}/levels/{level_id}/views/rooms")
+def room_views(
+    level_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep
+) -> RoomViewsResult:
+    """KAN-137 : une vue calculée par pièce (« Proposer une vue par pièce »), en un pas
+    d'historique annulable ; les vues de pièce modifiées à la main ou ajoutées restent, la case
+    de chaque pièce aussi. 409 sans pièce fermée."""
+    after, views = apply_room_views(project, level_id, actor=actor)
+    report = validate_invariants(after)
+    if not report.valid:
+        raise InvalidEditError(report)
+    store.save(after)
+    edit = _result(after, level_id, report)
+    return RoomViewsResult(**edit.model_dump(), views=views)
+
+
+class RoomViewAdded(EditResult):
+    camera_id: UUID
+
+
+@router.post("/projects/{project_id}/levels/{level_id}/views/rooms/{room_id}/add")
+def room_view_add(
+    level_id: UUID, room_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep
+) -> RoomViewAdded:
+    """KAN-137 : « Ajouter une vue » dans une pièce, assez différente de ses vues déjà posées.
+    409 si la pièce n'a pas d'autre place."""
+    after, camera = add_room_view(project, level_id, room_id, actor=actor)
+    report = validate_invariants(after)
+    if not report.valid:
+        raise InvalidEditError(report)
+    store.save(after)
+    edit = _result(after, level_id, report)
+    return RoomViewAdded(**edit.model_dump(), camera_id=camera.id)
 
 
 class AutopilotBody(StrictModel):

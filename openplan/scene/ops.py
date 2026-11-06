@@ -901,12 +901,12 @@ def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) ->
         _check_catalog_size(updated)
     if (
         isinstance(updated, Camera)
-        and "auto_view" in updated.metadata
+        and ("auto_view" in updated.metadata or "room_view" in updated.metadata)
         and is_user(actor)
         and _CAMERA_POSE & op.fields.keys()
     ):
-        # Vue automatique déplacée ou visée à la main (V1) : elle devient celle de
-        # l'utilisateur, et « Vues automatiques » ne la remplacera plus.
+        # Vue automatique (V1) ou vue de pièce (KAN-137) déplacée ou visée à la main : elle
+        # devient celle de l'utilisateur, et le calcul ne la remplacera plus.
         updated = updated.model_copy(update={"source": Source.USER_DEFINED, "confidence": 1.0})
     return level.model_copy(update={"elements": {**level.elements, op.element_id: updated}})
 

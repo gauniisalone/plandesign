@@ -6,7 +6,7 @@ globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-1
 tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-233 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 88, membre ≥ owner 9, membre ≥ viewer 53, public 18, user 36, worker 6.
+235 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 90, membre ≥ owner 9, membre ≥ viewer 53, public 18, user 36, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -171,6 +171,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/projects/{project_id}/levels/{level_id}/rooms/{room_id}/instruction | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/starter | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/views/auto | local+comptes | membre ≥ editor |  |  |  |
+| POST | /api/projects/{project_id}/levels/{level_id}/views/rooms | local+comptes | membre ≥ editor |  |  |  |
+| POST | /api/projects/{project_id}/levels/{level_id}/views/rooms/{room_id}/add | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/views/{camera_id}/adopt | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/views/{camera_id}/rotate | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/measurements | local+comptes | membre ≥ editor |  |  |  |

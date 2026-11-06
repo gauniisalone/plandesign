@@ -29,6 +29,7 @@ from uuid import UUID
 from pydantic import Field, JsonValue
 
 from openplan.adapters.protocols import AdapterUnavailableError, ImageFinisher
+from openplan.geom.wallgraph import GeometryError
 from openplan.pipeline.blender_bridge import new_run_dir
 from openplan.pipeline.finish import FinishOptions, finish_render
 from openplan.pipeline.guided import RequestItem, answer_fields, check_request, merge_fields
@@ -55,7 +56,14 @@ from openplan.pipeline.mainroom import (
     main_room,
 )
 from openplan.pipeline.naming import rename
-from openplan.pipeline.render import Daylight, camera_view, render_camera_view, render_expectation
+from openplan.pipeline.render import (
+    Daylight,
+    NoCameraError,
+    camera_view,
+    render_camera_view,
+    render_expectation,
+)
+from openplan.pipeline.room_views import apply_room_views
 from openplan.pipeline.timings import Countdown, Timings
 from openplan.pipeline.views import AUTO_KEY, ROLES, apply_auto_views
 from openplan.scene.catalog import load_catalog
@@ -465,6 +473,14 @@ def run_autopilot(  # noqa: PLR0912, PLR0913, PLR0915 - un chemin de bout en bou
         def views(p: Project) -> Project:
             after, report = apply_auto_views(p, level_id, actor=ACTOR, ridge=ridge_view)
             holder["note"] = "; ".join([*report.notes, *report.kept, *report.skipped])
+            # KAN-137 : une vue par pièce, le choix par défaut du node Rendus en ligne (les
+            # rendus de ce parcours restent ceux des trois vues automatiques).
+            try:
+                after, rooms = apply_room_views(after, level_id, actor=ACTOR)
+            except (NoCameraError, GeometryError, ValueError) as exc:
+                holder["note"] += f"; vues par pièce : {str(exc)[:80]}"
+            else:
+                holder["note"] += f"; {len(rooms.added)} vue(s) par pièce"
             return after
 
         project = space.change(views)
