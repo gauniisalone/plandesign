@@ -2506,6 +2506,7 @@ export function BoardCanvas(props: Props) {
                 frameId={item.id}
                 title={item.text}
                 styleWords={styleOf(item.id)}
+                onProjectChanged={readOnly ? undefined : props.onProjectChanged}
               />
             ) : missingHint(item.role ?? "", caps) ? (
               <span

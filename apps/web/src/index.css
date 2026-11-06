@@ -9631,6 +9631,78 @@ button.link,
   border-color: var(--line-strong);
   font-weight: 600;
 }
+/* KAN-137 : une vue par pièce dans le node Rendus (maquette 2fb2691). */
+.rgal-room-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rgal-room-filter button {
+  padding: 4px 10px;
+}
+.rgal-room-filter button[aria-pressed="true"] {
+  background: var(--muted-bg);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+.rgal-rooms-propose,
+.rgal-rooms-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.rgal-rooms {
+  display: grid;
+  gap: var(--s-2);
+}
+.rgal-room-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rgal-room-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
+.rgal-room-list li.off {
+  opacity: 0.6;
+}
+.rgal-room-text {
+  display: grid;
+  min-width: 0;
+}
+.rgal-room-text small {
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+.rgal-room-acts {
+  display: flex;
+  gap: 4px;
+}
+.rgal-room-acts button {
+  padding: 2px 8px;
+  font-size: 0.85em;
+}
+.rgal-menu-sep {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.rgal-room-name {
+  left: var(--s-2);
+  bottom: calc(var(--s-2) + 1.7em);
+  font-weight: 600;
+}
 .rgal-star-glyph {
   color: var(--primary-edge);
   line-height: 1;

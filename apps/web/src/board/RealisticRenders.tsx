@@ -6,9 +6,11 @@ import {
   type ReactNode,
 } from "react";
 import {
+  api,
   ApiError,
   guidedLine,
   realisticApi,
+  renderApi,
   type ReactionKey,
   type RealisticListing,
   type RealisticRequest,
@@ -23,6 +25,16 @@ import { RenderCompare } from "./RenderCompare";
 import { RenderViewer } from "./RenderViewer";
 import { useRetryImage } from "./retryImage";
 import { ACTIVE_TITLE, guidedWords, IGNORED_TITLE } from "./styleWords";
+import {
+  areaText,
+  hasRooms,
+  isRoomView,
+  rendersOfRoom,
+  roomFilters,
+  roomRows,
+  tickOp,
+  type RoomRow,
+} from "./roomViews";
 import {
   etaText,
   gallery,
@@ -241,7 +253,11 @@ export function RealisticRenders({
   frameId,
   title = "Rendus",
   styleWords,
+  onProjectChanged,
 }: {
+  /** KAN-137 : le projet après « Proposer une vue par pièce », une case ou « Ajouter une
+   *  vue » (absent : le node ne modifie pas le plan). */
+  onProjectChanged?: (project: Project) => void;
   /** KAN-130 : les mots désactivés sur les images des Moodboards reliés, et le clic qui en
    *  désactive ou réactive un (absent : lecteur) ; absent sans Moodboard relié. */
   styleWords?: {
@@ -275,12 +291,19 @@ export function RealisticRenders({
   const [picking, setPicking] = useState(false);
   const [picks, setPicks] = useState<string[]>([]);
   const [comparing, setComparing] = useState(false);
+  /** KAN-137 : filtre par pièce de la galerie (son nom), et calcul en cours. */
+  const [onlyRoom, setOnlyRoom] = useState<string | null>(null);
+  const [proposing, setProposing] = useState(false);
   // KAN-101 : « Partager » n'existe que si le serveur a les liens publics allumés.
   const hosting = useHosting();
   const menuRef = useRef<HTMLDivElement>(null);
   const level = project.levels[levelId];
   const cameras = level ? allCameras(level) : [];
   const views = cameras.filter(isFreeCamera);
+  /** KAN-137 : les vues par pièce (le choix par défaut), et les autres vues du plan. */
+  const rooms = roomRows(level);
+  const ticked = rooms.filter((r) => r.on);
+  const otherViews = views.filter((v) => !isRoomView(v));
   const photos = Object.keys(project.images).filter((id) =>
     cameras.some((c) => c.image_id === id),
   );
@@ -409,8 +432,36 @@ export function RealisticRenders({
     run(() => realisticApi.variant(project.id, requestId));
   const askAll = () =>
     run(async () => {
-      for (const v of views) await realisticApi.ask(project.id, levelId, v.id);
+      for (const v of otherViews) await realisticApi.ask(project.id, levelId, v.id);
     });
+  /** KAN-137 : une demande par pièce cochée (chacune compte au quota du jour). */
+  const askRooms = () =>
+    run(async () => {
+      for (const r of ticked) await realisticApi.ask(project.id, levelId, r.camera.id);
+    });
+  /** KAN-137 : le plan change (vues posées, case, vue ajoutée) ; l'erreur se dit dans le node. */
+  const edit = async (job: () => Promise<{ project: Project }>) => {
+    setMessage(null);
+    setMenu(false);
+    try {
+      const done = await job();
+      onProjectChanged?.(done.project);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const proposeRooms = async () => {
+    setProposing(true);
+    try {
+      await edit(() => renderApi.roomViews(project.id, levelId));
+    } finally {
+      setProposing(false);
+    }
+  };
+  const tick = (row: RoomRow, on: boolean) =>
+    void edit(() => api.applyOp(project.id, levelId, tickOp(row, on)));
+  const addView = (row: RoomRow) =>
+    void edit(() => renderApi.addRoomView(project.id, levelId, row.roomId));
   /** KAN-99 : l'étoile (éditeurs) ; la réponse donne les favoris du projet. */
   const star = async (requestId: string, on: boolean) => {
     const done = await realisticApi.favorite(project.id, requestId, on);
@@ -426,7 +477,17 @@ export function RealisticRenders({
     setPicks([]);
   };
 
-  const g = onlyFavorites ? gallery(requests, undefined, favorites) : all;
+  // KAN-137 : filtre par pièce (dès deux pièces rendues), combiné aux favoris.
+  const filters = roomFilters(level, all.done);
+  const room = onlyRoom && filters.includes(onlyRoom) ? onlyRoom : null;
+  const ofRoom = room ? rendersOfRoom(level, all.done, room) : null;
+  const only =
+    onlyFavorites && ofRoom
+      ? new Set([...favorites].filter((id) => ofRoom.has(id)))
+      : onlyFavorites
+        ? favorites
+        : ofRoom;
+  const g = only ? gallery(requests, undefined, only) : all;
   const worker = listing.status.worker;
   const eta = etaText(listing.typical_seconds);
   const latest = all.done[0];
@@ -505,6 +566,24 @@ export function RealisticRenders({
                 </button>
               </div>
             )}
+            {filters.length > 0 && (
+              <div
+                className="rgal-room-filter"
+                role="group"
+                aria-label="Filtrer par pièce"
+              >
+                {filters.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-pressed={room === name}
+                    onClick={() => setOnlyRoom(room === name ? null : name)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
             {all.done.length >= MIN_COMPARE && (
               <button type="button" onClick={() => setPicking(true)}>
                 Comparer
@@ -529,7 +608,33 @@ export function RealisticRenders({
                 </button>
                 {menu && (
                   <div className="rgal-menu" role="menu" aria-label="Rendre">
-                    {views.map((v) => (
+                    {/* KAN-137 : les pièces d'abord (le choix par défaut), puis les autres
+                        vues, la photo et la variante, comme avant. */}
+                    {ticked.length > 0 && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askRooms()}
+                      >
+                        <span>Rendre toutes les pièces ({ticked.length})</span>
+                        <small>une demande par pièce cochée</small>
+                      </button>
+                    )}
+                    {rooms.map((r) => (
+                      <button
+                        key={r.camera.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void askView(r.camera.id)}
+                      >
+                        <span>Rendre la pièce « {r.name} »</span>
+                        <small>sa vue calculée · {eta}</small>
+                      </button>
+                    ))}
+                    {rooms.length > 0 && otherViews.length + photos.length > 0 && (
+                      <hr className="rgal-menu-sep" />
+                    )}
+                    {otherViews.map((v) => (
                       <button
                         key={v.id}
                         type="button"
@@ -540,13 +645,13 @@ export function RealisticRenders({
                         <small>{eta} · arrive en tête de la galerie</small>
                       </button>
                     ))}
-                    {views.length > 1 && (
+                    {otherViews.length > 1 && (
                       <button
                         type="button"
                         role="menuitem"
                         onClick={() => void askAll()}
                       >
-                        <span>Rendre les {views.length} vues du plan</span>
+                        <span>Rendre les {otherViews.length} vues du plan</span>
                         <small>une demande par vue</small>
                       </button>
                     )}
@@ -592,6 +697,82 @@ export function RealisticRenders({
           {NO_PLAN_TEXT}
         </p>
       )}
+      {/* KAN-137 : une vue calculée par pièce, le choix par défaut ; rien n'est calculé à
+          l'ouverture du node (un lecteur n'écrit rien) : on la propose. */}
+      {canLaunch && linked && onProjectChanged && hasRooms(level) &&
+        (rooms.length === 0 ? (
+          <div className="rgal-rooms-propose">
+            <button
+              type="button"
+              disabled={proposing}
+              onClick={() => void proposeRooms()}
+            >
+              Proposer une vue par pièce
+            </button>
+            <span className="rgal-hint">
+              un point de vue calculé pour montrer chaque pièce du plan
+            </span>
+          </div>
+        ) : (
+          <section className="rgal-rooms" aria-label="Une vue par pièce">
+            <div className="rgal-rooms-bar">
+              <button
+                type="button"
+                className="primary"
+                disabled={!canRender || ticked.length === 0}
+                onClick={() => void askRooms()}
+              >
+                Rendre toutes les pièces ({ticked.length})
+              </button>
+              <span className="rgal-hint">{eta} par pièce</span>
+              <button
+                type="button"
+                className="rgal-push"
+                disabled={proposing}
+                title="Recalcule les vues qui n'ont pas été modifiées à la main"
+                onClick={() => void proposeRooms()}
+              >
+                Recalculer les vues
+              </button>
+            </div>
+            <ul className="rgal-room-list">
+              {rooms.map((r) => (
+                <li key={r.camera.id} className={r.on ? undefined : "off"}>
+                  <input
+                    type="checkbox"
+                    checked={r.on}
+                    aria-label={`Inclure ${r.name}`}
+                    onChange={(e) => tick(r, e.target.checked)}
+                  />
+                  <span className="rgal-room-text">
+                    <b>
+                      {r.name}
+                      {r.area !== null && ` · ${areaText(r.area)}`}
+                    </b>
+                    {r.note && <small>{r.note}</small>}
+                  </span>
+                  <span className="rgal-room-acts">
+                    <button
+                      type="button"
+                      aria-label={`Rendre la pièce « ${r.name} »`}
+                      disabled={!canRender}
+                      onClick={() => void askView(r.camera.id)}
+                    >
+                      Rendre
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Ajouter une vue : ${r.name}`}
+                      onClick={() => addView(r)}
+                    >
+                      Ajouter une vue
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       <GuidedBy render={latest} line={guided} styleWords={styleWords} />
       {canLaunch && linked && cameras.length === 0 && (
         <p className="realistic-empty">
@@ -674,6 +855,14 @@ export function RealisticRenders({
                       <span className="rgal-chip rgal-time">
                         {hour(r.created_at)}
                       </span>
+                      {/* KAN-137 : le rendu d'une pièce porte son nom. */}
+                      {!r.photo_id &&
+                        level &&
+                        isRoomView(level.elements[r.camera_id] ?? {}) && (
+                          <span className="rgal-chip rgal-room-name">
+                            {viewName(r)}
+                          </span>
+                        )}
                       {!choosing && listing.cover_id === r.id && (
                         <span className="rgal-chip rgal-cover">couverture</span>
                       )}

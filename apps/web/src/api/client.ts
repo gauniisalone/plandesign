@@ -2316,7 +2316,26 @@ export interface AutoViews {
 
 export type Aspect = "4:3" | "4:5";
 
+/** KAN-137 : ce que « Proposer une vue par pièce » a fait. */
+export interface RoomViews {
+  added: string[];
+  kept: string[];
+  skipped: string[];
+}
+
 export const renderApi = {
+  /** KAN-137 : une vue calculée par pièce, en un pas d'historique annulable. */
+  roomViews: (pid: string, lid: string) =>
+    request<EditResult & { views: RoomViews }>(
+      `/projects/${pid}/levels/${lid}/views/rooms`,
+      json({}),
+    ),
+  /** KAN-137 : « Ajouter une vue » dans une pièce. */
+  addRoomView: (pid: string, lid: string, roomId: string) =>
+    request<EditResult & { camera_id: string }>(
+      `/projects/${pid}/levels/${lid}/views/rooms/${roomId}/add`,
+      json({}),
+    ),
   /** Trois vues automatiques (V1) : posées en un pas d'historique annulable. */
   autoViews: (pid: string, lid: string, aspect: Aspect | null = null) =>
     request<EditResult & { views: AutoViews }>(

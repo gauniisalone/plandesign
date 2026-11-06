@@ -18,4 +18,11 @@ export const RENDER_ACCOUNT_KAN103 = {
   id: "7716d76b-5fa9-4e71-b6aa-47810feec571",
   email: "rendus-kan103@example.org",
 };
+/** KAN-137 : un quatrième compte autorisé, pour room-views.spec.ts : son quota du jour part de
+ *  zéro (le test compte les demandes de « Rendre toutes les pièces »), et les codes des autres
+ *  comptes sont pris. */
+export const RENDER_ACCOUNT_KAN137 = {
+  id: "c4a1e9d2-6b3f-4e8a-9d71-2f5b8c0e4a37",
+  email: "rendus-kan137@example.org",
+};
 export const E2E_WORKER_TOKEN = "e2e-online-poste-de-rendu-jeton-de-test-0001";

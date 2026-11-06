@@ -6,6 +6,7 @@ import {
   RENDER_ACCOUNT,
   RENDER_ACCOUNT_KAN99,
   RENDER_ACCOUNT_KAN103,
+  RENDER_ACCOUNT_KAN137,
 } from "./e2e-online/render-account";
 
 /**
@@ -37,9 +38,9 @@ const env = [
   "OPENPLAN_BLENDER_BIN=/nonexistent/blender",
   `OPENPLAN_MODELS_DIR=${dir}/weights`,
   `OPENPLAN_MATERIALS_DIR=${dir}/materials`,
-  // KAN-99 et KAN-103 : d'autres comptes autorisés (renders-compare.spec.ts, parcours court),
-  // à cause du plafond de codes.
-  `OPENPLAN_RENDER_ACCOUNTS=${RENDER_ACCOUNT.id},${RENDER_ACCOUNT_KAN99.id},${RENDER_ACCOUNT_KAN103.id}`,
+  // KAN-99, KAN-103 et KAN-137 : d'autres comptes autorisés (renders-compare.spec.ts, parcours
+  // court, room-views.spec.ts), à cause du plafond de codes (et du quota compté par KAN-137).
+  `OPENPLAN_RENDER_ACCOUNTS=${RENDER_ACCOUNT.id},${RENDER_ACCOUNT_KAN99.id},${RENDER_ACCOUNT_KAN103.id},${RENDER_ACCOUNT_KAN137.id}`,
   `OPENPLAN_WORKER_TOKEN_SHA256=${workerHash}`,
   // KAN-109 : journal d'accès d'uvicorn rallumé pour ce serveur jetable (garde des 500).
   "OPENPLAN_UVICORN_ACCESS_LOG=1",
@@ -81,6 +82,8 @@ export default defineConfig({
         `sqlite:///${dir}/comptes.db ${RENDER_ACCOUNT_KAN99.id} ${RENDER_ACCOUNT_KAN99.email} && ` +
         `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
         `sqlite:///${dir}/comptes.db ${RENDER_ACCOUNT_KAN103.id} ${RENDER_ACCOUNT_KAN103.email} && ` +
+        `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
+        `sqlite:///${dir}/comptes.db ${RENDER_ACCOUNT_KAN137.id} ${RENDER_ACCOUNT_KAN137.email} && ` +
         `${env} uv run --extra comptes openplan serve --port ${apiPort} --data-dir ${dir}/data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
