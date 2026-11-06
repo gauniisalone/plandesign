@@ -1564,8 +1564,10 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
                 openViewer("");
               }}
               onVariant={(text) => {
-                openAssistant();
                 // KAN-134 : « Rendre » attend la fin de ce tour (l'ambiance) avant les rendus.
+                // Le volet de l'assistant ne s'ouvre plus : il remplacerait les zones du
+                // panneau, donc l'Assistant (démonté en plein envoi) et son retour sous le
+                // bouton (maquette 45d0d6d). La réponse reste dans le fil de l'assistant.
                 return text.trim()
                   ? actions.askAssistant(text.trim(), null)
                   : Promise.resolve(true);

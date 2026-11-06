@@ -224,8 +224,13 @@ test("en ligne sans GPU : ce qui marche marche, rien ne mène à une erreur de c
   ).toBeVisible({
     timeout: 60_000,
   });
-  // Le plan est là : plus de bouton de génération (les rendus manquent).
-  await expect(trigger.getByRole("button")).toHaveCount(0);
+  // Le plan est là : plus de bouton de génération (les rendus manquent). KAN-134 : le seul
+  // bouton est « Appliquer à l'ambiance » (l'assistant, aucun calcul), les rendus réalistes
+  // n'étant pas ouverts à ce compte.
+  await expect(trigger.getByRole("button")).toHaveCount(1);
+  await expect(
+    trigger.getByRole("button", { name: "Appliquer à l'ambiance" }),
+  ).toHaveAccessibleDescription(/pas encore ouverts à ce compte/);
 
   // 3. Une photo déposée : rangée dans Photos, le plan ne se construit pas depuis elle.
   const photos = board.locator(".board-item.kind-frame.role-photos");

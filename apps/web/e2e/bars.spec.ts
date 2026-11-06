@@ -78,12 +78,13 @@ test("barres compactes : infobulles, raccourcis, aucune fonction perdue", async 
   await page.setViewportSize({ width: 1280, height: 800 });
   await createRoom(page, "E2E barres compactes");
 
-  // Infobulles : chaque bouton à icône a son nom et son raccourci.
+  // Infobulles : chaque bouton à icône a son nom et son raccourci (KAN-134 : l'infobulle de
+  // l'app, data-tip, et non plus celle du navigateur).
   for (const [name, key] of SHORTCUTS) {
     const b = button(page, name);
     await expect(b, name).toBeVisible();
     await expect(b, name).toHaveAttribute(
-      "title",
+      "data-tip",
       new RegExp(`^${name} \\(${key.replace(/[+/]/g, "\\$&")}\\)`),
     );
   }

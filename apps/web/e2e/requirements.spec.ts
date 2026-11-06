@@ -101,12 +101,16 @@ test("compositeur : onglets, champs guidés, texte, compris, gardés dans le pro
     .getByRole("button", { name: "Appliquer à l'ambiance" });
   await expect(apply).toHaveAccessibleDescription(/Ambiance changée, sans rendu/);
   await apply.click();
+  // L'Assistant reste ouvert (le volet de l'assistant ne le remplace plus) et dit le résultat.
+  await expect(composer.locator(".board-composer-said")).toContainText(
+    "Ambiance mise à jour",
+  );
+  await expect(composer).toHaveCount(1);
+  // Le tour est dans le fil de l'assistant, ouvert par son icône.
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
   await expect(page.getByLabel("Votre demande à l'assistant")).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Assistant" }),
   ).toContainText("grenier chaleureux, bois et lin");
-  await expect(composer.locator(".board-composer-said")).toContainText(
-    "Ambiance mise à jour",
-  );
   expect(outside).toEqual([]);
 });
