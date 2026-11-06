@@ -15,16 +15,20 @@ n'est recalée que si :
 - et cette position est la seule à le faire : une autre position aussi bien soutenue mais qui
   donnerait une autre pièce (dimensions à plus de 10 %) rend le recalage ambigu.
 
-Sinon, **rien n'est inventé** : la photo ne compte pas, et si aucune photo ne se recale, le
-plan reste celui de la meilleure photo seule, avec la phrase « Ces photos ne voient pas de
-murs en commun : le plan vient de la photo N ; ajoutez une photo qui recoupe les autres. »
+Sinon, **rien n'est inventé** : la photo ne compte pas.
 
 Réunion (`MERGE_ROOMS`, **désactivée**) : les murs des photos recalées seraient réunis dans le
 repère de la première et passeraient par le même polygone que pour une photo seule
 (`depthplan.room_polygon`), avec la concordance par retrait d'une photo. Sur scènes
 synthétiques, elle n'apporte aucun gain médian et se trompe une fois sur 19 : le plan vient
-donc de la **meilleure photo seule** (la plus soutenue en murs, jamais un gros plan), et la
-phrase dit si les autres la recoupent (« voient les mêmes murs ») ou non.
+donc de la **meilleure photo seule** (la plus soutenue en murs, jamais un gros plan).
+
+KAN-157 : la phrase ne dit plus si les autres photos « voient les mêmes murs » ou non. Le
+recalage qui en décidait se trompe le plus souvent : sur le banc KAN-149 (photos prises des
+coins, murs exacts), 52 vues recalées sur 65 l'étaient au mauvais endroit, deux coins vus de
+photos différentes se superposant. Elle dit seulement ce qui est sûr (`NOT_ASSEMBLED`) : le plan
+vient de la meilleure photo, les autres ne sont pas assemblées avec elle, et les murs qu'elle ne
+voit pas sont estimés.
 """
 
 from __future__ import annotations
@@ -93,9 +97,9 @@ de mur (deux murs alignés mais disjoints ne prouvent rien)."""
 MERGE_ROOMS = False
 """Réunion des murs de photos recalées. Désactivée : sur 144 scènes synthétiques (rectangles,
 L, murs obliques, 2 à 4 vues au hasard ou selon la consigne), 19 réunions appliquées, dont 1
-fausse, et aucun gain médian sur les dimensions (des photos qui partagent un coin vu voient les
-mêmes murs). Le recalage sert seulement à dire si les photos se recoupent ; le plan vient de la
-meilleure photo seule (rapport KAN-95, P2b)."""
+fausse (comptée sur les cotes), et aucun gain médian sur les dimensions. Le plan vient de la
+meilleure photo seule (rapport KAN-95, P2b) ; le recalage n'est plus dit à l'utilisateur
+(KAN-157 : faux le plus souvent quand on compte la position)."""
 MIN_SHARED_CORNERS = 1
 ROOM_MAX_SPREAD = 0.25
 """Réunion refusée au-delà de ±25 % entre photos (les réunions fausses des essais étaient à
@@ -108,14 +112,13 @@ position essayée (elles y voient du vide)."""
 AMBIGUOUS_DIMS = 0.10
 """Deux positions aussi bien soutenues qui donnent des pièces différentes de plus de 10 % :
 recalage ambigu, la photo ne compte pas."""
-NO_COMMON = (
-    "Ces photos ne voient pas de murs en commun : le plan vient de la photo {n} ; ajoutez une "
-    "photo qui recoupe les autres."
+NOT_ASSEMBLED = (
+    "Le plan vient de la photo {n}, la plus complète. Les autres photos ne sont pas encore "
+    "assemblées avec elle : les murs qu'elle ne voit pas sont estimés."
 )
-SAME_WALLS = (
-    "Le plan vient de la photo {n}, la plus complète : les autres photos voient les mêmes murs "
-    "et ne l'agrandissent pas."
-)
+"""KAN-157 : remplace « voient les mêmes murs » et « ne voient pas de murs en commun », qui
+reposaient tous deux sur un recalage le plus souvent faux."""
+NOT_ASSEMBLED_PHOTO = "pas encore assemblée avec la photo du plan"
 
 
 class RoomFusion(StrictModel):
@@ -544,10 +547,8 @@ def _contributions(
             reason = "murs recoupés" if registered else "photo du plan (la plus complète)"
         elif r.close_up:
             reason = r.reason
-        elif r.image_id in placements:
-            reason = "recoupe la photo du plan (mêmes murs), sans l'agrandir"
-        elif r.usable and r.walls:
-            reason = "écartée : ne voit pas de murs en commun avec les autres"
+        elif r.usable and r.walls:  # recalée ou non : le recalage n'est pas dit (KAN-157)
+            reason = NOT_ASSEMBLED_PHOTO
         elif r.reason in UNREAD_REASONS:
             reason = f"écartée : {r.reason}"
         else:
@@ -568,7 +569,7 @@ def _contributions(
     return out
 
 
-def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
+def fuse_room(  # noqa: PLR0911, PLR0915
     project: Project,
     project_dir: Path,
     level_id: UUID,
@@ -579,8 +580,8 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
     run_id: UUID | None = None,
 ) -> RoomFusionRun:
     """Recoupe les photos `image_ids` (membres de la carte Photos reliée) d'une pièce droite et
-    remplace la structure estimée du niveau. Sans murs en commun, le plan est celui de la
-    meilleure photo seule, et c'est dit."""
+    remplace la structure estimée du niveau. Sans réunion (MERGE_ROOMS), le plan est celui de
+    la meilleure photo seule, et c'est dit (`NOT_ASSEMBLED`)."""
     started = time.perf_counter()
     rid = run_id or uuid4()
     if level_id not in project.levels:
@@ -632,8 +633,9 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
         return done(False, project, [])
     best = union.order[0]
     best_n = ids.index(best) + 1
-    # `shared` : les photos se recoupent (un coin vu en commun). Tant que la réunion est
-    # désactivée (MERGE_ROOMS), le plan reste celui de la meilleure photo, et c'est dit.
+    # `shared` : au moins deux photos recalées (un coin vu en commun). Tant que la réunion est
+    # désactivée (MERGE_ROOMS), le plan reste celui de la meilleure photo, et c'est dit, sans
+    # rien affirmer du recalage (KAN-157).
     shared = len(union.order) >= MIN_PHOTOS
     registered = shared and MERGE_ROOMS
     scales = default_scales(list(readings), height)
@@ -645,12 +647,7 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
     ]
     measured_spread = _spread(readings, union) if registered else None
     used = len(union.order) if registered else 1
-    if registered:
-        summary = concordance(used, measured_spread)
-    elif shared:
-        summary = SAME_WALLS.format(n=best_n)
-    else:
-        summary = NO_COMMON.format(n=best_n)
+    summary = concordance(used, measured_spread) if registered else NOT_ASSEMBLED.format(n=best_n)
     dims = _room_dims(walls)
     if dims is None:
         return done(False, project, ["Recoupement impossible : murs incohérents."])

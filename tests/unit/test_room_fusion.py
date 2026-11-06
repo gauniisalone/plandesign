@@ -1,6 +1,7 @@
 """KAN-95 (P2) : pièces droites vues par plusieurs photos, sur scènes synthétiques (aucune photo
-réelle). Recalage par murs et coins vus en commun ; rien n'est inventé : sans mur en commun, le
-plan vient de la meilleure photo seule, et c'est dit ; un gros plan ne compte jamais."""
+réelle). Recalage par murs et coins vus en commun ; rien n'est inventé : le plan vient de la
+meilleure photo seule, et c'est dit sans rien affirmer du recalage (KAN-157) ; un gros plan ne
+compte jamais."""
 
 from __future__ import annotations
 
@@ -13,8 +14,8 @@ from openplan.pipeline.photo_fusion import read_photos
 from openplan.pipeline.reference import room_size
 from openplan.pipeline.room_fusion import (
     MERGE_ROOMS,
-    NO_COMMON,
-    SAME_WALLS,
+    NOT_ASSEMBLED,
+    NOT_ASSEMBLED_PHOTO,
     _analyse,
     _Reading,
     _room_dims,
@@ -82,7 +83,7 @@ def test_no_common_wall_keeps_the_best_photo_and_says_so(tmp_path: Path) -> None
     f = run.fusion
     assert f is not None and not f.registered
     n = ids.index(f.best_photo) + 1 if f.best_photo else 0
-    assert run.notices[0] == NO_COMMON.format(n=n)
+    assert run.notices[0] == NOT_ASSEMBLED.format(n=n)
     assert run.applied  # niveau vide : le plan de la meilleure photo y est posé
     size = room_size(run.project, level)
     assert size is not None
@@ -92,18 +93,34 @@ def test_no_common_wall_keeps_the_best_photo_and_says_so(tmp_path: Path) -> None
     # Le plan est déjà celui de la meilleure photo : relancé, il ne change pas.
     again = fuse_room(run.project, tmp_path, level, ids)
     assert not again.applied and again.project == run.project
-    assert again.notices[0] == NO_COMMON.format(n=n)
+    assert again.notices[0] == NOT_ASSEMBLED.format(n=n)
 
 
-def test_shared_walls_are_said_and_the_plan_is_the_best_photo(tmp_path: Path) -> None:
+def test_recalees_photos_are_not_claimed_to_see_the_same_walls(tmp_path: Path) -> None:
+    """KAN-157 : même quand les photos se recalent, la phrase n'affirme rien du recalage (faux le
+    plus souvent, banc KAN-149) : le plan vient de la meilleure photo, les autres ne sont pas
+    assemblées, les murs qu'elle ne voit pas sont estimés."""
     project, level, ids = project_with_room_photos(tmp_path, ROOM, OPPOSITE)
     run = fuse_room(project, tmp_path, level, ids)
     f = run.fusion
     assert f is not None
     assert not MERGE_ROOMS and not f.registered
-    assert f.summary == SAME_WALLS.format(n=ids.index(f.best_photo) + 1 if f.best_photo else 0)
+    assert f.summary == NOT_ASSEMBLED.format(n=ids.index(f.best_photo) + 1 if f.best_photo else 0)
     others = [c for c in f.photos if not c.kept]
-    assert others and "mêmes murs" in others[0].reason
+    assert others and all(c.reason == NOT_ASSEMBLED_PHOTO for c in others)
+
+
+@pytest.mark.parametrize("views", [FACING, OPPOSITE], ids=["sans-coin-commun", "coin-commun"])
+def test_no_phrase_claims_shared_walls(
+    tmp_path: Path, views: list[tuple[float, float, float, float, float]]
+) -> None:
+    project, level, ids = project_with_room_photos(tmp_path, ROOM, views)
+    run = fuse_room(project, tmp_path, level, ids)
+    assert run.fusion is not None
+    said = [run.fusion.summary, *run.notices, *(c.reason for c in run.fusion.photos)]
+    for text in said:
+        assert "mêmes murs" not in text and "en commun" not in text and "recoupe" not in text
+    assert "sont estimés" in run.fusion.summary
 
 
 def test_a_close_up_never_shrinks_the_room(tmp_path: Path) -> None:
@@ -159,4 +176,4 @@ def test_the_route_fuses_a_room_plan_from_its_linked_photos(tmp_path: Path) -> N
     shutil.copytree(work / "images", store.project_dir(project.id) / "images", dirs_exist_ok=True)
     run = fuse_members(store, project.id, level, None)
     assert run is not None and not run.applied  # pièce droite : fuse_room, rien de changé
-    assert any(n.startswith("Ces photos ne voient pas de murs en commun") for n in run.notices)
+    assert any(n.endswith("les murs qu'elle ne voit pas sont estimés.") for n in run.notices)
