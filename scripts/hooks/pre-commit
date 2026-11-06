@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# KAN-129 : aucun secret dans un commit. gitleaks sur les fichiers indexés, valeurs masquées.
+# Activation (une fois, pour toutes les copies du dépôt) : git config core.hooksPath scripts/hooks
+# gitleaks 8.30.1 : ~/.local/bin/gitleaks (somme vérifiée, voir le job « secrets » de ci.yml).
+# Faux constat relu : son empreinte dans .gitleaksignore. Jamais --no-verify pour passer outre.
+set -euo pipefail
+GL=$(command -v gitleaks || true)
+[ -n "$GL" ] || GL="$HOME/.local/bin/gitleaks"
+if [ ! -x "$GL" ]; then
+  echo "pre-commit : gitleaks introuvable (attendu dans ~/.local/bin) ; commit refusé." >&2
+  exit 1
+fi
+exec "$GL" git --pre-commit --staged --redact --no-banner -v .

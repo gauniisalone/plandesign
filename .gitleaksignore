@@ -1,0 +1,7 @@
+# KAN-129 (6 nov. 2026) : constats gitleaks relus, tous faux. Une empreinte par ligne
+# (commit:fichier:règle:ligne), jamais le secret. Ajouter une ligne ici seulement après relecture.
+# Empreintes sha256 de fichiers du modèle (la clé contient « tokenizer », lue comme un jeton).
+90467984b02f709627c5d1e6b9c80b5f06a33187:models/registry.yaml:generic-api-key:210
+90467984b02f709627c5d1e6b9c80b5f06a33187:models/registry.yaml:generic-api-key:211
+# Faux jeton de test du filtrage (marqué gitleaks:allow depuis).
+187490d0387f2dab3ac42d5d21a250710b304665:tests/unit/test_monitoring.py:generic-api-key:20

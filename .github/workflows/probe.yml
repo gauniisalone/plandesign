@@ -1,10 +1,11 @@
-# .github/workflows/probe.yml (D4, après passage en public) : sonde externe toutes les 15 min.
+# .github/workflows/probe.yml (D4) : sonde externe, toutes les heures depuis KAN-129 (dépôt privé :
+# une minute facturée par run, 720 par mois toutes les heures contre 2 880 toutes les 15 min).
 # Vérifie depuis l'extérieur ce que Gatus (sur le VPS) ne peut pas voir : le VPS entier injoignable.
 # Alerte Telegram en cas d'échec ; pas de message quand tout va bien (Gatus envoie les rétablissements).
 name: probe
 on:
   schedule:
-    - cron: "3-59/15 * * * *"
+    - cron: "3 * * * *"
   workflow_dispatch:
 
 permissions:

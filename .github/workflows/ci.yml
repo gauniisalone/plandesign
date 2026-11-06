@@ -1,9 +1,13 @@
 # Intégration continue (D1, 15 oct. 2026) : lint, types et tests rapides à chaque push sur main et
-# à chaque PR, sans GPU, sans Blender, sans torch. Les e2e Playwright tournent dans e2e.yml (KAN-112,
-# phase 1 non bloquante ; ils entreront ici en phase 2) ; voir docs/architecture/15-ci-cd-deploiement.md.
-# Jobs parallèles. SonarQube Cloud (KAN-107) tourne dans sonar.yml, après ce workflow (KAN-112) :
-# le robot de MEP et deploy.yml, qui ne lisent que « ci », ne l'attendent plus.
-# Dépôt public : minutes gratuites sur les runners standard ; artefacts gardés 7 jours au plus.
+# à chaque PR, sans GPU, sans Blender, sans torch. Les e2e Playwright tournent dans e2e.yml, la nuit
+# et à la demande, non bloquants (KAN-129 : la phase 2 de KAN-112 est abandonnée) ; voir
+# docs/architecture/15-ci-cd-deploiement.md. Jobs parallèles. Le robot de MEP et deploy.yml
+# exigent la conclusion « success » du run ci ENTIER : tout job en échec ici, dont « secrets
+# (gitleaks) », bloque la MEP (décision du PO, KAN-129).
+# KAN-129 : dépôt PRIVÉ, offre gratuite (2 000 minutes par mois) : l'image Docker et la wheel ne se
+# construisent que sur main (deploy.yml reconstruit l'image du SHA déployé) ; gitleaks remplace le
+# secret scanning de GitHub ; SonarQube Cloud est retiré (103 337 lignes, au-delà des 50 000 de
+# l'offre gratuite en privé). Artefacts gardés 7 jours au plus.
 # Runner épinglé (ubuntu-latest bascule sur Ubuntu 26 le 19 oct. 2026).
 name: ci
 on:
@@ -101,8 +105,8 @@ jobs:
         with:
           pattern: coverage-data-*
           merge-multiple: true
-      # KAN-107 : couverture fusionnée en XML, chemins relatifs, pour SonarQube Cloud (sonar.yml
-      # reprend l'artefact coverage-python, même nom et même chemin qu'avant).
+      # KAN-107 : couverture fusionnée en XML, chemins relatifs (artefact coverage-python, 1 jour ;
+      # SonarQube Cloud, qui le lisait, est retiré au KAN-129).
       - run: uv run --no-sync coverage combine coverage-part1.data coverage-part2.data
       - run: uv run --no-sync coverage xml -o coverage.xml
       - name: Couverture dans le résumé du run
@@ -143,11 +147,44 @@ jobs:
           retention-days: 1
       - run: npm run build
 
-  # KAN-112 : SonarQube Cloud est sorti de ce workflow (.github/workflows/sonar.yml, lancé après
-  # un run « ci » réussi sur main) : il reprend les artefacts coverage-python et coverage-web.
+  # KAN-129 : secrets dans le code. gitleaks (binaire épinglé, somme vérifiée) sur les commits
+  # nouveaux du push ou de la PR ; .gitleaksignore liste les faux constats relus. Le rapport masque
+  # les valeurs (--redact) et n'est pas versé en artefact.
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Installer gitleaks 8.30.1
+        env:
+          V: 8.30.1
+          SUM: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
+          echo "${SUM}  gl.tgz" | sha256sum -c -
+          tar xzf gl.tgz gitleaks && rm gl.tgz
+      - name: Commits nouveaux sans secret
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.sha }}
+        run: |
+          from=${BASE:-$BEFORE}
+          # Premier push d'une branche, ou historique réécrit : tout l'historique.
+          if [ -z "$from" ] || [ "$from" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$from^{commit}" 2>/dev/null; then
+            range=""
+          else
+            range="--log-opts=$from..$HEAD"
+          fi
+          echo "portée : ${range:-tout l'historique}"
+          ./gitleaks git --redact --no-banner $range .
 
   image:
     name: image Docker (construction seule, pas de push)
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -169,6 +206,7 @@ jobs:
   build:
     name: wheel + sdist (artefact 7 jours)
     needs: [python, web]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

@@ -24,7 +24,8 @@ jobs:
   deploy-site:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    environment: vps
+    # KAN-129 : plus d'environnement GitHub (indisponible en dépôt privé gratuit) ; secret et
+    # variables sont au niveau du dépôt.
     steps:
       - name: Vérifier le SHA et le run ci
         env:
@@ -55,6 +56,12 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           du -sh dist | tee -a "$GITHUB_STEP_SUMMARY"
+      # KAN-116 : le site publié est celui que décrit expected-dist.sha256 (build de production,
+      # avec l'option), sinon rien ne part. Un changement voulu du site met ce fichier à jour dans
+      # le même commit.
+      - name: Empreinte du site (KAN-116)
+        working-directory: apps/site
+        run: scripts/dist-hash.sh --check | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Clé SSH et hôte épinglé
         run: |
           install -d -m 700 ~/.ssh

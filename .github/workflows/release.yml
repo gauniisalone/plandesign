@@ -5,6 +5,8 @@
 # Désactivé le 15 oct. 2026 (décision PO, lot D1) jusqu'à la décision PyPI : l'environnement
 # `pypi` et le trusted publishing ne sont pas déclarés, le workflow échouerait. Lancement manuel
 # seulement ; remettre `push: tags: ["v*"]` le jour venu.
+# KAN-129 (6 nov. 2026) : INUTILISABLE en dépôt privé gratuit (environment `pypi`, indisponible).
+# Gardé tel quel (décision du PO) ; à revoir avec la décision PyPI.
 name: release
 on:
   workflow_dispatch:

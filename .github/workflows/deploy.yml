@@ -24,7 +24,8 @@ jobs:
   deploy:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: vps            # environnement GitHub « vps » : journal des déploiements, protection possible
+    # KAN-129 : plus d'environnement GitHub (indisponible en dépôt privé gratuit) ; secret et
+    # variables sont au niveau du dépôt. Le journal des déploiements est celui du VPS (deploy.log).
     steps:
       - name: Vérifier le SHA et le run ci
         env:

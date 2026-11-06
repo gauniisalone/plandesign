@@ -1,7 +1,10 @@
 # .github/workflows/e2e.yml : tests de bout en bout Playwright dans la CI (KAN-112, 28 oct. 2026).
-# Phase 1 : NON BLOQUANT. Le robot de MEP et deploy.yml ne lisent que le workflow « ci » ; celui-ci
-# mesure (3 à 5 runs) et révèle les tests instables, corrigés dans le code, jamais par des relances
-# (retries 0, comme en local). Phase 2, sur go du PO : ces jobs entrent dans ci.yml.
+# NON BLOQUANT. Le robot de MEP et deploy.yml ne lisent que le workflow « ci » ; celui-ci révèle
+# les tests instables, corrigés dans le code, jamais par des relances (retries 0, comme en local).
+# KAN-129 (dépôt privé, 2 000 minutes par mois) : plus à chaque push, mais chaque nuit sur main et
+# à la demande (workflow_dispatch) ; la phase 2 (entrée dans ci.yml) est abandonnée. Les passages
+# continuent de jouer les e2e en local ; l'empreinte du site est aussi vérifiée par deploy-site.yml
+# (KAN-116).
 # Restent en local, sur créneau : les tests qui demandent les poids ou le GPU (ils sautent seuls
 # ici, avec leur raison, et le bilan les liste) et e2e-audit (captures).
 # Aucun secret : aucun `secrets.*` ici, OPENPLAN_DOTENV vide dans les configs, mailer console,
@@ -9,11 +12,9 @@
 # les fixtures du dépôt), gardés 3 jours.
 name: e2e
 on:
-  push:
-    branches: [main]
-    paths-ignore: ["docs/**", "*.md", "data/**"]
-  pull_request:
-    paths-ignore: ["docs/**", "*.md", "data/**"]
+  schedule:
+    # 02:17 UTC (03:17 ou 04:17 à Paris), hors des heures de MEP ; schedule ne part que de main.
+    - cron: "17 2 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -207,7 +208,7 @@ jobs:
                           elif st in ("failed", "timedOut"):
                               echecs.append((nom, titre, st))
                           lents.append((sum(x.get("duration", 0) for x in res) / 1000, nom, titre))
-          print("## e2e (KAN-112, phase 1 non bloquante)\n")
+          print("## e2e (KAN-112, non bloquants ; la nuit et à la demande, KAN-129)\n")
           print(" | ".join(f"{k} : {v}" for k, v in tot.items()) + "\n")
           if echecs:
               print("### Échecs\n"); [print(f"- `{n}` {t} ({s})") for n, t, s in echecs]; print()
