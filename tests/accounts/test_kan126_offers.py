@@ -145,6 +145,20 @@ def test_an_existing_pro_element_stays_editable_and_removable(zoe: TestClient) -
     assert removed.status_code == 200, removed.text
 
 
+def test_stairs_placed_by_the_assistant_stay_essentiel(zoe: TestClient) -> None:
+    """Décision du PO : l'assistant fait partie du parcours guidé Essentiel ; un escalier qu'il
+    pose compte comme le calcul du plan (assistant_plan.add_stairs), pas comme un ajout à la
+    main."""
+    pid, level = _attic(zoe)
+    _essentiel(zoe)
+    said = zoe.post(
+        f"/api/projects/{pid}/levels/{level}/assistant/say",
+        json={"text": "Pose un escalier droit"},
+    )
+    assert said.status_code == 200, said.text
+    assert any(e["type"] == "stairs" for e in _elements(zoe, pid, level).values())
+
+
 def test_the_plan_computation_creates_pro_elements_whatever_the_offer(zoe: TestClient) -> None:
     """Décision du PO : la génération et la régénération sont Essentielles ; si le calcul des
     combles pose lui-même une fenêtre de toit, elle est créée en Essentiel."""

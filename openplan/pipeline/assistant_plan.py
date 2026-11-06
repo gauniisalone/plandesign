@@ -494,6 +494,10 @@ def add_stairs(
             reason="aucune pièce fermée où le poser ; tracez la pièce d'abord",
         )
     position, yaw, where = placed
+    # KAN-126 (décision du PO, 6 nov.) : un escalier posé par l'assistant compte comme le calcul
+    # du plan, donc dans l'offre Essentielle (l'assistant fait partie du parcours guidé) ; seul
+    # l'ajout à la main par la route des opérations (`PRO_OPS`) demande l'offre Pro. Figé par
+    # tests/accounts/test_kan126_offers.py.
     after = apply_op(
         project,
         level_id,
