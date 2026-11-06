@@ -49,6 +49,7 @@ from openplan.cli.render_worker.sandbox import (
     STYLE_IGNORED,
     Sandbox,
 )
+from openplan.schemas.fidelity import FidelityVerdict
 from openplan.schemas.render_queue import (
     MAX_IMAGE_BYTES,
     MAX_IMAGE_SIDE,
@@ -303,6 +304,13 @@ class Worker:
                 engine=outcome.engine,
                 # KAN-97 : les mots ne partent que vers un serveur qui sert « style », et
                 # seulement si le calcul a lu les images (None : SigLIP2 indisponible).
+                # KAN-154 : le verdict de fidélité, seulement drapeau allumé (sinon None, et
+                # l'envoi reste celui d'avant pour un serveur qui ne le connaît pas).
+                fidelity=(
+                    FidelityVerdict.model_validate(outcome.fidelity)
+                    if outcome.fidelity is not None
+                    else None
+                ),
                 style_words=(
                     list(outcome.style_words)[:MAX_STYLE_WORDS]
                     if styled and outcome.style_words is not None

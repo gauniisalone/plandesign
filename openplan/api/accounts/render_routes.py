@@ -50,7 +50,7 @@ from openplan.api.accounts.render_style import (
     style_names,
     with_guidance,
 )
-from openplan.api.accounts.render_view import freeze_view, frozen_text
+from openplan.api.accounts.render_view import freeze_view, frozen_text, note_fidelity
 from openplan.api.board_rules import render_inputs
 from openplan.api.deps import ActorDep
 from openplan.api.files import served_file
@@ -646,6 +646,9 @@ def worker_file(
     try:
         project = store_of(request).load(row.project_id)
         if frozen is not None:
+            # La vue doit encore exister (KAN-89 : une vue supprimée depuis le clic répond 410,
+            # le poste signale l'échec) ; elle est alors servie telle qu'au clic.
+            camera_view(project, row.level_id, row.camera_id)
             payload = frozen
         elif name == "project":
             payload = project.model_dump_json()
@@ -694,7 +697,7 @@ def png_size(head: bytes) -> tuple[int, int] | None:
 async def worker_result(
     request_id: UUID,
     request: Request,
-    meta: Annotated[str, Form(max_length=2000)],
+    meta: Annotated[str, Form(max_length=8000)],
     image: Annotated[UploadFile, File()],
     lease: LeaseHeader = None,
 ) -> RealisticRequest:
@@ -747,6 +750,9 @@ async def worker_result(
     if result.style_words is not None:  # KAN-97 : « Guidé par » sur la carte Rendus
         with contextlib.suppress(OSError):
             note_words(store, row.project_id, request_id, result.style_words)
+    if result.fidelity is not None:  # KAN-154 : les mesures, rangées avec le rendu
+        with contextlib.suppress(OSError):
+            note_fidelity(store, row.project_id, request_id, result.fidelity)
     queue.beat("idle")
     _announce_done(request, done)
     # KAN-109 L2 : un rendu fait (value : durée de calcul annoncée par le poste, en s).

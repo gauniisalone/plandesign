@@ -78,3 +78,51 @@ def test_guides_depth_matches_the_cycles_z_pass(tmp_path: Path) -> None:
     )
     assert median <= MEDIAN_MAX
     assert p95 <= P95_MAX
+
+
+def test_a_cycles_render_of_the_scene_is_compliant_and_its_5_percent_zoom_is_not(
+    tmp_path: Path,
+) -> None:
+    """KAN-154 (étape 2) : « Blender exact doit être conforme » ; le même rendu zoomé de 5 %
+    sort hors du seuil d'échelle (seuils provisoires, à calibrer par le banc KAN-153)."""
+    from PIL import Image
+
+    from openplan.pipeline.fidelity import check_fidelity
+
+    project = rect_room_project()
+    level_id = only_level(project).id
+    camera = RenderCamera(
+        position=Point3(x=0.4, y=0.4, z=1.5),
+        yaw=0.64,
+        pitch=-0.15,
+        focal_px=0.6 * 512,
+        width_px=512,
+        height_px=384,
+        checker_floor=False,
+    )
+    out = tmp_path / "render"
+    run_blender(
+        project,
+        level_id,
+        out,
+        blender_bin=str(BLENDER),
+        camera=camera,
+        samples=16,
+        denoise=True,
+        style="realistic",
+    )
+    with Image.open(out / "preview.png") as img:
+        pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
+    bake = Bake.model_validate_json((out / "bake.json").read_text(encoding="utf-8"))
+    used = RenderCamera.model_validate_json((out / "camera.json").read_text(encoding="utf-8"))
+    guides = view_guides(bake, used, (pixels.shape[1], pixels.shape[0]))
+    exact = check_fidelity(pixels, guides)
+    print(f"KAN-154 Cycles exact : {[(m.name, m.value) for m in exact.measures]}")
+    assert exact.ok, exact
+    h, w = pixels.shape[:2]
+    cw, ch = round(w / 1.05), round(h / 1.05)
+    x0, y0 = (w - cw) // 2, (h - ch) // 2
+    zoom = Image.fromarray(pixels).crop((x0, y0, x0 + cw, y0 + ch)).resize((w, h))
+    zoomed = check_fidelity(np.asarray(zoom), guides)
+    print(f"KAN-154 Cycles zoom 5 % : {[(m.name, m.value) for m in zoomed.measures]}")
+    assert not zoomed.ok and "edge_scale" in zoomed.failed

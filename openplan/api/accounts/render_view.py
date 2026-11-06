@@ -26,6 +26,7 @@ from openplan.pipeline.render import camera_view
 from openplan.pipeline.scene3d import bake_level
 from openplan.scene.store import ProjectStore
 from openplan.schemas.bake import Bake, RenderCamera
+from openplan.schemas.fidelity import FidelityVerdict
 from openplan.schemas.scene import Project
 
 FrozenName = Literal["bake", "camera"]
@@ -61,6 +62,25 @@ def frozen_text(
     try:
         return frozen_path(store, project_id, request_id, name).read_text(encoding="utf-8")
     except OSError:
+        return None
+
+
+def fidelity_path(store: ProjectStore, project_id: UUID, request_id: UUID) -> Path:
+    """KAN-154 (étape 2) : le verdict de fidélité du rendu, rangé avec la demande."""
+    return store.project_dir(project_id) / NOTES_DIR / f"{request_id}.fidelity.json"
+
+
+def note_fidelity(
+    store: ProjectStore, project_id: UUID, request_id: UUID, verdict: FidelityVerdict
+) -> None:
+    _write(fidelity_path(store, project_id, request_id), verdict.model_dump_json())
+
+
+def fidelity_of(store: ProjectStore, project_id: UUID, request_id: UUID) -> FidelityVerdict | None:
+    try:
+        raw = fidelity_path(store, project_id, request_id).read_text(encoding="utf-8")
+        return FidelityVerdict.model_validate_json(raw)
+    except (OSError, ValidationError):
         return None
 
 

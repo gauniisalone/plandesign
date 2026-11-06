@@ -19,7 +19,9 @@ import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from openplan.adapters.protocols import RoomElementDetector
 from openplan.schemas.bake import RenderCamera
+from openplan.schemas.fidelity import FidelityVerdict
 from openplan.schemas.render_queue import MAX_IMAGE_SIDE, FailureReason
 
 ZIMAGE_MODULE = "openplan.pipeline.zimage_render"
@@ -37,6 +39,8 @@ class RenderOutcome:
     engine: str
     style_words: list[str] | None = None
     """KAN-97 : mots de style retenus ; None sans image de style (ou moteur sans eux)."""
+    fidelity: dict[str, object] | None = None
+    """KAN-154 : le verdict de fidélité (`FidelityVerdict` en JSON) ; None drapeau éteint."""
 
 
 class EngineFailedError(Exception):
@@ -106,24 +110,79 @@ def zimage_render(
         extra["style_dir"] = style_dir
         if style_ignored:  # KAN-130 : sans mot désactivé, l'appel reste celui de KAN-97
             extra["style_ignored"] = style_ignored
-    try:
-        result = module.render_scene(bake, camera, out_png, project_path=project, **extra)
-    except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
-        raise EngineFailedError("vram") from exc
-    except unavailable as exc:
-        raise EngineFailedError("unavailable") from exc
-    except TimeoutError as exc:
-        raise EngineFailedError("timeout") from exc
-    except Exception as exc:
-        raise EngineFailedError("engine_error") from exc
+
+    def once(seed_now: int | None) -> object:
+        args = dict(extra) if seed_now is None else {**extra, "seed": seed_now}
+        try:
+            return module.render_scene(bake, camera, out_png, project_path=project, **args)
+        except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
+            raise EngineFailedError("vram") from exc
+        except unavailable as exc:
+            raise EngineFailedError("unavailable") from exc
+        except TimeoutError as exc:
+            raise EngineFailedError("timeout") from exc
+        except Exception as exc:
+            raise EngineFailedError("engine_error") from exc
+
+    from openplan.pipeline import fidelity
+
+    verdict: dict[str, object] | None = None
+    if fidelity.enabled():
+        # KAN-154 : contrôle, puis relance avec une autre graine (deux fois au plus) ; le
+        # dernier tirage reste, marqué non conforme s'il l'est encore.
+        held: list[object] = []
+        start = seed if seed is not None else int(getattr(module, "DEFAULT_SEED", 1234))
+        checked = fidelity.render_checked(
+            lambda s: held.append(once(s)), lambda n: check_render(out_png, n), start
+        )
+        result = held[-1]
+        verdict = checked.verdict.model_dump(mode="json")
+    else:
+        result = once(seed)
     return RenderOutcome(
-        seconds=float(result.seconds),
-        vram_peak_mib=int(result.vram_peak_mib),
-        width=int(result.width),
-        height=int(result.height),
+        seconds=float(result.seconds),  # type: ignore[attr-defined]
+        vram_peak_mib=int(result.vram_peak_mib),  # type: ignore[attr-defined]
+        width=int(result.width),  # type: ignore[attr-defined]
+        height=int(result.height),  # type: ignore[attr-defined]
         engine=str(getattr(result, "engine", "zimage")),
         style_words=_words(getattr(result, "style_words", None)),
+        fidelity=verdict,
     )
+
+
+def check_render(out_png: Path, attempt: int) -> FidelityVerdict:
+    """KAN-154 : le rendu écrit et ses guides (`<rendu>.guides.npz`, écrits par render_scene),
+    passés aux mesures ; le détecteur d'ouvertures sur le processeur s'il est installé."""
+    import numpy as np
+    from PIL import Image
+
+    from openplan.pipeline import fidelity
+    from openplan.pipeline.guides import load_guides
+    from openplan.pipeline.zimage_render import guides_path, models_root
+
+    with Image.open(out_png) as img:
+        pixels = np.asarray(img.convert("RGB"), dtype=np.uint8)
+    guides = load_guides(guides_path(out_png))
+    return fidelity.check_fidelity(
+        pixels, guides, fidelity.default_measures(_detector(models_root())), attempts=attempt
+    )
+
+
+_DETECTORS: dict[Path, RoomElementDetector | None] = {}
+
+
+def _detector(root: Path) -> RoomElementDetector | None:
+    """OWLv2 sur le processeur (la carte reste à Z-Image), chargé une fois ; absent : None,
+    et la mesure des ouvertures n'est pas faite (elle ne fait pas échouer le verdict)."""
+    if root not in _DETECTORS:
+        from openplan.adapters.protocols import AdapterUnavailableError
+        from openplan.adapters.registry import build_opening_detector
+
+        try:
+            _DETECTORS[root] = build_opening_detector(root, "cpu")
+        except AdapterUnavailableError:
+            _DETECTORS[root] = None
+    return _DETECTORS[root]
 
 
 def _words(value: object) -> list[str] | None:

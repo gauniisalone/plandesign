@@ -76,3 +76,36 @@ def test_the_frozen_files_go_with_the_project(world: World) -> None:
     gone = world.client.delete(f"/api/projects/{world.project_id}")
     assert gone.status_code in (200, 204), gone.text
     assert not any(p.exists() for p in paths)
+
+
+def test_the_fidelity_verdict_is_kept_with_the_render_and_goes_with_the_project(
+    world: World,
+) -> None:
+    from openplan.api.accounts.render_view import fidelity_of, fidelity_path
+    from openplan.schemas.fidelity import FidelityVerdict, MeasureResult
+    from openplan.schemas.render_queue import WorkerResult
+    from tests.accounts.test_kan89_realistic import png
+
+    rid = world.ask()["id"]
+    base, leased = _files(world)
+    verdict = FidelityVerdict(
+        ok=False,
+        failed=["edge_scale"],
+        measures=[MeasureResult(name="edge_scale", value=0.05, threshold=0.025, ok=False)],
+        attempts=3,
+    )
+    meta = WorkerResult(
+        seconds=12.0, vram_peak_mib=4000, width=64, height=48, engine="fake", fidelity=verdict
+    )
+    done = world.worker.post(
+        base.replace("/files", "/result"),
+        headers=leased,
+        data={"meta": meta.model_dump_json()},
+        files={"image": ("r.png", png(), "image/png")},
+    )
+    assert done.status_code == 200, done.text
+    store = _store(world)
+    assert fidelity_of(store, world.project_id, rid) == verdict  # type: ignore[arg-type]
+    path = fidelity_path(store, world.project_id, rid)  # type: ignore[arg-type]
+    world.client.delete(f"/api/projects/{world.project_id}")
+    assert not path.exists()

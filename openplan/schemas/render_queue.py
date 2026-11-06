@@ -14,6 +14,7 @@ from uuid import UUID
 from pydantic import Field
 
 from openplan.schemas.common import StrictModel
+from openplan.schemas.fidelity import FidelityVerdict
 
 RequestState = Literal["pending", "taken", "done", "failed", "expired"]
 WorkerState = Literal["idle", "busy", "paused", "waiting"]
@@ -91,6 +92,10 @@ class WorkerResult(StrictModel):
     style_words: list[StyleKey] | None = Field(default=None, max_length=MAX_STYLE_WORDS)
     """KAN-97 : les mots de style retenus (vocabulaire fermé, anglais), [] si aucun ; envoyé
     seulement à un serveur qui sert `STYLE` (un ancien serveur refuserait ce champ)."""
+    fidelity: FidelityVerdict | None = None
+    """KAN-154 : le verdict de fidélité du rendu à sa vue figée ; envoyé seulement drapeau
+    OPENPLAN_FIDELITY_CHECK allumé sur le poste (un serveur d'avant KAN-154 refuserait ce champ :
+    le serveur se met à jour avant le poste)."""
 
 
 class WorkerFailure(StrictModel):
