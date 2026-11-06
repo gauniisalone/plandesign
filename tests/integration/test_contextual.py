@@ -183,6 +183,26 @@ def test_prompt_stays_under_the_clip_budget_and_keeps_the_user_text(tmp_path: Pa
     assert short["prompt"].index("scandinave") < short["prompt"].index("metres")
 
 
+def test_an_empty_attic_is_not_a_bedroom_unless_asked(tmp_path: Path) -> None:
+    """KAN-136 : des combles vides sont « combles aménagés », sans lit inventé ; la chambre
+    sous combles est dite dès que l'utilisateur la demande (sa demande l'emporte)."""
+    from tests.factories import attic_project
+
+    project = attic_project()
+    client, _ = _client(tmp_path, project)
+    lid = only_level(project).id
+    image = _photo(client, project)
+    url = f"/api/projects/{project.id}/levels/{lid}/contextual/prompt"
+    plain = client.post(url, json={"source": {"kind": "photo", "id": image}}).json()
+    assert "converted attic room" in plain["prompt"] and "bedroom" not in plain["prompt"]
+    assert "combles aménagés" in plain["prompt_fr"] and "chambre" not in plain["prompt_fr"]
+    asked = client.post(
+        url, json={"intention": "chambre", "source": {"kind": "photo", "id": image}}
+    ).json()
+    assert "converted attic bedroom" in asked["prompt"], asked["prompt"]
+    assert "chambre sous combles" in asked["prompt_fr"]
+
+
 def test_estimated_walls_are_marked_with_approx() -> None:
     """Murs estimés (photo, plan généré) : « ≈ » sur les cotes ; murs saisis : rien."""
     project = rect_room_project(5.0, 4.0)

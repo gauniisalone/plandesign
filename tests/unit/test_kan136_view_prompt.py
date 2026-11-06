@@ -206,6 +206,49 @@ def test_bedroom_only_when_the_bed_is_seen(scene) -> None:  # type: ignore[no-un
     assert _room_word(with_bed, lid)[0] == ATTIC_BEDROOM, "sans vue : le lit du plan suffit"
 
 
+def test_an_empty_room_declared_bedroom_stays_a_bedroom(scene) -> None:  # type: ignore[no-untyped-def]
+    """Décision du PO : un type choisi par l'utilisateur est gardé même sans meuble (sa demande
+    l'emporte, comme la pierre de KAN-139) ; la règle « avec son meuble » ne vaut que pour un
+    type deviné ou par défaut."""
+    from openplan.scene.ops import SetIntent
+    from openplan.schemas.elements import Room
+
+    project, lid, ridge, ta, tb, bake = scene
+    room = next(e for e in project.levels[lid].elements.values() if isinstance(e, Room))
+    guessed = apply_op(
+        project,
+        lid,
+        SetIntent(room_id=room.id, fields={"room_type": "bedroom"}),
+        actor="pipeline:intention",
+    )
+    declared = apply_op(
+        project,
+        lid,
+        SetIntent(room_id=room.id, fields={"room_type": "bedroom"}),
+        actor="user",
+    )
+    cam = _camera(ridge, tb - 0.5, ta)
+    assert ATTIC_BEDROOM not in _prompt(guessed, lid, bake, cam), "deviné, sans lit : tu"
+    said = _prompt(declared, lid, bake, cam)
+    assert ATTIC_BEDROOM in said, said
+
+
+def test_an_empty_plain_room_declared_bedroom_keeps_its_name() -> None:
+    from openplan.scene.ops import SetIntent
+    from openplan.schemas.elements import Room
+    from tests.factories import rect_room_project
+
+    project = rect_room_project()
+    level = only_level(project)
+    room = next(e for e in level.elements.values() if isinstance(e, Room))
+    assert _room_word(project, level.id)[0] == "room", "type posé d'office, pièce vide"
+    chosen = apply_op(
+        project, level.id, SetIntent(room_id=room.id, fields={"room_type": "bedroom"}), actor="user"
+    )
+    assert _room_word(chosen, level.id)[0] == "bedroom"
+    assert "bedroom" in finish_prompt(chosen, None, level.id)
+
+
 @pytest.mark.parametrize(
     ("word", "attic", "seen", "said"),
     [
@@ -221,6 +264,19 @@ def test_bedroom_only_when_the_bed_is_seen(scene) -> None:  # type: ignore[no-un
 )
 def test_no_room_type_is_invented(word: str, attic: bool, seen: frozenset[str], said: str) -> None:
     assert room_lead(word, attic, seen) == said
+
+
+@pytest.mark.parametrize(
+    ("word", "attic", "said"),
+    [
+        ("bedroom", False, "bedroom"),
+        ("kitchen", False, "kitchen"),
+        ("bedroom", True, ATTIC_BEDROOM),
+        (ATTIC_ROOM, True, ATTIC_ROOM),
+    ],
+)
+def test_a_declared_type_is_said_without_its_furniture(word: str, attic: bool, said: str) -> None:
+    assert room_lead(word, attic, frozenset(), declared=True) == said
 
 
 def test_the_ridge_view_looks_down_like_the_other_attic_views() -> None:

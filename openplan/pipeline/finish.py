@@ -174,14 +174,23 @@ def plan_categories(level: Level) -> frozenset[str]:
     )
 
 
-def room_lead(word: str, attic: bool, seen: frozenset[str]) -> str:
-    """KAN-136 : le mot de la pièce, sans type inventé : « bedroom » seulement avec un lit,
-    « kitchen » avec un meuble de cuisine… ; des combles sans lit sont « converted attic room »
-    (plus « converted attic bedroom » d'office)."""
+def room_lead(word: str, attic: bool, seen: frozenset[str], *, declared: bool = False) -> str:
+    """KAN-136 : le mot de la pièce, sans type inventé. Un type deviné ou par défaut n'est dit
+    qu'avec son meuble : « bedroom » avec un lit, « kitchen » avec un meuble de cuisine… ; des
+    combles sans lit sont « converted attic room » (plus « converted attic bedroom » d'office).
+    Un type `declared` (choisi par l'utilisateur) est toujours dit : sa demande l'emporte
+    (décision du PO, comme la pierre de KAN-139)."""
+    if declared:
+        return ATTIC_BEDROOM if attic and word == "bedroom" else word
     if attic and word in ("room", "bedroom", ATTIC_ROOM):
         return ATTIC_BEDROOM if seen & BED_CATEGORIES else ATTIC_ROOM
     needs = ROOM_FURNITURE.get(word)
     return "room" if needs is not None and not needs & seen else word
+
+
+def declared_type(intent: DesignIntent | None) -> bool:
+    """Le type de pièce de l'intention a-t-il été choisi par l'utilisateur ?"""
+    return intent is not None and bool(intent.room_type) and intent.chosen_by_user("room_type")
 
 
 def _room_word(
@@ -200,7 +209,7 @@ def _room_word(
         if types:
             room = ROOM_WORDS.get(types[0], room)
         found = plan_categories(level) if seen is None else seen
-        room = room_lead(room, level.kind == "attic", found)
+        room = room_lead(room, level.kind == "attic", found, declared=declared_type(intent))
         break
     return room, intent
 

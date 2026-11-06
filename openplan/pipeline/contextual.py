@@ -43,11 +43,13 @@ from openplan.pipeline.finish import (
     NEGATIVE,
     ROOM_WORDS,
     PromptWords,
+    declared_type,
     depth_control,
     edges_of,
     plan_categories,
     prompt_groups,
     prompt_parts,
+    room_lead,
 )
 from openplan.pipeline.ingestion import load_image
 from openplan.pipeline.inspire import stamp
@@ -59,7 +61,6 @@ from openplan.pipeline.instruction import (
 )
 from openplan.pipeline.intention import _room_of
 from openplan.pipeline.render import list_renders
-from openplan.pipeline.scene_prompt import BED_CATEGORIES
 from openplan.schemas.common import DECODED_IMAGE_FORMATS, Source, StrictModel
 from openplan.schemas.elements import Furniture, Opening, OpeningKind, Radiator, Room, Wall
 from openplan.schemas.intent import DesignIntent
@@ -505,14 +506,22 @@ def build_prompt(
     intent = DesignIntent.model_validate(merged)
     # La pièce dite dans l'intention (« chambre ») prime sur le type de la pièce du plan.
     kind = intent.room_type or ((room.room_type or "") if room is not None else "")
-    room_word, room_fr = ROOM_WORDS.get(kind, "room"), ROOM_PROMPT_FR.get(kind, "pièce")
+    word = ROOM_WORDS.get(kind, "room")
     level = project.levels[level_id]
-    if (level.kind == "attic" or kind == "attic") and room_word in ("room", "bedroom", ATTIC_ROOM):
-        # KAN-136 : la chambre sous combles est dite si on la demande ou si le plan a un lit ;
-        # sinon des combles aménagés, sans lit inventé.
-        bed = kind == "bedroom" or bool(plan_categories(level) & BED_CATEGORIES)
-        room_word = ATTIC_BEDROOM if bed else ATTIC_ROOM
-        room_fr = ROOM_PROMPT_FR["attic"] if bed else ATTIC_ROOM_FR
+    # KAN-136 : un type dit dans la consigne ou choisi dans l'ambiance est gardé ; un type
+    # deviné n'est dit qu'avec son meuble au plan (des combles sans lit : combles aménagés).
+    declared = bool(intent.room_type) and (
+        "room_type" in fields or (room is not None and declared_type(room.intent))
+    )
+    room_word = room_lead(word, level.kind == "attic", plan_categories(level), declared=declared)
+    if room_word == ATTIC_BEDROOM:
+        room_fr = ROOM_PROMPT_FR["attic"]
+    elif room_word == ATTIC_ROOM:
+        room_fr = ATTIC_ROOM_FR
+    elif room_word == word:
+        room_fr = ROOM_PROMPT_FR.get(kind, "pièce")
+    else:
+        room_fr = "pièce"
     said = " ".join(text.split()[:INTENTION_WORDS]) if text else ""
     extra = [*_geometry_words(project, level_id, room), BUDGET_WORDS[body.budget]]
     extra_fr = [*_geometry_words_fr(project, level_id, room), BUDGET_FR[body.budget], said]
