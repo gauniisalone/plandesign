@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from openplan.api.accounts.db import make_engine, upgrade
+from openplan.api.accounts.db import downgrade, make_engine, upgrade
 from openplan.api.accounts.models import User
 from openplan.api.accounts.service import AccountService
 from openplan.api.accounts.terms import TERMS_VERSION
@@ -84,6 +84,32 @@ def test_the_migration_keeps_every_account_pro_and_copies_the_signup_date(db_url
     assert {r.offer for r in rows.values()} == {"pro"}
     assert rows["a@example.test"].terms_accepted_at is not None
     assert rows["b@example.test"].terms_accepted_at is None
+
+
+def test_the_migration_goes_down_and_up_again(db_url: str) -> None:
+    """Retour arrière de la MEP 48 : kan126b_0014 descendue, les deux colonnes partent et les
+    comptes restent ; remontée, elles reviennent (Pro, date recopiée)."""
+    engine = make_engine(db_url)
+    upgrade(engine)
+    with engine.begin() as con:
+        con.execute(
+            sa.text(
+                "INSERT INTO users (id, email, name, is_admin, created_at, failed_logins, "
+                "accepted_terms_at, offer) VALUES (:id, 'c@example.test', '', :f, :now, 0, :now, "
+                "'essentiel')"
+            ),
+            {"id": uuid4().hex, "f": False, "now": datetime(2026, 11, 4, tzinfo=UTC)},
+        )
+    downgrade(engine, "kan104_0012")
+    columns = {c["name"] for c in sa.inspect(engine).get_columns("users")}
+    assert not {"offer", "terms_accepted_at"} & columns
+    with engine.connect() as con:
+        assert con.scalar(sa.text("SELECT count(*) FROM users")) == 1
+    upgrade(engine)
+    with engine.connect() as con:
+        row = con.execute(sa.text("SELECT offer, terms_accepted_at FROM users")).one()
+    engine.dispose()
+    assert row.offer == "pro" and row.terms_accepted_at is not None
 
 
 # ---------------------------------------------------------------- offre (KAN-126b)
