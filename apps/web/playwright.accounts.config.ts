@@ -49,6 +49,10 @@ const env = [
   "OPENPLAN_PASSWORD_LOGIN=1",
   // Jamais HIBP depuis les tests : ni réseau ni tiers (le mot de passe est alors accepté).
   "OPENPLAN_HIBP=off",
+  // KAN-132 : « Supprimer mon compte », « Exporter mes données » (éteints en production) ;
+  // les archives hors du dossier des données, comme l'exige le démarrage.
+  "OPENPLAN_ACCOUNT_SELF_SERVICE=1",
+  `OPENPLAN_EXPORTS_DIR=${dir}/exports`,
 ].join(" ");
 
 export default defineConfig({

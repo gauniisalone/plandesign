@@ -239,6 +239,9 @@ def test_export_holds_the_account_its_projects_and_only_its_contributions(
     assert "Message de Léa" in text and "Message de Marie" not in text
     assert {m["author"] for m in json.loads(text)["comments"]} == {str(team["users"][LEA])}
     assert "evenements-d-usage.csv" in names
+    root = team["accounts"].settings.exports_path
+    assert not list(root.glob("*.zip")), "l'archive est effacée juste après le téléchargement"
+    assert not list(root.glob("*.json")), "et sa fiche avec"
     assert lea.get(link).status_code == 404, "usage unique"
 
 

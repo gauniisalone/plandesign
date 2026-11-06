@@ -6,7 +6,7 @@ globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-1
 tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-241 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 19, user 40, worker 6.
+242 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 20, user 40, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -242,6 +242,7 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/share/{token} | comptes | public |  |  |  |
 | GET | /api/share/{token}/image | comptes | public |  |  |  |
 | GET | /api/test/mail/last-code | comptes | public |  |  | 404 |
+| GET | /api/test/mail/last-link | comptes | public |  |  | 404 |
 | GET | /api/web-models/depth | local+comptes | user |  |  | 404 |
 | POST | /api/worker/claim | comptes | worker | porte du poste ; débit 1 / 5 s (429) |  |  |
 | POST | /api/worker/jobs/{request_id}/beat | comptes | worker | porte du poste |  | 404 |

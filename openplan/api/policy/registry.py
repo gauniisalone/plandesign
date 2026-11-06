@@ -476,6 +476,8 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("auth.logout:post", "POST", "/api/auth/logout", PUBLIC, AUTH_RATE),
     # Mailer `fake` seulement (tests sur la boucle locale) : absente sinon.
     uc("test.mail.last-code:get", "GET", "/api/test/mail/last-code", PUBLIC),
+    # KAN-132 : le lien « Mes données » du dernier message (mailer `fake` seulement).
+    uc("test.mail.last-link:get", "GET", "/api/test/mail/last-link", PUBLIC),
     # Formulaire de contact du site (origine du site seulement, voir security.py)
     uc("contact:post", "POST", "/api/contact", PUBLIC),
     uc("auth.me:get", "GET", "/api/auth/me", USER),

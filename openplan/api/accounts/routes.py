@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import logging
+import re
 from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
@@ -434,3 +435,19 @@ def last_code(email: str, request: Request) -> LastCode:
     if message is None:
         raise HTTPException(status_code=404, detail="aucun code pour cette adresse")
     return LastCode(code=message.code)
+
+
+class LastLink(StrictModel):
+    path: str
+
+
+@test_router.get("/test/mail/last-link")
+def last_link(email: str, request: Request) -> LastLink:
+    """KAN-132, tests de bout en bout : le chemin du lien (`/api/…`) du dernier message envoyé
+    à cette adresse par le mailer `fake` (le lien « Mes données »)."""
+    mailer = service(request).mailer
+    message = mailer.last_to(email.strip().lower()) if isinstance(mailer, FakeMailer) else None
+    found = re.search(r"https?://[^/\s]+(/api/\S+)", message.text) if message else None
+    if found is None:
+        raise HTTPException(status_code=404, detail="aucun lien pour cette adresse")
+    return LastLink(path=found.group(1))
