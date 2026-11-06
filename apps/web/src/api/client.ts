@@ -362,6 +362,8 @@ export interface Me {
   /** KAN-104 : le compte a un mot de passe (GET /auth/me seulement) ; null : mot de passe
    *  fermé sur ce serveur, ou inconnu. */
   has_password?: boolean | null;
+  /** KAN-126 : l'offre du compte ; absente (serveur d'avant) : Pro. */
+  offer?: "essentiel" | "pro";
 }
 
 /** KAN-104 : une de mes sessions ouvertes (Réglages › Compte). */

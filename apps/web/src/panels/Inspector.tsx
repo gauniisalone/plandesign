@@ -17,6 +17,7 @@ import {
   roomSideOf,
 } from "../editor2d/openingSymbol";
 import { useState } from "react";
+import { PRO_LABEL, useIsPro } from "../state/account";
 import {
   type MeasurementCreate,
   type ProjectSettingsUpdate,
@@ -836,6 +837,7 @@ function RoofPanel({
   onOp: (op: Op) => void;
 }) {
   const d = derived?.roofs[roof.id];
+  const isPro = useIsPro();
   const run = d?.run_m ?? 0;
   const pitchDeg = (roof.pitch * 180) / Math.PI;
   const ridge = roof.eave_height + run * Math.tan(roof.pitch);
@@ -898,9 +900,15 @@ function RoofPanel({
               ),
             });
           }}
-          title="Pose un velux de 78 × 98 cm dans cette pente ; réglez-le ensuite dans sa fiche"
+          title={
+            isPro
+              ? "Pose un velux de 78 × 98 cm dans cette pente ; réglez-le ensuite dans sa fiche"
+              : PRO_LABEL
+          }
+          disabled={!isPro}
         >
           Ajouter un velux
+          {!isPro && <span className="pro-tag">{PRO_LABEL}</span>}
         </button>
       )}
     </section>

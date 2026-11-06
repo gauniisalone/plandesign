@@ -34,6 +34,7 @@ Reason = Literal[
     "consent",
     "reauth",
     "renders_off",
+    "offer_pro",
     # 429
     "daily_quota",
     "rate_limited",

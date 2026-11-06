@@ -7,6 +7,7 @@ chaque maillon a une seule responsabilité et laisse passer la requête ou l'arr
 0. (KAN-105 L2) la fonction activée, en tête (`FEATURE_SHARE_LINKS`) : éteinte, 404 pour tous ;
 1. la règle d'accès : session (`user`, `admin`), jeton du poste (`worker`), jeton du module
    (`extension`), ou membre du projet avec un rôle minimal (404 non-membre, 403 rôle) ;
+   (KAN-126) puis l'offre Pro de la personne qui agit (`OFFER_PRO`, 403 `offer_pro`) ;
 2. le bail du plan (B2d, 409) : il PREND ou prolonge le bail, il vient donc après la règle ;
 3. la place du propriétaire (KAN-12 ; 403 `space_full` depuis KAN-105 L2) ;
 4. la trace d'activité du jour (KAN-109 L2).
@@ -35,6 +36,7 @@ from openplan.api.policy.registry import (
     EXTENSION_SPACE_KEY,
     FEATURE_SHARE_LINKS,
     LEASES,
+    OFFER_PRO,
     ROLE_BY_NAME,
     SPACE_LINK,
     SPACES,
@@ -142,6 +144,12 @@ def _space(p: Passage) -> None:
     guard_space(p.request, p.accounts, p.key, p.known_user())
 
 
+def _offer_pro(p: Passage) -> None:
+    from openplan.api.policy.offers import check_pro
+
+    check_pro(p.request, p.known_user())
+
+
 def _active(p: Passage) -> None:
     mark_active(p.request, p.known_user().id)
 
@@ -220,6 +228,8 @@ def _chain_after_feature(entry: UseCase) -> tuple[Step, ...]:
     access, links = entry.access, set(entry.links)
     if access.policy is None and access.role is not None:
         steps = [_member(access.role)]
+        if OFFER_PRO in links:
+            steps.append(Step("offre Pro", _offer_pro))
         if links & LEASES:
             steps.append(Step("bail du plan", _lease))
         if links & SPACES:

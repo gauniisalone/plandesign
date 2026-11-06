@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import html
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -40,6 +40,7 @@ from openplan.api.accounts.service import (
     safe_next,
 )
 from openplan.api.accounts.sharing import INVITE_REFUSED, InvitationRefusedError
+from openplan.api.policy.offers import offer_of
 from openplan.brand import APP_NAME
 from openplan.pipeline.events import ProjectEvents
 from openplan.schemas.common import StrictModel
@@ -115,6 +116,8 @@ class Me(StrictModel):
     """KAN-104 : le compte a un mot de passe (Réglages › Compte : « Définir » ou « Changer »).
     Rempli par GET /auth/me seulement, et seulement si le mot de passe est ouvert
     (OPENPLAN_PASSWORD_LOGIN) ; None ailleurs : inconnu."""
+    offer: Literal["essentiel", "pro"] = "pro"
+    """KAN-126 : l'offre du compte (« Offre Pro » sur une fonction réservée) ; Pro par défaut."""
 
 
 class NameBody(StrictModel):
@@ -378,6 +381,7 @@ def me(request: Request, user: SignedInDep) -> Me:
         name=user.name,
         is_admin=user.is_admin,
         has_password=has_password,
+        offer=offer_of(request, user),
     )
 
 
@@ -386,7 +390,13 @@ def rename_me(body: NameBody, request: Request, user: SignedInDep) -> Me:
     """« Votre nom » (B2a) : une ligne, facultative ; c'est ce que voient les autres membres."""
     name = " ".join(body.name.split())[:80]
     service(request).set_name(user.id, name)
-    return Me(id=user.id, email=user.email, name=name, is_admin=user.is_admin)
+    return Me(
+        id=user.id,
+        email=user.email,
+        name=name,
+        is_admin=user.is_admin,
+        offer=offer_of(request, user),
+    )
 
 
 @router.post("/auth/logout", status_code=204)

@@ -1,6 +1,6 @@
 import type { Peer } from "../state/live";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useReadOnly } from "../state/account";
+import { PRO_LABEL, useIsPro, useReadOnly } from "../state/account";
 import { api } from "../api/client";
 import type { Project } from "../api/types.gen";
 import { metres } from "../format";
@@ -83,12 +83,15 @@ function IconButton({
   active,
   disabled,
   danger,
+  pro = false,
   onClick,
 }: {
   label: string;
   shortcut?: string;
   more?: string;
   Icon: IconType;
+  /** KAN-126 : fonction de l'offre Pro ; un compte Essentiel la voit grisée, « Offre Pro ». */
+  pro?: boolean;
   /** Bascule : `aria-pressed` ; action ponctuelle : absent. */
   pressed?: boolean;
   /** Mise en avant sans être une bascule (outil courant, volet ouvert). */
@@ -97,17 +100,19 @@ function IconButton({
   danger?: boolean;
   onClick: () => void;
 }) {
+  const isPro = useIsPro();
   const on = pressed ?? active ?? false;
+  const locked = pro && !isPro;
   return (
     <button
       type="button"
-      className={`icon${on ? " active" : ""}${danger ? " danger" : ""}`}
+      className={`icon${on ? " active" : ""}${danger ? " danger" : ""}${locked ? " pro-locked" : ""}`}
       onClick={onClick}
-      aria-label={label}
+      aria-label={locked ? `${label} (${PRO_LABEL})` : label}
       aria-pressed={pressed}
       aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : undefined}
-      title={tip(label, shortcut, more)}
-      disabled={disabled}
+      title={locked ? tip(label, undefined, PRO_LABEL) : tip(label, shortcut, more)}
+      disabled={disabled || locked}
     >
       <Icon />
     </button>
@@ -449,6 +454,7 @@ export function ToolPalette({
           more="choisir un escalier dans la bibliothèque, puis cliquer sur le plan"
           Icon={IconStairs}
           disabled={!drawing}
+          pro
           onClick={onStairs}
         />
         {/* KAN-92 : outils de la vue 3D (actifs quand la 3D est affichée). */}
@@ -459,6 +465,7 @@ export function ToolPalette({
           Icon={IconPushPull}
           active={tool === "pushpull"}
           disabled={viewMode === "2d" || !!locked}
+          pro
           onClick={() => onTool("pushpull")}
         />
         <IconButton
@@ -468,6 +475,7 @@ export function ToolPalette({
           Icon={IconFloorZone}
           active={tool === "floorzone"}
           disabled={viewMode === "2d" || !!locked}
+          pro
           onClick={() => onTool("floorzone")}
         />
         {/* KAN-94 : charpente posée, sans raccourci clavier (décision du PO). */}
@@ -477,6 +485,7 @@ export function ToolPalette({
           Icon={IconPost}
           active={tool === "post"}
           disabled={!drawing}
+          pro
           onClick={() => onTool("post")}
         />
         <IconButton
@@ -487,6 +496,7 @@ export function ToolPalette({
           }
           Icon={IconTruss}
           disabled={busy || !drawing || trussBlocked !== null}
+          pro
           onClick={onAddTruss}
         />
         {hasBackground &&
@@ -612,6 +622,7 @@ export function ViewBar({
   ) => void;
 }) {
   const vertical = state.section === "x" || state.section === "y";
+  const isPro = useIsPro();
   return (
     <div className="viewbar-wrap">
       <div
@@ -751,11 +762,17 @@ export function ViewBar({
             onChange={(e) => onSectionValue(Number(e.target.value))}
           />
           <span className="value">{metres(sectionValue)}</span>
-          {sectionPdfUrl && (
-            <a href={sectionPdfUrl} download>
-              PDF de la coupe
-            </a>
-          )}
+          {sectionPdfUrl &&
+            (isPro ? (
+              <a href={sectionPdfUrl} download>
+                PDF de la coupe
+              </a>
+            ) : (
+              // KAN-126 : export de l'offre Pro, montré mais sans lien.
+              <span className="menu-pro" aria-disabled="true">
+                PDF de la coupe <span className="pro-tag">{PRO_LABEL}</span>
+              </span>
+            ))}
         </div>
       )}
     </div>
@@ -787,6 +804,7 @@ export function BottomBar({
   onChecks: () => void;
 }) {
   const [exportsOpen, setExportsOpen] = useState(false);
+  const isPro = useIsPro();
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -876,10 +894,18 @@ export function BottomBar({
               PDF
               <small>plan coté, échelle normalisée, cartouche</small>
             </a>
-            <a href={api.exportDxfUrl(project.id, levelId)} download>
-              DXF
-              <small>mètres, un calque par nature d'élément (CAO)</small>
-            </a>
+            {isPro ? (
+              <a href={api.exportDxfUrl(project.id, levelId)} download>
+                DXF
+                <small>mètres, un calque par nature d'élément (CAO)</small>
+              </a>
+            ) : (
+              // KAN-126 : export de l'offre Pro, montré mais sans lien.
+              <span className="menu-pro" role="menuitem" aria-disabled="true">
+                DXF <span className="pro-tag">{PRO_LABEL}</span>
+                <small>mètres, un calque par nature d'élément (CAO)</small>
+              </span>
+            )}
             <a
               href={api.exportGlbUrl(
                 project.id,

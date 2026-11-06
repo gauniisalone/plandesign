@@ -31,7 +31,14 @@ from openplan.api.accounts.lease import IMAGE_LEASED, LEASED_ROUTES, PROJECT_WID
 from openplan.api.accounts.quota import LAUNCHES, UPLOADS
 from openplan.api.app import create_app
 from openplan.api.guards import EXTENSION_ROLES, GLOBAL_ROUTES, PROJECT_ROUTES, ProjectMember
-from openplan.api.policy.registry import AUTH_RATE, BY_KEY, FEATURE_SHARE_LINKS, SPACE_LINK
+from openplan.api.policy.registry import (
+    AUTH_RATE,
+    BY_KEY,
+    FEATURE_SHARE_LINKS,
+    OFFER_PRO,
+    OFFER_PRO_OPS,
+    SPACE_LINK,
+)
 from openplan.api.settings import Settings
 from openplan.api.worker_auth import RATE_LIMITED, WORKER_PATH
 from tests.accounts.helpers import accounts_settings
@@ -78,6 +85,11 @@ def _links(key: tuple[str, str]) -> str:
     out = []
     if FEATURE_SHARE_LINKS in declared:
         out.append("fonction activée (404 pour tous)")
+    # KAN-126 : offres Essentiel et Pro (offre de la personne qui agit).
+    if OFFER_PRO in declared:
+        out.append("offre Pro (403 offer_pro)")
+    if OFFER_PRO_OPS in declared:
+        out.append("offre Pro pour les ajouts Pro et Pousser/Tirer (403 offer_pro)")
     if key in LEASED_ROUTES or key in IMAGE_LEASED or key in PROJECT_WIDE:
         out.append("bail du plan (409)")
     if key in UPLOADS or key in LAUNCHES:

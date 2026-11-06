@@ -36,6 +36,15 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export { canEdit } from "./roleGate";
 
+/** KAN-126 : la mention d'une fonction de l'offre Pro, montrée à un compte Essentiel. */
+export const PRO_LABEL = "Offre Pro";
+
+/** KAN-126 : l'offre de la personne connectée ; sans comptes (mode local), ou sans réponse du
+ *  serveur, Pro (rien n'est réservé). Le serveur refuse de toute façon (403 `offer_pro`). */
+export function useIsPro(): boolean {
+  return useAccount()?.me.offer !== "essentiel";
+}
+
 /** Rôle sur le projet : `owner` sans comptes ; null tant que la réponse n'est pas là. */
 export function useRole(projectId: string): Role | null {
   const account = useAccount();

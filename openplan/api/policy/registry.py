@@ -61,6 +61,11 @@ class Link(Enum):
     SPACE_LAUNCH = "place du propriétaire : réserve d'un calcul (403)"
     WORKER_RATE = "débit du poste : 1 appel / 5 s par jeton (429, porte du poste)"
     AUTH_RATE = "débit des tentatives : 10 / min par adresse (429, intergiciel de session)"
+    OFFER_PRO = "offre Pro de la personne qui agit (403 offer_pro)"
+    """KAN-126 : la route entière est de l'offre Pro (exports pro)."""
+    OFFER_PRO_OPS = "offre Pro pour les opérations de PRO_OPS (403 offer_pro, dans la route)"
+    """KAN-126 : la route reste Essentielle ; seules les opérations Pro (`PRO_OPS`,
+    `PUSH_PULL_FIELDS`) demandent l'offre Pro, contrôlées dans la route une fois le corps lu."""
 
 
 FEATURE_SHARE_LINKS = Link.FEATURE_SHARE_LINKS
@@ -72,6 +77,8 @@ SPACE_LINK = Link.SPACE_LINK
 SPACE_LAUNCH = Link.SPACE_LAUNCH
 WORKER_RATE = Link.WORKER_RATE
 AUTH_RATE = Link.AUTH_RATE
+OFFER_PRO = Link.OFFER_PRO
+OFFER_PRO_OPS = Link.OFFER_PRO_OPS
 LEASES = frozenset({LEASE, LEASE_IMAGE, LEASE_PROJECT})
 SPACES = frozenset({SPACE_UPLOAD, SPACE_LINK, SPACE_LAUNCH})
 
@@ -264,8 +271,16 @@ REGISTRY: tuple[UseCase, ...] = (
     # Exports
     uc("project.exports.json:get", "GET", P + "/exports/json", member(V)),
     uc("project.exports.svg:get", "GET", P + "/exports/svg", member(V)),
-    uc("project.exports.dxf:get", "GET", P + "/exports/dxf", member(V)),
-    uc("project.exports.section-pdf:get", "GET", P + "/exports/section-pdf", member(V)),
+    # KAN-126 : exports pro (dxf, section-pdf) ; l'archive reste Essentielle (portabilité) ; le
+    # glb aussi : la vue 3D de l'éditeur le lit par cette même route (Editor.tsx, exportGlbUrl).
+    uc("project.exports.dxf:get", "GET", P + "/exports/dxf", member(V), OFFER_PRO),
+    uc(
+        "project.exports.section-pdf:get",
+        "GET",
+        P + "/exports/section-pdf",
+        member(V),
+        OFFER_PRO,
+    ),
     uc("project.exports.pdf:get", "GET", P + "/exports/pdf", member(V)),
     uc("project.exports.glb:get", "GET", P + "/exports/glb", member(V)),
     uc("project.exports.archive:get", "GET", P + "/exports/archive", member(V)),
@@ -314,7 +329,7 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("plan.programme:post", "POST", L + "/programme", member(E), LEASE),
     uc("plan.area-guard:post", "POST", L + "/area-guard", member(E), LEASE),
     uc("plan.area-guard.undo:post", "POST", L + "/area-guard/undo", member(E), LEASE),
-    uc("plan.ops:post", "POST", L + "/ops", member(E), LEASE),
+    uc("plan.ops:post", "POST", L + "/ops", member(E), LEASE, OFFER_PRO_OPS),
     uc("plan.derived:get", "GET", L + "/derived", member(V)),
     uc("plan.bake:get", "GET", L + "/bake", member(V)),
     uc("plan.calibrate:post", "POST", L + "/calibrate", member(E), LEASE),
@@ -627,6 +642,22 @@ LINKS = _with(SPACE_LINK) - frozenset(EXTENSION_ROLES)
 LAUNCHES = _with(SPACE_LAUNCH)
 RATE_LIMITED = frozenset(path for _method, path in _with(WORKER_RATE))
 """Chemins de l'API du poste au débit limité (`WorkerGate`)."""
+PRO_ROUTES = _with(OFFER_PRO)
+"""KAN-126 : routes de l'offre Pro entière (la chaîne refuse en 403 `offer_pro`)."""
+
+# --- KAN-126 : offres Essentiel et Pro (aucun paiement : l'offre est posée par l'administrateur)
+PRO_OPS: frozenset[str] = frozenset(
+    {"add_truss", "add_post", "add_roof_window", "add_stairs", "add_floor_zone"}
+)
+"""Opérations d'AJOUT à la main de l'offre Pro (route `plan.ops`). Le calcul du plan (génération,
+régénération, combles) crée ces éléments quelle que soit l'offre : il ne passe pas par cette
+route. Un élément Pro existant reste lisible, sélectionnable, supprimable et exporté."""
+PUSH_PULL_FIELDS: frozenset[tuple[str, str]] = frozenset(
+    {("wall", "thickness"), ("wall", "height"), ("floor_zone", "elevation")}
+)
+"""Pousser/Tirer (KAN-92) : `update_element` de ces champs, sur ce type d'élément, est de
+l'offre Pro."""
+
 PUBLIC_PATHS = frozenset(
     entry.path for entry in REGISTRY if entry.access.policy == "public" and "{" not in entry.path
 )

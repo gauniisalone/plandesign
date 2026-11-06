@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from openplan.api.deps import ActorDep, ProjectDep, StoreDep
+from openplan.api.policy.offers import check_op_offer
 from openplan.pipeline import board as b
 from openplan.pipeline import journal
 from openplan.pipeline.derived import compute_derived
@@ -57,12 +58,15 @@ def apply_operation(
     project: ProjectDep,
     store: StoreDep,
     actor: ActorDep,
+    request: Request,
 ) -> EditResult:
     """Applique une commande d'édition en tant qu'utilisateur (nommé par son jeton quand l'API
     est exposée), valide, persiste. Sous le verrou du projet : deux clics rapprochés font
-    deux gestes, jamais un geste écrasé par l'autre."""
+    deux gestes, jamais un geste écrasé par l'autre. KAN-126 : une opération Pro (registre,
+    `PRO_OPS`, `PUSH_PULL_FIELDS`) demande l'offre Pro de la personne qui agit (403)."""
     with store.lock(project.id):
         fresh = store.load(project.id)
+        check_op_offer(request, fresh, level_id, op)
         after, report = edit(fresh, level_id, op, actor=actor)
         store.save(after)
     _journal_gesture(store.project_dir(project.id), fresh, after, level_id, op)

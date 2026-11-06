@@ -16,6 +16,7 @@ export type RefusalReason =
   | "consent"
   | "reauth"
   | "renders_off"
+  | "offer_pro"
   | "daily_quota"
   | "rate_limited";
 

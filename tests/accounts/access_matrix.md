@@ -88,11 +88,11 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/projects/{project_id}/contextual | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/cover | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/exports/archive | local+comptes | membre ≥ viewer |  |  |  |
-| GET | /api/projects/{project_id}/exports/dxf | local+comptes | membre ≥ viewer |  |  |  |
+| GET | /api/projects/{project_id}/exports/dxf | local+comptes | membre ≥ viewer | offre Pro (403 offer_pro) |  |  |
 | GET | /api/projects/{project_id}/exports/glb | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/exports/json | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/exports/pdf | local+comptes | membre ≥ viewer |  |  |  |
-| GET | /api/projects/{project_id}/exports/section-pdf | local+comptes | membre ≥ viewer |  |  |  |
+| GET | /api/projects/{project_id}/exports/section-pdf | local+comptes | membre ≥ viewer | offre Pro (403 offer_pro) |  |  |
 | GET | /api/projects/{project_id}/exports/svg | local+comptes | membre ≥ viewer |  |  |  |
 | POST | /api/projects/{project_id}/images | local+comptes | membre ≥ editor | place (403) |  |  |
 | DELETE | /api/projects/{project_id}/images/{image_id} | local+comptes | membre ≥ editor |  |  |  |
@@ -156,7 +156,7 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | DELETE | /api/projects/{project_id}/levels/{level_id}/lease | comptes | membre ≥ editor |  | signed_in_user |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/lease | comptes | membre ≥ editor |  | signed_in_user |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/lease/request | comptes | membre ≥ editor |  | signed_in_user |  |
-| POST | /api/projects/{project_id}/levels/{level_id}/ops | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
+| POST | /api/projects/{project_id}/levels/{level_id}/ops | local+comptes | membre ≥ editor | offre Pro pour les ajouts Pro et Pousser/Tirer (403 offer_pro) ; bail du plan (409) |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/photo-fusion | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/programme | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/realistic | comptes | membre ≥ editor |  | allowed_user |  |
