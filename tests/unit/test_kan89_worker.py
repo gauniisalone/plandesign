@@ -107,14 +107,19 @@ def test_who_holds_the_lock_is_said_from_proc_locks(tmp_path: Path) -> None:
     """Retour d'augus : « verrou pris » faisait croire à une panne. Le poste dit qui tient le
     verrou, sa commande raccourcie et depuis quand (un faux /proc ici)."""
     argv = [
-        "flock", "-w", "600", "/tmp/pd-lourd.lock", "nice", "-n", "10", "timeout", "900",
+        "flock", "-w", "600", "/tmp/pd-gpu.lock", "nice", "-n", "10", "timeout", "900",
         "npx", "playwright", "test", "e2e/openings.spec.ts", "--reporter=list",
     ]  # fmt: skip
     assert checks.short_command(argv) == "playwright test e2e/openings.spec.ts"
-    script = ["flock", "-w", "1800", "/tmp/pd-lourd.lock", "bash", "/x/pass14_commit.sh", "14:42"]
+    script = ["flock", "-w", "1800", "/tmp/pd-gpu.lock", "bash", "/x/pass14_commit.sh", "14:42"]
     assert checks.short_command(script) == "pass14_commit.sh 14:42"
+    # KAN-152 : le détenteur est le script pd-lock (ressource gpu) ; on garde la commande après --.
+    banc = ["bash", "/home/x/bin/pd-lock", "gpu", "--", "uv", "run", "python", "banc.py", "focale"]
+    assert checks.short_command(banc) == "banc.py focale"
+    # Le poste attend la ressource GPU, plus le verrou unique (un pytest ne l'arrête plus par là).
+    assert checks.HEAVY_LOCK.name == "pd-gpu.lock"
 
-    lock = tmp_path / "pd-lourd.lock"
+    lock = tmp_path / "pd-gpu.lock"
     lock.touch()
     st = lock.stat()
     dev = f"{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino}"
@@ -124,7 +129,7 @@ def test_who_holds_the_lock_is_said_from_proc_locks(tmp_path: Path) -> None:
         f"1: POSIX  ADVISORY  WRITE 99 00:01:1 0 EOF\n2: FLOCK  ADVISORY  WRITE 4321 {dev} 0 EOF\n"
     )
     (proc / "4321" / "cmdline").write_bytes(
-        b"\0".join(a.replace("/tmp/pd-lourd.lock", str(lock)).encode() for a in argv) + b"\0"
+        b"\0".join(a.replace("/tmp/pd-gpu.lock", str(lock)).encode() for a in argv) + b"\0"
     )
     tick = os.sysconf("SC_CLK_TCK")
     started = 1000 * tick  # 1000 s après le démarrage de la machine

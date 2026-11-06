@@ -45,7 +45,7 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
 - Si vous faites Ctrl+C pendant un calcul, le calcul s'arrête. La demande revient dans la file
   après 30 min.
 - Le poste passe son tour, sans rien prendre, dans trois cas :
-  - le verrou `/tmp/pd-lourd.lock` est pris ;
+  - le verrou du GPU `/tmp/pd-gpu.lock` est pris (`pd-lock gpu`, KAN-152) ;
   - le GPU sert déjà (`nvidia-smi` au-dessus de 0 Mio), ou `nvidia-smi` ne répond pas ;
   - des tests tournent (`playwright` ou `pytest`).
 - Si le serveur refuse le jeton (401 ou 403), le poste attend 1 min, puis 5 min à chaque essai

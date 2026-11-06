@@ -1,7 +1,8 @@
 """Garde-fous du poste avant chaque rendu : il passe son tour quand la machine travaille déjà.
 
-- le verrou du travail lourd (/tmp/pd-lourd.lock) est pris : le poste dit qui le tient et
-  depuis quand (/proc/locks), pour qu'une attente ne passe pas pour une panne ;
+- le verrou du GPU (/tmp/pd-gpu.lock, pris par `pd-lock gpu` ; KAN-152 : avant, le verrou unique
+  /tmp/pd-lourd.lock, qui arrêtait le poste pendant le moindre pytest) est pris : le poste dit qui
+  le tient et depuis quand (/proc/locks), pour qu'une attente ne passe pas pour une panne ;
 - le GPU sert déjà (nvidia-smi au-dessus de 0 Mio), ou nvidia-smi est illisible (moteur réel) ;
 - des tests tournent (pgrep trouve playwright ou pytest).
 Les commandes lancées ici sont fixes : rien ne vient du serveur.
@@ -18,7 +19,9 @@ from pathlib import Path
 
 # Sonar S5443, faux positif : le verrou commun de la machine n'est qu'ouvert en lecture pour un
 # essai flock ; rien n'y est écrit. Un tiers local ne peut que faire passer son tour au poste.
-HEAVY_LOCK = Path("/tmp/pd-lourd.lock")  # NOSONAR
+# KAN-152 : la ressource GPU de `pd-lock` (pytest et e2e ont leurs propres verrous ; le poste les
+# voit encore par pgrep, plus bas, et le GPU occupé par nvidia-smi).
+HEAVY_LOCK = Path("/tmp/pd-gpu.lock")  # NOSONAR
 Runner = Callable[[Sequence[str]], tuple[int, str]]
 
 
@@ -76,6 +79,9 @@ def short_command(argv: Sequence[str], lock: Path = HEAVY_LOCK) -> str:
     words = list(argv)
     if str(lock) in words:
         words = words[words.index(str(lock)) + 1 :]
+    # KAN-152 : `pd-lock gpu -- <commande>` (le détenteur est le script pd-lock lui-même).
+    if any(Path(w).name == "pd-lock" for w in words) and "--" in words:
+        words = words[words.index("--") + 1 :]
     words = [Path(w).name if w.startswith("/") else w for w in words]
     kept = [
         w
