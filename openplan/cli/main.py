@@ -800,6 +800,11 @@ def _run_server(
 ) -> None:
     import uvicorn
 
+    from openplan.cli.app_logging import configure_app_logging
+
+    # KAN-144 : avant create_app, qui lance la purge du démarrage (KAN-142). En --reload, le
+    # processus fils d'uvicorn construit l'application sans cette configuration (dev seulement).
+    configure_app_logging()
     if args.reload:
         uvicorn.run(
             "openplan.api.app:create_app",
