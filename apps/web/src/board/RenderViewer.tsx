@@ -308,9 +308,9 @@ export function RenderViewer(props: RenderViewerProps) {
           {compare === "photo" &&
             comparePhoto &&
             (faithful ? (
-              <p className="rview-note rview-note-ok" role="status">
-                ✓ Même point de vue que la {photoName} : l'avant/après est
-                fidèle.
+              // KAN-140 : un constat, pas une promesse (ni coche verte ni « fidèle »).
+              <p className="rview-note" role="status">
+                Rendu depuis le point de vue de la {photoName}
               </p>
             ) : (
               <p className="rview-note rview-note-warn" role="status">

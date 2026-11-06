@@ -303,8 +303,8 @@ test("avant/après, favoris, côte à côte synchronisé, clavier", async ({
   await frame.getByRole("button", { name: "Tous · 3" }).click();
   await expect(gallery.locator("img.rgal-img")).toHaveCount(3);
 
-  // 1. Avant/après du rendu depuis la photo : même vue (note « fidèle ») et même cadrage
-  // (même proportion que la photo, même boîte affichée).
+  // 1. Avant/après du rendu depuis la photo : même vue (la note le constate, KAN-140) et même
+  // cadrage (même proportion que la photo, même boîte affichée).
   await gallery
     .getByRole("button", { name: /^Ouvrir le rendu : photo 1/ })
     .click();
@@ -314,9 +314,9 @@ test("avant/après, favoris, côte à côte synchronisé, clavier", async ({
     viewer.getByText("Photo réelle (photo 1)", { exact: true }),
   ).toBeVisible();
   await expect(
-    viewer.getByText(
-      "Même point de vue que la photo 1 : l'avant/après est fidèle.",
-    ),
+    viewer.getByText("Rendu depuis le point de vue de la photo 1", {
+      exact: true,
+    }),
   ).toBeVisible();
   const layers = viewer.locator(".rview-stage img.rview-layer");
   await expect(layers).toHaveCount(2);

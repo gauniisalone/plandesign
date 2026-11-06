@@ -255,7 +255,7 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
     );
   for (const ratio of boxes) expect(ratio).toBeCloseTo(4 / 3, 1);
 
-  // 3. Visionneuse : avant/après fidèle contre la photo 1.
+  // 3. Visionneuse : avant/après contre la photo 1 (KAN-140 : un constat, sans « fidèle »).
   await tiles.first().click();
   const viewer = page.getByRole("dialog", { name: "Visionneuse des rendus" });
   await expect(viewer).toBeVisible();
@@ -264,10 +264,11 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
     viewer.getByText("Photo réelle (photo 1)", { exact: true }),
   ).toBeVisible();
   await expect(
-    viewer.getByText(
-      "Même point de vue que la photo 1 : l'avant/après est fidèle.",
-    ),
+    viewer.getByText("Rendu depuis le point de vue de la photo 1", {
+      exact: true,
+    }),
   ).toBeVisible();
+  await expect(viewer.getByText(/fidèle|✓/)).toHaveCount(0);
   const slider = viewer.getByRole("slider", { name: "Avant / après" });
   await slider.fill("20");
   await expect

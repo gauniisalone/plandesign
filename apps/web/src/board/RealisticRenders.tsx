@@ -676,7 +676,7 @@ export function RealisticRenders({
                       >
                         <span>Depuis la photo {photoNumber(project, id)}</span>
                         <small>
-                          point de vue exact de la photo : avant/après fidèle
+                          le point de vue de la photo, pour l'avant/après
                         </small>
                       </button>
                     ))}

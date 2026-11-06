@@ -9488,9 +9488,6 @@ button.link,
   background: var(--surface);
   border: 1px solid var(--line);
 }
-.rview-note-ok {
-  color: var(--ok);
-}
 .rview-note-warn {
   border-color: var(--warn);
 }
