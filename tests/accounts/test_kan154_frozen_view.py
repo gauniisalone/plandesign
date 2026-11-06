@@ -109,3 +109,76 @@ def test_the_fidelity_verdict_is_kept_with_the_render_and_goes_with_the_project(
     path = fidelity_path(store, world.project_id, rid)  # type: ignore[arg-type]
     world.client.delete(f"/api/projects/{world.project_id}")
     assert not path.exists()
+
+
+def _rendered(world: World) -> str:
+    """Une demande rendue, avec ses fichiers figés et son verdict de fidélité."""
+    from openplan.schemas.fidelity import FidelityVerdict
+    from openplan.schemas.render_queue import WorkerResult
+    from tests.accounts.test_kan89_realistic import png
+
+    rid = str(world.ask()["id"])
+    base, leased = _files(world)
+    meta = WorkerResult(
+        seconds=1.0,
+        vram_peak_mib=0,
+        width=64,
+        height=48,
+        engine="fake",
+        fidelity=FidelityVerdict(ok=True, attempts=1),
+    )
+    done = world.worker.post(
+        base.replace("/files", "/result"),
+        headers=leased,
+        data={"meta": meta.model_dump_json()},
+        files={"image": ("r.png", png(), "image/png")},
+    )
+    assert done.status_code == 200, done.text
+    return rid
+
+
+def _sidecars(world: World, rid: str) -> list[Path]:
+    from uuid import UUID
+
+    from openplan.api.accounts.render_view import fidelity_path
+
+    store, request_id = _store(world), UUID(rid)
+    files = [frozen_path(store, world.project_id, request_id, n) for n in FROZEN]
+    return [*files, fidelity_path(store, world.project_id, request_id)]
+
+
+def _forget(world: World, **kw: object) -> None:
+    from openplan.api.accounts.forget import apply_forget, plan_forget
+    from openplan.api.accounts.repo import AccountsRepo
+    from tests.accounts.test_kan89_realistic import AUGUS
+
+    repo = AccountsRepo(world.service.engine)
+    projects = _store(world).project_dir(world.project_id).parent
+    data = world.client.app.state.settings.data_dir  # type: ignore[attr-defined]
+    plan = plan_forget(repo, AUGUS, projects_dir=projects, data_dir=data, **kw)  # type: ignore[arg-type]
+    assert apply_forget(repo, plan, projects_dir=projects, data_dir=data).done
+
+
+def test_forgetting_the_only_member_erases_the_frozen_files(world: World) -> None:
+    """KAN-132 (forget, suppression du compte) : projet dont il est le seul membre, supprimé
+    avec son dossier ; bake, caméra et verdict figés partent avec lui."""
+    paths = _sidecars(world, _rendered(world))
+    assert all(p.is_file() for p in paths)
+    _forget(world)
+    assert not any(p.exists() for p in paths)
+
+
+def test_a_project_that_stays_keeps_its_render_and_its_frozen_files(world: World) -> None:
+    """Projet partagé repris par un héritier (KAN-132) : le rendu reste, signé « Ancien
+    membre » ; ses fichiers figés restent avec lui, comme ses images de style (KAN-97)."""
+    rid = _rendered(world)
+    paths = _sidecars(world, rid)
+    token = world.client.post(
+        f"/api/projects/{world.project_id}/invitations", json={"role": "editor"}
+    ).json()["token"]
+    other = world.person("heritier.kan154@example.org")
+    assert other.post("/api/auth/invitation/accept", json={"token": token}).status_code == 200
+    _forget(world, heirs={})
+    image = _store(world).project_dir(world.project_id) / "realistic" / f"{rid}.png"
+    assert image.is_file()
+    assert all(p.is_file() for p in paths)
