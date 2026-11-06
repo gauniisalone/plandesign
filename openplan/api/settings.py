@@ -154,6 +154,20 @@ class Settings:
     """OPENPLAN_SHARE_LINKS (KAN-101) : liens publics vers un rendu (`1` pour les activer).
     DÉSACTIVÉ par défaut tant que la revue Infra et la décision d'augus manquent : les routes
     répondent alors 404 et le front n'offre pas « Partager ». Avec les comptes seulement."""
+    account_self_service: bool = False
+    """OPENPLAN_ACCOUNT_SELF_SERVICE (KAN-132) : « Supprimer mon compte » et « Exporter mes
+    données » dans Réglages › Compte (`1` pour les activer). ÉTEINT par défaut tant que la revue
+    Infra et la décision d'augus manquent : les routes répondent 404, le front ne les montre
+    pas. Avec les comptes seulement."""
+    exports_dir: Path | None = None
+    """OPENPLAN_EXPORTS_DIR (KAN-132) : où se préparent les archives « Mes données » (24 h).
+    Défaut : `<data>/exports`, REFUSÉ au démarrage si OPENPLAN_ACCOUNT_SELF_SERVICE=1 (le
+    dossier des données est sauvegardé : copies de données personnelles 6 mois) ; en prod,
+    un dossier hors sauvegarde (revue Infra : `/srv/plandesign/exports` monté)."""
+
+    @property
+    def exports_path(self) -> Path:
+        return self.exports_dir if self.exports_dir is not None else self.data_dir / "exports"
 
     @property
     def local_only(self) -> bool:
@@ -224,6 +238,10 @@ class Settings:
             else None,
             access_log_interval_s=max(1, int(merged.get("OPENPLAN_ACCESS_LOG_INTERVAL_S") or 300)),
             share_links=parse_switch(merged.get("OPENPLAN_SHARE_LINKS")),
+            account_self_service=parse_switch(merged.get("OPENPLAN_ACCOUNT_SELF_SERVICE")),
+            exports_dir=Path(merged["OPENPLAN_EXPORTS_DIR"])
+            if merged.get("OPENPLAN_EXPORTS_DIR", "").strip()
+            else None,
         )
 
     @property

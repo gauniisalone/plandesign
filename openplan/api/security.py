@@ -263,6 +263,8 @@ ACCOUNTS_REFERRER_POLICY = "same-origin"
 """Avec `no-referrer`, le navigateur envoie `Origin: null` sur un POST (formulaire ou fetch) :
 le contrôle d'origine refuserait l'application elle-même. `same-origin` n'envoie rien aux
 autres sites."""
+TOKEN_URL_PATHS = frozenset({"/api/account/export/download"})
+"""KAN-132 : routes dont l'URL porte un jeton (`?t=`) : aucun référent, même vers soi."""
 
 
 def request_origin(request: Request) -> str | None:
@@ -370,7 +372,10 @@ def _accounts_headers(response: Response, path: str, csp: str) -> Response:
     if is_share_path(path):
         response.headers["Referrer-Policy"] = "no-referrer"
         return with_security_headers(_with_csp(response, path, SHARE_CSP), path)
-    response.headers["Referrer-Policy"] = ACCOUNTS_REFERRER_POLICY
+    # KAN-132 (revue Infra) : le lien « Mes données » porte son jeton dans l'URL ; une lecture
+    # (GET), sans le problème d'`Origin: null` des POST.
+    no_referrer = path in TOKEN_URL_PATHS
+    response.headers["Referrer-Policy"] = "no-referrer" if no_referrer else ACCOUNTS_REFERRER_POLICY
     return with_security_headers(_with_csp(response, path, csp), path)
 
 

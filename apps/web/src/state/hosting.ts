@@ -18,6 +18,9 @@ export interface Hosting {
   /** KAN-104 : connexion par mot de passe ouverte (OPENPLAN_PASSWORD_LOGIN) ; sinon ni lien
    *  ni bloc « Mot de passe ». */
   passwordLogin: boolean;
+  /** KAN-132 : « Supprimer mon compte » et « Exporter mes données » ouverts
+   *  (OPENPLAN_ACCOUNT_SELF_SERVICE, éteint par défaut) ; sinon les blocs n'existent pas. */
+  accountSelfService: boolean;
 }
 
 const LOCAL: Hosting = {
@@ -27,6 +30,7 @@ const LOCAL: Hosting = {
   inviteOnly: false,
   shareLinks: false,
   passwordLogin: false,
+  accountSelfService: false,
 };
 let pending: Promise<Hosting> | null = null;
 
@@ -39,6 +43,8 @@ export function loadHosting(): Promise<Hosting> {
       inviteOnly: Boolean(h.accounts) && h.signup === "invite",
       shareLinks: Boolean(h.accounts) && h.share_links === true,
       passwordLogin: Boolean(h.accounts) && h.password_login === true,
+      accountSelfService:
+        Boolean(h.accounts) && h.account_self_service === true,
     }),
     () => LOCAL,
   );

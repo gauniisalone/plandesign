@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { authApi } from "../api/client";
+import { authApi, type DeletePreview } from "../api/client";
 import { useAccount } from "../state/account";
 import { useHosting } from "../state/hosting";
 import { PasswordBlock, SessionsBlock } from "./AccountPassword";
+import { DeleteBlock, ExportBlock } from "./AccountSelfService";
 import { ExtensionTokens } from "./ExtensionTokens";
 
 const MiB = 1024 * 1024;
@@ -15,7 +16,11 @@ const mo = (n: number) => `${Math.round(n / MiB)} Mo`;
  *  serveur ouvre le mot de passe ; l'administrateur (code seulement) n'a pas « Mot de passe ». */
 export function AccountSection() {
   const account = useAccount();
-  const passwordOpen = useHosting()?.passwordLogin ?? false;
+  const hosting = useHosting();
+  const passwordOpen = hosting?.passwordLogin ?? false;
+  /** KAN-132 : « Mes données » et « Supprimer mon compte », si le serveur les ouvre. */
+  const selfService = hosting?.accountSelfService ?? false;
+  const [preview, setPreview] = useState<DeletePreview | null>(null);
   const [busy, setBusy] = useState(false);
   /** null : pas encore lu (bloc fermé) ; lu sur GET /auth/me à l'ouverture. */
   const [hasPassword, setHasPassword] = useState<boolean | null>(null);
@@ -136,6 +141,26 @@ export function AccountSection() {
         </details>
       )}
       <ExtensionTokens />
+      {selfService && (
+        <details className="account-more">
+          <summary>Mes données</summary>
+          <ExportBlock />
+        </details>
+      )}
+      {selfService && (
+        <details
+          className="account-more"
+          onToggle={(e) => {
+            // Relu à chaque ouverture : les membres des projets partagés ont pu changer.
+            if ((e.currentTarget as HTMLDetailsElement).open)
+              void authApi.deletePreview().then(setPreview, () => setPreview(null));
+            else setPreview(null);
+          }}
+        >
+          <summary>Supprimer mon compte</summary>
+          {preview && <DeleteBlock email={account.me.email} preview={preview} />}
+        </details>
+      )}
     </section>
   );
 }

@@ -6,10 +6,15 @@ globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-1
 tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-236 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 18, user 36, worker 6.
+241 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 19, user 40, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
+| GET | /api/account/delete | comptes | user |  |  |  |
+| POST | /api/account/delete | comptes | user |  |  | 403 409 |
+| POST | /api/account/delete/code | comptes | user |  |  | 403 |
+| POST | /api/account/export | comptes | user |  |  | 409 |
+| GET | /api/account/export/download | comptes | public |  | signed_in_user |  |
 | GET | /api/account/extension-tokens | comptes | user |  |  |  |
 | POST | /api/account/extension-tokens | comptes | user |  |  | 403 |
 | DELETE | /api/account/extension-tokens/{token_id} | comptes | user |  |  | 404 |

@@ -21,6 +21,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import sessionmaker
@@ -55,11 +56,28 @@ class Purged:
 
 class Retention:
     def __init__(
-        self, engine: Engine, clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self,
+        engine: Engine,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        exports_dir: Path | None = None,
     ) -> None:
         self.sessions = sessionmaker(engine, expire_on_commit=False)
         self.clock = clock
+        self.exports_dir = exports_dir
+        """KAN-132 : les archives « Mes données » (lien de 24 heures), purgées au même tour."""
         self._stop: threading.Event | None = None
+
+    def purge_exports(self) -> int:
+        """KAN-132 : les archives « Mes données » expirées, échouées ou orphelines (fichiers,
+        sans base) ; une ligne de journal seulement si quelque chose est parti."""
+        from openplan.api.accounts.account_export import purge_exports
+
+        if self.exports_dir is None:
+            return 0
+        removed = purge_exports(self.exports_dir, self.clock())
+        if removed:
+            log.info("purge des archives « Mes données » : %d", removed)
+        return removed
 
     def purge(self) -> Purged:
         """Une purge, en une transaction ; une ligne de journal avec les nombres."""
@@ -96,6 +114,10 @@ class Retention:
                     self.purge()
                 except Exception:
                     log.exception("purge des durées de conservation en échec")
+                try:
+                    self.purge_exports()
+                except Exception:
+                    log.exception("purge des archives « Mes données » en échec")
                 stop.wait(EVERY.total_seconds())
 
         threading.Thread(target=loop, name="retention-purge", daemon=True).start()

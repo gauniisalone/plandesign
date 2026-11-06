@@ -211,6 +211,44 @@ def reauth_message(to: str, code: str, minutes: int) -> MailMessage:
     return MailMessage(to=to, subject=subject, text=text, code=code)
 
 
+def delete_code_message(to: str, code: str, minutes: int) -> MailMessage:
+    """KAN-132 : le code qui confirme la suppression du compte par son titulaire."""
+    subject = f"Supprimer votre compte {APP_NAME} : votre code {code}"
+    text = (
+        f"Bonjour,\n\nVous avez demandé à supprimer votre compte {APP_NAME}. Votre code de "
+        f"confirmation :\n\n    {code}\n\nCe code expire dans {minutes} minutes. La suppression "
+        "est définitive.\n\nSi vous n'avez rien demandé, ignorez ce message : votre compte ne "
+        "change pas.\nCeci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text, code=code)
+
+
+def export_ready_message(to: str, link: str, hours: int) -> MailMessage:
+    """KAN-132 : le lien de l'archive « Mes données » (usage unique, connecté au compte)."""
+    subject = f"Vos données {APP_NAME} sont prêtes"
+    text = (
+        f"Bonjour,\n\nL'archive de vos données {APP_NAME} est prête. Pour la télécharger, "
+        f"connectez-vous à votre compte, puis ouvrez ce lien :\n\n    {link}\n\n"
+        f"Le lien vaut {hours} heures et ne sert qu'une fois ; l'archive est ensuite effacée.\n\n"
+        "Si vous n'avez rien demandé, ignorez ce message.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text)
+
+
+def export_failed_message(to: str) -> MailMessage:
+    """KAN-132 : l'archive n'a pas pu être préparée (trop grande, ou erreur)."""
+    subject = f"Vos données {APP_NAME} : l'archive n'a pas pu être préparée"
+    text = (
+        f"Bonjour,\n\nL'archive de vos données {APP_NAME} n'a pas pu être préparée : elle "
+        "dépasse la taille permise, ou une erreur est survenue. Vous pouvez exporter vos "
+        "projets un par un (dans chaque projet : Exporter › Archive (.zip)), puis "
+        "redemander l'archive du compte depuis Réglages › Compte.\n"
+        "Ceci est un envoi automatique : merci de ne pas répondre.\n"
+    )
+    return MailMessage(to=to, subject=subject, text=text)
+
+
 def password_changed_message(to: str) -> MailMessage:
     """KAN-104 : prévenir le titulaire qu'un mot de passe a été posé ou changé."""
     subject = f"Votre mot de passe {APP_NAME} a changé"

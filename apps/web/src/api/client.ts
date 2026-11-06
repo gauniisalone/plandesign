@@ -378,6 +378,20 @@ export interface SessionOut {
 
 export type Role = "viewer" | "commenter" | "editor" | "owner";
 
+/** KAN-132 : l'aperçu de « Supprimer mon compte » (GET /account/delete). */
+export interface DeletePreview {
+  deleted: { id: string; name: string }[];
+  shared: {
+    id: string;
+    name: string;
+    members: { user_id: string; name: string; role: Role }[];
+    heir: string;
+  }[];
+  co_owned: { id: string; name: string }[];
+  memberships: number;
+  refusal: string | null;
+}
+
 /** B1e : un lien d'invitation en attente (le jeton n'est rendu qu'à la création). */
 export interface InvitationOut {
   id: string;
@@ -663,6 +677,16 @@ export const authApi = {
   /** Preuve récente avant de définir un mot de passe (code de confirmation, 15 min). */
   reauthStart: () =>
     request<{ detail: string }>("/auth/reauth/start", { method: "POST" }),
+  /** KAN-132 : ce que la suppression du compte ferait (rien n'est écrit). */
+  deletePreview: () => request<DeletePreview>("/account/delete"),
+  deleteCode: () =>
+    request<{ detail: string }>("/account/delete/code", { method: "POST" }),
+  /** `heirs` : projet → nouveau propriétaire choisi (les autres : l'héritier par défaut). */
+  deleteAccount: (code: string, email: string, heirs: Record<string, string>) =>
+    request<void>("/account/delete", json({ code, email, heirs })),
+  /** KAN-132 : l'archive « Mes données », préparée en tâche de fond, lien par e-mail. */
+  exportData: () =>
+    request<{ detail: string }>("/account/export", { method: "POST" }),
   reauthVerify: (code: string) =>
     request<void>("/auth/reauth/verify", json({ code })),
   /** Définir (sans `current`, après la preuve) ou changer (avec `current`). */
@@ -828,6 +852,8 @@ export const api = {
       share_links?: boolean;
       /** KAN-104 : connexion par mot de passe ouverte (OPENPLAN_PASSWORD_LOGIN). */
       password_login?: boolean;
+      /** KAN-132 : supprimer son compte, exporter ses données (OPENPLAN_ACCOUNT_SELF_SERVICE). */
+      account_self_service?: boolean;
     }>("/health"),
   doctor: () => request<DoctorReport>("/doctor"),
   listProjects: () => request<ProjectSummary[]>("/projects"),

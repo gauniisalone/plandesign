@@ -41,7 +41,7 @@ import hashlib
 import hmac
 import logging
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -114,8 +114,10 @@ class ForgetPlan:
     shared: list[OwnedProject] = field(default_factory=list)
     """Ses projets que d'autres partagent, sans autre propriétaire : le choix de l'admin."""
     shared_action: str = ""
-    """« transfer », « delete » ou vide (refus)."""
+    """« transfer », « delete », « heirs » (KAN-132 : un héritier par projet) ou vide (refus)."""
     transfer_to: UUID | None = None
+    heirs: dict[UUID, UUID] = field(default_factory=dict)
+    """KAN-132 : l'héritier de chaque projet partagé (`shared_action == "heirs"`)."""
     renders: int = 0
     """KAN-99 : ses demandes de rendu réaliste."""
     renders_kept_projects: int = 0
@@ -231,7 +233,49 @@ def _renders(repo: AccountsRepo, plan: ForgetPlan, user_id: UUID) -> None:
     plan.renders_kept_projects = sum(1 for pid in projects if pid not in gone)
 
 
-def plan_forget(
+HEIR_ORDER = {"editor": 0, "commenter": 1, "viewer": 2}
+"""KAN-132 (décisions d'augus du 6 nov.) : sans choix, l'éditeur le plus ancien ; s'il n'y a
+aucun éditeur, le membre le plus ancien, quel que soit son rôle (le PO, même jour)."""
+
+
+def default_heirs(db: Session, project_ids: list[UUID], user_id: UUID) -> dict[UUID, UUID]:
+    """L'héritier par défaut de chaque projet : l'éditeur le plus ancien, sinon le membre le
+    plus ancien (date d'ajout `added_at`, puis l'id pour départager)."""
+    out: dict[UUID, UUID] = {}
+    for pid in project_ids:
+        rows = db.execute(
+            select(Member.user_id, Member.role, Member.added_at).where(
+                Member.project_id == pid, Member.user_id != user_id
+            )
+        ).all()
+        ranked = sorted(rows, key=lambda r: (HEIR_ORDER.get(r.role, 9), r.added_at, str(r.user_id)))
+        if ranked:
+            out[pid] = ranked[0].user_id
+    return out
+
+
+def _choose_heirs(
+    repo: AccountsRepo, plan: ForgetPlan, user_id: UUID, chosen: Mapping[UUID, UUID]
+) -> None:
+    """Le choix du titulaire, projet par projet ; un héritier qui n'est pas membre du projet
+    est refusé (jamais un compte pris au hasard)."""
+    shared = [p.id for p in plan.shared]
+    with repo.session() as db:
+        plan.heirs = default_heirs(db, shared, user_id)
+        for pid, heir in chosen.items():
+            if pid not in plan.heirs:
+                plan.refusals.append(f"projet inconnu ou non partagé : {str(pid)[:8]}")
+                continue
+            if heir == user_id or not _count(
+                db, Member, Member.project_id == pid, Member.user_id == heir
+            ):
+                plan.refusals.append(f"héritier qui n'est pas membre du projet {str(pid)[:8]}")
+                continue
+            plan.heirs[pid] = heir
+    plan.shared_action = "heirs"
+
+
+def plan_forget(  # noqa: PLR0912 - les refus et le choix des projets partagés, en un lieu
     repo: AccountsRepo,
     email: str,
     *,
@@ -240,8 +284,14 @@ def plan_forget(
     admin_email: str | None = None,
     transfer_to: str | None = None,
     delete_shared: bool = False,
+    heirs: Mapping[UUID, UUID] | None = None,
 ) -> ForgetPlan:
-    """Ce que l'effacement de ce compte ferait ; lecture seule."""
+    """Ce que l'effacement de ce compte ferait ; lecture seule. `heirs` (KAN-132, suppression
+    par le titulaire) : l'héritier choisi par projet partagé ; les autres vont à l'éditeur le
+    plus ancien, à défaut au membre le plus ancien (`default_heirs`)."""
+    if heirs is not None and (transfer_to or delete_shared):
+        msg = "heirs exclut --transfer-to et --delete-shared"
+        raise ForgetRefusedError(msg)
     address = normalize_email(email)
     if not address:
         msg = "adresse vide"
@@ -275,7 +325,9 @@ def plan_forget(
                 plan.refusals.append("--transfer-to : aucun autre compte pour cette adresse")
         _owned(db, plan, user.id, projects_dir, target)
     plan.events = _events(repo, data_dir, user.id)
-    if plan.shared:
+    if plan.shared and heirs is not None:
+        _choose_heirs(repo, plan, user.id, heirs)
+    elif plan.shared:
         if target is not None:
             plan.shared_action, plan.transfer_to = "transfer", target.id
         elif delete_shared:
@@ -431,6 +483,10 @@ def _apply_projects(db: Session, plan: ForgetPlan, user_id: UUID) -> tuple[list[
         for p in plan.shared:
             _hand_over(db, p.id, user_id, plan.transfer_to, promote=True)
             moved += 1
+    if plan.shared_action == "heirs":
+        for p in plan.shared:
+            _hand_over(db, p.id, user_id, plan.heirs[p.id], promote=True)
+            moved += 1
     for pid in gone:
         _drop_project(db, pid)
     return gone, moved
@@ -458,8 +514,10 @@ def apply_forget(
     projects_dir: Path,
     data_dir: Path,
     clock: Callable[[], datetime] = utcnow,
+    origin: str = "accounts forget --apply",
 ) -> ForgetResult:
-    """L'effacement selon un plan possible, dans une seule transaction. Ordre : sessions
+    """L'effacement selon un plan possible, dans une seule transaction. `origin` : ce que dit
+    la ligne de journal (KAN-132 : « suppression par le titulaire »). Ordre : sessions
     révoquées d'abord (décision 5 ; les WebSocket tombent au recontrôle de 30 s), demandes en
     attente annulées (`cancel_pending_renders`, KAN-115) AVANT le `DELETE users`, codes et
     invitations effacés par adresse (décision 6). Les fichiers des projets des autres ne sont
@@ -509,8 +567,8 @@ def apply_forget(
         log.warning("accounts forget --apply : codes et invitations d'une adresse sans compte")
     else:
         log.warning(
-            "accounts forget --apply : compte %s effacé (%d projet(s) supprimé(s), "
-            "%d transféré(s))",
+            "%s : compte %s effacé (%d projet(s) supprimé(s), %d transféré(s))",
+            origin,
             str(user_id)[:8],
             len(result.projects_deleted),
             result.projects_transferred,

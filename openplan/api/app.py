@@ -290,6 +290,8 @@ def create_app(
                 "signup": settings.signup,
                 "share_links": settings.share_links,
                 "password_login": settings.password_login,
+                # KAN-132 : « Supprimer mon compte », « Exporter mes données ».
+                "account_self_service": settings.account_self_service,
             }
         return {
             "status": "ok",
@@ -378,14 +380,42 @@ def _wire_bell(app: FastAPI, settings: Settings) -> None:
     )
 
 
-def _start_retention(engine: Any) -> Any:
+def _start_retention(engine: Any, exports_dir: Path | None = None) -> Any:
     """KAN-142 : les durées promises par la page de confidentialité (codes, sessions,
-    invitations), purgées au démarrage puis chaque jour (`accounts.retention`)."""
+    invitations), purgées au démarrage puis chaque jour (`accounts.retention`) ; KAN-132 : les
+    archives « Mes données » expirées (`exports_dir`)."""
     from openplan.api.accounts.retention import Retention
 
-    retention = Retention(engine)
+    retention = Retention(engine, exports_dir=exports_dir)
     retention.start()
     return retention
+
+
+class ExportsInsideDataError(RuntimeError):
+    """KAN-132 (revue Infra) : les archives « Mes données » sous le dossier des données
+    finiraient dans les sauvegardes (restic, 6 mois) : refus de démarrer."""
+
+
+def _include_self_service(
+    app: FastAPI, settings: Settings, guarded: list[Any], password_router: Any
+) -> None:
+    """Les routes du compte par son titulaire : mot de passe (KAN-104, 404 sans
+    OPENPLAN_PASSWORD_LOGIN), puis KAN-132 : supprimer son compte, exporter ses données (404
+    sans OPENPLAN_ACCOUNT_SELF_SERVICE). Activées, le dossier des exports doit être HORS du
+    dossier des données (sauvegardé), sinon l'application refuse de démarrer."""
+    from openplan.api.accounts.self_service_routes import router as self_service_router
+
+    if settings.account_self_service:
+        exports, data = settings.exports_path.resolve(), settings.data_dir.resolve()
+        if exports == data or data in exports.parents:
+            msg = (
+                f"OPENPLAN_ACCOUNT_SELF_SERVICE=1 : OPENPLAN_EXPORTS_DIR ({exports}) doit être "
+                f"hors de OPENPLAN_DATA_DIR ({data}), qui est sauvegardé"
+            )
+            raise ExportsInsideDataError(msg)
+
+    app.include_router(password_router, prefix="/api", dependencies=guarded)
+    app.include_router(self_service_router, prefix="/api", dependencies=guarded)
 
 
 def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:
@@ -414,7 +444,7 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     from openplan.api.accounts.password_routes import router as password_router
     from openplan.api.accounts.passwords import HashBusyError
 
-    app.include_router(password_router, prefix="/api", dependencies=guarded)
+    _include_self_service(app, settings, guarded, password_router)
 
     @app.exception_handler(HashBusyError)
     async def _hash_busy(_: Request, exc: HashBusyError) -> JSONResponse:
@@ -474,7 +504,7 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     events = EventLog(app.state.accounts.engine, load_secret(settings.data_dir))
     app.state.events = events
     events.start()
-    app.state.retention = _start_retention(app.state.accounts.engine)
+    app.state.retention = _start_retention(app.state.accounts.engine, settings.exports_path)
     # KAN-115 : un lanceur effacé (user_id None) ne compte pas (emit_from ignore None).
     app.state.render_queue.on_lost = lambda row: emit_from(
         app, "render_failed", row.user_id, row.project_id, cause_code("lost")

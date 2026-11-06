@@ -518,6 +518,16 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("projects.delete-all:post", "POST", "/api/projects/delete-all", USER),
     # KAN-12 : ma place disque
     uc("auth.usage:get", "GET", "/api/auth/usage", USER),
+    # KAN-132 : supprimer son compte, exporter ses données ; 404 sans
+    # OPENPLAN_ACCOUNT_SELF_SERVICE. Le titulaire seul (le compte de la session) ; débit par
+    # compte dans la route (5 / h pour la suppression, 3 / jour pour l'export).
+    uc("account.delete:get", "GET", "/api/account/delete", USER),
+    uc("account.delete.code:post", "POST", "/api/account/delete/code", USER),
+    uc("account.delete:post", "POST", "/api/account/delete", USER),
+    uc("account.export:post", "POST", "/api/account/export", USER),
+    # Le lien de l'e-mail : ouvert sans session pour montrer « Connectez-vous d'abord » ; la
+    # session du même compte est exigée dans la route (`signed_in_user`).
+    uc("account.export.download:get", "GET", "/api/account/export/download", PUBLIC),
     # KAN-52 : la cloche ne lit que les projets dont la personne est membre.
     uc("notifications:get", "GET", "/api/notifications", USER),
     uc("notifications.count:get", "GET", "/api/notifications/count", USER),
