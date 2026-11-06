@@ -378,6 +378,16 @@ def _wire_bell(app: FastAPI, settings: Settings) -> None:
     )
 
 
+def _start_retention(engine: Any) -> Any:
+    """KAN-142 : les durées promises par la page de confidentialité (codes, sessions,
+    invitations), purgées au démarrage puis chaque jour (`accounts.retention`)."""
+    from openplan.api.accounts.retention import Retention
+
+    retention = Retention(engine)
+    retention.start()
+    return retention
+
+
 def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any]) -> None:
     """Comptes actifs : connexion, partage (B1e) et, avec le mailer `fake` seulement, le point
     de test des codes. Importés ici : le mode local n'en charge rien."""
@@ -464,6 +474,7 @@ def _include_accounts_routes(app: FastAPI, settings: Settings, guarded: list[Any
     events = EventLog(app.state.accounts.engine, load_secret(settings.data_dir))
     app.state.events = events
     events.start()
+    app.state.retention = _start_retention(app.state.accounts.engine)
     # KAN-115 : un lanceur effacé (user_id None) ne compte pas (emit_from ignore None).
     app.state.render_queue.on_lost = lambda row: emit_from(
         app, "render_failed", row.user_id, row.project_id, cause_code("lost")
