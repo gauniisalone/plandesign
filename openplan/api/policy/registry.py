@@ -341,6 +341,11 @@ REGISTRY: tuple[UseCase, ...] = (
     ),
     uc("plan.recalibrate.dimensions:post", "POST", L + "/recalibrate/dimensions", member(E), LEASE),
     uc("plan.recalibrate:post", "POST", L + "/recalibrate", member(E), LEASE),
+    # KAN-124 : l'assistant de calage (404 sans OPENPLAN_ASSISTANT). Il ne modifie rien : ses
+    # actions sont les cas d'usage ci-dessus et plus bas (recalibrate.dimensions, autoplan,
+    # render.all), appelés par le front après la confirmation.
+    uc("plan.calage.missing:get", "GET", L + "/calage/missing", member(V)),
+    uc("plan.calage.answer:post", "POST", L + "/calage/answer", member(E)),
     uc("plan.detect:post", "POST", L + "/detect", member(E), SPACE_LAUNCH),
     uc("plan.detect-depth:post", "POST", L + "/detect-depth", member(E), SPACE_LAUNCH),
     uc(

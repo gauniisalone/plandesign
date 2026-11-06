@@ -8,7 +8,7 @@ un adaptateur ne lit pas le disque et ne sait pas d'où vient l'image.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
 
 import numpy as np
@@ -324,3 +324,19 @@ class LanguageModel(Protocol):
     """Hôte joint (journal réseau), ex. "api.openai.com" ou "localhost:11434"."""
 
     def complete(self, request: LlmRequest) -> LlmResponse: ...
+
+
+class AssistantTimeoutError(AdapterUnavailableError):
+    """KAN-124 : le modèle de l'assistant n'a pas répondu dans le délai (20 s dans l'app)."""
+
+
+class AssistantBackend(Protocol):
+    """KAN-124 : le modèle de l'assistant de calage, qui n'extrait que la réponse libre de
+    l'utilisateur en JSON (le schéma, s'il est donné, contraint la sortie). Lent ou en erreur :
+    AdapterUnavailableError, et l'app passe au formulaire classique."""
+
+    model_id: str
+
+    def extract(
+        self, system: str, user: str, schema: dict[str, Any] | None, timeout_s: float
+    ) -> str: ...

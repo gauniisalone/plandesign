@@ -165,6 +165,17 @@ class Settings:
     dossier des données est sauvegardé : copies de données personnelles 6 mois) ; en prod,
     un dossier hors sauvegarde (revue Infra : `/srv/plandesign/exports` monté)."""
 
+    assistant: bool = False
+    """OPENPLAN_ASSISTANT (KAN-124) : l'assistant de calage (`1` pour l'activer). ÉTEINT par
+    défaut : ses routes répondent 404. Phase 1 : l'API seule, sans interface."""
+    assistant_url: str | None = None
+    """OPENPLAN_ASSISTANT_URL : la base d'une API compatible OpenAI (llama-server en local,
+    `http://127.0.0.1:8080/v1`). Absente : le formulaire classique, toujours."""
+    assistant_model: str = "local"
+    """OPENPLAN_ASSISTANT_MODEL : le nom de modèle envoyé au serveur."""
+    assistant_key: str | None = field(default=None, repr=False)
+    """OPENPLAN_ASSISTANT_KEY : clé d'une API payante, plus tard ; jamais affichée."""
+
     @property
     def exports_path(self) -> Path:
         return self.exports_dir if self.exports_dir is not None else self.data_dir / "exports"
@@ -242,6 +253,10 @@ class Settings:
             exports_dir=Path(merged["OPENPLAN_EXPORTS_DIR"])
             if merged.get("OPENPLAN_EXPORTS_DIR", "").strip()
             else None,
+            assistant=parse_switch(merged.get("OPENPLAN_ASSISTANT")),
+            assistant_url=merged.get("OPENPLAN_ASSISTANT_URL", "").strip() or None,
+            assistant_model=merged.get("OPENPLAN_ASSISTANT_MODEL", "").strip() or "local",
+            assistant_key=merged.get("OPENPLAN_ASSISTANT_KEY", "").strip() or None,
         )
 
     @property

@@ -46,6 +46,7 @@ from openplan.api.routes import (
     attic_fusion,
     autoplan,
     board,
+    calage,
     calibration,
     catalog,
     comments,
@@ -338,6 +339,7 @@ def create_app(
         attic_fusion.router,
         ai.router,
         assistant.router,
+        calage.router,  # KAN-124 : 404 sans OPENPLAN_ASSISTANT
         models.router,
         catalog.router,
         layouts.router,

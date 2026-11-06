@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plandesign/kan124/extraction.schema.json",
+  "title": "Extraction de la réponse libre (parcours guidé)",
+  "description": "Sortie unique du petit LLM local. L'app décide seule quel champ demander ; ce JSON ne fait que proposer. Toute action est soumise à la confirmation de l'app (boutons), rien ne s'exécute sans clic.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outil", "champ", "valeur", "unite", "element", "certitude", "besoin_clarification"],
+  "properties": {
+    "outil": {
+      "description": "set_dimension = renseigner hauteur_plafond ou cote_connue ; generate_plan / regenerate_plan / launch_renders = action demandée ; none = pas d'action (réponse à un champ énuméré, message hors sujet ou inexploitable) ; skip = l'utilisateur passe la question.",
+      "enum": ["set_dimension", "generate_plan", "regenerate_plan", "launch_renders", "none", "skip"]
+    },
+    "champ": {
+      "enum": ["hauteur_plafond", "cote_connue", "type_piece", "style", "budget", null]
+    },
+    "valeur": {
+      "description": "Nombre en mètres pour hauteur_plafond et cote_connue ; valeur d'énumération pour type_piece, style, budget ; null sinon.",
+      "type": ["number", "string", "null"]
+    },
+    "unite": { "enum": ["m", null] },
+    "element": {
+      "description": "Pour cote_connue : l'élément mesuré (porte, mur du fond...). null sinon.",
+      "type": ["string", "null"],
+      "maxLength": 80
+    },
+    "certitude": { "enum": ["sure", "approx", "inconnue"] },
+    "besoin_clarification": {
+      "description": "true quand le message tente de répondre au champ en cours mais que la réponse est inexploitable : hors bornes, unité inconnue, trop vague, plusieurs valeurs, élément manquant.",
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "besoin_clarification": { "const": true } } },
+      "then": { "properties": { "outil": { "const": "none" } } }
+    },
+    {
+      "if": { "properties": { "outil": { "enum": ["generate_plan", "regenerate_plan", "launch_renders"] } } },
+      "then": { "properties": { "champ": { "const": null }, "valeur": { "const": null }, "unite": { "const": null }, "element": { "const": null } } }
+    },
+    {
+      "if": { "properties": { "outil": { "const": "skip" } } },
+      "then": { "properties": { "valeur": { "const": null }, "certitude": { "const": "inconnue" } } }
+    },
+    {
+      "if": { "properties": { "outil": { "const": "set_dimension" } } },
+      "then": {
+        "properties": {
+          "champ": { "enum": ["hauteur_plafond", "cote_connue"] },
+          "valeur": { "type": "number" },
+          "unite": { "const": "m" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "outil": { "const": "set_dimension" }, "champ": { "const": "hauteur_plafond" } } },
+      "then": { "properties": { "valeur": { "minimum": 1.8, "maximum": 4.0 } } }
+    },
+    {
+      "if": { "properties": { "outil": { "const": "set_dimension" }, "champ": { "const": "cote_connue" } } },
+      "then": { "properties": { "valeur": { "minimum": 0.3, "maximum": 20 } } }
+    },
+    {
+      "if": { "properties": { "champ": { "const": "type_piece" }, "valeur": { "type": "string" } }, "required": ["champ", "valeur"] },
+      "then": { "properties": { "valeur": { "enum": ["salon", "chambre", "cuisine", "salle_de_bain", "bureau", "combles", "entree", "autre"] } } }
+    },
+    {
+      "if": { "properties": { "champ": { "const": "style" }, "valeur": { "type": "string" } }, "required": ["champ", "valeur"] },
+      "then": { "properties": { "valeur": { "enum": ["scandinave", "industriel", "moderne", "classique", "boheme", "japandi", "autre"] } } }
+    },
+    {
+      "if": { "properties": { "champ": { "const": "budget" }, "valeur": { "type": "string" } }, "required": ["champ", "valeur"] },
+      "then": { "properties": { "valeur": { "enum": ["serre", "moyen", "large", "non_precise"] } } }
+    }
+  ]
+}

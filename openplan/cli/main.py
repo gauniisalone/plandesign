@@ -44,6 +44,44 @@ def _add_bench_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
     bench.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
 
 
+def _add_assistant_eval_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    from openplan.cli.assistant_eval import DEFAULT_CASES
+
+    ev = sub.add_parser(
+        "assistant-eval",
+        help="banc KAN-124 : l'extraction de l'assistant de calage sur une API compatible OpenAI",
+    )
+    ev.add_argument("--endpoint", required=True, help="base de l'API, ex. http://127.0.0.1:8080/v1")
+    ev.add_argument("--model", default="local", help="nom du modèle envoyé (défaut : local)")
+    ev.add_argument("--cases", type=Path, default=DEFAULT_CASES, help=f"défaut : {DEFAULT_CASES}")
+    ev.add_argument("--out", type=Path, help="un résultat par cas (JSONL), pour relire les échecs")
+    ev.add_argument(
+        "--free", action="store_true", help="sans sortie contrainte par le schéma (format seul)"
+    )
+    ev.add_argument("--timeout", type=float, default=120.0, help="délai par appel, en s")
+    ev.add_argument("--limit", type=int, help="les N premiers cas seulement")
+
+
+def _assistant_eval(args: argparse.Namespace) -> int:
+    from openplan.adapters.remote.assistant_backend import OpenAICompatibleAssistant
+    from openplan.cli import assistant_eval as ev
+
+    if not args.cases.is_file():
+        print(f"cas introuvables : {args.cases}", file=sys.stderr)
+        return 2
+    cases = ev.load_cases(args.cases)[: args.limit] if args.limit else ev.load_cases(args.cases)
+    key = os.environ.get("OPENPLAN_ASSISTANT_KEY", "").strip() or None
+    backend = OpenAICompatibleAssistant(args.endpoint, args.model, key)
+    report = ev.run(
+        backend, cases, constrained=not args.free, timeout_s=args.timeout, progress=print
+    )
+    if args.out is not None:
+        ev.write_results(report, args.out)
+    for line in ev.lines(report):
+        print(line)
+    return 0 if report.passed else 1
+
+
 def _add_materials_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     materials = sub.add_parser(
         "materials", help="matières de rendu CC0 : liste, téléchargement (action explicite)"
@@ -167,6 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--models-dir", type=Path, help="défaut : OPENPLAN_MODELS_DIR")
 
     _add_bench_parser(sub)
+    _add_assistant_eval_parser(sub)
     _add_models_parser(sub)
     _add_materials_parser(sub)
 
@@ -450,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
         "materials": _materials,
         "evaluate": _evaluate,
         "bench": _bench,
+        "assistant-eval": _assistant_eval,
         "token": _token,
         "doctor": _doctor,
         "journal": _journal,
