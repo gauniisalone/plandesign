@@ -176,10 +176,12 @@ jobs:
           # Premier push d'une branche, ou historique réécrit : tout l'historique.
           if [ -z "$from" ] || [ "$from" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$from^{commit}" 2>/dev/null; then
             range=""
+            echo "portée : historique entier"
           else
             range="--log-opts=$from..$HEAD"
+            echo "portée : $from..$HEAD"
           fi
-          echo "portée : ${range:-tout l'historique}"
+          # Pas d'apostrophe dans un ${…:-…} entre guillemets : bash y voit une chaîne ouverte (KAN-129).
           ./gitleaks git --redact --no-banner $range .
 
   image:
