@@ -6,8 +6,12 @@ Ordre de priorité, du plus fort au plus faible :
    `metadata["finish_source"] == "user_defined"`) ;
 2. la matière voulue par l'intention pour cette surface (`DesignIntent.materials`) ;
 3. la matière du style ;
-4. la matière posée par une étape automatique sur l'élément (combles : pignon en pierre…) ;
+4. la matière posée par une étape automatique sur l'élément ;
 5. la matière par défaut du type.
+KAN-139 : un pignon n'a plus de matière à lui. Il prend celle des murs du projet (celle du
+style ou de l'intention, sinon la plus fréquente des autres murs, sinon un enduit neutre) ; il
+ne sort en pierre que si quelqu'un l'a demandé (matière choisie sur le mur, ou « pierre
+apparente » dite dans la consigne : `materials` choisi par l'utilisateur).
 Les meubles du catalogue gardent leurs modèles ; leurs matières nommées (`wood`, `woodDark`,
 `carpet`, `metal`) prennent la teinte du style, le tissu celle de la palette si elle est dite.
 """
@@ -31,40 +35,38 @@ STYLE_SURFACES: dict[str, dict[str, Finish]] = {
     "naturel": {
         "floor": "wood_floor",
         "walls": "plaster",
-        "gables": "stone",
         "slopes": "wood_boards",
         "timber": "timber",
     },
     "chalet": {
         "floor": "wood_dark",
         "walls": "wood_boards",
-        "gables": "stone_rubble",
         "slopes": "wood_boards",
         "timber": "timber",
     },
     "scandinave": {
         "floor": "wood_floor",
         "walls": "limewash",
-        "gables": "limewash",
         "slopes": "painted_wood",
         "timber": "painted_wood",
     },
     "industriel": {
         "floor": "concrete_floor",
         "walls": "plaster",
-        "gables": "stone_rubble",
         "slopes": "oak_dark",
         "timber": "oak_dark",
     },
     "contemporain": {
         "floor": "oak_dark",
         "walls": "limewash",
-        "gables": "limewash",
         "slopes": "limewash",
         "timber": "painted_wood",
     },
 }
-"""Matière de chaque surface selon le style (bois brut ou blanchi, chaux, béton…)."""
+"""Matière de chaque surface selon le style (bois brut ou blanchi, chaux, béton…). Pas de
+pignon (KAN-139) : il prend la matière des murs (`gable_finish`)."""
+NEUTRAL_GABLE: Finish = "plaster"
+"""Pignon sans murs à imiter : un enduit neutre."""
 
 
 def _srgb(r: int, g: int, b: int) -> RGB:
@@ -159,6 +161,8 @@ class StyleFinishes:
     gables: set[UUID] = field(default_factory=set)
     tints: dict[str, RGB] = field(default_factory=dict)
     woods: dict[str, Finish] = field(default_factory=dict)
+    gable: Finish = NEUTRAL_GABLE
+    """KAN-139 : la matière des pignons (celle des murs, ou celle demandée)."""
 
 
 CURRENT: ContextVar[StyleFinishes | None] = ContextVar("openplan_style_finishes", default=None)
@@ -204,22 +208,51 @@ def style_finishes(level: Level, graph: WallGraph) -> StyleFinishes:
 
     style = ambiance(level)
     intent = level_intent(level)
+    gables = gable_walls(level, graph)
     if intent is None:
         # Pièce sans intention (projet d'avant V1) : ses matières restent celles d'avant ;
         # le style ne s'impose qu'une fois l'ambiance posée (fiche, ou chemin automatique).
-        return StyleFinishes(style, {}, set(), {})
+        # KAN-139 : ses pignons prennent la matière de ses autres murs.
+        return StyleFinishes(style, {}, gables, {}, gable=_walls_finish(level, gables))
     by_surface: dict[str, Finish] = dict(STYLE_SURFACES.get(style, STYLE_SURFACES["naturel"]))
-    if intent is not None:
-        for surface in SURFACES:
-            wanted = getattr(intent.materials, surface, None)
-            if isinstance(wanted, str) and wanted in FINISH_NAMES:
-                by_surface[surface] = wanted  # type: ignore[assignment]
+    for surface in SURFACES:
+        if surface == "gables":
+            continue
+        wanted = getattr(intent.materials, surface, None)
+        if isinstance(wanted, str) and wanted in FINISH_NAMES:
+            by_surface[surface] = wanted  # type: ignore[assignment]
+    asked = intent.materials.gables
+    if intent.chosen_by_user("materials") and isinstance(asked, str) and asked in FINISH_NAMES:
+        gable: Finish = asked  # type: ignore[assignment]
+    else:
+        gable = by_surface.get("walls") or _walls_finish(level, gables)
+    by_surface["gables"] = gable
     tints = dict(STYLE_TINTS.get(style, STYLE_TINTS["naturel"]))
     if intent is not None and intent.palette:
         tints["carpet"] = _srgb(*COLORS[intent.palette[0]])
     tints = {k: v for k, v in tints.items() if k in ("carpet", "metal")}
     woods = dict(STYLE_WOODS.get(style, STYLE_WOODS["naturel"]))
-    return StyleFinishes(style, by_surface, gable_walls(level, graph), tints, woods)
+    return StyleFinishes(style, by_surface, gables, tints, woods, gable=gable)
+
+
+def _walls_finish(level: Level, gables: set[UUID]) -> Finish:
+    """La matière la plus fréquente des murs qui ne sont pas des pignons (celle choisie ou
+    posée sur chacun), sinon l'enduit neutre."""
+    from collections import Counter
+
+    from openplan.schemas.elements import Wall
+
+    counts: Counter[str] = Counter(
+        str(e.metadata["finish"])
+        for e in level.elements.values()
+        if isinstance(e, Wall)
+        and e.id not in gables
+        and isinstance(e.metadata.get("finish"), str)
+        and e.metadata["finish"] in FINISH_NAMES
+    )
+    if not counts:
+        return NEUTRAL_GABLE
+    return counts.most_common(1)[0][0]  # type: ignore[return-value]
 
 
 FINISH_NAMES: frozenset[str] = frozenset(

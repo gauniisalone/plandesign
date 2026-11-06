@@ -53,7 +53,9 @@ def _with_armchair(project: Project) -> Project:
 def test_without_intent_the_materials_stay_as_before() -> None:
     project = _with_armchair(attic_project())
     f = _finishes(project)
-    assert f["wall:Pignon"] == {"stone"} or any("stone" in v for k, v in f.items() if "Pignon" in k)
+    # KAN-139 : sans intention, le pignon prend la matière des autres murs (jambettes enduites).
+    gables = set().union(*(v for k, v in f.items() if "Pignon" in k))
+    assert gables == {"plaster"}
     assert f["timber"] == {"timber"}
     bake = bake_level(project, only_level(project).id, style="realistic")
     assert all(p.woods is None for p in bake.prisms if p.model)

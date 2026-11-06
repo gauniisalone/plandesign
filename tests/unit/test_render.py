@@ -56,14 +56,17 @@ def test_finishes_and_realistic_colours() -> None:
     level = only_level(project)
     gable = next(e for e in level.elements.values() if isinstance(e, Wall) and e.name == "Pignon")
     roof = next(e for e in level.elements.values() if isinstance(e, RoofPlane))
-    assert finish_of(gable, "wall") == "stone" and finish_of(roof, "roof") == "wood_boards"
+    # KAN-139 : le pignon n'a plus de pierre posée d'office (défaut du type, l'enduit).
+    assert finish_of(gable, "wall") == "plaster" and finish_of(roof, "roof") == "wood_boards"
     bad = gable.model_copy(update={"metadata": {"finish": "gold"}})
     assert finish_of(bad, "wall") == "plaster", "matière inconnue : défaut du type"
     provenance = bake_level(project, level.id)
     realistic = bake_level(project, level.id, "realistic")
     assert provenance.style == "provenance" and realistic.style == "realistic"
     by_id = {p.element_id: p for p in realistic.polyhedra if p.kind != "timber"}
-    assert by_id[gable.id].finish == "stone" and by_id[gable.id].color == FINISH_COLORS["stone"]
+    # KAN-139 : en rendu réaliste, le pignon prend la matière des murs (jambettes enduites).
+    assert by_id[gable.id].finish == "plaster"
+    assert by_id[gable.id].color == FINISH_COLORS["plaster"]
     assert by_id[roof.id].color == FINISH_COLORS["wood_boards"]
     floor = next(p for p in realistic.prisms if p.kind == "floor")
     assert floor.finish == "wood_floor" and floor.color == FINISH_COLORS["wood_floor"]

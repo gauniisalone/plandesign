@@ -229,9 +229,9 @@ def apply_attic(
                 confidence=CONFIDENCE[source],
                 uncertainty=Uncertainty(sigma=along.sigma),
                 provenance=provenance,
-                # Aspect par défaut d'un comble ancien : pignons en pierre, jambettes enduites ;
-                # modifiable élément par élément (metadata.finish).
-                metadata={"finish": "stone" if height is None else "plaster"},
+                # Jambettes enduites ; les pignons n'ont pas de matière à eux (KAN-139 : ils
+                # prennent celle des murs) ; modifiable élément par élément (metadata.finish).
+                metadata={} if height is None else {"finish": "plaster"},
             )
         )
     pitch = pitch_from_rise(g.ridge_height.value - g.eave_height.value, width / 2.0)

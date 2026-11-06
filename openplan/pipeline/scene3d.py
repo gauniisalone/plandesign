@@ -151,6 +151,9 @@ def finish_of(element: ElementBase, kind: str) -> Finish:
     if valid and element.metadata.get("finish_source") == "user_defined":
         return cast(Finish, wanted)
     styled = CURRENT_STYLE.get()
+    if styled is not None and kind == "wall" and element.id in styled.gables:
+        # KAN-139 : un pignon prend la matière des murs (jamais la pierre posée d'office).
+        return styled.gable
     if styled is not None:
         surface = surface_of(kind, element.id, styled)
         if surface is not None and surface in styled.by_surface:
