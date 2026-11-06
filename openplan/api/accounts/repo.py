@@ -54,12 +54,18 @@ class AccountsRepo:
         return user is not None and user.accepted_terms_at is not None and not user.is_admin
 
     def owned_project_count(self, user_id: UUID) -> int:
+        """Projets dont la personne est propriétaire (rôle `owner`), pour le plafond des comptes
+        inscrits. KAN-143 : compté par le RÔLE, celui que montre la liste des membres, et non
+        par `projects.owner_id` (le propriétaire inscrit à la création, que « Changer le rôle »
+        ne met pas à jour) : un projet confié dans l'app ne compte plus pour l'ancien
+        propriétaire, et compte pour le nouveau ; un projet à plusieurs propriétaires compte
+        pour chacun."""
         with self.session() as db:
             return int(
                 db.scalar(
                     select(func.count())
-                    .select_from(ProjectRow)
-                    .where(ProjectRow.owner_id == user_id)
+                    .select_from(Member)
+                    .where(Member.user_id == user_id, Member.role == "owner")
                 )
                 or 0
             )
