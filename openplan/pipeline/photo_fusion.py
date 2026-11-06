@@ -24,6 +24,7 @@ La statistique robuste (médiane pondérée, rejet MAD) est dans `geom.robust`.
 
 from __future__ import annotations
 
+import logging
 import math
 import statistics
 from collections.abc import Callable, Iterable
@@ -65,6 +66,17 @@ MAX_SPREAD = 0.5
 SHAPE_FLOOR = 0.05
 """Concordance affichée au moins à ±5 % : le jackknife sur peu de photos sous-estime."""
 CLOSE_UP_REASON = "écartée : gros plan (la photo ne voit pas le fond de la pièce)"
+DEPTH_ABSENT = "profondeur absente"
+"""Pas de profondeur gardée pour cette photo (en ligne : le navigateur ne l'a pas envoyée)."""
+DEPTH_UNAVAILABLE = "profondeur indisponible"
+"""KAN-150 : le serveur devait calculer la profondeur et n'a pas pu (modèle absent, torch
+manquant, erreur du modèle)."""
+DEPTH_UNAVAILABLE_NOTICE = "Profondeur indisponible : cotes estimées sans profondeur."
+"""KAN-150 : dit à l'utilisateur (avis du plan) dès qu'une photo du recoupement est dans ce cas."""
+UNREAD_REASONS = (DEPTH_ABSENT, DEPTH_UNAVAILABLE, "photo absente du projet", "sol non vu")
+"""Les raisons d'une photo écartée avant toute lecture, dites telles quelles (« écartée : … »)."""
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,6 +101,9 @@ class PhotoReading:
     focal_px: float | None = None
     """KAN-136 : la focale qui a lu sa géométrie (`photo_focal_px`), en pixels de la photo ; la
     caméra « Photo » la porte, pour que le rendu voie la pièce comme elle a été lue."""
+    depth_unavailable: bool = False
+    """KAN-150 : la profondeur devait être calculée ici et ne l'a pas été (raison
+    DEPTH_UNAVAILABLE) ; le recoupement le dit, au lieu de mesurer du vide."""
 
     @property
     def usable(self) -> bool:
@@ -121,8 +136,15 @@ def read_photos(
     estimator: DepthEstimator | None,
 ) -> list[PhotoReading]:
     """Chaque photo : focale, profondeur gardée (calculée et gardée si besoin), mesure de
-    référence. Une photo sans profondeur reste dans la liste, avec sa raison."""
+    référence. Une photo sans profondeur reste dans la liste, avec sa raison.
+
+    KAN-150 : sans profondeur gardée, deux cas. Le navigateur ne l'a pas envoyée (estimateur
+    `from_store`) : « profondeur absente », comme avant. Le serveur devait la calculer et n'a pas
+    pu (aucun estimateur, ou son erreur) : « profondeur indisponible », `depth_unavailable`, et
+    UNE ligne WARNING sur le logger `openplan` (KAN-144) avec le nombre de photos et la cause."""
     out: list[PhotoReading] = []
+    causes: list[str] = []
+    stored_only = estimator is not None and getattr(estimator, "from_store", False)
     vp = VanishingPointCameraEstimator()
     for image_id in dict.fromkeys(image_ids):
         r = PhotoReading(image_id)
@@ -137,15 +159,19 @@ def read_photos(
         r.from_vps = analysis.frame is not None and analysis.frame.focal_from_vps
         r.focal_norm = analysis.camera.focal_px / r.long_side
         stored = load_depth(project_dir, image_id)
-        if stored is None and estimator is not None and not getattr(estimator, "from_store", False):
+        if stored is None and estimator is not None and not stored_only:
             try:
                 depth_map = estimator.predict(image)
-            except (AdapterUnavailableError, OSError, RuntimeError, ValueError):
+            except (AdapterUnavailableError, OSError, RuntimeError, ValueError) as exc:
                 depth_map = None
+                causes.append(f"{type(exc).__name__} : {exc}")
             if depth_map is not None and save_depth(project_dir, image, depth_map, analysis.camera):
                 stored = load_depth(project_dir, image_id)
         if stored is None:
-            r.reason = "profondeur absente"
+            r.depth_unavailable = not stored_only
+            if estimator is None:
+                causes.append("aucun estimateur de profondeur")
+            r.reason = DEPTH_UNAVAILABLE if r.depth_unavailable else DEPTH_ABSENT
             continue
         if ref.reference_segments:
             seg = ref.reference_segments[0]
@@ -164,7 +190,27 @@ def read_photos(
         r.reason = "à lire"
         r.stored = stored
         r.frame_up = analysis.frame.up if analysis.frame is not None else None
+    missing = sum(r.depth_unavailable for r in out)
+    if missing:
+        log.warning(
+            "profondeur indisponible pour %d photo(s) sur %d : %s",
+            missing,
+            len(out),
+            causes[0][:200] if causes else "cause inconnue",
+        )
     return out
+
+
+def depth_unavailable(readings: Iterable[PhotoReading]) -> bool:
+    """KAN-150 : au moins une photo n'a pas eu la profondeur qu'il fallait calculer."""
+    return any(r.depth_unavailable for r in readings)
+
+
+def with_depth_notice(notices: list[str], unavailable: bool) -> list[str]:
+    """KAN-150 : l'avis « cotes estimées sans profondeur » en tête, une fois."""
+    if not unavailable or DEPTH_UNAVAILABLE_NOTICE in notices:
+        return notices
+    return [DEPTH_UNAVAILABLE_NOTICE, *notices]
 
 
 def common_focal_norm(readings: list[PhotoReading]) -> float | None:

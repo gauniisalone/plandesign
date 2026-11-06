@@ -51,14 +51,17 @@ from openplan.pipeline.depthplan import (
 )
 from openplan.pipeline.floorplan import ACTOR, DEFAULT_CAMERA_HEIGHT_M, DetectionError
 from openplan.pipeline.photo_fusion import (
+    DEPTH_UNAVAILABLE_NOTICE,
     FUSION_STRIDE,
     MIN_PHOTOS,
+    UNREAD_REASONS,
     PhotoContribution,
     PhotoReading,
     camera_metadata,
     common_focal_norm,
     concordance,
     default_scales,
+    depth_unavailable,
     fused_basis,
     grid_focal,
     jackknife,
@@ -69,6 +72,7 @@ from openplan.pipeline.photo_fusion import (
     set_camera_height,
     stripped,
     structure_is_estimated,
+    with_depth_notice,
     with_provenance,
 )
 from openplan.scene import history
@@ -138,6 +142,9 @@ class RoomFusionRun(StrictModel):
     confidence: EstimateConfidence | None = None
     project: Project
     result: StepResult
+    depth_unavailable: bool = False
+    """KAN-150 : au moins une photo sans la profondeur qu'il fallait calculer (l'avis
+    DEPTH_UNAVAILABLE_NOTICE est alors en tête des `notices`)."""
 
 
 @dataclass
@@ -541,7 +548,7 @@ def _contributions(
             reason = "recoupe la photo du plan (mêmes murs), sans l'agrandir"
         elif r.usable and r.walls:
             reason = "écartée : ne voit pas de murs en commun avec les autres"
-        elif r.reason in ("profondeur absente", "photo absente du projet", "sol non vu"):
+        elif r.reason in UNREAD_REASONS:
             reason = f"écartée : {r.reason}"
         else:
             reason = "écartée : aucun mur vu"
@@ -582,6 +589,8 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
     entered = camera_height_m is not None
     height = camera_height_m if camera_height_m is not None else DEFAULT_CAMERA_HEIGHT_M
     ids = list(dict.fromkeys(image_ids))
+    lacks_depth = [False]
+    """KAN-150 : posé après la lecture des photos (les retours d'avant n'ont rien lu)."""
 
     def done(
         applied: bool,
@@ -590,6 +599,7 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
         fusion: RoomFusion | None = None,
         trust: EstimateConfidence | None = None,
     ) -> RoomFusionRun:
+        notices = with_depth_notice(notices, lacks_depth[0])
         return RoomFusionRun(
             run_id=rid,
             level_id=level_id,
@@ -598,10 +608,13 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
             notices=notices,
             confidence=trust,
             project=after,
+            depth_unavailable=lacks_depth[0],
             result=StepResult(
                 step=STEP,
                 confidence=0.0 if trust is None else max(0.0, 1.0 - trust.expected_error),
-                warnings=[] if applied else notices,
+                warnings=notices
+                if not applied
+                else [n for n in notices if n == DEPTH_UNAVAILABLE_NOTICE],
                 duration_s=time.perf_counter() - started,
                 model_ids=[m for m in (getattr(estimator, "model_id", None),) if m],
             ),
@@ -610,6 +623,7 @@ def fuse_room(  # noqa: PLR0911, PLR0912, PLR0915
     if len(ids) < MIN_PHOTOS:
         return done(False, project, ["Une seule photo dans la carte : rien à recouper."])
     readings = [_Reading(**vars(r)) for r in read_photos(project, project_dir, ids, estimator)]
+    lacks_depth[0] = depth_unavailable(readings)
     common_focal = _analyse(readings, height)
     union = _union(readings)
     if union is None:

@@ -3,6 +3,7 @@ P2 pièces droites)."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from uuid import UUID
 
@@ -32,6 +33,7 @@ from openplan.schemas.scene import Project
 from openplan.validation.invariants import validate_invariants
 
 router = APIRouter(tags=["autoplan"])
+log = logging.getLogger(__name__)
 
 EXPECTED_S = {"cuda": 20.0, "cpu": 90.0}
 """Ordre de grandeur : la profondeur des photos déjà gardée n'est pas recalculée."""
@@ -177,7 +179,10 @@ def _submit(
         else:
             try:
                 depth = get_depth_estimator(request)
-            except AdapterUnavailableError:
+            except AdapterUnavailableError as exc:
+                # KAN-150 : dit (journal WARNING) ; les photos sans profondeur gardée seront
+                # « profondeur indisponible » et le résultat le portera.
+                log.warning("profondeur indisponible pour le recoupement : %s", str(exc)[:200])
                 depth = None
         run = fuse_members(store, project_id, level_id, depth, progress, force=force)
         if run is None:

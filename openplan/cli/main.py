@@ -518,16 +518,31 @@ def _bench(args: argparse.Namespace) -> int:
         return 2
     estimator = None
     if args.compute_depth:
+        from openplan.adapters.protocols import AdapterUnavailableError
         from openplan.adapters.registry import build_depth_estimator
 
         settings = Settings.from_env()
-        estimator = build_depth_estimator(args.models_dir or settings.models_dir, settings.device)
+        try:
+            estimator = build_depth_estimator(
+                args.models_dir or settings.models_dir, settings.device
+            )
+        except AdapterUnavailableError as exc:
+            print(f"profondeur indisponible, banc non lancé : {exc}", file=sys.stderr)
+            return 3
     report = run_bench(root, estimator=estimator, progress=print)
     md, js = write_report(report, root)
     print(md)
     print(js)
     for key, value in report.medians.items():
         print(f"  médiane |erreur| {key} : {value * 100:.0f} %")
+    if report.missing_depth:
+        # KAN-150 : un banc sans profondeur ne mesure rien de ces photos : il échoue, visiblement.
+        print(
+            f"banc incomplet : {len(report.missing_depth)} photo(s) sans profondeur "
+            f"({', '.join(report.missing_depth[:5])}) : relancez avec --compute-depth",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 
@@ -552,7 +567,14 @@ def _evaluate(args: argparse.Namespace) -> int:
     elif is_installed(DEPTH_ID, models_dir):
         estimator = build_depth_estimator(models_dir, settings.device)
     else:
-        print(f"poids de profondeur absents : uv run openplan models pull {DEPTH_ID}")
+        # KAN-150 : sans profondeur, l'évaluation échoue au lieu de mesurer sans elle ;
+        # --no-depth la lance exprès sans profondeur.
+        print(
+            f"poids de profondeur absents : uv run openplan models pull {DEPTH_ID} "
+            "(ou --no-depth pour évaluer sans profondeur)",
+            file=sys.stderr,
+        )
+        return 3
     detector = None
     if args.no_openings:
         print("portes et fenêtres désactivées (--no-openings)")

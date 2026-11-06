@@ -26,6 +26,7 @@ sautée. Rien ne quitte la racine : le rapport est écrit dans `<racine>/rapport
 from __future__ import annotations
 
 import json
+import logging
 import math
 import statistics
 from collections.abc import Callable
@@ -46,6 +47,7 @@ from openplan.pipeline.floorplan import DEFAULT_CAMERA_HEIGHT_M
 from openplan.schemas.common import DECODED_IMAGE_FORMATS, StrictModel
 from openplan.schemas.numbers import decimal, metres
 
+log = logging.getLogger(__name__)
 Float = NDArray[np.float64]
 REPORT_NAME = "rapport-kan33"
 RULER_FILE = "regle.json"
@@ -113,6 +115,9 @@ class BenchReport(StrictModel):
     medians: dict[str, float] = Field(default_factory=dict)
     """Erreur médiane absolue des cotes par configuration (clé = configuration)."""
     notes: list[str] = Field(default_factory=list)
+    missing_depth: list[str] = Field(default_factory=list)
+    """KAN-150 : les photos sans profondeur (ni gardée à côté, ni calculée) ; non vide, le banc
+    est incomplet et `openplan bench` sort en erreur au lieu de mesurer du vide."""
 
 
 # ------------------------------------------------------------------ scène de contrôle
@@ -475,7 +480,7 @@ def bench_attic_photos(  # noqa: PLR0915
             image = _load(path)
             depth = photo_depth(path, image, estimator)
             if depth is None:
-                notes.append(f"{room}/{path.name} : profondeur absente, hors recoupement")
+                notes.append(f"{room}/{path.name} : profondeur indisponible, hors recoupement")
                 continue
             camera = VanishingPointCameraEstimator().analyse(image)
             project, ref, _ = import_image(
@@ -572,7 +577,10 @@ def run_bench(
             say(f"{room_dir.name}/{path.name}…")
             bench, rows = bench_photo(room_dir.name, path, estimator, rulers.get(path.name))
             if bench is None:
-                report.notes.append(f"{room_dir.name}/{path.name} : profondeur absente, sautée")
+                report.notes.append(
+                    f"{room_dir.name}/{path.name} : profondeur indisponible, sautée"
+                )
+                report.missing_depth.append(f"{room_dir.name}/{path.name}")
                 continue
             report.photos.append(bench)
             report.rows.extend(rows)
@@ -595,6 +603,11 @@ def run_bench(
             report.notes.extend(multi_notes)
     for key, errors in ruler_errors.items():
         report.medians[key] = statistics.median(errors)
+    if report.missing_depth:
+        log.warning(
+            "banc incomplet : %d photo(s) sans profondeur (ni gardée, ni calculée)",
+            len(report.missing_depth),
+        )
     return report
 
 
