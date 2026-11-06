@@ -655,7 +655,7 @@ def _commit_background(
     return history.commit(project, after, actor=ACTOR, label="Mettre l'image du plan en fond")
 
 
-def _photo_candidates(  # noqa: PLR0913, PLR0912
+def _photo_candidates(  # noqa: PLR0913, PLR0912, PLR0915
     chain: _Chain,
     project: Project,
     project_dir: Path,
