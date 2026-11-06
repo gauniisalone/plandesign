@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { e2eIdentity } from "./e2e-identity";
 
 /**
  * Audit responsive (directive d'augus du 29 sept. 2026) : captures de chaque écran aux largeurs
@@ -10,8 +11,10 @@ import { defineConfig } from "@playwright/test";
  */
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
+const id = e2eIdentity({ API: apiPort, web: webPort }); // KAN-152
 
 export default defineConfig({
+  metadata: id.metadata,
   testDir: "e2e-audit",
   timeout: 600_000,
   expect: { timeout: 15_000 },
@@ -27,7 +30,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cd ../.. && OPENPLAN_DOTENV= OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
+      command: `cd ../.. && ${id.echo} && OPENPLAN_DOTENV= OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
       timeout: 60_000,

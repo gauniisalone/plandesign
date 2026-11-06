@@ -8,6 +8,7 @@ import {
   RENDER_ACCOUNT_KAN103,
   RENDER_ACCOUNT_KAN137,
 } from "./e2e-online/render-account";
+import { e2eIdentity } from "./e2e-identity";
 
 /**
  * MVP en ligne sans GPU (19 oct.) : comme les e2e des comptes, mais SANS Blender (binaire
@@ -24,6 +25,7 @@ import {
  */
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
+const id = e2eIdentity({ API: apiPort, web: webPort }); // KAN-152
 const dir = "apps/web/.e2e-online";
 // KAN-89 : compte autorisé aux rendus réalistes et empreinte du jeton du poste simulé.
 const workerHash = createHash("sha256").update(E2E_WORKER_TOKEN).digest("hex");
@@ -47,6 +49,7 @@ const env = [
 ].join(" ");
 
 export default defineConfig({
+  metadata: id.metadata,
   // KAN-103 : les specs d'avant, puis les parcours Gherkin (features/*.feature, générés par
   // `bddgen` dans .features-gen/ avant `playwright test`).
   projects: [
@@ -74,7 +77,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        `cd ../.. && rm -rf ${dir} && mkdir -p ${dir}/weights ${dir}/materials && ` +
+        `cd ../.. && ${id.echo} && rm -rf ${dir} && mkdir -p ${dir}/weights ${dir}/materials && ` +
         `${env} uv run --extra comptes openplan accounts migrate && ` +
         `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
         `sqlite:///${dir}/comptes.db ${RENDER_ACCOUNT.id} ${RENDER_ACCOUNT.email} && ` +

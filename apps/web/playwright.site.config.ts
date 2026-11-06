@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { e2eIdentity } from "./e2e-identity";
 
 /**
  * Fenêtre « Se connecter » du site public (apps/site/login/login.js) : le site construit avec
@@ -13,6 +14,7 @@ import { defineConfig } from "@playwright/test";
 const apiPort = process.env.OPENPLAN_PORT ?? "8015";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5188";
 const sitePort = process.env.OPENPLAN_SITE_PORT ?? "4388";
+const id = e2eIdentity({ API: apiPort, web: webPort, site: sitePort }); // KAN-152
 const dir = "apps/web/.e2e-site";
 const env = [
   "OPENPLAN_DOTENV=",
@@ -33,6 +35,7 @@ const env = [
 ].join(" ");
 
 export default defineConfig({
+  metadata: id.metadata,
   testDir: "e2e-site",
   timeout: 90_000,
   expect: { timeout: 10_000 },
@@ -50,7 +53,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        `cd ../.. && rm -rf ${dir} && mkdir -p ${dir} && ` +
+        `cd ../.. && ${id.echo} && rm -rf ${dir} && mkdir -p ${dir} && ` +
         `${env} uv run --extra comptes openplan accounts migrate && ` +
         `${env} uv run --extra comptes openplan serve --port ${apiPort} --data-dir ${dir}/data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,

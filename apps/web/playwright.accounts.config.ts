@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 import { SHARE_ACCOUNT } from "./e2e-accounts/share-account";
 import { E2E_WORKER_TOKEN } from "./e2e-online/render-account";
 import { defineBddProject } from "playwright-bdd";
+import { e2eIdentity } from "./e2e-identity";
 
 /**
  * B1d : e2e avec les comptes actifs (page de connexion, session, rôle, /nouveau).
@@ -14,6 +15,7 @@ import { defineBddProject } from "playwright-bdd";
  */
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
+const id = e2eIdentity({ API: apiPort, web: webPort }); // KAN-152
 const dir = "apps/web/.e2e-accounts";
 // KAN-112 : la CI pose E2E_DATABASE_URL (Postgres neuf par job) ; vide ou absente, la base
 // SQLite jetable d'avant. La migration se fait au lancement dans les deux cas.
@@ -56,6 +58,7 @@ const env = [
 ].join(" ");
 
 export default defineConfig({
+  metadata: id.metadata,
   // KAN-103 : les specs d'avant, puis les parcours Gherkin (features/*.feature, générés par
   // `bddgen` dans .features-gen/ avant `playwright test`).
   projects: [
@@ -83,7 +86,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        `cd ../.. && rm -rf ${dir} && mkdir -p ${dir} && ` +
+        `cd ../.. && ${id.echo} && rm -rf ${dir} && mkdir -p ${dir} && ` +
         `${env} uv run --extra comptes openplan accounts migrate && ` +
         `uv run --extra comptes python apps/web/e2e-online/seed_render_account.py ` +
         `'${databaseUrl.replaceAll("'", "")}' ${SHARE_ACCOUNT.id} ${SHARE_ACCOUNT.email} && ` +

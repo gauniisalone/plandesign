@@ -1,17 +1,21 @@
 import { defineConfig } from "@playwright/test";
 import { defineBddProject } from "playwright-bdd";
+import { e2eIdentity } from "./e2e-identity";
 
 /**
  * Tests de bout en bout dans un vrai navigateur (Chromium headless).
  * Deux serveurs sont lancés : l'API (dossier de données jetable) et Vite.
  * Lancer : `make e2e` (ou `cd apps/web && npx playwright test`).
  * Si le port 8000 ou 5173 est déjà pris (un `make start` qui tourne), choisir d'autres ports :
- * `OPENPLAN_PORT=8010 OPENPLAN_WEB_PORT=5183 make e2e`.
+ * `OPENPLAN_PORT=8010 OPENPLAN_WEB_PORT=5183 make e2e`. KAN-152 : `pd-lock e2e -- …` pose une
+ * paire de ports libre par place (deux e2e en même temps sur deux copies).
  */
 const apiPort = process.env.OPENPLAN_PORT ?? "8000";
 const webPort = process.env.OPENPLAN_WEB_PORT ?? "5173";
+const id = e2eIdentity({ API: apiPort, web: webPort });
 
 export default defineConfig({
+  metadata: id.metadata,
   // KAN-103 : les specs d'avant, puis les parcours Gherkin qui demandent les poids (générés par
   // `bddgen` dans .features-gen/ avant `playwright test`).
   projects: [
@@ -41,7 +45,7 @@ export default defineConfig({
       // OPENPLAN_DOTENV vide : le .env personnel (clé d'API distante) n'est pas lu par ce serveur jetable.
       // OPENPLAN_AUTO_PATH=0 : les projets des tests ne lancent pas le chemin automatique
       // (rendus Blender) ; le test du chemin l'active pour son projet.
-      command: `cd ../.. && OPENPLAN_DOTENV= OPENPLAN_AUTO_PATH=0 OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
+      command: `cd ../.. && ${id.echo} && OPENPLAN_DOTENV= OPENPLAN_AUTO_PATH=0 OPENPLAN_UVICORN_ACCESS_LOG=1 uv run openplan serve --port ${apiPort} --data-dir apps/web/.e2e-data`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
       // Journal d'accès d'uvicorn (sortie standard) gardé dans le journal des e2e : une
