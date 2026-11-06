@@ -294,6 +294,9 @@ export function RealisticRenders({
   /** KAN-137 : filtre par pièce de la galerie (son nom), et calcul en cours. */
   const [onlyRoom, setOnlyRoom] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
+  /** KAN-137 : la case change tout de suite ; la réponse du serveur la confirme (ou la
+   *  remet, avec l'erreur). Par identifiant de caméra. */
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
   // KAN-101 : « Partager » n'existe que si le serveur a les liens publics allumés.
   const hosting = useHosting();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -301,7 +304,9 @@ export function RealisticRenders({
   const cameras = level ? allCameras(level) : [];
   const views = cameras.filter(isFreeCamera);
   /** KAN-137 : les vues par pièce (le choix par défaut), et les autres vues du plan. */
-  const rooms = roomRows(level);
+  const rooms = roomRows(level).map((r) =>
+    r.camera.id in ticks ? { ...r, on: ticks[r.camera.id]! } : r,
+  );
   const ticked = rooms.filter((r) => r.on);
   const otherViews = views.filter((v) => !isRoomView(v));
   const photos = Object.keys(project.images).filter((id) =>
@@ -458,8 +463,15 @@ export function RealisticRenders({
       setProposing(false);
     }
   };
-  const tick = (row: RoomRow, on: boolean) =>
-    void edit(() => api.applyOp(project.id, levelId, tickOp(row, on)));
+  const tick = (row: RoomRow, on: boolean) => {
+    const id = row.camera.id;
+    setTicks((t) => ({ ...t, [id]: on }));
+    void edit(() => api.applyOp(project.id, levelId, tickOp(row, on))).finally(() =>
+      setTicks((t) =>
+        Object.fromEntries(Object.entries(t).filter(([k]) => k !== id)),
+      ),
+    );
+  };
   const addView = (row: RoomRow) =>
     void edit(() => renderApi.addRoomView(project.id, levelId, row.roomId));
   /** KAN-99 : l'étoile (éditeurs) ; la réponse donne les favoris du projet. */
