@@ -14,6 +14,8 @@ async function lastCode(page: Page, email: string): Promise<string> {
 export async function requestCode(page: Page, email: string): Promise<string> {
   const before = await lastCode(page, email);
   await page.getByLabel("Adresse e-mail").fill(email);
+  // KAN-133 : la case des conditions, exigée avant l'envoi.
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";
