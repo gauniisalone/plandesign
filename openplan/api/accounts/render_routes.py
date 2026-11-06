@@ -50,6 +50,7 @@ from openplan.api.accounts.render_style import (
     style_names,
     with_guidance,
 )
+from openplan.api.accounts.render_view import freeze_view, frozen_text
 from openplan.api.board_rules import render_inputs
 from openplan.api.deps import ActorDep
 from openplan.api.files import served_file
@@ -531,6 +532,10 @@ def _create(
     # KAN-97 : les images de style du moment du clic, lues plus tard par le poste.
     with contextlib.suppress(OSError):
         note_references(store, project, level_id, row.id)
+    # KAN-154 : la vue (bake, caméra) du moment du clic ; le poste ne recalcule plus. Un disque
+    # qui refuse laisse le repli (recalcul, comme avant) : la demande part quand même.
+    with contextlib.suppress(OSError):
+        freeze_view(store, project, level_id, camera_id, row.id)
     # KAN-109 L2 : une demande de rendu (value 1 : guidée par au moins une inspiration).
     guided = 1 if inputs is not None and inputs.inspirations else 0
     emit_from(request, "render_requested", user.id, project_id, guided)
@@ -627,14 +632,22 @@ def worker_file(
     lease: LeaseHeader = None,
 ) -> Response:
     """Le projet, le bake (style réaliste) ou la caméra de la vue, en JSON validé par leur
-    schéma, sous leur plafond de taille."""
+    schéma, sous leur plafond de taille. KAN-154 : le bake et la caméra FIGÉS au clic
+    (`render_view`) ; recalculés seulement pour une demande d'avant (repli)."""
     try:
         row = queue_of(request).leased(request_id, lease)
     except LeaseError as exc:
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
+    frozen = (
+        frozen_text(store_of(request), row.project_id, request_id, name)
+        if name != "project"
+        else None
+    )
     try:
         project = store_of(request).load(row.project_id)
-        if name == "project":
+        if frozen is not None:
+            payload = frozen
+        elif name == "project":
             payload = project.model_dump_json()
         elif name == "bake":
             payload = bake_level(project, row.level_id, "realistic").model_dump_json()

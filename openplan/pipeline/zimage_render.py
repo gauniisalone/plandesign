@@ -49,6 +49,11 @@ ZImageVramGuard = ZImageStoppedError
 """Le garde-fou a arrêté la génération (mémoire de la carte, mémoire vive, durée)."""
 
 
+def guides_path(out_png: Path) -> Path:
+    """KAN-154 : `<rendu>.guides.npz`, à côté de l'image du poste."""
+    return out_png.with_name(f"{out_png.stem}.guides.npz")
+
+
 @dataclass(frozen=True)
 class ZImageResult:
     seconds: float
@@ -175,6 +180,9 @@ def render_scene(
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(result.pixels).save(out_png)
+    # KAN-154 : la géométrie exacte de la même vue, à la taille du rendu (profondeur, élément et
+    # classe par pixel, arêtes), gardée à côté de l'image pour le contrôle de fidélité.
+    guides.save(guides_path(out_png))
     peak_mb = result.peak_vram_mb or 0.0
     return ZImageResult(
         seconds=round(time.perf_counter() - started, 1),

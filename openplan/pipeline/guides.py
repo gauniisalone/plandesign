@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -27,6 +28,12 @@ CREASE_COS = 0.87
 DEPTH_JUMP = 0.04
 
 
+OPENING_KINDS = frozenset({"door", "window", "roof_window"})
+"""KAN-154 : les classes « ouvertures » des masques (porte, fenêtre, velux)."""
+POST_KINDS = frozenset({"timber"})
+"""KAN-154 : poteaux et fermes (KAN-94, polyèdres `timber` du bake)."""
+
+
 @dataclass(frozen=True)
 class ViewGuides:
     edges: NDArray[np.uint8]
@@ -35,6 +42,39 @@ class ViewGuides:
     """H×W, indice de l'élément vu (-1 : fond), voir `labels`."""
     labels: list[str]
     """Identifiant d'élément du bake (ou `decor-<k>`) de chaque indice."""
+    depth: NDArray[np.float32]
+    """KAN-154 : H×W, profondeur exacte de la scène, en mètres le long de l'axe de la caméra
+    (comme la passe Z de Cycles, `depth_z.npy`) ; inf : fond."""
+    kinds: list[str]
+    """KAN-154 : la classe du bake de chaque indice (`wall`, `door`, `window`, `timber`,
+    `furniture`… ; `decor` pour l'habillage), alignée sur `labels`."""
+
+    def mask(self, kinds: frozenset[str] | set[str]) -> NDArray[np.bool_]:
+        """H×W, vrai où l'élément vu est d'une de ces classes (murs, ouvertures, poteaux…)."""
+        wanted = [i for i, k in enumerate(self.kinds) if k in kinds]
+        return np.isin(self.element, wanted)
+
+    def save(self, path: Path) -> None:
+        """KAN-154 : `.guides.npz` à côté du rendu (contrôle de fidélité, étape 2)."""
+        np.savez_compressed(
+            path,
+            edges=self.edges,
+            element=self.element,
+            depth=self.depth,
+            labels=np.array(self.labels, dtype=str),
+            kinds=np.array(self.kinds, dtype=str),
+        )
+
+
+def load_guides(path: Path) -> ViewGuides:
+    with np.load(path) as data:
+        return ViewGuides(
+            edges=np.asarray(data["edges"], np.uint8),
+            element=np.asarray(data["element"], np.int32),
+            labels=[str(x) for x in data["labels"]],
+            depth=np.asarray(data["depth"], np.float32),
+            kinds=[str(x) for x in data["kinds"]],
+        )
 
 
 def _box(
@@ -84,9 +124,11 @@ class SceneMesh:
     faces: Array
     face_element: NDArray[np.int32]
     labels: list[str]
+    kinds: list[str]
+    """KAN-154 : la classe du bake de chaque élément (alignée sur `labels`)."""
 
 
-def scene_mesh(bake: Bake) -> SceneMesh:
+def scene_mesh(bake: Bake) -> SceneMesh:  # noqa: PLR0915 - un assemblage par sorte de solide
     """Triangles de la scène (repère du plan, z vers le haut) et l'élément de chaque face."""
     import trimesh
 
@@ -96,17 +138,20 @@ def scene_mesh(bake: Bake) -> SceneMesh:
     faces: list[Array] = []
     owner: list[NDArray[np.int32]] = []
     labels: list[str] = []
+    kinds: list[str] = []
     offset = 0
 
-    def add(v: Array, f: Array, label: str) -> None:
+    def add(v: Array, f: Array, label: str, kind: str) -> None:
         nonlocal offset
         verts.append(np.asarray(v, float))
         faces.append(np.asarray(f, np.int64) + offset)
         owner.append(np.full(len(f), len(labels), np.int32))
         labels.append(label)
+        kinds.append(kind)
         offset += len(v)
 
     by_element: dict[str, list[tuple[Array, Array]]] = {}
+    kind_of: dict[str, str] = {}
     for prism in bake.prisms:
         mesh = scene3d.furniture_mesh(prism)
         if mesh is None:
@@ -115,18 +160,23 @@ def scene_mesh(bake: Bake) -> SceneMesh:
             by_element.setdefault(str(prism.element_id), []).append(
                 (np.asarray(mesh.vertices), np.asarray(mesh.faces))
             )
+            kind_of.setdefault(str(prism.element_id), prism.kind)
     for poly in bake.polyhedra:
         v = np.array([(p.x, p.y, p.z) for p in poly.vertices], float)
         by_element.setdefault(str(poly.element_id), []).append((v, np.array(poly.faces)))
+        kind_of.setdefault(str(poly.element_id), poly.kind)
     for o in bake.openings:
         by_element.setdefault(str(o.element_id), []).extend(_opening_parts(o))
+        # La menuiserie (`joinery`) d'une ouverture porte l'identifiant de l'ouverture : la
+        # classe est celle de l'ouverture (porte, fenêtre).
+        kind_of[str(o.element_id)] = o.kind
     for element_id, items in by_element.items():
         vs, fs, off = [], [], 0
         for v, f in items:
             vs.append(v)
             fs.append(f + off)
             off += len(v)
-        add(np.concatenate(vs), np.concatenate(fs), element_id)
+        add(np.concatenate(vs), np.concatenate(fs), element_id, kind_of.get(element_id, ""))
     for k, d in enumerate(bake.decor):
         mesh_vf: tuple[Array, Array] | None = None
         if d.model:
@@ -153,11 +203,13 @@ def scene_mesh(bake: Bake) -> SceneMesh:
                 d.z,
                 d.z + max(d.height, 0.02),
             )
-        add(mesh_vf[0], mesh_vf[1], f"decor-{k}")
+        add(mesh_vf[0], mesh_vf[1], f"decor-{k}", "decor")
     if not verts:
         empty = np.zeros((0, 3))
-        return SceneMesh(empty, np.zeros((0, 3), np.int64), np.zeros(0, np.int32), [])
-    return SceneMesh(np.concatenate(verts), np.concatenate(faces), np.concatenate(owner), labels)
+        return SceneMesh(empty, np.zeros((0, 3), np.int64), np.zeros(0, np.int32), [], [])
+    return SceneMesh(
+        np.concatenate(verts), np.concatenate(faces), np.concatenate(owner), labels, kinds
+    )
 
 
 def camera_basis(camera: RenderCamera) -> tuple[Array, Array, Array, Array]:
@@ -342,8 +394,10 @@ def visible_pixels(bake: Bake, camera: RenderCamera) -> dict[str, int]:
 
 
 def view_guides(bake: Bake, camera: RenderCamera, size: tuple[int, int]) -> ViewGuides:
-    """Arêtes (et élément vu par pixel) de la vue `camera`, à la taille `size` (largeur,
-    hauteur) : rastérisées aux 3/4 puis agrandies au plus proche."""
+    """Arêtes, élément vu, classe et (KAN-154) profondeur exacte de chaque pixel de la vue
+    `camera`, à la taille `size` (largeur, hauteur) : rastérisées aux 3/4 puis agrandies au plus
+    proche (la profondeur aussi : la valeur du pixel rastérisé le plus proche, jamais un mélange
+    de deux surfaces)."""
     width, height = size
     rw, rh = max(16, round(width * RASTER_SCALE)), max(16, round(height * RASTER_SCALE))
     mesh = scene_mesh(bake)
@@ -366,4 +420,6 @@ def view_guides(bake: Bake, camera: RenderCamera, size: tuple[int, int]) -> View
         edges=edges[rows][:, cols],
         element=element[rows][:, cols],
         labels=mesh.labels,
+        depth=z[rows][:, cols].astype(np.float32),
+        kinds=mesh.kinds,
     )
