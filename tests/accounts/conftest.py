@@ -60,3 +60,14 @@ def migrated_url(db_url: str) -> str:
     upgrade(engine)
     engine.dispose()
     return db_url
+
+
+@pytest.fixture(autouse=True)
+def no_retention_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """KAN-142 : la purge des durées de conservation part dans un fil à la création de l'app,
+    à l'heure RÉELLE ; passée après des codes datés d'une heure figée (2 nov.), elle les
+    effaçait au milieu d'un test (test_ten_codes_per_day_and_address, instable). Coupée ici
+    pour tous les tests des comptes ; test_kan142_retention appelle `purge()` lui-même."""
+    from openplan.api.accounts import retention
+
+    monkeypatch.setattr(retention.Retention, "start", lambda self: None)
