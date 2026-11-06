@@ -664,15 +664,37 @@ p {
   color: var(--text-muted);
 }
 
+/* KAN-133 : une rangée incomplète (5 cartes depuis le retrait de « Code ouvert ») ; la
+   dernière carte prend la place qui reste, sans case vide sur le fond des traits. */
+.feature:last-child:nth-child(3n + 2) {
+  grid-column: span 2;
+}
+
+.feature:last-child:nth-child(3n + 1) {
+  grid-column: span 3;
+}
+
 @media (max-width: 900px) {
   .features {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .feature:last-child:nth-child(n) {
+    grid-column: auto;
+  }
+
+  .feature:last-child:nth-child(odd) {
+    grid-column: span 2;
   }
 }
 
 @media (max-width: 600px) {
   .features {
     grid-template-columns: 1fr;
+  }
+
+  .feature:last-child:nth-child(n) {
+    grid-column: auto;
   }
 }
 

@@ -13,8 +13,8 @@ const title = "Vos designs et plans en un clic · PlanDesign";
 // MVP sans rendus en ligne (décision d'augus, 19 oct.) : avec l'option de build, les textes
 // ne promettent ni rendus réalistes ni plan depuis une photo ; sans elle, ceux d'avant.
 const description = LOGIN_WINDOW
-  ? "Décrivez une pièce ou importez son plan 2D : PlanDesign construit le plan, l'aménage et le montre en 3D. Rendus réalistes : bientôt. Code ouvert, données hébergées en France."
-  : "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Code ouvert, données hébergées en France.";
+  ? "Décrivez une pièce ou importez son plan 2D : PlanDesign construit le plan, l'aménage et le montre en 3D. Rendus réalistes : bientôt. Données hébergées en France."
+  : "Déposez la photo d'une pièce ou un plan 2D : PlanDesign construit le plan et propose plusieurs rendus réalistes, sous plusieurs points de vue. Données hébergées en France.";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -25,7 +25,6 @@ const jsonLd = {
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
   inLanguage: "fr",
-  license: "https://www.apache.org/licenses/LICENSE-2.0",
   featureList: LOGIN_WINDOW
     ? [
         "Plan construit depuis une description ou un plan 2D (PDF, DXF)",
@@ -321,11 +320,6 @@ const jsonLd = {
           <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M14 3v14 M8 11l6 6 6-6 M4 21v3h20v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
           <h3>Exports ouverts</h3>
           <p>Plan en SVG, PDF ou DXF, scène 3D en GLB : vos fichiers vont où vous voulez.</p>
-        </li>
-        <li class="feature">
-          <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M10 8l-6 6 6 6 M18 8l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-          <h3>Code ouvert</h3>
-          <p>Code ouvert sous licence Apache-2.0.</p>
         </li>
       </ul>
     </div>
