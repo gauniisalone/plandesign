@@ -128,15 +128,58 @@ def gpu_used_mib() -> int | None:
         return None
 
 
-def ram_available_mib() -> int | None:
+MEMINFO = Path("/proc/meminfo")
+
+
+def _linux_available_mib(meminfo: Path = MEMINFO) -> int | None:
+    """Linux : `MemAvailable` de /proc/meminfo (Kio), en Mio."""
     try:
-        with open("/proc/meminfo", encoding="ascii") as fh:
+        with meminfo.open(encoding="ascii") as fh:
             for line in fh:
                 if line.startswith("MemAvailable:"):
                     return int(line.split()[1]) // 1024
     except (OSError, ValueError, IndexError):
         return None
     return None
+
+
+def _windows_available_mib(kernel32: Any = None) -> int | None:
+    """KAN-147 : Windows : `ullAvailPhys` de GlobalMemoryStatusEx (octets), en Mio. ctypes de la
+    bibliothèque standard, sans dépendance de plus ; `kernel32` est injecté par les tests."""
+    import ctypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        # MEMORYSTATUSEX, 64 octets : DWORD = 4 octets (c_uint32 ; c_ulong en fait 8 sous Linux).
+        _fields_ = (
+            ("dwLength", ctypes.c_uint32),
+            ("dwMemoryLoad", ctypes.c_uint32),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        )
+
+    try:
+        api = kernel32 if kernel32 is not None else ctypes.windll.kernel32  # type: ignore[attr-defined]
+        status = MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(MemoryStatusEx)
+        if not api.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return None
+        return int(status.ullAvailPhys) // (1024 * 1024)
+    except (OSError, AttributeError, ValueError, TypeError):
+        return None
+
+
+def ram_available_mib(platform: str | None = None) -> int | None:
+    """Mémoire vive disponible (Mio), None si illisible. KAN-147 : sous Windows, l'ancienne
+    lecture de /proc/meminfo rendait toujours None, et la garde de RAM de `watch` était muette ;
+    Linux ne change pas (même fichier, mêmes valeurs)."""
+    if (platform or sys.platform) == "win32":
+        return _windows_available_mib()
+    return _linux_available_mib()
 
 
 class _Running(Protocol):
