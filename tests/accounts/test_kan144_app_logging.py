@@ -123,13 +123,15 @@ INFO_CALL = re.compile(r"\b\w*(?:log|logger)\w*\.(?:info|log)\(")
 
 
 def test_inventory_of_info_lines() -> None:
-    """Inventaire (critère 3 de KAN-144) : au niveau INFO, une seule ligne de `openplan.*` devient
-    visible, le bilan de la purge (des nombres). Un nouveau `log.info` fait échouer ce test : le
-    relire (ni secret, ni jeton, ni e-mail, ni IP en clair ; volume compatible avec la rotation
-    à 14 jours) avant de l'ajouter ici."""
+    """Inventaire (critère 3 de KAN-144) : au niveau INFO, deux lignes de `openplan.*` deviennent
+    visibles : le bilan de la purge (des nombres), et l'offre posée par l'administrateur sur un
+    compte (lot schéma, KAN-126 : la valeur de l'offre seule, ni identifiant ni adresse ; un
+    geste rare du back-office). Un nouveau `log.info` fait échouer ce test : le relire (ni
+    secret, ni jeton, ni e-mail, ni IP en clair ; volume compatible avec la rotation à 14 jours)
+    avant de l'ajouter ici."""
     found = sorted(
         str(path.relative_to(ROOT.parent))
         for path in ROOT.rglob("*.py")
         if INFO_CALL.search(path.read_text(encoding="utf-8"))
     )
-    assert found == ["openplan/api/accounts/retention.py"]
+    assert found == ["openplan/api/accounts/retention.py", "openplan/api/accounts/routes.py"]
