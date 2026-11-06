@@ -273,6 +273,9 @@ class AtticRun(StrictModel):
     image_id: UUID
     estimate: AtticEstimate
     result: StepResult
+    focal_px: float | None = Field(default=None, gt=0.0)
+    """KAN-136 : la focale qui a lu la photo (lignes de fuite, sinon EXIF, sinon 0,8 × grand
+    côté), en pixels de la photo ; la caméra « Photo » des combles la porte."""
 
 
 class ClassifiedPlanes:
@@ -1482,6 +1485,7 @@ def run_attic(
         run_id=rid,
         image_id=image_id,
         estimate=estimate,
+        focal_px=camera.camera.focal_px,
         result=StepResult(
             step=STEP,
             confidence=confidence,

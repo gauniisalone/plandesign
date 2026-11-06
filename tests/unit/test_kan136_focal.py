@@ -152,6 +152,47 @@ def test_apply_attic_puts_the_geometry_focal_on_the_camera() -> None:
     assert none == [None]  # sans focale connue : le repli du rendu, inchangé
 
 
+def test_attic_geometry_passes_the_focal_through() -> None:
+    from uuid import uuid4
+
+    from openplan.pipeline.attic import AtticEstimate
+    from openplan.pipeline.autoplan import attic_geometry
+
+    estimate = AtticEstimate(
+        camera_height=Estimate(value=1.5, sigma=0.1),
+        ridge_height=Estimate(value=2.5, sigma=0.3),
+        width=Estimate(value=6.0, sigma=0.3),
+    )
+    geometry = attic_geometry(estimate, uuid4(), uuid4(), 640.0)
+    assert geometry is not None and geometry.focal_px == 640.0
+    plain = attic_geometry(estimate, uuid4(), uuid4())
+    assert plain is not None and plain.focal_px is None
+
+
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "rect_room" / "image.png"
+
+
+@pytest.mark.skipif(not FIXTURE.is_file(), reason="fixture absente")
+def test_single_photo_attic_camera_carries_the_focal_of_run_attic(tmp_path: Path) -> None:
+    """Combles d'une seule photo (autoplan → attic_geometry → apply_attic) : la caméra porte
+    la focale avec laquelle run_attic a lu la photo, plus le repli du rendu."""
+    from openplan.adapters.heuristic.camera import VanishingPointCameraEstimator
+    from openplan.pipeline.autoplan import run_autoplan
+    from tests.unit.test_autoplan import AtticDepth
+
+    project, ref, _ = import_image(
+        new_project("auto"), tmp_path, FIXTURE.read_bytes(), original_name="p.png"
+    )
+    level = only_level(project).id
+    run = run_autoplan(
+        project, tmp_path, level, ref.id, tmp_path / "runs", depth=AtticDepth(0.66 * ref.width_px)
+    )
+    assert run.method == "attic", [s.model_dump() for s in run.stages]
+    read = VanishingPointCameraEstimator().analyse(load_image(tmp_path, ref)).camera.focal_px
+    cameras = _photo_cameras(run.project, level)
+    assert [c.focal_px for c in cameras] == [pytest.approx(read)]
+
+
 def _portrait_project(tmp_path: Path) -> tuple[Project, UUID, UUID, ImageRef]:
     from PIL import Image
 

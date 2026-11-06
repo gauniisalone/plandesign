@@ -199,9 +199,12 @@ def _inferred(value: float, note: str) -> Estimate:
     return Estimate(value=value, sigma=max(0.5, 0.2 * value), source=Source.INFERRED, note=note)
 
 
-def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> AtticGeometry | None:
+def attic_geometry(
+    estimate: AtticEstimate, image_id: UUID, run_id: UUID, focal_px: float | None = None
+) -> AtticGeometry | None:
     """Géométrie de combles depuis l'estimation, sans rien demander : ce qui n'est pas vu est
-    déduit et marqué comme tel. None sans faîtage vu (pas de combles)."""
+    déduit et marqué comme tel. None sans faîtage vu (pas de combles). KAN-136 : `focal_px`,
+    celle qui a lu la photo (`AtticRun.focal_px`), va sur la caméra « Photo »."""
     if estimate.ridge_height is None:
         return None
     eave = next(
@@ -250,6 +253,7 @@ def attic_geometry(estimate: AtticEstimate, image_id: UUID, run_id: UUID) -> Att
             image_id=image_id,
             run_id=run_id,
             roof_windows=estimate.roof_windows,
+            focal_px=focal_px,
         )
     except ValueError:
         return None
@@ -664,13 +668,15 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
     roof_windows: RoofWindowDetector | None = None,
     *,
     camera_height_entered: bool,
-) -> tuple[list[_Candidate], AtticEstimate | None, dict[str, float], float | None]:
+) -> tuple[list[_Candidate], AtticEstimate | None, dict[str, float], float | None, float | None]:
     """Les plans candidats, l'estimation des combles, (KAN-66) les mètres par unité du
-    modèle de profondeur de chaque méthode qui l'a utilisée, et (KAN-91) la portée de la photo
-    (`depthplan.depth_reach`, None sans profondeur) ; la profondeur est gardée."""
+    modèle de profondeur de chaque méthode qui l'a utilisée, (KAN-91) la portée de la photo
+    (`depthplan.depth_reach`, None sans profondeur) et (KAN-136) la focale qui a lu les
+    combles ; la profondeur est gardée."""
     candidates: list[_Candidate] = []
     factors: dict[str, float] = {}
     reach: float | None = None
+    attic_focal: float | None = None
     chain.say("Lecture de la photo…")
     try:
         lines = detect_and_propose(
@@ -692,12 +698,12 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
         chain.stage("lines", "Lignes de fuite", "failed", str(exc)[:160])
     if depth is None:
         chain.stage("depth", "Profondeur", "skipped", "poids absents")
-        return candidates, None, factors, None
+        return candidates, None, factors, None, None
     memo = _MemoDepth(depth)
     estimate: AtticEstimate | None = None
     chain.say("Estimation des distances…")
     try:
-        estimate = run_attic(
+        attic_run = run_attic(
             project,
             project_dir,
             image_id,
@@ -707,7 +713,8 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
             camera_height_entered=camera_height_entered,
             run_id=rid,
             roof_windows=roof_windows,
-        ).estimate
+        )
+        estimate, attic_focal = attic_run.estimate, attic_run.focal_px
         if estimate.camera_height is not None and not estimate.floor_assumed:
             factors["attic"] = estimate.scale_factor
     except (DetectionError, ValueError) as exc:
@@ -747,7 +754,7 @@ def _photo_candidates(  # noqa: PLR0913, PLR0912
                 factors.clear()
         except OSError:
             factors.clear()  # sans profondeur gardée, pas de mesure de référence possible
-    return candidates, estimate, factors, reach
+    return candidates, estimate, factors, reach, attic_focal
 
 
 def _ceiling(project: Project, level_id: UUID, estimate: AtticEstimate | None) -> Project:
@@ -900,7 +907,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             )
         )
         roof_detector = _roof_detector(openings)
-        candidates, estimate, factors, reach = _photo_candidates(
+        candidates, estimate, factors, reach, attic_focal = _photo_candidates(
             chain,
             project,
             project_dir,
@@ -914,7 +921,7 @@ def run_autoplan(  # noqa: PLR0913, PLR0912, PLR0915
             camera_height_entered=entered,
         )
         scores = {c.method: round(c.score, 3) for c in candidates}
-        geometry = attic_geometry(estimate, image_id, rid) if estimate else None
+        geometry = attic_geometry(estimate, image_id, rid, attic_focal) if estimate else None
         if geometry is not None:
             try:
                 attic_project, attic_step = apply_attic(project, level_id, geometry)
