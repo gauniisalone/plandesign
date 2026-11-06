@@ -785,11 +785,16 @@ export function Editor({ projectId, initialStep, onHome }: Props) {
     },
     [actions],
   );
-  /** Ouvre un volet (ou revient à l'inspecteur si on reclique le même). */
-  const togglePane = useCallback((next: Exclude<SidePane, "inspector">) => {
-    setPanelOpen(true);
-    setPane((p) => (p === next ? "inspector" : next));
-  }, []);
+  /** Ouvre un volet (ou revient à l'inspecteur si on reclique le même). Le volet n'est « le
+   *  même » que s'il est À L'ÉCRAN : panneau fermé, un volet posé d'avance (l'assistant à
+   *  l'arrivée d'un projet avec une consigne) ne se referme pas au premier clic, il s'ouvre. */
+  const togglePane = useCallback(
+    (next: Exclude<SidePane, "inspector">) => {
+      setPanelOpen(true);
+      setPane((p) => (panelOpen && p === next ? "inspector" : next));
+    },
+    [panelOpen],
+  );
   const openAdvanced = useCallback(() => {
     setPanelOpen(true);
     setPane("advanced");
