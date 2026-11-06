@@ -25,11 +25,21 @@ from openplan.cli.app_logging import configure_app_logging
 
 LINE = "openplan.retention : purge des durées de conservation : codes 0, sessions 0, invitations 0"
 ROOT = Path(__file__).resolve().parents[2] / "openplan"
+REAL_START = retention.Retention.start
+"""Lu à l'import, avant la fixture autouse `no_retention_thread` (conftest, KAN-142) qui coupe
+le fil de la purge pour tous les tests des comptes."""
 
 
 @pytest.fixture
 def engine(migrated_url: str) -> Engine:
     return make_engine(migrated_url)
+
+
+@pytest.fixture
+def retention_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Le vrai fil de la purge, pour les tests qui vérifient justement sa ligne de journal (les
+    autres tests des comptes le gardent coupé)."""
+    monkeypatch.setattr(retention.Retention, "start", REAL_START)
 
 
 def _wait_lines(capsys: pytest.CaptureFixture[str], count: int, within_s: float = 10.0) -> str:
@@ -43,6 +53,7 @@ def _wait_lines(capsys: pytest.CaptureFixture[str], count: int, within_s: float 
     return seen
 
 
+@pytest.mark.usefixtures("retention_thread")
 def test_serve_writes_the_startup_purge_line(
     engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -70,6 +81,7 @@ def test_serve_writes_the_startup_purge_line(
     assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} INFO " + re.escape(LINE), lines[0])
 
 
+@pytest.mark.usefixtures("retention_thread")
 def test_one_line_per_day_after_startup(
     engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
