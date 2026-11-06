@@ -372,7 +372,8 @@ def test_ridge_view_is_added_for_attics_only_when_asked() -> None:
     ridge = [v for v in views if v.axis == RIDGE]
     assert len(ridge) == 1 and not any(v.axis for v in before)
     v = ridge[0]
-    assert v.role == "overall" and v.aspect == "4:5" and v.pitch == 0.0
+    # KAN-136 : objectif baissé comme les autres vues larges des combles (toit ≤ 40 %).
+    assert v.role == "overall" and v.aspect == "4:5" and v.pitch < 0.0
     assert math.isclose(v.z, RIDGE_EYE_M), "œil à 1,60 m sous le faîtage"
     from openplan.geom.roof import derived_roofs
     from openplan.geom.wallgraph import WallGraph

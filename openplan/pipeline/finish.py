@@ -17,11 +17,11 @@ from numpy.typing import NDArray
 from pydantic import Field
 
 from openplan.adapters.protocols import FinishRequest, ImageFinisher
-from openplan.pipeline.scene_prompt import SceneWords, load_scene_words
+from openplan.pipeline.scene_prompt import BED_CATEGORIES, SceneWords, load_scene_words
 from openplan.schemas.common import DECODED_IMAGE_FORMATS, Source, StrictModel
-from openplan.schemas.elements import Room
+from openplan.schemas.elements import Fixture, Furniture, Room
 from openplan.schemas.intent import DesignIntent
-from openplan.schemas.scene import Project
+from openplan.schemas.scene import Level, Project
 
 STEP = "rendering.finish"
 DEFAULT_STRENGTH = 0.35
@@ -36,14 +36,30 @@ STYLE_WORDS: dict[str, str] = {
     "industriel": "industrial loft, dark metal, raw wood, concrete accents, moody light",
     "contemporain": "contemporary design, clean lines, neutral palette, elegant lighting",
 }
+ATTIC_ROOM = "converted attic room"
+ATTIC_BEDROOM = "converted attic bedroom"
 ROOM_WORDS: dict[str, str] = {
     "bedroom": "bedroom",
     "living_room": "living room",
     "kitchen": "kitchen",
     "bathroom": "bathroom",
     "office": "home office",
-    "attic": "converted attic bedroom",
+    "attic": ATTIC_ROOM,
 }
+ROOM_FURNITURE: dict[str, frozenset[str]] = {
+    "bedroom": BED_CATEGORIES,
+    "kitchen": frozenset(
+        {"kitchen_base", "kitchen_drawers", "kitchen_sink", "stove", "fridge", "fridge_small"}
+    ),
+    "bathroom": frozenset({"bathtub", "shower", "washbasin", "toilet", "bathroom_cabinet"}),
+    "living room": frozenset(
+        {"sofa", "sofa_corner", "sofa_lounge", "armchair", "coffee_table", "tv_unit"}
+    ),
+    "home office": frozenset({"desk", "desk_corner"}),
+}
+"""KAN-136 : le type de pièce n'est dit que si l'un de ses meubles est là (vu, ou dans le plan
+sans vue connue) ; sinon « room ». Sur un sol vide, « bedroom » faisait inventer des lits, et
+les lits mangeaient la longueur de la pièce et la porte-fenêtre (essai MH3, 6 nov.)."""
 NEGATIVE = (
     "blurry, deformed, distorted geometry, extra windows, extra furniture, text, watermark, "
     "people, cartoon, low quality, oversaturated"
@@ -151,8 +167,28 @@ def render_level(render_dir: Path) -> UUID | None:
         return None
 
 
-def _room_word(project: Project, level_id: UUID | None = None) -> tuple[str, DesignIntent | None]:
-    """La pièce et son ambiance : celles du plan rendu (T7e), sinon du premier plan."""
+def plan_categories(level: Level) -> frozenset[str]:
+    """Les catégories des meubles et éléments fixes du plan."""
+    return frozenset(
+        e.category for e in level.elements.values() if isinstance(e, Furniture | Fixture)
+    )
+
+
+def room_lead(word: str, attic: bool, seen: frozenset[str]) -> str:
+    """KAN-136 : le mot de la pièce, sans type inventé : « bedroom » seulement avec un lit,
+    « kitchen » avec un meuble de cuisine… ; des combles sans lit sont « converted attic room »
+    (plus « converted attic bedroom » d'office)."""
+    if attic and word in ("room", "bedroom", ATTIC_ROOM):
+        return ATTIC_BEDROOM if seen & BED_CATEGORIES else ATTIC_ROOM
+    needs = ROOM_FURNITURE.get(word)
+    return "room" if needs is not None and not needs & seen else word
+
+
+def _room_word(
+    project: Project, level_id: UUID | None = None, seen: frozenset[str] | None = None
+) -> tuple[str, DesignIntent | None]:
+    """La pièce et son ambiance : celles du plan rendu (T7e), sinon du premier plan. KAN-136 :
+    `seen`, les catégories vues par la vue (None : celles du plan), décide du type dit."""
     room, intent = "room", None
     chosen = project.levels.get(level_id) if level_id is not None else None
     for level in [chosen] if chosen is not None else project.levels.values():
@@ -163,8 +199,8 @@ def _room_word(project: Project, level_id: UUID | None = None) -> tuple[str, Des
             types.insert(0, intent.room_type)
         if types:
             room = ROOM_WORDS.get(types[0], room)
-        if level.kind == "attic" and room in ("room", "bedroom"):
-            room = "converted attic bedroom"
+        found = plan_categories(level) if seen is None else seen
+        room = room_lead(room, level.kind == "attic", found)
         break
     return room, intent
 
@@ -188,7 +224,7 @@ def finish_prompt(
     eux, le style par défaut (« naturel » : bois chaud, lin, lumière douce, et ses matières
     par défaut) est tu, car il les contredisait ; les surfaces réelles de la scène restent, et
     un style choisi pour la pièce aussi."""
-    room, intent = _room_word(project, level_id)
+    room, intent = _room_word(project, level_id, scene.seen if scene is not None else None)
     limit = ENGINE_WORDS[engine]
     if scene is None:
         return prompt_words(room, intent, style, limit=limit)
@@ -205,6 +241,7 @@ def finish_prompt(
         *groups["style"],
         *groups["mood"],
         *surfaces,
+        *scene.structure,
         *scene.furniture,
         *scene.textiles,
         *groups["palette"],

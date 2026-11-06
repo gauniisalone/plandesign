@@ -67,7 +67,21 @@ def test_strength_is_bounded_and_defaults_to_light() -> None:
 def test_prompt_follows_room_type_level_and_style() -> None:
     attic = finish_prompt(attic_project(), "chalet")
     assert "attic" in attic and "chalet" in attic
-    assert "bedroom" in finish_prompt(rect_room_project(), "scandinave")
+    # KAN-136 : « bedroom » seulement avec un lit (sans lit, il faisait inventer des lits).
+    empty = rect_room_project()
+    assert "bedroom" not in finish_prompt(empty, "scandinave")
+    from openplan.scene.catalog import load_catalog
+    from openplan.scene.ops import AddFurniture, apply_op
+    from openplan.schemas.common import Point2
+    from tests.factories import only_level
+
+    bed = next(a.id for a in load_catalog().assets if a.category == "bed_double")
+    furnished = apply_op(
+        empty,
+        only_level(empty).id,
+        AddFurniture(asset_id=bed, position=Point2(x=2.0, y=2.0), yaw=0.0),
+    )
+    assert "bedroom" in finish_prompt(furnished, "scandinave")
 
 
 def test_finish_keeps_the_blender_image_and_marks_the_result_generated(tmp_path: Path) -> None:

@@ -1409,7 +1409,13 @@ def _ridge_view(room: _Room) -> ViewPlan | None:
             if best is None or score > best[0]:
                 best = (score, plan)
             break
-    return best[1] if best is not None else None
+    if best is None:
+        return None
+    # KAN-136 : l'objectif baissé comme les autres vues larges des combles (horizon au tiers,
+    # toit ≤ 40 %) ; à l'horizontale, le toit faisait 47 % de l'image (le « regard levé »).
+    plan = best[1]
+    pitch, _ = _attic_tilt(room, plan.x, plan.y, plan.z, plan.yaw, ARCHITECT_FOCAL_PX, RIDGE_ASPECT)
+    return replace(plan, pitch=pitch)
 
 
 def _with_ridge(

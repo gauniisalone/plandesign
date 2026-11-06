@@ -37,12 +37,15 @@ from openplan.pipeline.board import INSPIRATION_DIR, list_media
 from openplan.pipeline.depth import depth_to_image
 from openplan.pipeline.derived import compute_derived
 from openplan.pipeline.finish import (
+    ATTIC_BEDROOM,
+    ATTIC_ROOM,
     ENGLISH,
     NEGATIVE,
     ROOM_WORDS,
     PromptWords,
     depth_control,
     edges_of,
+    plan_categories,
     prompt_groups,
     prompt_parts,
 )
@@ -56,6 +59,7 @@ from openplan.pipeline.instruction import (
 )
 from openplan.pipeline.intention import _room_of
 from openplan.pipeline.render import list_renders
+from openplan.pipeline.scene_prompt import BED_CATEGORIES
 from openplan.schemas.common import DECODED_IMAGE_FORMATS, Source, StrictModel
 from openplan.schemas.elements import Furniture, Opening, OpeningKind, Radiator, Room, Wall
 from openplan.schemas.intent import DesignIntent
@@ -157,6 +161,7 @@ ROOM_PROMPT_FR: dict[str, str] = {
     "office": "bureau à la maison",
     "attic": "chambre sous combles aménagés",
 }
+ATTIC_ROOM_FR = "combles aménagés"
 CONTEXTUAL_DIR = "contextual"
 SIDECAR = "contextual.json"
 LABEL = "Rendu contextualisé · proportions estimées"
@@ -502,8 +507,12 @@ def build_prompt(
     kind = intent.room_type or ((room.room_type or "") if room is not None else "")
     room_word, room_fr = ROOM_WORDS.get(kind, "room"), ROOM_PROMPT_FR.get(kind, "pièce")
     level = project.levels[level_id]
-    if level.kind == "attic" and room_word in ("room", "bedroom"):
-        room_word, room_fr = "converted attic bedroom", ROOM_PROMPT_FR["attic"]
+    if (level.kind == "attic" or kind == "attic") and room_word in ("room", "bedroom", ATTIC_ROOM):
+        # KAN-136 : la chambre sous combles est dite si on la demande ou si le plan a un lit ;
+        # sinon des combles aménagés, sans lit inventé.
+        bed = kind == "bedroom" or bool(plan_categories(level) & BED_CATEGORIES)
+        room_word = ATTIC_BEDROOM if bed else ATTIC_ROOM
+        room_fr = ROOM_PROMPT_FR["attic"] if bed else ATTIC_ROOM_FR
     said = " ".join(text.split()[:INTENTION_WORDS]) if text else ""
     extra = [*_geometry_words(project, level_id, room), BUDGET_WORDS[body.budget]]
     extra_fr = [*_geometry_words_fr(project, level_id, room), BUDGET_FR[body.budget], said]

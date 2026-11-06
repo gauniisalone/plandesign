@@ -19,10 +19,23 @@ from pathlib import Path
 from uuid import UUID
 
 from pydantic import ValidationError
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point as ShapelyPoint
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry.base import BaseGeometry
 
 from openplan.pipeline.guides import VISIBLE_MIN_PX, visible_pixels
 from openplan.schemas.bake import Bake, Decor, Polyhedron, Prism, RenderCamera
-from openplan.schemas.elements import Furniture
+from openplan.schemas.elements import (
+    Fixture,
+    Furniture,
+    Opening,
+    OpeningKind,
+    Post,
+    RoofWindow,
+    Stairs,
+    Truss,
+)
 from openplan.schemas.intent import COLORS
 from openplan.schemas.scene import Project
 
@@ -157,6 +170,38 @@ FURNITURE_MIN_PX = 4.0
 """Un objet d'habillage dont le centre se projette hors de l'image (à cette marge près) n'est
 pas « vu » ; les meubles, eux, suivent `VISIBLE_MIN_PX` (KAN-88)."""
 
+OPENING_WORDS: dict[str, tuple[str, str]] = {
+    OpeningKind.DOOR: ("door", "doors"),
+    OpeningKind.WINDOW: ("window", "windows"),
+    OpeningKind.PASSAGE: ("open doorway", "open doorways"),
+    OpeningKind.DOUBLE_DOOR: ("double door", "double doors"),
+    OpeningKind.SLIDING_DOOR: ("sliding door", "sliding doors"),
+    OpeningKind.POCKET_DOOR: ("pocket door", "pocket doors"),
+    OpeningKind.FOLDING_DOOR: ("folding door", "folding doors"),
+    OpeningKind.FRENCH_WINDOW: (
+        "glazed french door reaching the floor",
+        "glazed french doors reaching the floor",
+    ),
+    OpeningKind.SLIDING_WINDOW: (
+        "sliding glass door reaching the floor",
+        "sliding glass doors reaching the floor",
+    ),
+}
+"""KAN-136 : le type de chaque ouverture vue. Sans son nom, Z-Image changeait la porte-fenêtre
+du pignon en fenêtre à allège (essai MH3, 6 nov.)."""
+ROOF_WINDOW_WORDS = ("roof window in the sloped ceiling", "roof windows in the sloped ceiling")
+POST_WORDS = ("timber post standing in the middle of the room", "timber posts standing in the room")
+"""Poteau isolé vu : sans ce nom, Z-Image le plaquait au pignon et la pièce perdait 56 % de sa
+longueur (essai MH3)."""
+WALL_POST_WORDS = ("timber post against the wall", "timber posts against the walls")
+TRUSS_WORDS = ("timber truss of two posts under a crossbeam", "timber trusses of two posts")
+RAILING_WORDS = ("stair railing", "stair railings")
+STAIRWELL_WORDS = ("open stairwell", "open stairwells")
+FREE_POST_M = 0.5
+"""Un poteau à plus de 0,5 m de tout mur est « au milieu de la pièce »."""
+
+BED_CATEGORIES = frozenset({"bed_builtin", "bed_bunk", "bed_double", "bed_single"})
+
 
 @dataclass(frozen=True)
 class SceneWords:
@@ -168,6 +213,13 @@ class SceneWords:
     style: list[str] = field(default_factory=list)
     """KAN-97 : les mots lus dans les images d'inspiration (`pipeline.style_words`), placés
     après le style de l'ambiance et avant les surfaces : jamais une matière de surface."""
+    structure: list[str] = field(default_factory=list)
+    """KAN-136 : poteaux, fermes, ouvertures (par type) et garde-corps que la vue voit ; rien
+    sans caméra, car on ne sait pas ce que la vue voit."""
+    seen: frozenset[str] | None = None
+    """KAN-136 : catégories des meubles et éléments fixes vus (None : inconnues, le plan
+    décide) ; le type de pièce n'est dit que si son meuble est là (« bedroom » sans lit faisait
+    inventer des lits)."""
 
 
 def _dominant(solids: list[Prism] | list[Polyhedron], kinds: set[str]) -> str | None:
@@ -253,14 +305,13 @@ def _category(project: Project, level_id: UUID, element_id: UUID) -> str | None:
 
 
 def _furniture(
-    bake: Bake, project: Project, level_id: UUID, camera: RenderCamera | None
+    bake: Bake, project: Project, level_id: UUID, visible: dict[str, int] | None
 ) -> list[str]:
     seen: dict[UUID, str] = {}
     woods: Counter[str] = Counter()
     # KAN-88 (décision du PO, 22 oct.) : un meuble est nommé dès qu'au moins 200 px de lui
     # sont visibles (rastérisation de la vue, critère de l'essai), pas seulement si son centre
     # est dans l'image : un chevet en bord de cadre oublié devenait autre chose.
-    visible = visible_pixels(bake, camera) if camera is not None else None
     for prism in bake.prisms:
         if prism.kind != "furniture" or prism.element_id in seen:
             continue
@@ -272,18 +323,104 @@ def _furniture(
         seen[prism.element_id] = category
         if prism.woods and prism.woods.get("wood"):
             woods[prism.woods["wood"]] += 1
-    counts = Counter(seen.values())
-    out = []
-    for category, n in counts.most_common():
-        one, many = FURNITURE_WORDS[category]
-        if n == 1:
-            out.append(f"{'an' if one[0] in 'aeiou' else 'a'} {one}")
-        else:
-            out.append(f"{NUMBERS.get(n, str(n))} {many}")
+    out = _counted(Counter(seen.values()), FURNITURE_WORDS)
     wood = FURNITURE_WOOD.get(woods.most_common(1)[0][0]) if woods else None
     if out and wood:
         out.append(f"furniture in {wood}")
     return out
+
+
+def _counted(counts: Counter[str], words: dict[str, tuple[str, str]]) -> list[str]:
+    """« a nightstand », « two single beds » : chaque sorte nommée et comptée, la plus
+    nombreuse d'abord."""
+    out = []
+    for kind, n in counts.most_common():
+        one, many = words[kind]
+        if n == 1:
+            out.append(f"{'an' if one[0] in 'aeiou' else 'a'} {one}")
+        else:
+            out.append(f"{NUMBERS.get(n, str(n))} {many}")
+    return out
+
+
+def _solids(bake: Bake) -> list[Prism | Polyhedron]:
+    return [*bake.prisms, *bake.polyhedra]
+
+
+def _seen(visible: dict[str, int] | None, element_id: UUID) -> bool:
+    return visible is None or visible.get(str(element_id), 0) >= VISIBLE_MIN_PX
+
+
+def _seen_categories(
+    bake: Bake, project: Project, level_id: UUID, visible: dict[str, int] | None
+) -> frozenset[str]:
+    """Les catégories des meubles et éléments fixes vus (toute la scène sans caméra)."""
+    level = project.levels.get(level_id)
+    ids = {s.element_id for s in _solids(bake) if s.kind in ("furniture", "fixture")}
+    out: set[str] = set()
+    for eid in ids:
+        element = level.elements.get(eid) if level is not None else None
+        if isinstance(element, Furniture | Fixture) and _seen(visible, eid):
+            out.add(element.category)
+    return frozenset(out)
+
+
+def _wall_shapes(bake: Bake) -> list[BaseGeometry]:
+    shapes: list[BaseGeometry] = [
+        ShapelyPolygon([(p.x, p.y) for p in s.exterior]) for s in bake.prisms if s.kind == "wall"
+    ]
+    shapes += [
+        MultiPoint([(p.x, p.y) for p in s.vertices]).convex_hull
+        for s in bake.polyhedra
+        if s.kind == "wall"
+    ]
+    return shapes
+
+
+def _structure(
+    bake: Bake, project: Project, level_id: UUID, visible: dict[str, int] | None
+) -> list[str]:
+    """KAN-136 : ce que la vue voit de la structure, nommé et compté ; rien hors champ, et
+    rien sans caméra (`visible` None), car la vue est alors inconnue."""
+    level = project.levels.get(level_id)
+    if visible is None or level is None:
+        return []
+    ids = {s.element_id for s in _solids(bake) if s.kind != "furniture"}
+    walls: list[BaseGeometry] | None = None
+    posts: Counter[str] = Counter()
+    openings: Counter[str] = Counter()
+    stairs: Counter[str] = Counter()
+    for eid in sorted(ids, key=str):
+        element = level.elements.get(eid)
+        if element is None or not _seen(visible, eid):
+            continue
+        if isinstance(element, Post):
+            walls = _wall_shapes(bake) if walls is None else walls
+            spot = ShapelyPoint(element.position.x, element.position.y)
+            free = all(w.distance(spot) > FREE_POST_M for w in walls)
+            posts["free" if free else "wall"] += 1
+        elif isinstance(element, Truss):
+            posts["truss"] += 1
+        elif isinstance(element, Opening):
+            openings[element.kind] += 1
+        elif isinstance(element, RoofWindow):
+            openings["roof_window"] += 1
+        elif isinstance(element, Stairs):
+            stairs["railing" if element.railing else "stairwell"] += 1
+    structure_words = {
+        "free": POST_WORDS,
+        "wall": WALL_POST_WORDS,
+        "truss": TRUSS_WORDS,
+        "roof_window": ROOF_WINDOW_WORDS,
+        "railing": RAILING_WORDS,
+        "stairwell": STAIRWELL_WORDS,
+        **OPENING_WORDS,
+    }
+    return [
+        *_counted(posts, structure_words),
+        *_counted(openings, structure_words),
+        *_counted(stairs, structure_words),
+    ]
 
 
 def _srgb(c: float) -> float:
@@ -332,13 +469,17 @@ def scene_words(
     bake: Bake, project: Project, level_id: UUID, camera: RenderCamera | None = None
 ) -> SceneWords:
     """Matières par surface, meubles vus (nommés, comptés) et habillage, pour la vue de
-    `camera` (None : toute la scène)."""
+    `camera` (None : toute la scène) ; KAN-136 : la structure que la vue voit, et les
+    catégories vues, qui décident du type de pièce dit."""
     level = project.levels.get(level_id)
     attic = level is not None and level.kind == "attic"
+    visible = visible_pixels(bake, camera) if camera is not None else None
     return SceneWords(
         surfaces=_surfaces(bake, attic),
-        furniture=_furniture(bake, project, level_id, camera),
+        furniture=_furniture(bake, project, level_id, visible),
         textiles=_textiles(bake, camera),
+        structure=_structure(bake, project, level_id, visible),
+        seen=_seen_categories(bake, project, level_id, visible),
     )
 
 
