@@ -32,7 +32,7 @@ from typing import Any
 from openplan.adapters.protocols import AdapterUnavailableError, AssistantBackend
 from openplan.pipeline.calage.extraction import SYSTEM, user_message
 from openplan.pipeline.calage.missing import COTE_BOUNDS, HEIGHT_BOUNDS
-from openplan.pipeline.calage.schema_check import errors, extraction_schema
+from openplan.pipeline.calage.schema_check import constraint_schema, errors, extraction_schema
 
 DEFAULT_CASES = Path("tests/fixtures/assistant_eval/cases.jsonl")
 ACTIONS = frozenset({"set_dimension", "generate_plan", "regenerate_plan", "launch_renders"})
@@ -181,7 +181,7 @@ def run(
     progress: Callable[[str], None] | None = None,
 ) -> Report:
     report = Report()
-    schema = extraction_schema() if constrained else None
+    schema = constraint_schema() if constrained else None  # validation : schéma complet
     for n, case in enumerate(cases, 1):
         user = user_message(case["question_app"], case["contexte"], case["message_utilisateur"])
         started = clock()

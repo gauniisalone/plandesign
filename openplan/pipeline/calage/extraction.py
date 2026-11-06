@@ -22,7 +22,7 @@ from openplan.adapters.protocols import (
     AssistantBackend,
     AssistantTimeoutError,
 )
-from openplan.pipeline.calage.schema_check import errors, extraction_schema
+from openplan.pipeline.calage.schema_check import constraint_schema, errors, extraction_schema
 from openplan.schemas.common import StrictModel
 
 log = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ def extract(  # noqa: PLR0911 - un retour par issue (assistant, ou chaque raison
     if backend is None:
         return done("formulaire", "absent", None, 0)
     user = user_message(question, contexte, message)
-    schema = extraction_schema()
+    schema = constraint_schema()  # la validation, elle, se fait sur le schéma complet
     for attempt in range(1, ATTEMPTS + 1):
         left = budget_s - (clock() - started)
         if left < MIN_CALL_S:

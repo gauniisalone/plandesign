@@ -363,3 +363,12 @@ def test_mh5_the_cli_says_when_the_cases_are_missing(tmp_path: Path) -> None:
         ["assistant-eval", "--endpoint", "http://127.0.0.1:9", "--cases", str(tmp_path / "x")]
     )
     assert code == 2
+
+
+def test_the_model_is_constrained_without_the_cross_rules_but_validated_with_them() -> None:
+    from openplan.pipeline.calage.schema_check import constraint_schema
+
+    full, sent = extraction_schema(), constraint_schema()
+    assert "allOf" in full and "allOf" not in sent and "$schema" not in sent
+    assert sent["required"] == full["required"] and sent["properties"] == full["properties"]
+    assert not is_valid({**HEIGHT, "valeur": 1.5})  # la règle croisée reste vérifiée par l'app

@@ -51,6 +51,16 @@ def extraction_schema() -> dict[str, Any]:
     return schema
 
 
+@cache
+def constraint_schema() -> dict[str, Any]:
+    """Le schéma envoyé au modèle pour contraindre sa sortie : celui du banc sans ses règles
+    croisées (`allOf`, `if`/`then`) ni ses méta-clés, que les grammaires JSON des serveurs locaux
+    (llama.cpp) ne savent pas toutes traduire. Les clés, types et énumérations restent ; l'app
+    valide toujours la sortie contre le schéma COMPLET."""
+    full = extraction_schema()
+    return {k: v for k, v in full.items() if k not in ("allOf", "$schema", "$id")}
+
+
 def _check_keywords(node: Any) -> None:
     if not isinstance(node, dict):
         return
