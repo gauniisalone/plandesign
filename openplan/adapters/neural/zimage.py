@@ -77,6 +77,9 @@ BUSY_GPU_MIB = 500
 RAM_MIN_MIB = 1500
 TIMEOUT_S = 900.0
 POLL_S = 0.5
+UNREADABLE_MAX = 3
+"""KAN-146 : lectures de nvidia-smi ratées D'AFFILÉE avant l'arrêt (environ 15 s : 5 s de délai
+chacune). Une lecture lente sous charge (WSL) arrêtait un rendu sur deux au banc du 6 nov."""
 
 Engine = Literal["zimage", "sd15"]
 ENGINE_ENV = "OPENPLAN_FINISH_ENGINE"
@@ -149,20 +152,27 @@ def watch(
     limit_mib: int = VRAM_LIMIT_MIB,
     ram_min_mib: int = RAM_MIN_MIB,
     timeout_s: float = TIMEOUT_S,
+    unreadable_max: int = UNREADABLE_MAX,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> tuple[str | None, int]:
     """Surveille la génération jusqu'à sa fin : (raison de l'arrêt, ou None si elle a fini
-    seule ; pic de VRAM lu). Au premier dépassement, `kill` est appelé aussitôt."""
+    seule ; pic de VRAM lu). Au premier dépassement, `kill` est appelé aussitôt. KAN-146 :
+    nvidia-smi illisible n'arrête qu'après `unreadable_max` lectures ratées d'affilée."""
     start = clock()
     peak = 0
+    missed = 0
     while proc.poll() is None:
         used = read_vram()
         free = read_ram()
+        missed = missed + 1 if used is None else 0
         reason: str | None = None
-        if used is None:
-            reason = "nvidia-smi est devenu illisible, la mémoire de la carte n'est plus surveillée"
-        elif used > limit_mib:
+        if missed >= unreadable_max:
+            reason = (
+                f"nvidia-smi est devenu illisible ({missed} lectures ratées de suite), "
+                "la mémoire de la carte n'est plus surveillée"
+            )
+        elif used is not None and used > limit_mib:
             reason = f"la carte graphique a dépassé {limit_mib} Mio ({used} Mio)"
         elif free is not None and free < ram_min_mib:
             reason = f"il ne restait que {free} Mio de mémoire vive (minimum {ram_min_mib})"

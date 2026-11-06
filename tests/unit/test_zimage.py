@@ -219,6 +219,46 @@ def test_unreadable_gpu_low_ram_and_timeout_stop_too() -> None:
     assert reason is not None and "min de calcul" in reason
 
 
+@pytest.mark.parametrize("misses", [1, 2])
+def test_one_or_two_missed_readings_do_not_stop_the_render(misses: int) -> None:
+    """KAN-146 : une lecture lente de nvidia-smi sous charge n'arrête plus le rendu."""
+    readings = iter([4000, *([None] * misses), 4100, *([None] * misses), 4200])
+    reason, peak = watch(
+        _Proc(2 * misses + 3),
+        kill=lambda: pytest.fail("rien à tuer"),
+        read_vram=lambda: next(readings),
+        read_ram=lambda: 8000,
+        sleep=lambda _s: None,
+    )
+    assert reason is None and peak == 4200
+
+
+def test_three_missed_readings_in_a_row_stop_the_render() -> None:
+    killed: list[bool] = []
+    readings = iter([4000, None, None, None, 4100])
+    reason, peak = watch(
+        _Proc(10),
+        kill=lambda: killed.append(True),
+        read_vram=lambda: next(readings),
+        read_ram=lambda: 8000,
+        sleep=lambda _s: None,
+    )
+    assert killed == [True]
+    assert reason is not None and "nvidia-smi" in reason and "3 lectures" in reason
+    assert peak == 4000
+
+
+def test_a_missed_reading_still_checks_ram_and_time() -> None:
+    reason, _ = watch(
+        _Proc(5),
+        kill=lambda: None,
+        read_vram=lambda: None,
+        read_ram=lambda: 900,
+        sleep=lambda _s: None,
+    )
+    assert reason is not None and "900 Mio" in reason
+
+
 def test_a_normal_end_is_not_stopped() -> None:
     reason, peak = watch(
         _Proc(3),
