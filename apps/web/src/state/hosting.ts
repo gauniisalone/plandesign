@@ -77,6 +77,8 @@ export const ACCOUNTS_LINE_PASSWORD =
 /** Pied de l'application connectée. */
 export const ACCOUNTS_FOOT = "Vos données restent en France";
 export const PRIVACY_URL = "https://plandesign.fr/confidentialite/";
+/** KAN-133 : la page des conditions d'utilisation (même adresse que TERMS_URL du serveur). */
+export const TERMS_URL = "https://plandesign.fr/cgu/";
 
 /** Où sont gardés photos et plans. */
 export function storedWhere(hosting: Hosting | null): string {

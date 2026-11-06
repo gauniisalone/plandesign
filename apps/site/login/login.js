@@ -44,7 +44,10 @@
   var codeForm = dialog.querySelector('[data-step="code"]');
   var emailInput = document.getElementById("connexion-email");
   var codeInput = document.getElementById("connexion-code");
+  // KAN-133 : la case des conditions d'utilisation (exigée par le navigateur avant l'envoi).
+  var termsInput = document.getElementById("connexion-cgu");
   var email = "";
+  var terms = false;
 
   function errorOf(form) {
     return form.querySelector(".login-error");
@@ -137,11 +140,13 @@
   emailForm.addEventListener("submit", function (event) {
     event.preventDefault();
     var typed = emailInput.value.trim();
+    var ticked = Boolean(termsInput && termsInput.checked);
     busy(emailForm, true);
-    post("/api/auth/email/start", { email: typed })
+    post("/api/auth/email/start", { email: typed, cgu: ticked })
       .then(function (response) {
         if (response.ok) {
           email = typed;
+          terms = ticked;
           codeInput.value = "";
           step("code");
           return;
@@ -161,7 +166,7 @@
   codeForm.addEventListener("submit", function (event) {
     event.preventDefault();
     busy(codeForm, true);
-    post("/api/auth/email/verify", { email: email, code: codeInput.value })
+    post("/api/auth/email/verify", { email: email, code: codeInput.value, cgu: terms })
       .then(function (response) {
         if (response.ok) {
           window.location.assign(target());

@@ -136,7 +136,7 @@ def test_oversized_messages_close_the_connection(tmp_path: Path, migrated_url: s
 
 def test_first_login_and_your_name(tmp_path: Path, migrated_url: str) -> None:
     client, _, mailer = accounts_client(tmp_path, migrated_url, signup="open")
-    client.post("/api/auth/email/start", json={"email": "lea@example.org"})
+    client.post("/api/auth/email/start", json={"cgu": True, "email": "lea@example.org"})
     first = client.post(
         "/api/auth/email/verify",
         json={"email": "lea@example.org", "code": code_of(mailer, "lea@example.org")},
@@ -147,7 +147,7 @@ def test_first_login_and_your_name(tmp_path: Path, migrated_url: str) -> None:
     assert client.get("/api/auth/me").json()["name"] == "Léa Martin"
     assert client.patch("/api/auth/me", json={"name": "x" * 81}).status_code == 422
     other = _client(client.app)
-    other.post("/api/auth/email/start", json={"email": "lea@example.org"})
+    other.post("/api/auth/email/start", json={"cgu": True, "email": "lea@example.org"})
     again = other.post(
         "/api/auth/email/verify",
         json={"email": "lea@example.org", "code": code_of(mailer, "lea@example.org")},

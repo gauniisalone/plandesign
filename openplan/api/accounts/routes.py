@@ -41,6 +41,7 @@ from openplan.api.accounts.service import (
     safe_next,
 )
 from openplan.api.accounts.sharing import INVITE_REFUSED, InvitationRefusedError
+from openplan.api.accounts.terms import TERMS_URL, TERMS_VERSION
 from openplan.api.policy.offers import offer_of
 from openplan.brand import APP_NAME
 from openplan.pipeline.events import ProjectEvents
@@ -85,6 +86,9 @@ class StartBody(StrictModel):
     next: str | None = Field(default=None, max_length=512)
     invitation: str | None = Field(default=None, max_length=128)
     """B1e : jeton d'un lien d'invitation (inscription « sur invitation »)."""
+    cgu: bool = False
+    """KAN-133 : la case des conditions d'utilisation. Sans elle, une adresse sans compte ne
+    reçoit pas de code (même réponse) ; un compte existant, si."""
 
 
 class StartResult(StrictModel):
@@ -95,6 +99,14 @@ class VerifyBody(StrictModel):
     email: str = Field(min_length=3, max_length=320)
     code: str = Field(min_length=1, max_length=32)
     invitation: str | None = Field(default=None, max_length=128)
+    cgu: bool = False
+    """KAN-133 : la case cochée à la demande du code ; un compte existant enregistre alors la
+    version en vigueur des conditions."""
+
+
+class TermsBody(StrictModel):
+    version: str = Field(min_length=1, max_length=16)
+    """KAN-133 : la version lue à l'écran (celle de /auth/me) ; une autre : 409."""
 
 
 class AcceptBody(StrictModel):
@@ -119,6 +131,12 @@ class Me(StrictModel):
     (OPENPLAN_PASSWORD_LOGIN) ; None ailleurs : inconnu."""
     offer: Literal["essentiel", "pro"] = "pro"
     """KAN-126 : l'offre du compte (« Offre Pro » sur une fonction réservée) ; Pro par défaut."""
+    terms_pending: bool = False
+    """KAN-133 : la version acceptée des conditions n'est pas `terms_version` ; le front
+    demande la nouvelle acceptation avant tout. Rempli par GET /auth/me et par les routes
+    qui ouvrent une session."""
+    terms_version: str = TERMS_VERSION
+    terms_url: str = TERMS_URL
 
 
 class NameBody(StrictModel):
@@ -154,6 +172,7 @@ def email_start(body: StartBody, request: Request, background: BackgroundTasks) 
             body.next,
             request.client.host if request.client else None,
             body.invitation,
+            terms=body.cgu,
         )
     except InvalidEmailError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -173,6 +192,7 @@ def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
         "input{font:inherit;width:100%;box-sizing:border-box;padding:.55rem .7rem;"
         "border:1px solid #c9ced6;border-radius:.5rem}"
         "input.code{letter-spacing:.4em;font-size:1.4rem;text-align:center}"
+        "input[type=checkbox]{width:auto;margin:0 .4rem 0 0}"
         "button{font:inherit;margin-top:1rem;padding:.6rem 1.2rem;border-radius:.5rem;border:0;"
         "background:#2d6cdf;color:#fff;cursor:pointer}a{color:#2d6cdf}.error{color:#b42318}"
         "@media (prefers-color-scheme: dark){body{color:#e6e6e6;background:#16181c}"
@@ -185,6 +205,15 @@ def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
 
 def _hidden(name: str, value: str) -> str:
     return f'<input type="hidden" name="{name}" value="{html.escape(value, quote=True)}">'
+
+
+TERMS_BOX = (
+    '<label><input name="cgu" type="checkbox" value="1" required>'
+    f'J\'accepte les <a href="{TERMS_URL}" target="_blank" rel="noopener">conditions '
+    "d'utilisation</a></label>"
+)
+"""KAN-133 : la case des conditions, exigée par le navigateur ; le serveur ne crée un compte
+qu'avec elle (une adresse sans compte ne reçoit rien sans la case)."""
 
 
 def _email_step(
@@ -213,13 +242,17 @@ def _email_step(
         '<label for="email">Adresse e-mail</label>'
         '<input id="email" name="email" type="email" autocomplete="email" required '
         'maxlength="320">'
+        f"{TERMS_BOX}"
         f'<button type="submit">Recevoir un code</button></form>{with_password}',
         status,
     )
 
 
-def _code_step(email: str, next_path: str, error: str = "", status: int = 200) -> HTMLResponse:
-    """Second temps : le code reçu (même texte que l'adresse ait un compte ou non)."""
+def _code_step(
+    email: str, next_path: str, error: str = "", status: int = 200, *, terms: bool = False
+) -> HTMLResponse:
+    """Second temps : le code reçu (même texte que l'adresse ait un compte ou non).
+    KAN-133 : `terms`, la case cochée au premier temps, repassée à la vérification."""
     note = (
         f'<p class="error">{html.escape(error)}</p>'
         if error
@@ -230,6 +263,7 @@ def _code_step(email: str, next_path: str, error: str = "", status: int = 200) -
         f"Se connecter à {APP_NAME}",
         f'{note}<form method="post" action="{LOGIN_PAGE}/verify">'
         f"{_hidden('email', email)}{_hidden('next', next_path)}"
+        f"{_hidden('cgu', '1') if terms else ''}"
         '<label for="code">Code à 6 chiffres</label>'
         '<input id="code" class="code" name="code" inputmode="numeric" '
         'autocomplete="one-time-code" pattern="[0-9 ]{6,8}" maxlength="8" required>'
@@ -256,8 +290,11 @@ def login_code_page(
     background: BackgroundTasks,
     email: Annotated[str, Form(max_length=320)],
     next: Annotated[str, Form(max_length=512)] = "/",
+    cgu: Annotated[str, Form(max_length=8)] = "",
 ) -> HTMLResponse:
-    """Demande d'un code depuis la page : même réponse que l'adresse ait un compte ou non."""
+    """Demande d'un code depuis la page : même réponse que l'adresse ait un compte ou non.
+    KAN-133 : `cgu`, la case des conditions (« 1 » cochée)."""
+    terms = cgu == "1"
     accounts = service(request)
     try:
         accounts.mail_budget.check("login")
@@ -266,12 +303,12 @@ def login_code_page(
         page.headers.update(exc.headers)
         return page
     try:
-        message = accounts.start_login(email, next, _client_ip(request))
+        message = accounts.start_login(email, next, _client_ip(request), terms=terms)
     except InvalidEmailError:
         return _email_step(safe_next(next), "Cette adresse e-mail n'est pas valable.", 422)
     if message is not None:
         background.add_task(_send, accounts, message)
-    return _code_step(email.strip(), safe_next(next))
+    return _code_step(email.strip(), safe_next(next), terms=terms)
 
 
 @router.post("/auth/login/verify", response_model=None)
@@ -280,15 +317,19 @@ def login_verify_page(
     email: Annotated[str, Form(max_length=320)],
     code: Annotated[str, Form(max_length=32)],
     next: Annotated[str, Form(max_length=512)] = "/",
+    cgu: Annotated[str, Form(max_length=8)] = "",
 ) -> Response:
     """Code tapé dans la page : juste, la session s'ouvre et l'on revient à `next` ; sinon la
     même page, avec le même texte quel que soit le motif."""
     agent = request.headers.get("user-agent", "")
+    terms = cgu == "1"
     try:
-        user, raw, next_path = service(request).complete_login(email, code, agent)
+        user, raw, next_path = service(request).complete_login(email, code, agent, terms=terms)
     except LoginRefusedError as exc:
         text = REFUSAL_TEXT[exc.reason]
-        return _code_step(email, safe_next(next), f"Connexion impossible : {text}", 400)
+        return _code_step(
+            email, safe_next(next), f"Connexion impossible : {text}", 400, terms=terms
+        )
     claim_invitations(request, user)
     record_login(request, user)
     response = RedirectResponse(next_path, status_code=303)
@@ -302,7 +343,7 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
     agent = request.headers.get("user-agent", "")
     try:
         user, raw, _ = service(request).complete_login(
-            body.email, body.code, agent, body.invitation
+            body.email, body.code, agent, body.invitation, terms=body.cgu
         )
     except LoginRefusedError as exc:
         status = 403 if exc.reason is LoginRefusal.CLOSED else 400
@@ -316,6 +357,7 @@ def email_verify(body: VerifyBody, request: Request, response: Response) -> Me:
         name=user.name,
         is_admin=user.is_admin,
         first_login=user.first_login,
+        terms_pending=service(request).terms_pending(user.id),
     )
 
 
@@ -383,7 +425,20 @@ def me(request: Request, user: SignedInDep) -> Me:
         is_admin=user.is_admin,
         has_password=has_password,
         offer=offer_of(request, user),
+        terms_pending=accounts.terms_pending(user.id),
     )
+
+
+@router.post("/auth/terms/accept", status_code=204)
+def accept_terms(body: TermsBody, request: Request, user: SignedInDep) -> Response:
+    """KAN-133 : l'écran de nouvelle acceptation (« J'accepte »). La version envoyée est celle
+    que l'écran a montrée : changée entre-temps, 409 (le front relit /auth/me)."""
+    if body.version != TERMS_VERSION:
+        raise HTTPException(
+            status_code=409, detail="Les conditions viennent de changer : rechargez la page."
+        )
+    service(request).accept_terms(user.id)
+    return Response(status_code=204)
 
 
 @router.patch("/auth/me")

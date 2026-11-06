@@ -132,7 +132,7 @@ def test_mh3_without_an_account_the_mail_then_signup_makes_a_member(
     _invite(owner, pid, NEW, "commenter")
     assert mailer.last_to(NEW) is not None
     guest = _client(owner.app)
-    asked = guest.post("/api/auth/email/start", json={"email": NEW})
+    asked = guest.post("/api/auth/email/start", json={"cgu": True, "email": NEW})
     assert asked.status_code == 202
     verified = guest.post(
         "/api/auth/email/verify",
@@ -145,7 +145,9 @@ def test_mh3_without_an_account_the_mail_then_signup_makes_a_member(
     assert guest.get("/api/invitations").json() == []
     # Témoin : une adresse non invitée ne reçoit rien (inscription fermée).
     nobody = "personne.kan55@example.test"
-    assert guest.post("/api/auth/email/start", json={"email": nobody}).status_code == 202
+    assert (
+        guest.post("/api/auth/email/start", json={"cgu": True, "email": nobody}).status_code == 202
+    )
     assert mailer.last_to(nobody) is None
 
 

@@ -53,8 +53,11 @@ def code_of(mailer: FakeMailer, email: str) -> str:
 
 
 def sign_in(client: TestClient, mailer: FakeMailer, email: str, next_path: str = "/") -> str:
-    """Parcours complet (demande, code tapé) ; renvoie la valeur du cookie de session."""
-    done = client.post("/api/auth/email/start", json={"email": email, "next": next_path})
+    """Parcours complet (demande, code tapé) ; renvoie la valeur du cookie de session.
+    KAN-133 : la case des conditions cochée (sans elle, une adresse neuve ne reçoit rien)."""
+    done = client.post(
+        "/api/auth/email/start", json={"email": email, "next": next_path, "cgu": True}
+    )
     assert done.status_code == 202, done.text
     confirm = client.post(
         "/api/auth/login/verify",

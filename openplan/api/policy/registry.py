@@ -482,6 +482,8 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("contact:post", "POST", "/api/contact", PUBLIC),
     uc("auth.me:get", "GET", "/api/auth/me", USER),
     uc("auth.me:patch", "PATCH", "/api/auth/me", USER),
+    # KAN-133 : l'écran de nouvelle acceptation des conditions d'utilisation.
+    uc("auth.terms.accept:post", "POST", "/api/auth/terms/accept", USER, AUTH_RATE),
     uc("auth.logout-all:post", "POST", "/api/auth/logout-all", USER, AUTH_RATE),
     uc("auth.invitation.accept:post", "POST", "/api/auth/invitation/accept", USER, AUTH_RATE),
     # KAN-104 : mot de passe, preuve récente, sessions ; 404 sans OPENPLAN_PASSWORD_LOGIN.

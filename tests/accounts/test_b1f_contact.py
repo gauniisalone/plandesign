@@ -31,7 +31,10 @@ def test_a_member_reopening_their_own_link_gets_the_project(
     pid = owner.post("/api/projects", json={"name": "Grenier"}).json()["id"]
     token = owner.post(f"/api/projects/{pid}/invitations", json={"role": "editor"}).json()["token"]
     guest = _client(owner.app)
-    guest.post("/api/auth/email/start", json={"email": "marie@example.org", "invitation": token})
+    guest.post(
+        "/api/auth/email/start",
+        json={"cgu": True, "email": "marie@example.org", "invitation": token},
+    )
     guest.post(
         "/api/auth/email/verify",
         json={

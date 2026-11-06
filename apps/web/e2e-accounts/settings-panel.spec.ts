@@ -21,6 +21,7 @@ test("KAN-110 : Réglages de l'accueil entiers (compte ordinaire)", async ({
   const page = await context.newPage();
   await gotoApp(page, "/");
   await page.getByLabel("Adresse e-mail").fill(EMAIL);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";

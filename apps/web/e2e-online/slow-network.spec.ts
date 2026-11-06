@@ -91,6 +91,7 @@ async function signIn(page: Page, email: string, ip: string): Promise<void> {
     return r.ok() ? ((await r.json()) as { code: string }).code : "";
   };
   await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   // Le compte des rendus a pu demander un code juste avant (autre spec) : le serveur peut

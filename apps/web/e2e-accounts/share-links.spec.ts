@@ -59,6 +59,7 @@ async function person(
 async function signIn(page: Page, email: string): Promise<void> {
   await gotoApp(page, "/");
   await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";

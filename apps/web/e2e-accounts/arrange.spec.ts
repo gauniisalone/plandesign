@@ -19,6 +19,7 @@ const person = (browser: Browser, ip: string) =>
 async function signIn(page: Page, email: string, path = "/"): Promise<void> {
   await gotoApp(page, path);
   await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";

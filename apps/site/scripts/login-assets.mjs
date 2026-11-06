@@ -3,17 +3,19 @@
 // d'avant, octet pour octet (aucun fichier de login/ n'est dans public/).
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 
-const CONTACT_URL = "https://plandesign.fr/contact/";
+// B2b : /contact/ ; KAN-133 : /cgu/. Ces pages n'existent qu'avec l'option ; leurs entrées du
+// sitemap aussi.
+const OPTION_URLS = ["https://plandesign.fr/contact/", "https://plandesign.fr/cgu/"];
 
 if (process.env.PUBLIC_LOGIN_WINDOW === "1") {
   for (const name of ["login.js", "login.css", "contact.js"]) {
     copyFileSync(new URL(`../login/${name}`, import.meta.url), new URL(`../dist/${name}`, import.meta.url));
   }
-  // B2b : la page /contact/ n'existe qu'avec l'option ; son entrée du sitemap aussi.
   const sitemap = new URL("../dist/sitemap.xml", import.meta.url);
-  const xml = readFileSync(sitemap, "utf8");
-  if (!xml.includes(CONTACT_URL)) {
-    writeFileSync(sitemap, xml.replace("</urlset>", `  <url>\n    <loc>${CONTACT_URL}</loc>\n  </url>\n</urlset>`));
+  let xml = readFileSync(sitemap, "utf8");
+  for (const url of OPTION_URLS) {
+    if (!xml.includes(url)) xml = xml.replace("</urlset>", `  <url>\n    <loc>${url}</loc>\n  </url>\n</urlset>`);
   }
-  console.log("login-assets : fenêtre « Se connecter » et contact copiés (login.js, login.css, contact.js), /contact/ au sitemap");
+  writeFileSync(sitemap, xml);
+  console.log("login-assets : fenêtre « Se connecter » et contact copiés (login.js, login.css, contact.js), /contact/ et /cgu/ au sitemap");
 }

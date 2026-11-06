@@ -39,7 +39,9 @@ def _invite(client: TestClient, pid: str, role: str = "viewer", days: int = 7) -
 def _join_with_link(client: TestClient, mailer: object, email: str, token: str) -> None:
     """Le parcours d'un invité sans compte : code demandé et vérifié avec le jeton, puis
     acceptation."""
-    asked = client.post("/api/auth/email/start", json={"email": email, "invitation": token})
+    asked = client.post(
+        "/api/auth/email/start", json={"cgu": True, "email": email, "invitation": token}
+    )
     assert asked.status_code == 202
     verified = client.post(
         "/api/auth/email/verify",
@@ -72,7 +74,8 @@ def test_link_token_is_hashed_single_use_and_role_bound(tmp_path: Path, migrated
     other = _client(owner.app)
     assert (
         other.post(
-            "/api/auth/email/start", json={"email": "paul@example.org", "invitation": token}
+            "/api/auth/email/start",
+            json={"cgu": True, "email": "paul@example.org", "invitation": token},
         ).status_code
         == 202
     )
@@ -105,7 +108,8 @@ def test_expired_revoked_and_bogus_links_give_the_same_answer(
     # Un jeton faux n'ouvre pas l'inscription : même réponse neutre, rien ne part.
     nobody = _client(owner.app)
     start = nobody.post(
-        "/api/auth/email/start", json={"email": "inconnu@example.org", "invitation": "x" * 43}
+        "/api/auth/email/start",
+        json={"cgu": True, "email": "inconnu@example.org", "invitation": "x" * 43},
     )
     assert start.status_code == 202 and mailer.last_to("inconnu@example.org") is None
 

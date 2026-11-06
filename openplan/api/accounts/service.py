@@ -41,6 +41,7 @@ from openplan.api.accounts.mail_budget import STATE_FILE, MailBudget, MailKind
 from openplan.api.accounts.models import AuthSession, LoginToken, User
 from openplan.api.accounts.repo import AccountsRepo, normalize_email
 from openplan.api.accounts.sharing import SharingMixin
+from openplan.api.accounts.terms import TERMS_VERSION
 from openplan.api.ratelimit import SlidingWindowLimiter
 from openplan.api.settings import Settings
 
@@ -199,10 +200,14 @@ class AccountService(AccountsRepo, SharingMixin):
 
     # --- demande d'un lien ------------------------------------------------------------
 
-    def _may_sign_in(self, db: Session, email: str, invitation: str | None) -> bool:
-        if email == self.admin_email or self.settings.signup == "open":
+    def _may_sign_in(self, db: Session, email: str, invitation: str | None, terms: bool) -> bool:
+        if email == self.admin_email:
             return True
         if db.scalar(select(User.id).where(User.email == email)) is not None:
+            return True
+        if not terms:  # KAN-133 : pas de compte créé sans les conditions acceptées
+            return False
+        if self.settings.signup == "open":
             return True
         if self._live_for_email(db, email):  # KAN-55 : adresse invitée nommément
             return True
@@ -214,16 +219,20 @@ class AccountService(AccountsRepo, SharingMixin):
         next_path: str | None,
         ip: str | None,
         invitation: str | None = None,
+        *,
+        terms: bool = False,
     ) -> MailMessage | None:
         """Le message à envoyer (le code), ou None quand rien ne doit partir (adresse qui ne
         peut pas se connecter, limite atteinte). L'appelant répond pareil dans les deux cas.
-        `invitation` : le jeton d'un lien d'invitation (B1e), qui ouvre l'inscription."""
+        `invitation` : le jeton d'un lien d'invitation (B1e), qui ouvre l'inscription.
+        KAN-133 : `terms`, la case des conditions cochée ; sans elle, une adresse sans compte
+        ne reçoit rien (même réponse) : le code ne crée un compte qu'après l'acceptation."""
         address = checked_email(email)
         if not self.ip_limiter.allow(ip or "-"):
             return None
         now = self.clock()
         with self.session() as db, db.begin():
-            if not self._may_sign_in(db, address, invitation):
+            if not self._may_sign_in(db, address, invitation, terms):
                 return None
             code = self._issue_code(db, address, "login", LOGIN_TTL, now, ip, next_path)
         if code is None:
@@ -270,19 +279,27 @@ class AccountService(AccountsRepo, SharingMixin):
     # --- code tapé dans la fenêtre « Se connecter » -----------------------------------
 
     def complete_login(
-        self, email: str, typed: str, user_agent: str = "", invitation: str | None = None
+        self,
+        email: str,
+        typed: str,
+        user_agent: str = "",
+        invitation: str | None = None,
+        *,
+        terms: bool = False,
     ) -> tuple[AuthUser, str, str]:
         """Vérifie le code de cette adresse (tous ses codes encore valables, comparés en temps
         constant) ; juste : le consomme (marqué utilisé avant tout), trouve ou crée le compte,
         ouvre une session ; faux : un essai de plus sur chacun, révoqué au 5e. Renvoie
-        (utilisateur, session, next) ; refus : toujours la même raison (INVALID)."""
+        (utilisateur, session, next) ; refus : toujours la même raison (INVALID).
+        KAN-133 : un compte créé ici garde la version des conditions (son code n'est parti
+        qu'avec la case cochée) ; un compte existant aussi, si `terms` (la case cochée)."""
         now = self.clock()
         try:
             address = checked_email(email)
         except InvalidEmailError:
             raise LoginRefusedError(LoginRefusal.INVALID) from None
         next_path = self._consume_code(address, typed, "login", now)
-        user = self._user_for_login(address, now, invitation)
+        user = self._user_for_login(address, now, invitation, terms)
         session_raw = self._open_session(user.id, user_agent, "code", now)
         return user, session_raw, safe_next(next_path)
 
@@ -359,7 +376,9 @@ class AccountService(AccountsRepo, SharingMixin):
             )
         return session_raw
 
-    def _user_for_login(self, email: str, now: datetime, invitation: str | None) -> AuthUser:
+    def _user_for_login(
+        self, email: str, now: datetime, invitation: str | None, terms: bool = False
+    ) -> AuthUser:
         is_admin_address = email == self.admin_email
         for _ in range(2):  # une création concurrente de la même adresse : on relit
             try:
@@ -386,12 +405,29 @@ class AccountService(AccountsRepo, SharingMixin):
                         created = False
                     if is_admin_address and not user.is_admin:
                         user.is_admin = True
+                    if (created or terms) and not user.is_admin:
+                        user.terms_version = TERMS_VERSION  # KAN-133
                     user.last_seen_at = now
                     db.flush()
                     return replace(_auth_user(user), first_login=created)
             except IntegrityError:
                 continue
         raise LoginRefusedError(LoginRefusal.INVALID)  # pragma: no cover - course improbable
+
+    def terms_pending(self, user_id: UUID) -> bool:
+        """KAN-133 : la version acceptée n'est pas celle en vigueur (jamais l'administrateur,
+        qui est l'éditeur)."""
+        with self.session() as db:
+            user = db.get(User, user_id)
+            return user is not None and not user.is_admin and user.terms_version != TERMS_VERSION
+
+    def accept_terms(self, user_id: UUID) -> None:
+        """KAN-133 : l'écran de nouvelle acceptation ; `accepted_terms_at` n'y est pas touché
+        (repère des comptes inscrits, voir terms.py)."""
+        with self.session() as db, db.begin():
+            user = db.get(User, user_id)
+            if user is not None and not user.is_admin:
+                user.terms_version = TERMS_VERSION
 
     def set_name(self, user_id: UUID, name: str) -> None:
         with self.session() as db, db.begin():

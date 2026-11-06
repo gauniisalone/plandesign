@@ -11,6 +11,7 @@ import { Editor } from "./pages/Editor";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { NewFromSite } from "./pages/NewFromSite";
+import { TermsUpdate } from "./pages/TermsUpdate";
 import type { Step } from "./panels/Toolbar";
 import { AccountContext, type Account } from "./state/account";
 import { refreshCapabilities, watchCapabilities } from "./state/capabilities";
@@ -181,6 +182,20 @@ export function App() {
         onSignedIn={(me) => setSession({ kind: "signed-in", me })}
       />
     );
+  // KAN-133 (MH6) : la nouvelle version des conditions d'abord ; l'adresse demandée (projet,
+  // invitation, /nouveau) reste dans l'ancre et s'ouvre une fois acceptée.
+  if (session.kind === "signed-in" && session.me.terms_pending && account) {
+    const me = session.me;
+    return (
+      <TermsUpdate
+        me={me}
+        onAccepted={() =>
+          setSession({ kind: "signed-in", me: { ...me, terms_pending: false } })
+        }
+        onSignOut={() => void account.signOut()}
+      />
+    );
+  }
 
   return (
     <AccountContext.Provider value={account}>

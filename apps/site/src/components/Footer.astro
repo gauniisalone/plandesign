@@ -1,5 +1,6 @@
 ---
-// Lien « Contact » seulement avec l'option de build (le formulaire appelle l'API de l'app).
+// Liens « Conditions d'utilisation » (KAN-133) et « Contact » seulement avec l'option de build
+// (les comptes et le formulaire appellent l'API de l'app ; sans elle, la sortie d'avant).
 import { LOGIN_WINDOW } from "../config";
 ---
 <footer class="site-footer">
@@ -8,7 +9,7 @@ import { LOGIN_WINDOW } from "../config";
     <nav aria-label="Pied de page">
       <ul>
         <li><a href="/mentions-legales/">Mentions légales</a></li>
-        <li><a href="/confidentialite/">Confidentialité</a></li>{LOGIN_WINDOW && <li><a href="/contact/">Contact</a></li>}
+        <li><a href="/confidentialite/">Confidentialité</a></li>{LOGIN_WINDOW && <li><a href="/cgu/">Conditions d'utilisation</a></li>}{LOGIN_WINDOW && <li><a href="/contact/">Contact</a></li>}
       </ul>
     </nav>
   </div>

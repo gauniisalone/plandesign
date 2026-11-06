@@ -6,6 +6,8 @@
 // `password_login` (fermé, ou pas de réponse : rien n'en paraît). Le mot de passe ne se tape
 // pas ici : le lien ouvre la page de connexion de l'application sur cette étape (conception
 // L1 : aucune route du mot de passe n'est ouverte au site, pas de CORS à cookies en plus).
+// KAN-133 : la case des conditions d'utilisation (/cgu/), exigée par le navigateur et envoyée
+// à l'app (`cgu`) : sans elle, une adresse sans compte ne reçoit pas de code.
 import { APP_ORIGIN } from "../config";
 ---
 <dialog id="connexion" class="login-dialog" aria-labelledby="connexion-titre" data-app-origin={APP_ORIGIN}>
@@ -18,6 +20,7 @@ import { APP_ORIGIN } from "../config";
     <p class="login-text"><span data-password-off>Sans mot de passe.</span><span data-password hidden>Avec un code reçu par e-mail, ou votre mot de passe.</span></p>
     <label class="mono" for="connexion-email">Adresse e-mail</label>
     <input id="connexion-email" name="email" type="email" autocomplete="email" required maxlength="320" />
+    <label class="login-terms"><input id="connexion-cgu" name="cgu" type="checkbox" required /><span>J'accepte les <a href="/cgu/" target="_blank" rel="noopener">conditions d'utilisation</a></span></label>
     <p class="login-error" role="alert" hidden></p>
     <button type="submit" class="btn btn-primary btn-block">Recevoir un code</button>
     <a class="login-back" data-password hidden href={`${APP_ORIGIN}/#/mot-de-passe`}>Se connecter avec un mot de passe</a>

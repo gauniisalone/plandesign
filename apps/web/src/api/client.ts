@@ -364,6 +364,12 @@ export interface Me {
   has_password?: boolean | null;
   /** KAN-126 : l'offre du compte ; absente (serveur d'avant) : Pro. */
   offer?: "essentiel" | "pro";
+  /** KAN-133 : la version acceptée des conditions n'est pas celle en vigueur : l'écran de
+   *  nouvelle acceptation passe avant tout. */
+  terms_pending?: boolean;
+  /** KAN-133 : la version en vigueur et sa page (envoyée telle quelle à l'acceptation). */
+  terms_version?: string;
+  terms_url?: string;
 }
 
 /** KAN-104 : une de mes sessions ouvertes (Réglages › Compte). */
@@ -629,15 +635,43 @@ export function shareLinkUrl(token: string): string {
 export const authApi = {
   /** Même réponse que l'adresse ait un compte ou non. */
   /** `invitation` (B1e) : le jeton d'un lien d'invitation, qui ouvre l'inscription. */
-  start: (email: string, invitation?: string) =>
+  /** KAN-133 : `cgu`, la case des conditions ; sans elle, une adresse sans compte ne reçoit
+   *  rien (même réponse). Cochée, la vérification enregistre la version en vigueur. */
+  start: (email: string, invitation: string | undefined, cgu: boolean) =>
     request<{ detail: string }>(
       "/auth/email/start",
-      json({ email, invitation: invitation ?? null }),
+      json({ email, invitation: invitation ?? null, cgu }),
     ),
-  verify: (email: string, code: string, invitation?: string) =>
+  verify: (
+    email: string,
+    code: string,
+    invitation: string | undefined,
+    cgu: boolean,
+  ) =>
     request<Me>(
       "/auth/email/verify",
-      json({ email, code, invitation: invitation ?? null }),
+      json({ email, code, invitation: invitation ?? null, cgu }),
+    ),
+  /** KAN-133 : l'écran de nouvelle acceptation ; `version`, celle que l'écran a montrée. */
+  acceptTerms: (version: string) =>
+    request<void>("/auth/terms/accept", json({ version })),
+  /** KAN-104 L2 / KAN-133 : inscription par mot de passe (une personne invitée). Même réponse
+   *  dans tous les cas ; le code part par e-mail (15 min). */
+  signupStart: (email: string, invitation: string | undefined) =>
+    request<{ detail: string }>(
+      "/auth/signup/start",
+      json({ email, cgu: true, invitation: invitation ?? null }),
+    ),
+  signupVerify: (
+    email: string,
+    code: string,
+    password: string,
+    name: string,
+    invitation: string | undefined,
+  ) =>
+    request<Me>(
+      "/auth/signup/verify",
+      json({ email, code, password, name, invitation: invitation ?? null }),
     ),
   /** B1e : le lien d'invitation ouvert (jeton lu dans l'ancre, jamais dans une URL). */
   acceptInvitation: (token: string) =>

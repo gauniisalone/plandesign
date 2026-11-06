@@ -1,0 +1,162 @@
+---
+// KAN-133 : conditions générales d'utilisation. Page produite seulement avec l'option de build
+// PUBLIC_LOGIN_WINDOW=1 (les comptes) ; sans elle, la sortie d'avant, octet pour octet.
+// Texte : premier jet du PO, décisions d'augus du 6 nov. (éditeur Gauni'sAlone, 15 ans,
+// préavis de 30 jours, litiges sans médiateur tant que rien n'est vendu). Il ne promet rien de
+// plus que ce qui est en ligne : à chaque changement du service, relire cette page.
+// La version est celle de openplan/api/accounts/terms.py (TERMS_VERSION), enregistrée en base
+// à l'acceptation ; un changement important la fait changer (nouvelle acceptation, article 9).
+// KAN-132 : tant que le drapeau OPENPLAN_ACCOUNT_SELF_SERVICE est éteint, la suppression du
+// compte se demande par le formulaire de contact ; le jour où il s'allume, l'article 2 change
+// dans le même lot (sans changer la version : ce n'est pas un changement important).
+import Base from "../layouts/Base.astro";
+import { LOGIN_WINDOW } from "../config";
+
+export function getStaticPaths() {
+  return LOGIN_WINDOW ? [{ params: { cgu: "cgu" } }] : [];
+}
+
+const VERSION = "2026-11";
+---
+
+<Base
+  title="Conditions d'utilisation · PlanDesign"
+  description="Conditions générales d'utilisation de PlanDesign : le compte, l'usage acceptable, vos contenus, les plans et rendus estimés, la responsabilité."
+  path="/cgu/"
+>
+  <article class="wrap prose">
+    <h1>Conditions générales d'utilisation</h1>
+    <p class="updated">Version {VERSION} · mise à jour le 6 novembre 2026</p>
+
+    <h2>1. Objet</h2>
+    <p>
+      PlanDesign est un service en ligne qui permet de déposer des photos d'une pièce, d'en obtenir un plan estimé et
+      de préparer des rendus d'aménagement. On y accède par plandesign.fr et app.plandesign.fr.
+    </p>
+    <p>
+      Les présentes conditions s'appliquent à toute personne qui crée un compte ou qui utilise le service. En créant
+      un compte, vous les acceptez.
+    </p>
+    <p>
+      L'éditeur du service est Gauni'sAlone, projet personnel non professionnel. Ses coordonnées ne sont pas rendues
+      publiques (voir les <a href="/mentions-legales/">mentions légales</a>) ; il est joignable par le
+      <a href="/contact/">formulaire de contact</a>.
+    </p>
+
+    <h2>2. Le compte</h2>
+    <ul>
+      <li>
+        Pour créer un compte, il faut une adresse e-mail valide. La connexion se fait par un code envoyé à cette
+        adresse, ou par un mot de passe si vous en avez choisi un.
+      </li>
+      <li>Vous êtes responsable de l'accès à votre adresse e-mail et de la confidentialité de votre mot de passe.</li>
+      <li>Un compte est personnel. Il faut avoir au moins 15 ans pour en créer un.</li>
+      <li>
+        Un compte peut détenir un nombre limité de projets, et dispose d'une place de stockage limitée. L'application
+        indique la place utilisée, et la limite de projets quand elle est atteinte.
+      </li>
+      <li>Vous pouvez supprimer votre compte : demandez-le par le <a href="/contact/">formulaire de contact</a>.</li>
+    </ul>
+
+    <h2>3. Usage acceptable</h2>
+    <p>Vous vous engagez à ne pas :</p>
+    <ul>
+      <li>
+        déposer de contenu illicite, ni de contenu qui porte atteinte aux droits d'autrui (droit à l'image, droit
+        d'auteur, vie privée) ;
+      </li>
+      <li>déposer de photos de personnes sans leur accord ;</li>
+      <li>
+        tenter d'accéder aux projets ou aux comptes d'autres personnes, contourner les limites du service ou en
+        perturber le fonctionnement ;
+      </li>
+      <li>utiliser le service de manière automatisée à grande échelle sans accord préalable.</li>
+    </ul>
+
+    <h2>4. Vos contenus et vos droits</h2>
+    <ul>
+      <li>Vous restez propriétaire des photos, images et textes que vous déposez.</li>
+      <li>
+        Vous accordez à PlanDesign le seul droit de les stocker, de les traiter et de les afficher, dans la mesure
+        nécessaire au service : analyse des photos, plan, rendus, et partage avec les personnes que vous invitez.
+      </li>
+      <li>PlanDesign n'utilise pas vos contenus à d'autres fins, et ne les vend pas.</li>
+      <li>
+        Quand vous partagez un projet, les membres invités voient son contenu selon le rôle que vous leur donnez. Un
+        lien public vers un rendu le montre à toute personne qui détient ce lien, jusqu'à ce que vous le retiriez.
+      </li>
+      <li>
+        La durée de conservation de vos données est décrite dans la page
+        <a href="/confidentialite/">Confidentialité</a>.
+      </li>
+    </ul>
+
+    <h2>5. Plans et rendus</h2>
+    <ul>
+      <li>
+        Les plans et les cotes sont <strong>estimés</strong> à partir des photos. Ce ne sont pas des mesures. Vérifiez
+        toute cote avant de vous en servir pour des travaux, une commande ou un devis.
+      </li>
+      <li>
+        Les rendus sont des images d'illustration produites par un modèle. Ils peuvent s'écarter de la pièce réelle
+        (dimensions, éléments, matériaux), et ne constituent ni une étude ni un engagement de résultat.
+      </li>
+      <li>
+        Les rendus réalistes ne sont pas proposés à tous les comptes. Leur disponibilité et leur nombre peuvent être
+        limités, et l'application indique ce qui est possible pour votre compte.
+      </li>
+      <li>Le service est fourni sans frais pour l'instant.</li>
+    </ul>
+
+    <h2>6. Disponibilité, suspension et fin</h2>
+    <ul>
+      <li>
+        Le service peut être interrompu pour maintenance ou mise à jour, ou en cas d'incident. Aucune disponibilité
+        n'est garantie.
+      </li>
+      <li>
+        En cas de manquement à ces conditions, PlanDesign peut suspendre ou supprimer un compte, après un
+        avertissement sauf urgence (contenu illicite, atteinte à la sécurité).
+      </li>
+      <li>
+        PlanDesign peut faire évoluer ou arrêter le service. En cas d'arrêt, vous êtes prévenu au moins 30 jours à
+        l'avance, pour avoir le temps d'exporter vos projets.
+      </li>
+    </ul>
+
+    <h2>7. Responsabilité</h2>
+    <ul>
+      <li>
+        PlanDesign met en œuvre des moyens raisonnables pour assurer le bon fonctionnement du service et la sécurité
+        de vos données.
+      </li>
+      <li>
+        PlanDesign ne peut être tenu responsable des décisions que vous prenez sur la base d'un plan estimé ou d'un
+        rendu, ni des contenus que les utilisateurs déposent.
+      </li>
+    </ul>
+
+    <h2>8. Données personnelles</h2>
+    <p>
+      Le traitement de vos données personnelles est décrit dans la page
+      <a href="/confidentialite/">Confidentialité</a>. Elle fait partie de ces conditions.
+    </p>
+
+    <h2>9. Modification des conditions</h2>
+    <p>
+      Ces conditions peuvent évoluer. La version en vigueur et sa date figurent en haut de cette page. En cas de
+      changement important, vous en êtes informé à votre prochaine connexion, et il vous est demandé de l'accepter.
+    </p>
+
+    <h2>10. Droit applicable et litiges</h2>
+    <p>Ces conditions sont soumises au droit français.</p>
+    <p>
+      En cas de désaccord ou de réclamation, écrivez-nous d'abord par le <a href="/contact/">formulaire de contact</a>,
+      en décrivant le problème. Nous vous répondons et cherchons avec vous une solution amiable.
+    </p>
+    <p>
+      Si aucune solution amiable n'est trouvée, le litige est porté devant les tribunaux compétents selon les règles du
+      droit commun. Un consommateur peut toujours saisir le tribunal de son lieu de domicile.
+    </p>
+  </article>
+</Base>

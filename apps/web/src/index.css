@@ -7477,6 +7477,24 @@ input:disabled {
 .login-card .link {
   align-self: flex-start;
 }
+/* KAN-133 : la case des conditions d'utilisation (connexion par code, inscription). */
+.login-card label.login-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 400;
+}
+.login-card label.login-terms input {
+  flex: none;
+  margin: 3px 0 0;
+  padding: 0;
+}
+/* KAN-133 : l'écran de nouvelle acceptation, sous le titre. */
+.login-card .terms-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 /* KAN-104 : la seconde voie (mot de passe), sous « Recevoir un code ». */
 .login-or {
   display: flex;

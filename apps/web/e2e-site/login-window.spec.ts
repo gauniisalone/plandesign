@@ -49,6 +49,8 @@ async function sendAddress(page: Page, email: string): Promise<void> {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Adresse e-mail")).toBeFocused();
   await dialog.getByLabel("Adresse e-mail").fill(email);
+  // KAN-133 : la case des conditions, exigée avant l'envoi.
+  await dialog.getByLabel("J'accepte les conditions d'utilisation").check();
   await dialog.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(dialog.getByLabel("Code à 6 chiffres")).toBeVisible();
 }
@@ -239,7 +241,9 @@ test("KAN-104 : mot de passe ouvert, le lien mène à la connexion de l'app, ref
   const password = "cerisier en fleur sous la pluie";
   // Le compte et son mot de passe, par l'API : code, preuve récente, mot de passe.
   const api = page.request;
-  expect((await api.post(`${APP}/api/auth/email/start`, { data: { email }, headers })).ok()).toBe(true);
+  expect(
+    (await api.post(`${APP}/api/auth/email/start`, { data: { email, cgu: true }, headers })).ok(),
+  ).toBe(true);
   const login = await lastCode(page, email);
   expect(
     (await api.post(`${APP}/api/auth/email/verify`, { data: { email, code: login }, headers })).ok(),
@@ -306,4 +310,33 @@ test("mode « invite » : ligne bêta, réponse neutre pour une adresse inconnue
   await expect(
     dialog.getByText("Pas reçu ? Regardez dans vos courriers indésirables."),
   ).toBeVisible();
+});
+
+/** KAN-133 : la page des conditions (avec l'option de build seulement), son lien dans le pied
+ *  de page, et la case de la fenêtre, exigée avant l'envoi de l'adresse. */
+test("KAN-133 : page des conditions, lien du pied de page, case exigée", async ({ page }) => {
+  await page.setExtraHTTPHeaders({ "X-Forwarded-For": "198.51.100.139" });
+  await page.goto("/");
+  const footer = page.getByRole("navigation", { name: "Pied de page" });
+  await footer.getByRole("link", { name: "Conditions d'utilisation" }).click();
+  await expect(page).toHaveURL(/\/cgu\/$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Conditions générales d'utilisation" }),
+  ).toBeVisible();
+  await expect(page.getByText(/^Version 2026-11 · /)).toBeVisible();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Se lancer" }).click();
+  const dialog = page.getByRole("dialog", { name: "Se connecter à PlanDesign" });
+  await dialog.getByLabel("Adresse e-mail").fill("site-cgu@example.org");
+  const asked: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/auth/email/start")) asked.push(r.postData() ?? "");
+  });
+  await dialog.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(dialog.getByLabel("Code à 6 chiffres")).toBeHidden();
+  expect(asked).toEqual([]);
+  await dialog.getByLabel("J'accepte les conditions d'utilisation").check();
+  await dialog.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(dialog.getByLabel("Code à 6 chiffres")).toBeVisible();
+  expect(JSON.parse(asked[0] ?? "{}")).toMatchObject({ cgu: true });
 });

@@ -116,8 +116,15 @@ class SessionOut(StrictModel):
     current: bool
 
 
-def _me(user: AuthUser) -> Me:
-    return Me(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+def _me(user: AuthUser, request: Request) -> Me:
+    """KAN-133 : avec `terms_pending`, pour l'écran de nouvelle acceptation."""
+    return Me(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.is_admin,
+        terms_pending=service(request).terms_pending(user.id),
+    )
 
 
 def _session_raw(request: Request) -> str:
@@ -146,7 +153,7 @@ def password_login(body: PasswordLoginBody, request: Request, response: Response
         raise Refusal(401, WRONG, "bad_credentials", headers=COOKIE_CHALLENGE) from exc
     record_login(request, user)
     set_session_cookie(response, raw)
-    return _me(user)
+    return _me(user, request)
 
 
 @router.post("/auth/login/password", response_model=None)
@@ -259,7 +266,7 @@ def password_reset(
     background.add_task(_send, accounts, notice)
     record_login(request, user)
     set_session_cookie(response, raw)
-    return _me(user)
+    return _me(user, request)
 
 
 @router.put("/auth/password", status_code=204)

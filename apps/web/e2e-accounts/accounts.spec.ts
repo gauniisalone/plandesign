@@ -31,6 +31,7 @@ async function lastCode(page: Page, email: string): Promise<string> {
 async function requestCode(page: Page, email: string): Promise<string> {
   const before = await lastCode(page, email);
   await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";
@@ -108,6 +109,7 @@ test("sans session : la page de connexion seule, au plus une réponse 401", asyn
   ).toHaveAttribute("href", "https://plandesign.fr/confidentialite/");
   // Mauvais code : refus, même texte quel que soit le motif.
   await page.getByLabel("Adresse e-mail").fill(ADMIN);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await page.getByLabel("Code à 6 chiffres").fill("000000");
   const r = await page.request.get(`/api/test/mail/last-code?email=${ADMIN}`);
@@ -138,6 +140,7 @@ test("bêta sur invitation : annoncée avant l'adresse, réponse neutre, lien d'
   await shot(page, "1b-connexion-beta");
   // Adresse inconnue : même réponse qu'une adresse connue, sans rien révéler.
   await page.getByLabel("Adresse e-mail").fill("inconnu@example.org");
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByRole("status")).toContainText(
     "Si cette adresse a un compte ou une invitation, un code vient de partir.",

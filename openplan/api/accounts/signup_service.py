@@ -29,6 +29,7 @@ from openplan.api.accounts.abuse import disposable
 from openplan.api.accounts.mail import MailMessage, already_message, signup_message
 from openplan.api.accounts.models import LoginToken, User
 from openplan.api.accounts.passwords import check_policy, hash_after
+from openplan.api.accounts.terms import TERMS_VERSION  # KAN-133 : la page /cgu/ du site
 from openplan.api.ratelimit import SlidingWindowLimiter
 
 if TYPE_CHECKING:
@@ -40,8 +41,6 @@ SIGNUP_TTL = timedelta(minutes=15)
 DAY = timedelta(days=1)
 SIGNUPS_PER_IP_PER_DAY = 3
 CODES_PER_ADDRESS_PER_DAY = 10
-TERMS_VERSION = "2026-11"
-"""Version des conditions acceptées (page CGU : lot L5 de la conception)."""
 
 
 class SignupFlows:

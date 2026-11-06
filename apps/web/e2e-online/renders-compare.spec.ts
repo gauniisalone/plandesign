@@ -61,6 +61,7 @@ async function signInHere(page: Page, email: string): Promise<void> {
   // Le compte des rendus se connecte plusieurs fois dans la même base : jamais un ancien code.
   const before = await lastCode(page, email);
   await page.getByLabel("Adresse e-mail").fill(email);
+  await page.getByLabel("J'accepte les conditions d'utilisation").check();
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByText("un code vient de partir")).toBeVisible();
   let code = "";

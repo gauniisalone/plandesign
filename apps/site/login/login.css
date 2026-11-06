@@ -88,6 +88,22 @@
   color: var(--primary);
   font-weight: 500;
 }
+/* KAN-133 : la case des conditions d'utilisation, sous l'adresse. */
+.login-terms {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+.login-step .login-terms input {
+  min-height: 0;
+  margin: 3px 0 0;
+  padding: 0;
+}
+.login-terms a {
+  color: var(--link);
+}
 .login-back {
   align-self: flex-start;
   padding: 6px 0;

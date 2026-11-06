@@ -5,6 +5,7 @@ import {
   ACCOUNTS_LINE,
   ACCOUNTS_LINE_PASSWORD,
   PRIVACY_URL,
+  TERMS_URL,
   useHosting,
 } from "../state/hosting";
 import { IconPlan } from "../ui/icons";
@@ -17,7 +18,11 @@ import { PASSWORD_HINT, PasswordInput } from "../ui/PasswordInput";
  *  elle le dit (sans rien du projet) et passe le jeton, qui ouvre l'inscription.
  *  KAN-104 : si le serveur l'ouvre (`password_login` de /api/health), une seconde voie, le mot
  *  de passe, avec « Mot de passe oublié » (un code par e-mail, jamais un lien : D5). Le code
- *  reste la voie principale. */
+ *  reste la voie principale.
+ *  KAN-133 : la case des conditions d'utilisation avant « Recevoir un code » (sans elle, une
+ *  adresse sans compte ne reçoit rien ; la page ne sait pas si l'adresse a un compte, elle la
+ *  demande donc à tous). Depuis une invitation, et si le mot de passe est ouvert, la personne
+ *  invitée peut aussi créer son compte avec un mot de passe (écran 3 de la maquette KAN-104). */
 
 const NEUTRAL = "Si cette adresse peut se connecter, un code vient de partir.";
 /** Bêta sur invitation (PO, 19 oct.) : un visiteur non invité ne croit plus le site cassé,
@@ -28,6 +33,9 @@ const NEUTRAL_INVITE =
   "Si cette adresse a un compte ou une invitation, un code vient de partir.";
 const NEUTRAL_RESET =
   "Si cette adresse a un compte, un code vient de partir. Il expire dans 30 minutes.";
+/** KAN-133 : la réponse de signup/start, la même dans tous les cas. */
+const NEUTRAL_SIGNUP =
+  "Si cette adresse peut créer un compte, un code vient de partir. Il expire dans 15 minutes.";
 const OFFLINE = "Le serveur ne répond pas : réessayez dans un instant.";
 
 function message(e: unknown): string {
@@ -52,7 +60,14 @@ function emailError(e: unknown, otherwise: (e: unknown) => string): string {
     : otherwise(e);
 }
 
-type Step = "email" | "code" | "name" | "password" | "forgot" | "reset";
+type Step =
+  | "email"
+  | "code"
+  | "name"
+  | "password"
+  | "forgot"
+  | "reset"
+  | "signup";
 const PASSWORD_STEPS: ReadonlySet<Step> = new Set(["password", "forgot", "reset"]);
 /** Les ancres qui ouvrent la page sur une étape du mot de passe : le lien de la fenêtre du
  *  site (LoginDialog.astro), et « oublié » ; effacées une fois connecté. */
@@ -85,14 +100,18 @@ export function Login({
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
+  /** KAN-133 : la case des conditions, envoyée à la demande du code et à sa vérification. */
+  const [terms, setTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Lu au démarrage (App attend /api/health avant cette page) : pas d'attente ici.
   const hosting = useHosting();
   const inviteOnly = hosting?.inviteOnly ?? false;
-  // Une personne invitée continue par code (l'inscription par mot de passe attend la page
-  // des conditions d'utilisation : hors lot, décision d'augus du 5 nov.).
-  const withPassword = (hosting?.passwordLogin ?? false) && !invitation;
+  const passwordOpen = hosting?.passwordLogin ?? false;
+  // Une personne invitée n'a pas encore de compte : pas de connexion par mot de passe ; mais
+  // (KAN-133) elle peut en créer un avec un mot de passe, ou continuer par code.
+  const withPassword = passwordOpen && !invitation;
+  const withSignup = passwordOpen && Boolean(invitation);
 
   const go = (next: Step) => {
     setError(null);
@@ -120,7 +139,7 @@ export function Login({
     setBusy(true);
     setError(null);
     try {
-      await authApi.start(email.trim(), invitation);
+      await authApi.start(email.trim(), invitation, terms);
       setCode("");
       setStep("code");
     } catch (err) {
@@ -135,7 +154,7 @@ export function Login({
     setBusy(true);
     setError(null);
     try {
-      const me = await authApi.verify(email.trim(), code, invitation);
+      const me = await authApi.verify(email.trim(), code, invitation, terms);
       if (me.first_login) {
         setFresh(me);
         setStep("name");
@@ -167,6 +186,35 @@ export function Login({
     void run(async () => {
       const me = await authApi.passwordLogin(email.trim(), password);
       clearStepHash();
+      onSignedIn(me);
+    }, serverText);
+  };
+
+  /** KAN-133 : « Créer un compte avec un mot de passe » (même formulaire que le code : la
+   *  case et l'adresse y sont vérifiées par le navigateur avant l'envoi). */
+  const askSignup = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!e.currentTarget.form?.reportValidity()) return;
+    void run(
+      async () => {
+        await authApi.signupStart(email.trim(), invitation);
+        setCode("");
+        setPassword("");
+        setStep("signup");
+      },
+      (err) => emailError(err, serverText),
+    );
+  };
+
+  const signup = (e: React.FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      const me = await authApi.signupVerify(
+        email.trim(),
+        code,
+        password,
+        name.trim(),
+        invitation,
+      );
       onSignedIn(me);
     }, serverText);
   };
@@ -230,10 +278,29 @@ export function Login({
       />
     </>
   );
+  const termsBox = (
+    <label className="login-terms">
+      <input
+        type="checkbox"
+        required
+        checked={terms}
+        onChange={(e) => setTerms(e.target.checked)}
+      />
+      <span>
+        J'accepte les{" "}
+        <a href={TERMS_URL} target="_blank" rel="noopener">
+          conditions d'utilisation
+        </a>
+      </span>
+    </label>
+  );
 
   // Mot de passe fermé sur ce serveur (ou depuis une invitation) : jamais ses étapes, même
   // arrivé par le lien du site.
-  const shown: Step = PASSWORD_STEPS.has(step) && !withPassword ? "email" : step;
+  const shown: Step =
+    (PASSWORD_STEPS.has(step) && !withPassword) || (step === "signup" && !withSignup)
+      ? "email"
+      : step;
   let body: React.ReactNode;
   if (shown === "name") {
     body = (
@@ -277,23 +344,34 @@ export function Login({
           <p className="muted">Vos designs et plans en un clic.</p>
         )}
         {emailField}
+        {termsBox}
         {errorLine}
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Envoi…" : "Recevoir un code"}
         </button>
+        {(withPassword || withSignup) && (
+          <span className="login-or" aria-hidden="true">
+            ou
+          </span>
+        )}
         {withPassword && (
-          <>
-            <span className="login-or" aria-hidden="true">
-              ou
-            </span>
-            <button
-              type="button"
-              className="link"
-              onClick={() => go("password")}
-            >
-              Se connecter avec un mot de passe
-            </button>
-          </>
+          <button
+            type="button"
+            className="link"
+            onClick={() => go("password")}
+          >
+            Se connecter avec un mot de passe
+          </button>
+        )}
+        {withSignup && (
+          <button
+            type="button"
+            className="link"
+            disabled={busy}
+            onClick={askSignup}
+          >
+            Créer un compte avec un mot de passe
+          </button>
         )}
       </form>
     );
@@ -313,6 +391,45 @@ export function Login({
         </button>
         <button type="button" className="link" onClick={() => go("email")}>
           Changer d'adresse ou recevoir un nouveau code
+        </button>
+      </form>
+    );
+  } else if (shown === "signup") {
+    body = (
+      <form onSubmit={signup}>
+        <h2 className="login-step">Créer votre compte</h2>
+        <p className="muted" role="status">
+          {NEUTRAL_SIGNUP}
+        </p>
+        <p className="muted login-spam">
+          Pas reçu ? Regardez dans vos courriers indésirables.
+        </p>
+        {codeField}
+        <label htmlFor="login-new-password">Mot de passe</label>
+        <PasswordInput
+          id="login-new-password"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          describedBy="login-password-hint"
+        />
+        <p id="login-password-hint" className="muted">
+          {PASSWORD_HINT}
+        </p>
+        <label htmlFor="login-name">Votre nom (facultatif)</label>
+        <input
+          id="login-name"
+          autoComplete="name"
+          maxLength={80}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        {errorLine}
+        <button type="submit" className="primary" disabled={busy}>
+          {busy ? "Vérification…" : "Créer mon compte"}
+        </button>
+        <button type="button" className="link" onClick={() => go("email")}>
+          Recevoir un code plutôt
         </button>
       </form>
     );
@@ -399,9 +516,13 @@ export function Login({
         {body}
       </main>
       <footer className="login-foot muted">
-        {withPassword ? ACCOUNTS_LINE_PASSWORD : ACCOUNTS_LINE}{" "}
+        {withPassword || withSignup ? ACCOUNTS_LINE_PASSWORD : ACCOUNTS_LINE}{" "}
         <a href={PRIVACY_URL} target="_blank" rel="noopener">
           Confidentialité
+        </a>{" "}
+        ·{" "}
+        <a href={TERMS_URL} target="_blank" rel="noopener">
+          Conditions d'utilisation
         </a>
       </footer>
     </div>
