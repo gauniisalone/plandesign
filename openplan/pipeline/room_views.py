@@ -593,3 +593,58 @@ def add_room_view(
     new_level = level.model_copy(update={"elements": {**level.elements, camera.id: camera}})
     after = project.model_copy(update={"levels": {**project.levels, level.id: new_level}})
     return history.commit(project, after, actor=actor, label=f"Ajouter une vue : {name}"), camera
+
+
+def reset_room_view(
+    project: Project, level_id: UUID, camera_id: UUID, *, actor: str
+) -> tuple[Project, Camera]:
+    """KAN-141 : « Recalculer » une vue de pièce modifiée à la main (maquette 2fb2691) : elle
+    reprend la vue calculée (une vue ajoutée, la meilleure qui se distingue des autres vues de
+    sa pièce) et redevient `generated` ; sa case, son nom et son statut de vue ajoutée restent.
+    Un seul pas d'historique. NoCameraError si ce n'est pas une vue de pièce."""
+    level = project.levels.get(level_id)
+    if level is None:
+        msg = f"niveau inconnu : {level_id}"
+        raise NoCameraError(msg)
+    camera = level.elements.get(camera_id)
+    if not (isinstance(camera, Camera) and is_room_view(camera)):
+        msg = f"vue de pièce inconnue : {camera_id}"
+        raise NoCameraError(msg)
+    room_id = str(camera.metadata[ROOM_KEY])
+    room = next((r for r in rooms_of(level) if str(r.id) == room_id), None)
+    if room is None:
+        msg = f"pièce inconnue : {room_id}"
+        raise NoCameraError(msg)
+    others = [
+        e
+        for e in level.elements.values()
+        if isinstance(e, Camera)
+        and is_room_view(e)
+        and e.metadata[ROOM_KEY] == room_id
+        and e.id != camera.id
+    ]
+    added = bool(camera.metadata.get(ADDED_KEY))
+    name = room_names(level)[room_id]
+    areas = compute_derived(level).rooms
+    view = plan_room_view(
+        level,
+        room,
+        name,
+        areas[room.id].area_m2 if room.id in areas else 0.0,
+        avoid=[(c.position.x, c.position.y, c.yaw) for c in others] if added else None,
+    )
+    if view is None:
+        msg = f"{camera.name or name} : aucune place pour la caméra"
+        raise NoCameraError(msg)
+    fresh = _camera(view, uuid4(), on=bool(camera.metadata.get(ON_KEY, True)), added=added)
+    restored = fresh.model_copy(
+        update={
+            "id": camera.id,
+            "name": camera.name,
+            "metadata": {**fresh.metadata, ROOM_NAME_KEY: camera.metadata.get(ROOM_NAME_KEY)},
+        }
+    )
+    new_level = level.model_copy(update={"elements": {**level.elements, camera.id: restored}})
+    after = project.model_copy(update={"levels": {**project.levels, level.id: new_level}})
+    label = f"Recalculer la vue : {camera.name or name}"
+    return history.commit(project, after, actor=actor, label=label), restored

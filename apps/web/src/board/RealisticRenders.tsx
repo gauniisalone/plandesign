@@ -27,6 +27,8 @@ import { useRetryImage } from "./retryImage";
 import { ACTIVE_TITLE, guidedWords, IGNORED_TITLE } from "./styleWords";
 import {
   areaText,
+  eyeOp,
+  focalOp,
   hasRooms,
   isRoomView,
   rendersOfRoom,
@@ -35,6 +37,7 @@ import {
   tickOp,
   type RoomRow,
 } from "./roomViews";
+import { RoomViewEditor } from "./RoomViewEditor";
 import {
   etaText,
   gallery,
@@ -297,6 +300,8 @@ export function RealisticRenders({
   /** KAN-137 : la case change tout de suite ; la réponse du serveur la confirme (ou la
    *  remet, avec l'erreur). Par identifiant de caméra. */
   const [ticks, setTicks] = useState<Record<string, boolean>>({});
+  /** KAN-141 : la vue de pièce dont le panneau « Modifier » est ouvert (sa caméra). */
+  const [editing, setEditing] = useState<string | null>(null);
   // KAN-101 : « Partager » n'existe que si le serveur a les liens publics allumés.
   const hosting = useHosting();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -474,6 +479,13 @@ export function RealisticRenders({
   };
   const addView = (row: RoomRow) =>
     void edit(() => renderApi.addRoomView(project.id, levelId, row.roomId));
+  /** KAN-141 : les réglages du panneau « Modifier », et « Recalculer ». */
+  const setEye = (row: RoomRow, z: number) =>
+    void edit(() => api.applyOp(project.id, levelId, eyeOp(row.camera, z)));
+  const setFocal = (row: RoomRow, mm: number) =>
+    void edit(() => api.applyOp(project.id, levelId, focalOp(row.camera, mm)));
+  const resetView = (row: RoomRow) =>
+    void edit(() => renderApi.resetRoomView(project.id, levelId, row.camera.id));
   /** KAN-99 : l'étoile (éditeurs) ; la réponse donne les favoris du projet. */
   const star = async (requestId: string, on: boolean) => {
     const done = await realisticApi.favorite(project.id, requestId, on);
@@ -774,12 +786,33 @@ export function RealisticRenders({
                     </button>
                     <button
                       type="button"
+                      aria-label={`Modifier la vue : ${r.name}`}
+                      aria-expanded={editing === r.camera.id}
+                      onClick={() =>
+                        setEditing((e) => (e === r.camera.id ? null : r.camera.id))
+                      }
+                    >
+                      Modifier
+                    </button>
+                    <button
+                      type="button"
                       aria-label={`Ajouter une vue : ${r.name}`}
                       onClick={() => addView(r)}
                     >
                       Ajouter une vue
                     </button>
                   </span>
+                  {editing === r.camera.id && (
+                    <RoomViewEditor
+                      key={`${r.camera.position.z}:${r.camera.focal_px}:${r.camera.source}`}
+                      row={r}
+                      canRender={canRender}
+                      onEye={(z) => setEye(r, z)}
+                      onFocal={(mm) => setFocal(r, mm)}
+                      onReset={() => resetView(r)}
+                      onRender={() => void askView(r.camera.id)}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

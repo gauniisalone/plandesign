@@ -2330,6 +2330,12 @@ export const renderApi = {
       `/projects/${pid}/levels/${lid}/views/rooms`,
       json({}),
     ),
+  /** KAN-141 : « Recalculer » une vue de pièce modifiée à la main. */
+  resetRoomView: (pid: string, lid: string, cameraId: string) =>
+    request<EditResult & { camera_id: string }>(
+      `/projects/${pid}/levels/${lid}/views/rooms/camera/${cameraId}/reset`,
+      json({}),
+    ),
   /** KAN-137 : « Ajouter une vue » dans une pièce. */
   addRoomView: (pid: string, lid: string, roomId: string) =>
     request<EditResult & { camera_id: string }>(

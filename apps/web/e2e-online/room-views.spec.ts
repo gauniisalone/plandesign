@@ -146,5 +146,21 @@ test("vues par pièce : proposer, puis rendre toutes les pièces (une demande ch
   await expect(
     frame.getByRole("button", { name: "Rendre toutes les pièces (1)" }),
   ).toBeVisible();
+
+  // KAN-141 : « Modifier » une vue (focale au maximum, 35 mm), puis « Recalculer ».
+  const row = rooms.getByRole("listitem").first();
+  await row.getByRole("button", { name: /^Modifier la vue : / }).click();
+  const panel = row.getByRole("group", { name: /^Modifier la vue : / });
+  await expect(panel).toContainText("vue calculée");
+  await expect(panel.getByRole("button", { name: "Recalculer" })).toBeDisabled();
+  const focal = panel.getByRole("slider", { name: /^Focale \(équivalent\)/ });
+  await focal.focus();
+  await focal.press("End");
+  await expect(row).toContainText("modifiée à la main", { timeout: 15_000 });
+  await expect(row).toContainText("35 mm");
+  await expect(panel).toContainText("vue modifiée à la main");
+  await panel.getByRole("button", { name: "Recalculer" }).click();
+  await expect(row).toContainText("du sol visible", { timeout: 15_000 });
+  await expect(panel.getByRole("button", { name: "Recalculer" })).toBeDisabled();
   expect(failures).toEqual([]);
 });

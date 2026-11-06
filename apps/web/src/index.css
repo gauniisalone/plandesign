@@ -9689,6 +9689,27 @@ button.link,
   padding: 2px 8px;
   font-size: 0.85em;
 }
+/* KAN-141 : le panneau « Modifier » d'une vue de pièce, sous sa ligne. */
+.rgal-room-edit {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.rgal-room-edit label {
+  display: grid;
+  gap: 2px;
+}
+.rgal-room-edit input[type="range"] {
+  width: 100%;
+}
+.rgal-room-vals {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.85em;
+}
 .rgal-menu-sep {
   width: 100%;
   margin: 4px 0;

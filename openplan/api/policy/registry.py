@@ -351,6 +351,13 @@ REGISTRY: tuple[UseCase, ...] = (
     # KAN-137 : une vue par pièce, et « Ajouter une vue » dans une pièce, comme views/auto.
     uc("plan.views.rooms:post", "POST", L + "/views/rooms", member(E)),
     uc("plan.views.rooms.add:post", "POST", L + "/views/rooms/{room_id}/add", member(E)),
+    # KAN-141 : « Recalculer » une vue de pièce modifiée à la main.
+    uc(
+        "plan.views.rooms.reset:post",
+        "POST",
+        L + "/views/rooms/camera/{camera_id}/reset",
+        member(E),
+    ),
     uc("plan.brief.preview:post", "POST", L + "/brief/preview", member(E)),
     uc("plan.brief:post", "POST", L + "/brief", member(E)),
     uc("plan.brief.zones:post", "POST", L + "/brief/zones", member(E)),

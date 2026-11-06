@@ -61,7 +61,12 @@ from openplan.pipeline.render import (
     section_view,
 )
 from openplan.pipeline.rerender import MAX_VIEWS, RerenderRun, plan_views, rerender
-from openplan.pipeline.room_views import RoomViews, add_room_view, apply_room_views
+from openplan.pipeline.room_views import (
+    RoomViews,
+    add_room_view,
+    apply_room_views,
+    reset_room_view,
+)
 from openplan.pipeline.scene3d import bake_level, glb_bytes
 from openplan.pipeline.timings import TIMINGS_FILE, Timings
 from openplan.pipeline.views import AutoViews, apply_auto_views, views_to_render
@@ -210,6 +215,21 @@ def room_view_add(
     """KAN-137 : « Ajouter une vue » dans une pièce, assez différente de ses vues déjà posées.
     409 si la pièce n'a pas d'autre place."""
     after, camera = add_room_view(project, level_id, room_id, actor=actor)
+    report = validate_invariants(after)
+    if not report.valid:
+        raise InvalidEditError(report)
+    store.save(after)
+    edit = _result(after, level_id, report)
+    return RoomViewAdded(**edit.model_dump(), camera_id=camera.id)
+
+
+@router.post("/projects/{project_id}/levels/{level_id}/views/rooms/camera/{camera_id}/reset")
+def room_view_reset(
+    level_id: UUID, camera_id: UUID, project: ProjectDep, store: StoreDep, actor: ActorDep
+) -> RoomViewAdded:
+    """KAN-141 : « Recalculer » une vue de pièce modifiée à la main : elle reprend la vue
+    calculée, en un pas d'historique annulable. 409 si ce n'est pas une vue de pièce."""
+    after, camera = reset_room_view(project, level_id, camera_id, actor=actor)
     report = validate_invariants(after)
     if not report.valid:
         raise InvalidEditError(report)

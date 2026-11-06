@@ -9,6 +9,58 @@ import type { Camera, Level } from "../api/types.gen";
 export const ROOM_KEY = "room_view";
 export const ON_KEY = "room_view_on";
 
+/** KAN-141 : bornes du panneau « Modifier » (maquette 2fb2691 ; focale à 24 mm au moins, comme
+ *  les vues calculées et le banc KAN-136). */
+export const EYE_MIN = 1.2;
+export const EYE_MAX = 1.7;
+export const EYE_STEP = 0.05;
+export const FOCAL_MIN = 24;
+export const FOCAL_MAX = 35;
+/** Focale d'un point de vue libre : équivalent 24 × 36 rapporté au grand côté de 1280 px
+ *  (pipeline/views.py `focal_px`, render.py `camera_view`). */
+const LONG_SIDE_PX = 1280;
+
+export function focalMm(focalPx: number | null | undefined): number {
+  return focalPx ? Math.round((focalPx * 36) / LONG_SIDE_PX) : 29;
+}
+
+export function focalPx(mm: number): number {
+  return Math.round(((LONG_SIDE_PX * mm) / 36) * 10) / 10;
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** Le réglage d'un curseur, borné et arrondi au pas. */
+export function eyeValue(z: number): number {
+  return clamp(Math.round(z / EYE_STEP) * EYE_STEP, EYE_MIN, EYE_MAX);
+}
+
+export function metres(v: number): string {
+  return `${v.toFixed(2).replace(".", ",")} m`;
+}
+
+/** La vue a été modifiée à la main (déplacée, tournée ou réglée) : plus recalculée. */
+export function isEdited(c: { source?: string }): boolean {
+  return c.source === "user_defined";
+}
+
+/** L'opération d'un réglage du panneau : hauteur d'œil ou focale. */
+export function eyeOp(camera: Camera, z: number) {
+  return {
+    op: "update_element" as const,
+    element_id: camera.id,
+    fields: { position: { ...camera.position, z: eyeValue(z) } },
+  };
+}
+
+export function focalOp(camera: Camera, mm: number) {
+  return {
+    op: "update_element" as const,
+    element_id: camera.id,
+    fields: { focal_px: focalPx(clamp(Math.round(mm), FOCAL_MIN, FOCAL_MAX)) },
+  };
+}
+
 export interface RoomRow {
   camera: Camera;
   roomId: string;
@@ -43,12 +95,18 @@ export function roomRows(level: Level | undefined): RoomRow[] {
     if (!c || !isRoomView(c)) continue;
     const m = meta(c)!;
     const area = typeof m.area_m2 === "number" ? m.area_m2 : null;
+    // KAN-141 : une vue réglée à la main dit ses réglages (la note du calcul n'est plus vraie).
+    const note = isEdited(c)
+      ? `modifiée à la main · ${metres(c.position.z)} · ${focalMm(c.focal_px)} mm`
+      : typeof m.note === "string"
+        ? m.note
+        : "";
     rows.push({
       camera: c,
       roomId: String(m[ROOM_KEY]),
       name: c.name || (typeof m.room_name === "string" ? m.room_name : "Pièce"),
       area,
-      note: typeof m.note === "string" ? m.note : "",
+      note,
       on: m[ON_KEY] !== false,
     });
   }
