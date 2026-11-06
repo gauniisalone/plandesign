@@ -45,13 +45,14 @@ test("projet arrivé avec une consigne : un seul clic sur l'icône Assistant ouv
   await expect(ask).toHaveCount(0);
   await expect(composer).toHaveCount(1);
 
-  // Plan : même arrivée, puis le plan ; un clic ouvre le fil.
+  // Plan : même arrivée, puis le plan ; un clic ouvre le fil. Dans le plan, le panneau fermé
+  // garde son volet dans la page, caché : on regarde ce qui se voit.
   await reloadApp(page);
   await expectSpace(page, "board");
   await goSpace(page, "plan");
-  await expect(ask).toHaveCount(0);
+  await expect(ask).toBeHidden();
   await icon.click();
   await expect(ask).toBeVisible();
   await icon.click();
-  await expect(ask).toHaveCount(0);
+  await expect(ask).toBeHidden();
 });
