@@ -64,6 +64,7 @@ from openplan.api.accounts.routes import (
     _client_ip,
     _page,
     _send,
+    announce_owner,
     clear_session_cookie,
     service,
 )
@@ -279,6 +280,11 @@ def delete_account(body: DeleteBody, request: Request, user: SignedInDep) -> Res
         )
     except ForgetRefusedError as exc:
         raise HTTPException(status_code=409, detail=IMPOSSIBLE) from exc
+    # KAN-145 : chaque héritier lit « Vous êtes maintenant propriétaire de … » (cloche et
+    # activité ; pas d'e-mail).
+    if plan.shared_action == "heirs":
+        for pid, heir_id in plan.heirs.items():
+            announce_owner(request, pid, heir_id)
     done = Response(status_code=204)
     clear_session_cookie(done)
     return done

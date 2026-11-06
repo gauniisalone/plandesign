@@ -27,6 +27,7 @@ from openplan.api.accounts.service import AccountService
 from openplan.api.accounts.terms import TERMS_VERSION
 from tests.accounts.helpers import ADMIN, ORIGIN, accounts_client, code_of, sign_in
 from tests.accounts.test_kan51_comments import _team
+from tests.accounts.test_kan132_self_service import LEA, MARIE, team  # noqa: F401 - fixture
 
 OLD = "ancien.kan126b@example.test"
 
@@ -223,8 +224,29 @@ def test_the_heir_is_told_when_made_owner(tmp_path: Path, migrated_url: str) -> 
     # Le journal d'activité le montre aux membres, filtre « membres » compris.
     activity = m["viewer"].get(f"/api/projects/{pid}/activity", params={"kind": "members"})
     assert any(x["type"] == "owner.changed" for x in activity.json()["items"])
-    # Déjà propriétaire : rien de plus.
+    # Déjà propriétaire : rien de plus (vérifié ci-dessous).
     again = owner.patch(f"/api/projects/{pid}/members/{editor_id}", json={"role": "owner"})
     assert again.status_code == 200
     bell = m["editor"].get("/api/notifications", params={"tab": "all"}).json()["items"]
     assert [x["type"] for x in bell].count("owner.changed") == 1
+
+
+def test_each_heir_is_told_when_an_account_is_deleted(team: dict[str, Any]) -> None:  # noqa: F811
+    """KAN-132 : Léa supprime son compte ; « Atelier » va à Marie (choisie), « Salon » aussi
+    (seule autre membre). Marie reçoit deux « owner.changed », Paul aucun."""
+    lea, ids, users = team["lea"], team["ids"], team["users"]
+    lea.post("/api/account/delete/code")
+    done = lea.post(
+        "/api/account/delete",
+        json={
+            "code": code_of(team["mailer"], LEA),
+            "email": LEA,
+            "heirs": {ids["Atelier"]: str(users[MARIE])},
+        },
+    )
+    assert done.status_code == 204, done.text
+    bell = team["marie"].get("/api/notifications", params={"tab": "all"}).json()["items"]
+    told = sorted(x["project_name"] for x in bell if x["type"] == "owner.changed")
+    assert told == ["Atelier", "Salon"]
+    assert all(x["mine"] for x in bell if x["type"] == "owner.changed")
+    assert "owner.changed" not in _types(team["paul"])
