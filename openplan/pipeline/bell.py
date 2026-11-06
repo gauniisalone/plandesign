@@ -6,6 +6,7 @@ Règles (ticket KAN-52 et décisions PO du 20 oct.) :
 - un commentaire ou une réponse : à ceux qui ont écrit dans le fil, et au propriétaire ;
   résoudre ou rouvrir restent au journal, sans notification ;
 - `member.joined` : à tous les autres membres ;
+- `owner.changed` (KAN-145) : à l'héritier seul, celui qui devient propriétaire ;
 - `board.changed` / `plan.changed` : à tous les autres membres, regroupés par auteur, projet et
   sorte quand deux gestes se suivent à 10 min au plus (« 12 changements ») ; les commentaires
   ne sont jamais regroupés ;
@@ -28,7 +29,14 @@ RETENTION = timedelta(days=90)
 PAGE = 50
 GROUPED: frozenset[EventType] = frozenset({"board.changed", "plan.changed", "reaction.added"})
 NOTIFIED: frozenset[EventType] = frozenset(
-    {"comment.created", "comment.replied", "member.joined", "render.done", *GROUPED}
+    {
+        "comment.created",
+        "comment.replied",
+        "member.joined",
+        "render.done",
+        "owner.changed",
+        *GROUPED,
+    }
 )
 """KAN-78 : une réaction prévient l'auteur de l'élément (le propriétaire s'il n'est pas
 connu), regroupée comme les modifications (même personne, 10 min) ; jamais ses propres
@@ -86,8 +94,10 @@ class ReadMarks:
 def _concerns(event: ProjectEvent, me: str, feed: ProjectFeed) -> bool:
     if event.type not in NOTIFIED:
         return False
-    if event.type == "render.done":
-        return True
+    if event.type in ("render.done", "owner.changed"):
+        # Le rendu prêt, pour tous ; KAN-145 : l'héritier seul (« Vous êtes maintenant
+        # propriétaire de … », `actor` est l'héritier).
+        return event.type == "render.done" or event.actor == me
     if event.actor == me:
         return False
     if event.type in ("comment.created", "comment.replied"):
@@ -170,7 +180,7 @@ ACTIVITY_KINDS: dict[str, frozenset[EventType]] = {
     ),
     "board": frozenset({"board.changed"}),
     "plan": frozenset({"plan.changed"}),
-    "members": frozenset({"member.joined"}),
+    "members": frozenset({"member.joined", "owner.changed"}),
     "renders": frozenset({"render.done"}),
     "reactions": frozenset({"reaction.added"}),
 }

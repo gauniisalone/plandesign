@@ -15,7 +15,7 @@ from pydantic import Field
 from openplan.api.access import SignedInDep
 from openplan.api.accounts.events import emit_from
 from openplan.api.accounts.mail import invitation_message
-from openplan.api.accounts.routes import announce_join, service
+from openplan.api.accounts.routes import announce_join, announce_owner, service
 from openplan.api.accounts.service import AccountService, InvalidEmailError, checked_email
 from openplan.api.accounts.sharing import (
     EMAIL_INVITE_DAYS,
@@ -248,12 +248,15 @@ def change_member_role(
     project_id: UUID, user_id: UUID, body: RoleChange, request: Request, user: SignedInDep
 ) -> list[MemberOut]:
     accounts = service(request)
+    before = accounts.role_name(project_id, user_id)
     try:
         found = accounts.change_role(project_id, user_id, body.role)
     except LastOwnerError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not found:
         raise HTTPException(status_code=404, detail="ce compte n'est pas membre du projet")
+    if body.role == "owner" and before != "owner":
+        announce_owner(request, project_id, user_id)
     return [_member(m, user.id) for m in accounts.members(project_id)]
 
 

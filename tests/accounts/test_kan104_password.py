@@ -647,7 +647,7 @@ def test_migration_kan104_goes_up_and_down(db_url: str) -> None:
             )
         )
     upgrade(engine)
-    assert current_revision(engine) == "kan104_0012"
+    assert current_revision(engine) == "kan126b_0014"
     users = {c["name"] for c in inspect(engine).get_columns("users")}
     assert {"password_hash", "password_set_at", "failed_logins", "locked_until"} <= users
     assert {"email_verified_at", "signup_ip", "accepted_terms_at", "terms_version"} <= users
@@ -668,5 +668,5 @@ def test_migration_kan104_goes_up_and_down(db_url: str) -> None:
     with engine.connect() as con:
         assert con.exec_driver_sql("SELECT email FROM users").scalar() == "ancien@example.org"
     upgrade(engine)
-    assert current_revision(engine) == "kan104_0012"
+    assert current_revision(engine) == "kan126b_0014"
     engine.dispose()

@@ -145,6 +145,17 @@ test("modifications regroupées, rendu prêt, arrivée", () => {
   );
 });
 
+test("KAN-145 : l'héritier devient propriétaire (cloche à lui, activité aux autres)", () => {
+  assert.equal(
+    actionText(line({ type: "owner.changed", mine: true })),
+    "Vous êtes maintenant propriétaire du projet",
+  );
+  assert.equal(
+    actionText(line({ type: "owner.changed", mine: false })),
+    "Fanny est maintenant propriétaire du projet",
+  );
+});
+
 test("KAN-78 : réactions, seules ou regroupées", () => {
   const reaction = { type: "reaction.added" as const };
   assert.equal(

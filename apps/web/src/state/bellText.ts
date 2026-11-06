@@ -108,6 +108,12 @@ export function actionText(line: BellLine): string {
         : `${who} a rouvert un fil`;
     case "member.joined":
       return `${who} a rejoint le projet`;
+    case "owner.changed":
+      // KAN-145 : l'héritier (cloche et activité) ; les autres membres le lisent à l'activité.
+      // Le nom du projet suit dans la ligne de la cloche (« … · Grenier · il y a 2 min »).
+      return line.mine
+        ? "Vous êtes maintenant propriétaire du projet"
+        : `${who} est maintenant propriétaire du projet`;
     case "render.done":
       return line.mine ? "Votre rendu est prêt" : `Le rendu de ${who} est prêt`;
     case "board.changed":

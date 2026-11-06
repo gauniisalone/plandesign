@@ -66,6 +66,12 @@ class User(Base):
     signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     accepted_terms_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
     terms_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    offer: Mapped[str] = mapped_column(String(16), default="pro", server_default="pro")
+    """KAN-126b (kan126b_0014) : `essentiel` ou `pro`, posée par l'administrateur ; Pro par
+    défaut."""
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(_utc(), nullable=True)
+    """kan126b_0014 : date de la dernière acceptation des CGU (les trois voies de KAN-133),
+    distincte de `accepted_terms_at` (repère des comptes inscrits, quotas)."""
 
 
 CODE_PURPOSES = ("login", "signup", "reset", "reauth")

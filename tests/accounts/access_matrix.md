@@ -6,7 +6,7 @@ globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-1
 tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-243 routes ; par règle : admin 6, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 20, user 41, worker 6.
+245 routes ; par règle : admin 8, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 20, user 41, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -21,6 +21,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | GET | /api/admin/audience | comptes | admin |  |  |  |
 | GET | /api/admin/health | comptes | admin |  |  |  |
 | GET | /api/admin/usage | comptes | admin |  |  |  |
+| POST | /api/admin/users/find | comptes | admin |  |  | 404 |
+| PATCH | /api/admin/users/{user_id}/offer | comptes | admin |  |  | 404 |
 | POST | /api/admin/users/{user_id}/sessions/revoke | comptes | admin |  |  |  |
 | GET | /api/ai | local+comptes | user |  |  |  |
 | POST | /api/auth/email/start | comptes | public | débit des tentatives 10 / min (429) |  |  |

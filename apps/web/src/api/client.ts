@@ -831,7 +831,23 @@ export const adminApi = {
     request<Audience>(`/admin/audience?days=${days}`),
   health: () => request<Health>("/admin/health"),
   usage: (weeks = 12) => request<Usage>(`/admin/usage?weeks=${weeks}`),
+  /** KAN-126b : un compte par son adresse (dans le corps, jamais dans l'URL). */
+  findUser: (email: string) =>
+    request<AccountOffer>("/admin/users/find", json({ email })),
+  setOffer: (userId: string, offer: Offer) =>
+    request<AccountOffer>(`/admin/users/${userId}/offer`, {
+      ...json({ offer }),
+      method: "PATCH",
+    }),
 };
+
+/** KAN-126 : les offres (aucun paiement ; Pro par défaut). */
+export type Offer = "essentiel" | "pro";
+export interface AccountOffer {
+  id: string;
+  email: string;
+  offer: Offer;
+}
 
 /** KAN-12 : place restante sur MES projets (le serveur refuse de toute façon, en 403
  *  `space_full` depuis KAN-105 L2) ; connue
@@ -2768,7 +2784,9 @@ export type BellType =
   | "render.done"
   | "board.changed"
   | "plan.changed"
-  | "reaction.added";
+  | "reaction.added"
+  /** KAN-145 : `actor` est l'héritier, le compte devenu propriétaire. */
+  | "owner.changed";
 
 export interface BellLine {
   id: string;

@@ -183,7 +183,13 @@ class ExtensionTokens:
             last = row.last_used_at
             if last is None or (now - aware(last)).total_seconds() >= USED_EVERY_S:
                 row.last_used_at = now
-            return AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+            return AuthUser(
+                id=user.id,
+                email=user.email,
+                name=user.name,
+                is_admin=user.is_admin,
+                offer=user.offer or "pro",  # KAN-126b
+            )
 
 
 def tokens_of(request: Request) -> ExtensionTokens:

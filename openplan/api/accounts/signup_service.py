@@ -170,6 +170,7 @@ class SignupFlows:
                 signup_ip=short_ip(ip),
                 accepted_terms_at=now,
                 terms_version=TERMS_VERSION,
+                terms_accepted_at=now,  # kan126b_0014 : la date de l'acceptation
                 password_hash=digest,
                 password_set_at=now,
             )

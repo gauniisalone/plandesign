@@ -31,6 +31,8 @@ class AuthUser:
     is_admin: bool
     first_login: bool = False
     """Compte créé par la connexion en cours (B2a : proposer « Votre nom »)."""
+    offer: str = "pro"
+    """KAN-126b : l'offre du compte (`users.offer`), lue par `policy.offers.offer_of`."""
 
 
 @dataclass(frozen=True)

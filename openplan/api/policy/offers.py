@@ -1,9 +1,9 @@
-"""KAN-126 (126a, sans migration) : les offres Essentiel et Pro. Aucun paiement : l'offre est
-posée par l'administrateur (colonne du compte au lot 126b).
+"""KAN-126 : les offres Essentiel et Pro. Aucun paiement : l'offre est posée par l'administrateur
+(126b : colonne `users.offer`, kan126b_0014, et PATCH /api/admin/users/{id}/offer).
 
 L'offre qui compte est celle de la personne qui AGIT (comme une licence d'outil), jamais celle
-du propriétaire du projet. Tant que la colonne n'existe pas, tous les comptes sont en Pro : rien
-ne change pour personne (décision du PO, en attendant celle d'augus).
+du propriétaire du projet. Tous les comptes, actuels et nouveaux, sont en Pro par défaut : rien
+ne change pour personne tant que l'administrateur n'a rien posé (décision du PO).
 
 Les fonctions Pro sont déclarées dans le registre (`registry.OFFER_PRO`, `PRO_OPS`,
 `PUSH_PULL_FIELDS`) ; ce module seul les vérifie. Sans comptes (mode local), rien n'est
@@ -32,8 +32,9 @@ OfferOf = Callable[[AuthUser], Offer]
 
 
 def offer_of(request: Request, user: AuthUser) -> Offer:
-    """L'offre du compte. 126a : le défaut (Pro) ; `app.state.offer_of` la remplace dans les
-    tests ; 126b lira la colonne du compte (`user.offer`)."""
+    """L'offre du compte : la colonne `users.offer` (126b), lue à l'ouverture de la session
+    (`AuthUser.offer`) ; une valeur inconnue vaut le défaut (Pro). `app.state.offer_of`, s'il est
+    posé (tests), passe avant."""
     hook = cast("OfferOf | None", getattr(request.app.state, "offer_of", None))
     if hook is not None:
         return hook(user)

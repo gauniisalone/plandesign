@@ -150,7 +150,13 @@ def short_ip(ip: str | None) -> str | None:
 
 
 def _auth_user(user: User) -> AuthUser:
-    return AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin)
+    return AuthUser(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.is_admin,
+        offer=user.offer or "pro",
+    )
 
 
 class AccountService(AccountsRepo, SharingMixin):
@@ -407,6 +413,7 @@ class AccountService(AccountsRepo, SharingMixin):
                         user.is_admin = True
                     if (created or terms) and not user.is_admin:
                         user.terms_version = TERMS_VERSION  # KAN-133
+                        user.terms_accepted_at = now  # kan126b_0014
                     user.last_seen_at = now
                     db.flush()
                     return replace(_auth_user(user), first_login=created)
@@ -423,11 +430,23 @@ class AccountService(AccountsRepo, SharingMixin):
 
     def accept_terms(self, user_id: UUID) -> None:
         """KAN-133 : l'écran de nouvelle acceptation ; `accepted_terms_at` n'y est pas touché
-        (repère des comptes inscrits, voir terms.py)."""
+        (repère des comptes inscrits, voir terms.py) ; `terms_accepted_at` (kan126b_0014) garde
+        la date de cette acceptation."""
         with self.session() as db, db.begin():
             user = db.get(User, user_id)
             if user is not None and not user.is_admin:
                 user.terms_version = TERMS_VERSION
+                user.terms_accepted_at = self.clock()
+
+    def set_offer(self, user_id: UUID, offer: str) -> bool:
+        """KAN-126b : l'offre posée par l'administrateur (`essentiel` ou `pro`) ; False si le
+        compte n'existe pas. Elle vaut dès la requête suivante (la session relit le compte)."""
+        with self.session() as db, db.begin():
+            user = db.get(User, user_id)
+            if user is None:
+                return False
+            user.offer = offer
+            return True
 
     def set_name(self, user_id: UUID, name: str) -> None:
         with self.session() as db, db.begin():

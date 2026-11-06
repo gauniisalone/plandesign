@@ -31,6 +31,7 @@ from openplan.api.access import (
 )
 from openplan.api.accounts.mail import FakeMailer, MailMessage
 from openplan.api.accounts.mail_budget import QUOTA_TEXT, MailKind, MailQuotaError
+from openplan.api.accounts.models import User
 from openplan.api.accounts.service import (
     LOGIN_TTL,
     REFUSAL_TEXT,
@@ -401,6 +402,26 @@ def announce_join(request: Request, project_id: UUID, user_id: UUID) -> None:
         from_thread.run(ring_project, request.app, project_id, str(user_id))
 
 
+def announce_owner(request: Request, project_id: UUID, heir_id: UUID) -> None:
+    """KAN-145 : « Vous êtes maintenant propriétaire de … », pour l'héritier seul (cloche et
+    journal d'activité ; pas d'e-mail). `actor` est l'héritier (`schemas.events`). Posé par le
+    changement de rôle (KAN-143) ; la suppression de compte (KAN-132) passe par
+    `owner_changed_event`."""
+    store = request.app.state.store
+    if store.exists(project_id):
+        ProjectEvents(store.project_dir(project_id)).append(
+            owner_changed_event(project_id, heir_id)
+        )
+        from openplan.api.accounts.live import ring_project
+
+        # La cloche de l'héritier sonne : personne n'est exclu (l'héritier n'est pas l'auteur).
+        from_thread.run(ring_project, request.app, project_id, None)
+
+
+def owner_changed_event(project_id: UUID, heir_id: UUID) -> ProjectEvent:
+    return ProjectEvent(type="owner.changed", project_id=project_id, actor=str(heir_id))
+
+
 def claim_invitations(request: Request, user: AuthUser) -> None:
     """KAN-55 : un compte créé par cette connexion devient membre des projets où son adresse
     était invitée nommément (avec le rôle prévu)."""
@@ -480,6 +501,56 @@ def admin_revoke(user_id: UUID, request: Request, admin: AdminDep) -> Revoked:
     """Un administrateur révoque toutes les sessions d'un utilisateur."""
     del admin
     return Revoked(revoked=service(request).revoke_all(user_id))
+
+
+class AccountOffer(StrictModel):
+    """KAN-126b : un compte et son offre, pour le back-office (l'adresse n'est jamais
+    journalisée)."""
+
+    id: UUID
+    email: str
+    offer: Literal["essentiel", "pro"]
+
+
+class OfferBody(StrictModel):
+    offer: Literal["essentiel", "pro"]
+
+
+class FindBody(StrictModel):
+    email: str = Field(max_length=320)
+    """Dans le corps, jamais dans l'URL : l'adresse ne doit pas finir dans les journaux d'accès."""
+
+
+def _account_offer(user: User) -> AccountOffer:
+    offer: Literal["essentiel", "pro"] = "essentiel" if user.offer == "essentiel" else "pro"
+    return AccountOffer(id=user.id, email=user.email, offer=offer)
+
+
+@router.post("/admin/users/find")
+def admin_find_user(body: FindBody, request: Request, admin: AdminDep) -> AccountOffer:
+    """KAN-126b : le back-office cherche un compte par son adresse (POST, corps JSON) et lit son
+    offre ; 404 sans compte."""
+    del admin
+    user = service(request).user_by_email(body.email)
+    if user is None:
+        raise HTTPException(status_code=404, detail="aucun compte pour cette adresse")
+    return _account_offer(user)
+
+
+@router.patch("/admin/users/{user_id}/offer")
+def admin_set_offer(
+    user_id: UUID, body: OfferBody, request: Request, admin: AdminDep
+) -> AccountOffer:
+    """KAN-126b : l'administrateur pose l'offre d'un compte (aucun paiement) ; elle vaut dès la
+    requête suivante du compte. 404 sans compte."""
+    del admin
+    accounts = service(request)
+    if not accounts.set_offer(user_id, body.offer):
+        raise HTTPException(status_code=404, detail="compte inconnu")
+    user = accounts.user(user_id)
+    assert user is not None
+    log.info("offre d'un compte posée par l'administrateur : %s", body.offer)
+    return _account_offer(user)
 
 
 @test_router.get("/test/mail/last-code")

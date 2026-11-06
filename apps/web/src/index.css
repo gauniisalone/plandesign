@@ -10382,3 +10382,26 @@ button.icon.pro-locked::after {
 .rgal-quota {
   margin: 0;
 }
+
+/* ---- KAN-126b : l'offre d'un compte, dans le back-office ---- */
+.admin-offer-find,
+.admin-offer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.admin-offer-find label {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 220px;
+}
+.admin-offer-row button[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.admin-note.admin-alert {
+  color: var(--primary);
+}

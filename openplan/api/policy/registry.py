@@ -515,6 +515,9 @@ REGISTRY: tuple[UseCase, ...] = (
     uc("admin.health:get", "GET", "/api/admin/health", ADMIN),
     # KAN-109 L2 : indicateurs d'usage (agrégats)
     uc("admin.usage:get", "GET", "/api/admin/usage", ADMIN),
+    # KAN-126b : l'offre d'un compte (recherche par adresse dans le corps, jamais dans l'URL)
+    uc("admin.users.find:post", "POST", "/api/admin/users/find", ADMIN),
+    uc("admin.users.offer:patch", "PATCH", "/api/admin/users/{user_id}/offer", ADMIN),
     # Projets de l'utilisateur (liste filtrée par appartenance, création = propriétaire)
     uc("projects:get", "GET", "/api/projects", USER),
     uc("projects:post", "POST", "/api/projects", USER),

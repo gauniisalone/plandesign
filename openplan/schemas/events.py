@@ -24,7 +24,10 @@ EventType = Literal[
     "board.changed",
     "plan.changed",
     "reaction.added",
+    "owner.changed",
 ]
+"""KAN-145 : `owner.changed` : `actor` est l'HÉRITIER (le compte devenu propriétaire), pas celui
+qui a fait le geste ; la cloche ne prévient que lui (« Vous êtes maintenant propriétaire »)."""
 MAX_LABEL = 200
 
 
