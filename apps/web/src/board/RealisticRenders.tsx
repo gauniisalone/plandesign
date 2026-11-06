@@ -46,6 +46,7 @@ import {
   quotaText,
   readSettings,
   RENDERS_EVENT,
+  sentText,
   takes,
   writeSettings,
   type RenderSettings,
@@ -349,14 +350,22 @@ export function RealisticRenders({
    *  « Reliez un plan pour rendre ») ; null : pas de réponse, repli `hasLinkedPlan`. */
   const [serverLinked, setServerLinked] = useState<boolean | null>(null);
   const linked = serverLinked ?? hasLinkedPlan(project, levelId, frameId);
+  /** Compte des 409 « Reliez un plan » reçus : une lecture du lien demandée AVANT le dernier
+   *  ne l'écrase pas en arrivant après lui (course vue sous charge, renders-gallery:393). */
+  const refusals = useRef(0);
+  const refusedNoPlan = () => {
+    refusals.current += 1;
+    setServerLinked(false);
+  };
 
   // Relu à chaque modification du projet (un lien posé ou coupé change la réponse).
   const version = project.updated_at;
   useEffect(() => {
     if (!allowed || !frameId) return;
     let alive = true;
+    const asked = refusals.current;
     void realisticApi.planLinked(project.id, frameId).then((can) => {
-      if (alive) setServerLinked(can);
+      if (alive && refusals.current === asked) setServerLinked(can);
     });
     return () => {
       alive = false;
@@ -456,7 +465,7 @@ export function RealisticRenders({
   /** Dans la visionneuse : un 409 « Reliez un plan » grise aussi les boutons, puis l'erreur
    *  y est dite. */
   const noPlan = (e: unknown): never => {
-    if (isNoPlan(e)) setServerLinked(false);
+    if (isNoPlan(e)) refusedNoPlan();
     throw e;
   };
   const run = async (job: () => Promise<unknown>) => {
@@ -466,7 +475,7 @@ export function RealisticRenders({
       await job();
     } catch (e) {
       // 409 « Reliez un plan pour rendre » : le bouton se grise avec la phrase (D2).
-      if (isNoPlan(e)) setServerLinked(false);
+      if (isNoPlan(e)) refusedNoPlan();
       else setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       await refresh();
@@ -484,17 +493,13 @@ export function RealisticRenders({
     });
   /** KAN-137 : une demande par pièce cochée ; KAN-134 : autant de tirages que réglé, chacun
    *  compté au quota du jour. */
-  const askRooms = () =>
-    run(() =>
-      sendRooms(
-        project.id,
-        levelId,
-        ticked.map((r) => r.camera.id),
-        settings.draws,
-      ),
-    );
-  const askRoom = (cameraId: string) =>
-    run(() => sendRooms(project.id, levelId, [cameraId], settings.draws));
+  const rendRooms = async (cameraIds: string[]) => {
+    const sent = await sendRooms(project.id, levelId, cameraIds, settings.draws);
+    // Le quota arrête l'envoi en route : ce qui est parti, et pourquoi pas plus.
+    if (sent.full) setMessage(sentText(sent));
+  };
+  const askRooms = () => run(() => rendRooms(ticked.map((r) => r.camera.id)));
+  const askRoom = (cameraId: string) => run(() => rendRooms([cameraId]));
   /** KAN-137 : le plan change (vues posées, case, vue ajoutée) ; l'erreur se dit dans le node. */
   const edit = async (job: () => Promise<{ project: Project }>) => {
     setMessage(null);

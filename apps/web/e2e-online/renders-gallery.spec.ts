@@ -15,7 +15,7 @@ import { claimOwn } from "./worker-queue";
  *  avant/après contre la photo réelle ou la vue 3D), « Rendre depuis la photo » (D5),
  *  couverture du projet dans « Mes projets », réactions, variante, cloche, et D2 (pas de rendu
  *  sans plan). Le poste est SIMULÉ comme dans realistic.spec.ts (ses appels HTTP avec son
- *  jeton). Chaque personne et le poste ont leur propre X-Forwarded-For (198.51.100.231 à 233). */
+ *  jeton). Chaque personne et le poste ont leur propre X-Forwarded-For (198.51.100.231 à 234). */
 
 const IMAGE = path.resolve("../../tests/fixtures/rect_room/image.png");
 const PNG = fs.readFileSync(IMAGE);
@@ -455,4 +455,54 @@ test("pas de rendu sans plan relié : bouton inactif et phrase", async ({
     .click();
   await expect(frame.getByText("Reliez un plan pour rendre")).toBeVisible();
   await expect(menu).toBeDisabled();
+});
+
+test("une lecture du lien lente, arrivée après le 409, ne rallume pas « Rendre »", async ({
+  page,
+}) => {
+  // La course vue sous charge (KAN-134, lot rendus) : la lecture GET …/board/inputs part à
+  // l'ouverture, le 409 « Reliez un plan » arrive, puis la lecture (« relié ») répond.
+  test.setTimeout(90_000);
+  await signIn(page, RENDER_ACCOUNT.email, "198.51.100.234");
+  const linked = await project(page);
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let answered = 0;
+  await page.route(/\/api\/projects\/[0-9a-f-]+\/board\/inputs\//, async (route) => {
+    const real = await route.fetch();
+    await held;
+    await route.fulfill({ response: real });
+    answered += 1;
+  });
+  await page.route(
+    /\/api\/projects\/[0-9a-f-]+\/levels\/[0-9a-f-]+\/realistic$/,
+    (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Reliez un plan pour rendre" }),
+          })
+        : route.continue(),
+  );
+  await gotoApp(page, `/#/projects/${linked.id}/board`);
+  const frame = page
+    .getByRole("region", { name: "Espace de travail" })
+    .getByRole("region", { name: "Rendus réalistes" });
+  // La lecture est retenue : le repli (plan relié dans le projet) laisse « Rendre » actif.
+  const menu = frame.getByRole("button", { name: "Rendre ▾" });
+  await expect(menu).toBeEnabled({ timeout: 30_000 });
+  await menu.click();
+  await frame
+    .getByRole("menuitem", { name: /Rendre la vue « Vue fenêtre »/ })
+    .click();
+  await expect(frame.getByText("Reliez un plan pour rendre")).toBeVisible();
+  await expect(menu).toBeDisabled();
+  // La lecture partie avant le 409 répond maintenant « relié » : le refus garde la main.
+  release();
+  await expect.poll(() => answered, { timeout: 15_000 }).toBeGreaterThan(0);
+  // Laisse la page appliquer la réponse (ce qui rallumait le bouton), puis relit.
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+  await expect(menu).toBeDisabled();
+  await expect(frame.getByText("Reliez un plan pour rendre")).toBeVisible();
 });
