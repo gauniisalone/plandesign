@@ -151,5 +151,8 @@ test("KAN-132 : exporter mes données ; le lien de l'e-mail sert une fois", asyn
   expect((await first.body()).subarray(0, 2).toString()).toBe("PK");
   const again = await page.request.get(path);
   expect(again.status()).toBe(404);
-  expect(await again.text()).toContain("Ce lien n'est plus valable");
+  // La page sans script échappe l'apostrophe (&#x27;) : on lit son titre et la fin de la phrase.
+  const page404 = await again.text();
+  expect(page404).toContain("<h1>Lien expiré</h1>");
+  expect(page404).toContain("est plus valable");
 });
