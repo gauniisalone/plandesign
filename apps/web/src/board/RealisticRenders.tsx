@@ -44,6 +44,7 @@ import { RenderSettingsPanel } from "./RenderSettingsPanel";
 import {
   fits,
   quotaText,
+  todayText,
   readSettings,
   RENDERS_EVENT,
   sentText,
@@ -191,10 +192,15 @@ export function RenderFromPhotoButton({
       <button
         type="button"
         disabled={!linked}
-        title={linked ? "Le point de vue exact de cette photo" : NO_PLAN_TEXT}
+        title={
+          linked
+            ? "Le point de vue exact de cette photo, pour comparer avec elle : il peut ne montrer qu'une partie de la pièce"
+            : NO_PLAN_TEXT
+        }
         onClick={() => void ask()}
       >
-        Rendre depuis cette photo
+        {/* KAN-160 : une option avant/après ; le rendu par défaut est la vue calculée. */}
+        Avant/après : rendre depuis cette photo
       </button>
       {said && <span role="status">{said}</span>}
     </span>
@@ -500,6 +506,27 @@ export function RealisticRenders({
   };
   const askRooms = () => run(() => rendRooms(ticked.map((r) => r.camera.id)));
   const askRoom = (cameraId: string) => run(() => rendRooms([cameraId]));
+  /** KAN-160 : « Rendre les pièces » sans vue de pièce encore : elles sont calculées (un pas
+   *  annulable, focale des réglages), puis une demande part par pièce cochée et par tirage. */
+  const computeAndRender = () =>
+    run(async () => {
+      setProposing(true);
+      let done: { project: Project };
+      try {
+        done = await renderApi.roomViews(project.id, levelId, settings.focal);
+      } finally {
+        setProposing(false);
+      }
+      onProjectChanged?.(done.project);
+      const ids = roomRows(done.project.levels[levelId])
+        .filter((r) => r.on)
+        .map((r) => r.camera.id);
+      if (ids.length === 0) {
+        setMessage("Aucune pièce cochée : cochez une pièce dans la liste.");
+        return;
+      }
+      await rendRooms(ids);
+    });
   /** KAN-137 : le plan change (vues posées, case, vue ajoutée) ; l'erreur se dit dans le node. */
   const edit = async (job: () => Promise<{ project: Project }>) => {
     setMessage(null);
@@ -592,8 +619,12 @@ export function RealisticRenders({
   // KAN-97 : ce qui a guidé le dernier rendu fait (mots lus par le poste, en français).
   const guided = latest ? guidedLine(latest) : null;
   const canLaunch = !readOnly && Boolean(allowed);
+  /** KAN-160 : le plan a des pièces mais pas encore de vue de pièce : « Rendre » les calcule
+   *  d'abord (le chemin par défaut), au lieu de n'offrir que le point de vue d'une photo. */
+  const needViews =
+    canLaunch && linked && Boolean(onProjectChanged) && hasRooms(level) && rooms.length === 0;
   const canRender =
-    canLaunch && linked && (views.length > 0 || photos.length > 0);
+    canLaunch && linked && (views.length > 0 || photos.length > 0 || needViews);
   /** KAN-134 : ce que prend « Rendre toutes les pièces », et le quota du jour. */
   const { quota, used_today: used } = listing.status;
   const roomsTake = takes(ticked.length, settings.draws);
@@ -722,7 +753,21 @@ export function RealisticRenders({
                 {menu && (
                   <div className="rgal-menu" role="menu" aria-label="Rendre">
                     {/* KAN-137 : les pièces d'abord (le choix par défaut), puis les autres
-                        vues, la photo et la variante, comme avant. */}
+                        vues, la photo et la variante, comme avant. KAN-160 : sans vue de
+                        pièce encore, la 1re entrée les calcule puis les rend. */}
+                    {needViews && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void computeAndRender()}
+                      >
+                        <span>Rendre les pièces</span>
+                        <small>
+                          une vue calculée par pièce, puis une demande chacune
+                          {todayText(used, quota) ? ` · ${todayText(used, quota)}` : ""}
+                        </small>
+                      </button>
+                    )}
                     {ticked.length > 0 && (
                       <button
                         type="button"
@@ -744,7 +789,7 @@ export function RealisticRenders({
                         <small>sa vue calculée · {eta}</small>
                       </button>
                     ))}
-                    {rooms.length > 0 && otherViews.length + photos.length > 0 && (
+                    {(rooms.length > 0 || needViews) && otherViews.length > 0 && (
                       <hr className="rgal-menu-sep" />
                     )}
                     {otherViews.map((v) => (
@@ -768,6 +813,12 @@ export function RealisticRenders({
                         <small>une demande par vue</small>
                       </button>
                     )}
+                    {/* KAN-160 : le point de vue d'une photo est une option, pour comparer
+                        avec la photo réelle ; il n'est pas noté et peut ne montrer qu'un mur. */}
+                    {photos.length > 0 &&
+                      (rooms.length > 0 || needViews || otherViews.length > 0) && (
+                        <hr className="rgal-menu-sep" />
+                      )}
                     {photos.map((id) => (
                       <button
                         key={id}
@@ -775,10 +826,10 @@ export function RealisticRenders({
                         role="menuitem"
                         onClick={() => void askPhoto(id)}
                       >
-                        <span>Depuis la photo {photoNumber(project, id)}</span>
-                        <small>
-                          le point de vue de la photo, pour l'avant/après
-                        </small>
+                        <span>
+                          Avant/après : point de vue de la photo {photoNumber(project, id)}
+                        </span>
+                        <small>pour comparer avec la photo réelle</small>
                       </button>
                     ))}
                     {latestMine && (

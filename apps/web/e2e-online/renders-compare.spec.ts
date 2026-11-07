@@ -258,7 +258,7 @@ test("avant/après, favoris, côte à côte synchronisé, clavier", async ({
   // Trois rendus : la vue libre, la photo 1 (D5), la vue libre de nouveau ; chacun ses mots.
   const asks: [RegExp, string[]][] = [
     [/Rendre la vue « Vue fenêtre »/, ["scandinavian", "bright"]],
-    [/Depuis la photo 1/, ["industrial", "black accents"]],
+    [/Avant\/après : point de vue de la photo 1/, ["industrial", "black accents"]],
     [/Rendre la vue « Vue fenêtre »/, ["bohemian"]],
   ];
   for (const [n, [item, words]] of asks.entries()) {

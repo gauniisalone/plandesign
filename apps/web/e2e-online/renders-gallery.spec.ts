@@ -231,9 +231,12 @@ test("galerie, visionneuse avant/après, depuis la photo, couverture, réactions
     timeout: 15_000,
   });
 
-  // 2. Depuis la photo (D5) : la caméra estimée de la photo, au format de la photo.
+  // 2. Depuis la photo (D5) : la caméra estimée de la photo, au format de la photo. KAN-160 :
+  // une option « Avant/après », après les vues calculées.
   await menuButton.click();
-  await frame.getByRole("menuitem", { name: /Depuis la photo 1/ }).click();
+  await frame
+    .getByRole("menuitem", { name: /Avant\/après : point de vue de la photo 1/ })
+    .click();
   await expect(frame.getByRole("status").first()).toBeVisible();
   const fromPhoto = await deliver(worker, page, id);
   expect(fromPhoto.camera.width_px / fromPhoto.camera.height_px).toBeCloseTo(

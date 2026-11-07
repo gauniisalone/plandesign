@@ -214,3 +214,53 @@ test("vues par pièce : proposer, puis rendre toutes les pièces (une demande ch
     .toBe(4);
   expect(failures).toEqual([]);
 });
+
+test("KAN-160 : « Rendre ▾ » sans vue encore calcule une vue par pièce, puis les rend", async ({
+  page,
+}) => {
+  // Le chemin pris par augus : le node Rendus d'un plan sans point de vue. Avant, « Rendre ▾ »
+  // n'offrait que le point de vue d'une photo ; maintenant, les pièces d'abord.
+  test.setTimeout(120_000);
+  const failures: string[] = [];
+  page.on("response", (r) => {
+    const p = new URL(r.url()).pathname;
+    if (p.startsWith("/api/") && r.status() >= 500)
+      failures.push(`${r.status()} ${p}`);
+  });
+  await signIn(page, RENDER_ACCOUNT_KAN137.email, "198.51.100.237");
+  const { id, level } = await twoRooms(page);
+  await gotoApp(page, `/#/projects/${id}/board`);
+  const frame = page
+    .getByRole("region", { name: "Espace de travail" })
+    .getByRole("region", { name: "Rendus réalistes" });
+  const menu = frame.getByRole("button", { name: "Rendre ▾" });
+  await expect(menu).toBeEnabled({ timeout: 30_000 });
+  await menu.click();
+  const items = frame.getByRole("menu", { name: "Rendre" }).getByRole("menuitem");
+  await expect(items.first()).toContainText("Rendre les pièces");
+  await items.first().click();
+  // Les vues sont calculées (une par pièce, dans le plan), puis une demande part pour chacune.
+  const rooms = frame.getByRole("region", { name: "Une vue par pièce" });
+  await expect(rooms.getByRole("checkbox", { checked: true })).toHaveCount(2, {
+    timeout: 30_000,
+  });
+  const stored = (await (await page.request.get(`/api/projects/${id}`)).json()) as {
+    levels: Record<
+      string,
+      { elements: Record<string, { id: string; type: string; metadata?: Record<string, unknown> }> }
+    >;
+  };
+  const cams = Object.values(stored.levels[level]!.elements).filter(
+    (e) => e.type === "camera" && typeof e.metadata?.room_view === "string",
+  );
+  expect(cams).toHaveLength(2);
+  await expect
+    .poll(async () => {
+      const listed = (await (
+        await page.request.get(`/api/projects/${id}/realistic`)
+      ).json()) as { requests: { camera_id: string }[] };
+      return listed.requests.map((r) => r.camera_id).sort();
+    })
+    .toEqual(cams.map((c) => c.id).sort());
+  expect(failures).toEqual([]);
+});
