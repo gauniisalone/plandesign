@@ -107,7 +107,7 @@ class RenderQueue:
 
     def used_today(self, user_id: UUID) -> int:
         """Les demandes des dernières 24 h qui comptent au quota : toutes, sauf celles en échec
-        par la faute du poste (KAN-159, `POSTE_FAULTS`)."""
+        par la faute du poste (KAN-159, `POSTE_FAULTS`) et celles expirées sans être prises."""
         since = self.clock() - QUOTA_WINDOW
         with self.session() as db:
             count = db.scalar(
@@ -490,11 +490,15 @@ class RenderQueue:
 
 
 def _counted() -> ColumnElement[bool]:
-    """KAN-159 : une demande compte au quota, sauf en échec par la faute du poste."""
-    return or_(
-        RenderRequest.state != "failed",
-        RenderRequest.error.is_(None),
-        RenderRequest.error.not_in(sorted(POSTE_FAULTS)),
+    """KAN-159 : une demande compte au quota, sauf en échec par la faute du poste, ou expirée
+    (personne ne l'a prise à temps : poste éteint ou occupé ; décision du PO, 7 nov.)."""
+    return and_(
+        RenderRequest.state != "expired",
+        or_(
+            RenderRequest.state != "failed",
+            RenderRequest.error.is_(None),
+            RenderRequest.error.not_in(sorted(POSTE_FAULTS)),
+        ),
     )
 
 

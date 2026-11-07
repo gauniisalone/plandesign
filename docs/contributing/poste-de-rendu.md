@@ -59,7 +59,8 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
   minimum 1 500), `duree_max` (secondes, plafond 900). La phrase montrée à la personne est
   écrite par le serveur. Vers un serveur d'avant, le poste envoie `vram` comme avant.
 - Un échec dû au poste (garde-fou, moteur absent, délai dépassé, connexion perdue) ne compte
-  pas dans le quota du jour de la personne.
+  pas dans le quota du jour de la personne, ni une demande expirée (personne ne l'a prise à
+  temps : poste éteint ou occupé).
 - Si le serveur refuse le jeton (401 ou 403), le poste attend 1 min, puis 5 min à chaque essai
   suivant.
 - Pour un 429, une panne du serveur ou du réseau, il attend 15 s, puis 30 s, puis 1 min, et

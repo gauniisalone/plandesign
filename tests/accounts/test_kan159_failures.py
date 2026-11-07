@@ -5,6 +5,7 @@ lu, et un échec dû au poste qui ne coûte plus de quota."""
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -119,3 +120,41 @@ def test_a_failure_of_the_worker_costs_no_quota(tmp_path: Path, migrated_url: st
     assert third.status_code == 429
     assert queue.used_today(UUID(str(world.augus_id))) == 2
     world.close()
+
+
+def test_an_expired_request_costs_no_quota(tmp_path: Path, migrated_url: str) -> None:
+    """Décision du PO (7 nov.) : une demande que personne n'a prise à temps (poste éteint ou
+    occupé) n'est pas la faute de la personne ; le délai avant réouverture l'ignore aussi."""
+    world = World(tmp_path, migrated_url, daily_quota=1, expire_h=1)
+    queue: RenderQueue = world.client.app.state.render_queue  # type: ignore[attr-defined]
+    start = datetime.now(UTC)
+    world.ask()
+    assert _used(world) == 1
+    # Deux heures plus tard, le poste ne l'a jamais prise : elle expire.
+    queue.clock = lambda: start + timedelta(hours=2)
+    queue.sweep()
+    rows = world.client.get(f"/api/projects/{world.project_id}/realistic").json()["requests"]
+    assert [r["state"] for r in rows] == ["expired"]
+    assert _used(world) == 0
+    # Le quota de 1 se rouvre aussitôt : une nouvelle demande passe…
+    world.ask()
+    assert _used(world) == 1
+    # … et le refus suivant compte 24 h depuis CELLE-CI, pas depuis l'expirée (22 h).
+    refused = world.client.post(
+        f"/api/projects/{world.project_id}/levels/{world.level_id}/realistic",
+        json={"camera_id": str(world.camera_id), "draw": 1},
+    )
+    assert refused.status_code == 429
+    assert int(refused.headers["Retry-After"]) > 23 * 3600
+    world.close()
+
+
+def test_the_expired_text_says_it_costs_no_quota() -> None:
+    """Le texte d'une demande expirée est écrit par le front (RealisticRenders.tsx)."""
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "apps/web/src/board/RealisticRenders.tsx").read_text(encoding="utf-8")
+    expected = (
+        "Expiré : non calculé à temps, relancez « Rendre ». Ce rendu ne compte pas dans votre "
+        "quota du jour."
+    )
+    assert expected in source

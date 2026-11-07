@@ -143,7 +143,7 @@ function RetryTile({
 
 function problemText(request: RealisticRequest): string {
   return request.state === "expired"
-    ? "Expiré : non calculé à temps, relancez « Rendre »"
+    ? "Expiré : non calculé à temps, relancez « Rendre ». Ce rendu ne compte pas dans votre quota du jour."
     : (request.error ?? "Le rendu a échoué");
 }
 
