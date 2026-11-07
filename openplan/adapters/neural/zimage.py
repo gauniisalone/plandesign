@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -50,6 +51,7 @@ from openplan.adapters.protocols import (
     InspirationRequest,
 )
 from openplan.schemas.common import DECODED_IMAGE_FORMATS
+from openplan.schemas.render_queue import GuardReason
 
 BASE_ID = "z_image_turbo@1.0"
 BASE_SENTINEL = "vae/diffusion_pytorch_model.safetensors"
@@ -85,8 +87,24 @@ Engine = Literal["zimage", "sd15"]
 ENGINE_ENV = "OPENPLAN_FINISH_ENGINE"
 
 
+@dataclass(frozen=True)
+class Stop:
+    """KAN-159 : pourquoi le garde-fou arrête (ou ne lance pas) le calcul. `code` part au
+    serveur avec `measured` et `threshold` (des entiers) ; `text` reste sur le poste."""
+
+    code: GuardReason
+    text: str
+    measured: int | None = None
+    threshold: int | None = None
+
+
 class ZImageStoppedError(AdapterUnavailableError):
-    """Le garde-fou a arrêté la génération (VRAM, RAM, durée) : rien n'a gelé."""
+    """Le garde-fou a arrêté la génération (VRAM, RAM, durée) : rien n'a gelé. KAN-159 : `stop`
+    dit la cause exacte ; sans elle (ancien appelant), « vram » comme avant."""
+
+    def __init__(self, msg: str = "", stop: Stop | None = None) -> None:
+        super().__init__(msg)
+        self.stop = stop
 
 
 def installed(root: Path = DEFAULT_WEIGHTS_ROOT) -> bool:
@@ -198,8 +216,8 @@ def watch(
     unreadable_max: int = UNREADABLE_MAX,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
-) -> tuple[str | None, int]:
-    """Surveille la génération jusqu'à sa fin : (raison de l'arrêt, ou None si elle a fini
+) -> tuple[Stop | None, int]:
+    """Surveille la génération jusqu'à sa fin : (cause de l'arrêt, ou None si elle a fini
     seule ; pic de VRAM lu). Au premier dépassement, `kill` est appelé aussitôt. KAN-146 :
     nvidia-smi illisible n'arrête qu'après `unreadable_max` lectures ratées d'affilée."""
     start = clock()
@@ -209,25 +227,62 @@ def watch(
         used = read_vram()
         free = read_ram()
         missed = missed + 1 if used is None else 0
-        reason: str | None = None
+        elapsed = clock() - start
+        stop: Stop | None = None
         if missed >= unreadable_max:
-            reason = (
+            stop = Stop(
+                "nvidia_smi_illisible",
                 f"nvidia-smi est devenu illisible ({missed} lectures ratées de suite), "
-                "la mémoire de la carte n'est plus surveillée"
+                "la mémoire de la carte n'est plus surveillée",
+                missed,
+                unreadable_max,
             )
         elif used is not None and used > limit_mib:
-            reason = f"la carte graphique a dépassé {limit_mib} Mio ({used} Mio)"
+            stop = Stop(
+                "vram_depassee",
+                f"la carte graphique a dépassé {limit_mib} Mio ({used} Mio)",
+                used,
+                limit_mib,
+            )
         elif free is not None and free < ram_min_mib:
-            reason = f"il ne restait que {free} Mio de mémoire vive (minimum {ram_min_mib})"
-        elif clock() - start > timeout_s:
-            reason = f"plus de {round(timeout_s / 60)} min de calcul"
+            stop = Stop(
+                "ram_basse",
+                f"il ne restait que {free} Mio de mémoire vive (minimum {ram_min_mib})",
+                free,
+                ram_min_mib,
+            )
+        elif elapsed > timeout_s:
+            stop = Stop(
+                "duree_max",
+                f"plus de {round(timeout_s / 60)} min de calcul",
+                round(elapsed),
+                round(timeout_s),
+            )
         if used is not None:
             peak = max(peak, used)
-        if reason is not None:
+        if stop is not None:
             kill()
-            return reason, peak
+            return stop, peak
         sleep(POLL_S)
     return None, peak
+
+
+def start_check(used: int | None, busy_mib: int = BUSY_GPU_MIB) -> Stop | None:
+    """KAN-159 : la carte avant le départ ; None si le calcul peut partir."""
+    if used is None:
+        return Stop(
+            "nvidia_smi_illisible_depart",
+            "rendu Z-Image non lancé : nvidia-smi illisible, "
+            "la mémoire de la carte ne serait pas surveillée",
+        )
+    if used > busy_mib:
+        return Stop(
+            "carte_occupee",
+            f"rendu Z-Image non lancé : la carte graphique sert déjà ({used} Mio occupés)",
+            used,
+            busy_mib,
+        )
+    return None
 
 
 def edge_control(edges: np.ndarray, size: tuple[int, int]) -> Any:
@@ -304,16 +359,9 @@ class ZImageFinisher:
             msg = "Z-Image se guide par les arêtes du rendu : aucune carte d'arêtes fournie"
             raise AdapterUnavailableError(msg)
         self._release_fallback()
-        used = gpu_used_mib()
-        if used is None:
-            msg = (
-                "rendu Z-Image non lancé : nvidia-smi illisible, "
-                "la mémoire de la carte ne serait pas surveillée"
-            )
-            raise ZImageStoppedError(msg)
-        if used > BUSY_GPU_MIB:
-            msg = f"rendu Z-Image non lancé : la carte graphique sert déjà ({used} Mio occupés)"
-            raise ZImageStoppedError(msg)
+        refused = start_check(gpu_used_mib())
+        if refused is not None:
+            raise ZImageStoppedError(refused.text, refused)
         if self._prefix is None:
             self._prefix = _no_network_prefix()
         from PIL import Image
@@ -363,10 +411,12 @@ class ZImageFinisher:
                         os.killpg(proc.pid, signal.SIGKILL)
                     proc.wait(timeout=30)
 
-                reason, peak = watch(proc, kill=kill)
-            if reason is not None:
-                msg = f"rendu Z-Image arrêté par le garde-fou : {reason}. Le rendu Blender reste."
-                raise ZImageStoppedError(msg)
+                stop, peak = watch(proc, kill=kill)
+            if stop is not None:
+                msg = (
+                    f"rendu Z-Image arrêté par le garde-fou : {stop.text}. Le rendu Blender reste."
+                )
+                raise ZImageStoppedError(msg, stop)
             if proc.returncode != 0 or not (work / "out.png").is_file():
                 tail = (work / "worker.log").read_text(encoding="utf-8", errors="replace")
                 last = " | ".join(tail.strip().splitlines()[-2:])[-300:]

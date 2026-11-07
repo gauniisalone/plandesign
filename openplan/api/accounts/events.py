@@ -73,7 +73,16 @@ def emit_from(
         events.emit(name, user_id, project_id, value)
 
 
-WORKER_CAUSES = {"vram": "vram", "invalid_input": "refused", "lost": "lost"}
+WORKER_CAUSES = {
+    "vram": "vram",
+    "invalid_input": "refused",
+    "lost": "lost",
+    # KAN-159 : les causes précises du garde-fou ; la mémoire (carte ou vive) reste « vram »
+    # (« mémoire graphique » au back-office), nvidia-smi illisible et la durée vont à `other`.
+    "vram_depassee": "vram",
+    "carte_occupee": "vram",
+    "ram_basse": "vram",
+}
 """Les codes d'échec du poste ramenés aux causes du back-office ; le reste : `other`."""
 
 

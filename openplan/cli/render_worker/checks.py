@@ -4,7 +4,8 @@
   /tmp/pd-lourd.lock, qui arrêtait le poste pendant le moindre pytest) est pris : le poste dit qui
   le tient et depuis quand (/proc/locks), pour qu'une attente ne passe pas pour une panne ;
 - le GPU sert déjà (nvidia-smi au-dessus de 0 Mio), ou nvidia-smi est illisible (moteur réel) ;
-- des tests tournent (pgrep trouve playwright ou pytest).
+- des tests tournent : un verrou de `pd-lock` (e2e, pytest) est pris, ou un vrai lanceur de
+  tests tourne (KAN-159 : plus un simple `pgrep -f`, qui comptait un `grep pytest`).
 Les commandes lancées ici sont fixes : rien ne vient du serveur.
 """
 
@@ -152,15 +153,77 @@ def gpu_used_mib(run: Runner = run_command) -> int | None:
     return max(int(v) for v in values)
 
 
-def heavy_processes(run: Runner = run_command) -> bool:
-    """Un playwright ou un pytest tourne (pgrep ne se compte pas lui-même)."""
-    code, out = run(["pgrep", "-f", "playwright|pytest"])
+_PYTEST = frozenset({"pytest", "py.test"})
+_LAUNCH_WRAPPERS = frozenset({"nice", "timeout", "env", "uv", "run", "npx", "npm", "exec"})
+"""Ce qui peut précéder un lanceur de tests sur sa ligne de commande. Ni `bash` ni `sh` : un
+`bash -c "…pytest…"` lance lui-même le vrai pytest, compté à part."""
+
+
+def launches_tests(argv: Sequence[str]) -> str | None:
+    """KAN-159 : « pytest » ou « playwright » si cette ligne de commande LANCE des tests
+    (`pytest …`, `python -m pytest …`, `python …/bin/pytest …`, `playwright test …`, `node
+    …/playwright/cli.js test …`, derrière nice, timeout, uv run, npx) ; None sinon : un
+    `grep pytest`, un éditeur ou un `tail` d'un journal de pytest ne comptent plus."""
+    words = list(argv)
+    i = 0
+    while i < len(words):
+        word = words[i]
+        name = Path(word).name
+        if name.startswith("python") or name == "node" or name in _LAUNCH_WRAPPERS:
+            i += 1
+        elif word == "-m" and i + 1 < len(words):  # python -m pytest
+            return "pytest" if words[i + 1] in _PYTEST else None
+        elif word.startswith("-") or word.isdigit():  # options, durée de timeout, nice -n 10
+            i += 1
+        elif name in _PYTEST:
+            return "pytest"
+        elif name == "playwright" or (name == "cli.js" and "playwright" in word):
+            return "playwright" if words[i + 1 : i + 2] == ["test"] else None
+        else:
+            return None
+    return None
+
+
+TEST_LOCKS: tuple[Path, ...] = (
+    Path("/tmp/pd-e2e.lock"),  # NOSONAR - même faux positif que HEAVY_LOCK (lecture, flock)
+    Path("/tmp/pd-pytest-1.lock"),  # NOSONAR
+    Path("/tmp/pd-pytest-2.lock"),  # NOSONAR
+)
+"""Les verrous de `pd-lock` (Infra, 6 nov.) que prend tout lot de tests : e2e et les deux
+places de pytest."""
+
+
+def tests_running(locks: Sequence[Path] = TEST_LOCKS, proc: Path = Path("/proc")) -> str | None:
+    """KAN-159 : pourquoi le poste croit que des tests tournent, ou None. D'abord les verrous de
+    `pd-lock` (flock non bloquant), puis les vrais lanceurs de tests (`launches_tests`, lu dans
+    /proc/<pid>/cmdline, sans commande lancée) ; le poste ne se compte pas lui-même."""
+    for lock in locks:
+        if lock_taken(lock):
+            return f"verrou {lock.name} pris"
     mine = str(os.getpid())
-    return code == 0 and any(pid.strip() and pid.strip() != mine for pid in out.splitlines())
+    try:
+        pids = [p for p in proc.iterdir() if p.name.isdigit() and p.name != mine]
+    except OSError:
+        return None
+    for pid in pids:
+        try:
+            raw = (pid / "cmdline").read_bytes()
+        except OSError:
+            continue  # processus fini entre-temps, ou d'un autre compte
+        argv = [a.decode(errors="ignore") for a in raw.split(b"\0") if a]
+        what = launches_tests(argv)
+        if what is not None:
+            return f"{what}, processus {pid.name}"
+    return None
 
 
 def skip_reason(
-    *, needs_gpu: bool, run: Runner = run_command, lock: Path = HEAVY_LOCK
+    *,
+    needs_gpu: bool,
+    run: Runner = run_command,
+    lock: Path = HEAVY_LOCK,
+    test_locks: Sequence[Path] = TEST_LOCKS,
+    proc: Path = Path("/proc"),
 ) -> str | None:
     """Pourquoi passer son tour, ou None si le poste peut rendre."""
     if lock_taken(lock):
@@ -171,6 +234,7 @@ def skip_reason(
             return "nvidia-smi illisible"
         if used > 0:
             return f"GPU déjà occupé ({used} Mio)"
-    if heavy_processes(run):
-        return "tests en cours (playwright ou pytest)"
+    running = tests_running(test_locks, proc)
+    if running is not None:
+        return f"tests en cours ({running})"
     return None

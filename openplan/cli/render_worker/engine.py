@@ -18,11 +18,18 @@ import time
 import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 from openplan.adapters.protocols import RoomElementDetector
 from openplan.schemas.bake import RenderCamera
 from openplan.schemas.fidelity import FidelityVerdict
-from openplan.schemas.render_queue import MAX_IMAGE_SIDE, FailureReason
+from openplan.schemas.render_queue import (
+    GUARD_REASONS,
+    LEGACY_GUARD_REASON,
+    MAX_IMAGE_SIDE,
+    MAX_MEASURE,
+    FailureReason,
+)
 
 ZIMAGE_MODULE = "openplan.pipeline.zimage_render"
 FAKE_LONG_SIDE = 1024
@@ -44,9 +51,38 @@ class RenderOutcome:
 
 
 class EngineFailedError(Exception):
-    def __init__(self, reason: FailureReason) -> None:
+    """Un code d'échec ; KAN-159 : pour un arrêt du garde-fou, la valeur relevée et le seuil."""
+
+    def __init__(
+        self,
+        reason: FailureReason,
+        measured: int | None = None,
+        threshold: int | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason: FailureReason = reason
+        self.measured = measured
+        self.threshold = threshold
+
+
+def bounded_count(value: object) -> int | None:
+    """Un entier positif plafonné (valeur relevée, seuil), sinon None : rien d'autre ne sort."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 0 <= value <= MAX_MEASURE else None
+
+
+def guard_failure(exc: BaseException) -> EngineFailedError:
+    """KAN-159 : la cause exacte d'un arrêt du garde-fou (`exc.stop`), « vram » sans elle."""
+    stop = getattr(exc, "stop", None)
+    code = getattr(stop, "code", None)
+    if code not in GUARD_REASONS:
+        return EngineFailedError(LEGACY_GUARD_REASON)
+    return EngineFailedError(
+        cast("FailureReason", code),
+        bounded_count(getattr(stop, "measured", None)),
+        bounded_count(getattr(stop, "threshold", None)),
+    )
 
 
 def png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
@@ -116,7 +152,7 @@ def zimage_render(
         try:
             return module.render_scene(bake, camera, out_png, project_path=project, **args)
         except vram as exc:  # avant « unavailable » : ce pourrait en être une sous-classe
-            raise EngineFailedError("vram") from exc
+            raise guard_failure(exc) from exc  # KAN-159 : une cause par arrêt
         except unavailable as exc:
             raise EngineFailedError("unavailable") from exc
         except TimeoutError as exc:

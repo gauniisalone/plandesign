@@ -25,6 +25,7 @@ from openplan.schemas.common import DECODED_IMAGE_FORMATS
 from openplan.schemas.render_queue import (
     BEAT_EVERY_S,
     CAPABILITIES_HEADER,
+    FAILURE_DETAIL,
     HEARTBEAT,
     JSON_FILES,
     MAX_STYLE_IMAGE_BYTES,
@@ -41,7 +42,7 @@ from openplan.schemas.scene import Project
 FileName = Literal["project", "bake", "camera"]
 SCHEMAS: dict[str, type[BaseModel]] = {"project": Project, "bake": Bake, "camera": RenderCamera}
 USER_AGENT = "plandesign-worker/1"
-CAPABILITIES = (HEARTBEAT, STYLE, STYLE_IGNORE)
+CAPABILITIES = (HEARTBEAT, STYLE, STYLE_IGNORE, FAILURE_DETAIL)
 """Ce que ce poste sait faire, annoncé dans chaque prise (jetons joints par « + », 32
 caractères au plus dans `WorkerClaim.version`)."""
 STYLE_SUFFIX = {"image/jpeg": ".jpg", "image/png": ".png"}
@@ -222,9 +223,11 @@ class WorkerClient:
         )
 
     def fail(self, job: WorkerJob, failure: WorkerFailure) -> None:
+        """KAN-159 : sans valeur ni seuil, le corps reste `{"reason": …}`, celui qu'un serveur
+        d'avant lit (champs inconnus refusés)."""
         self._send(
             "POST",
             f"/api/worker/jobs/{job.request_id}/fail",
             headers={"X-Render-Lease": str(job.lease), "Content-Type": "application/json"},
-            content=json.dumps(failure.model_dump()).encode(),
+            content=json.dumps(failure.model_dump(exclude_none=True)).encode(),
         )

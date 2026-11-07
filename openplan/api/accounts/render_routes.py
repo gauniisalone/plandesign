@@ -68,6 +68,7 @@ from openplan.schemas.events import ProjectEvent
 from openplan.schemas.reactions import EMOJI, Reaction, ReactionKey
 from openplan.schemas.render_queue import (
     CAPABILITIES_HEADER,
+    FAILURE_DETAIL,
     HEARTBEAT,
     JSON_FILES,
     MAX_DRAW,
@@ -103,7 +104,7 @@ NO_PHOTO_VIEW = "Cette photo n'a pas encore de point de vue estimé : analysez-l
 COVER_META = Path(IMAGES_DIR) / "cover.json"
 """KAN-91 : quel rendu est la couverture (à côté de sa réduction, `CHOSEN_COVER`)."""
 RENDER_LABEL = "Rendu réaliste"
-SERVED_CAPABILITIES = frozenset({HEARTBEAT, STYLE, STYLE_IGNORE})
+SERVED_CAPABILITIES = frozenset({HEARTBEAT, STYLE, STYLE_IGNORE, FAILURE_DETAIL})
 """Les capacités du poste que ce serveur sait servir (renvoyées dans `CAPABILITIES_HEADER`)."""
 
 
@@ -801,7 +802,8 @@ def worker_fail(
     try:
         if lease is None:
             raise LeaseError
-        queue.fail(request_id, lease, body.reason)
+        # KAN-159 : valeur relevée et seuil (des entiers bornés), au journal des rendus.
+        queue.fail(request_id, lease, body.reason, body.measured, body.threshold)
     except LeaseError as exc:
         raise HTTPException(status_code=404, detail=LEASE_REFUSED) from exc
     queue.beat("idle")

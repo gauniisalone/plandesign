@@ -51,6 +51,9 @@ from openplan.cli.render_worker.sandbox import (
 )
 from openplan.schemas.fidelity import FidelityVerdict
 from openplan.schemas.render_queue import (
+    FAILURE_DETAIL,
+    GUARD_REASONS,
+    LEGACY_GUARD_REASON,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_SIDE,
     MAX_STYLE_WORDS,
@@ -153,6 +156,9 @@ class Worker:
     sandbox: Sandbox = field(default_factory=Sandbox)
     skip: Callable[[], str | None] | None = None
     say: Callable[[str], None] = print
+    note: Callable[[str], None] = lambda _text: None
+    """KAN-159 : le journal du poste seul (fichier), pour ce que le terminal tait : chaque tour
+    passé, même dans la minute où la raison a déjà été dite."""
     sleep: Callable[[float], None] = time.sleep
     jitter: Callable[[float, float], float] = random.uniform
     backoff: Backoff = field(default_factory=Backoff)
@@ -225,12 +231,16 @@ class Worker:
             return "idle"
         # Une ligne par minute au plus (le poste passe son tour toutes les 10 à 15 s).
         now = self.clock()
+        line = (
+            f"{reason[0].upper()}{reason[1:]}."
+            if reason.startswith("en attente")
+            else f"Tour passé : {reason}."
+        )
         if self.said_at is None or now - self.said_at >= SAY_EVERY_S:
             self.said_at = now
-            if reason.startswith("en attente"):
-                self.say(f"{reason[0].upper()}{reason[1:]}.")
-            else:
-                self.say(f"Tour passé : {reason}.")
+            self.say(line)  # terminal et journal
+        else:
+            self.note(line)  # journal seul : chaque tour passé y est écrit
         return "waiting"
 
     def cycle(self) -> float:
@@ -328,7 +338,7 @@ class Worker:
         except EngineFailedError as exc:
             if self.stopping:  # Ctrl+C : la demande reviendra dans la file
                 return 0.0
-            return self._fail(job, exc.reason)
+            return self._fail(job, exc.reason, exc.measured, exc.threshold)
         except OSError:
             return self._fail(job, "engine_error")
         except ApiRefusedError:
@@ -364,10 +374,26 @@ class Worker:
             self.backoff.reset()
             return True
 
-    def _fail(self, job: WorkerJob, reason: str) -> float:
-        self.say(f"Rendu {str(job.request_id)[:8]} échoué : {reason}.")
+    def _fail(
+        self,
+        job: WorkerJob,
+        reason: str,
+        measured: int | None = None,
+        threshold: int | None = None,
+    ) -> float:
+        values = ""
+        if measured is not None:
+            values = f" ({measured}" + ("" if threshold is None else f", seuil {threshold}") + ")"
+        self.say(f"Rendu {str(job.request_id)[:8]} échoué : {reason}{values}.")
+        failure: dict[str, object] = {"reason": reason}
+        served: frozenset[str] = getattr(self.client, "served", frozenset())
+        if reason in GUARD_REASONS and FAILURE_DETAIL not in served:
+            # KAN-159 : un serveur d'avant ne connaît que « vram » (corps strict).
+            failure["reason"] = LEGACY_GUARD_REASON
+        elif reason in GUARD_REASONS:
+            failure.update(measured=measured, threshold=threshold)
         try:
-            self.client.fail(job, WorkerFailure.model_validate({"reason": reason}))
+            self.client.fail(job, WorkerFailure.model_validate(failure))
         except ApiRefusedError:
             return self.backoff.refused()
         except ApiBusyError:

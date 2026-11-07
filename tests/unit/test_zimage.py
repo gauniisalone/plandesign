@@ -192,13 +192,13 @@ def test_vram_over_5000_mib_stops_the_generation() -> None:
         sleep=lambda _s: None,
     )
     assert killed == [True]
-    assert reason is not None and "5000 Mio" in reason and "5120" in reason
+    assert reason is not None and "5000 Mio" in reason.text and "5120" in reason.text
     assert peak == 5120
 
 
 def test_unreadable_gpu_low_ram_and_timeout_stop_too() -> None:
     reason, _ = watch(_Proc(5), kill=lambda: None, read_vram=lambda: None, sleep=lambda _s: None)
-    assert reason is not None and "nvidia-smi" in reason
+    assert reason is not None and "nvidia-smi" in reason.text
     reason, _ = watch(
         _Proc(5),
         kill=lambda: None,
@@ -206,7 +206,7 @@ def test_unreadable_gpu_low_ram_and_timeout_stop_too() -> None:
         read_ram=lambda: 900,
         sleep=lambda _s: None,
     )
-    assert reason is not None and "900 Mio" in reason
+    assert reason is not None and "900 Mio" in reason.text
     ticks = iter(range(0, 10_000, 400))
     reason, _ = watch(
         _Proc(100),
@@ -216,7 +216,7 @@ def test_unreadable_gpu_low_ram_and_timeout_stop_too() -> None:
         clock=lambda: float(next(ticks)),
         sleep=lambda _s: None,
     )
-    assert reason is not None and "min de calcul" in reason
+    assert reason is not None and "min de calcul" in reason.text
 
 
 @pytest.mark.parametrize("misses", [1, 2])
@@ -244,7 +244,7 @@ def test_three_missed_readings_in_a_row_stop_the_render() -> None:
         sleep=lambda _s: None,
     )
     assert killed == [True]
-    assert reason is not None and "nvidia-smi" in reason and "3 lectures" in reason
+    assert reason is not None and "nvidia-smi" in reason.text and "3 lectures" in reason.text
     assert peak == 4000
 
 
@@ -256,7 +256,7 @@ def test_a_missed_reading_still_checks_ram_and_time() -> None:
         read_ram=lambda: 900,
         sleep=lambda _s: None,
     )
-    assert reason is not None and "900 Mio" in reason
+    assert reason is not None and "900 Mio" in reason.text
 
 
 def test_a_normal_end_is_not_stopped() -> None:

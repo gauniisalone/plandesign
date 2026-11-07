@@ -79,6 +79,7 @@ def _flags(name: str, pause: Path, stop: Path) -> int:
 
 
 def _run(cfg: config.WorkerConfig, pause: Path, stop: Path, *, once: bool) -> int:
+    from openplan.cli.render_worker import journal
     from openplan.cli.render_worker.client import WorkerClient
     from openplan.cli.render_worker.loop import Worker
 
@@ -86,11 +87,21 @@ def _run(cfg: config.WorkerConfig, pause: Path, stop: Path, *, once: bool) -> in
     # d'effacer le drapeau d'arrêt, qui appartient au poste déjà lancé).
     with config.single_worker(stop.parent):
         stop.unlink(missing_ok=True)  # un ancien drapeau ne doit pas arrêter ce lancement
+        # KAN-159 : un journal qui tourne (14 jours), en plus du terminal.
+        log = journal.open_journal()
+        say, note = journal.teller(log)
         client = WorkerClient(cfg.url, cfg.token)
-        print(f"Poste de rendu vers {cfg.url} (moteur {cfg.engine}) ; Ctrl+C pour arrêter.")
+        say(f"Poste de rendu vers {cfg.url} (moteur {cfg.engine}) ; Ctrl+C pour arrêter.")
+        print(f"Journal du poste : {journal.journal_dir() / journal.FILE_NAME} (14 jours).")
         try:
-            return Worker(client=client, engine=cfg.engine, pause_flag=pause, stop_flag=stop).run(
-                once=once
-            )
+            return Worker(
+                client=client,
+                engine=cfg.engine,
+                pause_flag=pause,
+                stop_flag=stop,
+                say=say,
+                note=note,
+            ).run(once=once)
         finally:
             client.close()
+            journal.close_journal(log)

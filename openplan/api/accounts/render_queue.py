@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, and_, func, or_, select, update
+from sqlalchemy import ColumnElement, Engine, and_, func, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from openplan.api.accounts.db import aware, utcnow
@@ -39,6 +39,7 @@ from openplan.api.realistic_config import RealisticConfig
 from openplan.schemas.render_queue import (
     FAILURE_TEXT,
     MAX_SEED,
+    POSTE_FAULTS,
     TYPICAL_SECONDS,
     RealisticRequest,
     WorkerJob,
@@ -105,12 +106,18 @@ class RenderQueue:
     # --- côté personne -----------------------------------------------------------------
 
     def used_today(self, user_id: UUID) -> int:
+        """Les demandes des dernières 24 h qui comptent au quota : toutes, sauf celles en échec
+        par la faute du poste (KAN-159, `POSTE_FAULTS`)."""
         since = self.clock() - QUOTA_WINDOW
         with self.session() as db:
             count = db.scalar(
                 select(func.count())
                 .select_from(RenderRequest)
-                .where(RenderRequest.user_id == user_id, RenderRequest.created_at > since)
+                .where(
+                    RenderRequest.user_id == user_id,
+                    RenderRequest.created_at > since,
+                    _counted(),
+                )
             )
             return int(count or 0)
 
@@ -121,7 +128,11 @@ class RenderQueue:
         with self.session() as db:
             times = db.scalars(
                 select(RenderRequest.created_at)
-                .where(RenderRequest.user_id == user_id, RenderRequest.created_at > since)
+                .where(
+                    RenderRequest.user_id == user_id,
+                    RenderRequest.created_at > since,
+                    _counted(),
+                )
                 .order_by(RenderRequest.created_at)
             ).all()
         k = len(times) - self.config.daily_quota
@@ -367,7 +378,16 @@ class RenderQueue:
         self._log("done", row)
         return row
 
-    def fail(self, request_id: UUID, lease: UUID, reason: str) -> None:
+    def fail(
+        self,
+        request_id: UUID,
+        lease: UUID,
+        reason: str,
+        measured: int | None = None,
+        threshold: int | None = None,
+    ) -> None:
+        """KAN-159 : la valeur relevée et le seuil d'un arrêt du garde-fou vont au journal des
+        rendus (pas de colonne : la base ne garde que le code)."""
         now = self.clock()
         with self.session() as db, db.begin():
             done = db.execute(
@@ -383,7 +403,8 @@ class RenderQueue:
                 raise LeaseError
         row = self.get(request_id)
         if row is not None:
-            self._log("failed", row)
+            extra = {"measured": measured, "threshold": threshold}
+            self._log("failed", row, {k: v for k, v in extra.items() if v is not None})
 
     def beat(self, state: WorkerState) -> None:
         now = self.clock()
@@ -447,10 +468,10 @@ class RenderQueue:
             return TYPICAL_SECONDS
         return round(statistics.median(recent), 1)
 
-    def _log(self, result: str, row: RenderRequest) -> None:
+    def _log(self, result: str, row: RenderRequest, extra: dict[str, int] | None = None) -> None:
         if self.journal is None:
             return
-        entry = {
+        entry: dict[str, object] = {
             "ts": self.clock().isoformat(timespec="seconds"),
             "result": result,
             "seconds": None if row.seconds is None else round(row.seconds, 1),
@@ -459,12 +480,22 @@ class RenderQueue:
             "height": row.height,
             "attempts": row.attempts,
             "error": row.error,
+            **(extra or {}),
         }
         line = json.dumps(entry, ensure_ascii=False) + "\n"
         with self._journal_lock:
             self.journal.parent.mkdir(parents=True, exist_ok=True)
             with self.journal.open("a", encoding="utf-8") as handle:
                 handle.write(line)
+
+
+def _counted() -> ColumnElement[bool]:
+    """KAN-159 : une demande compte au quota, sauf en échec par la faute du poste."""
+    return or_(
+        RenderRequest.state != "failed",
+        RenderRequest.error.is_(None),
+        RenderRequest.error.not_in(sorted(POSTE_FAULTS)),
+    )
 
 
 def _take_back(

@@ -47,7 +47,19 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
 - Le poste passe son tour, sans rien prendre, dans trois cas :
   - le verrou du GPU `/tmp/pd-gpu.lock` est pris (`pd-lock gpu`, KAN-152) ;
   - le GPU sert déjà (`nvidia-smi` au-dessus de 0 Mio), ou `nvidia-smi` ne répond pas ;
-  - des tests tournent (`playwright` ou `pytest`).
+  - des tests tournent : un verrou de `pd-lock` est pris (`/tmp/pd-e2e.lock`,
+    `/tmp/pd-pytest-1.lock`, `/tmp/pd-pytest-2.lock`), ou un vrai lanceur de tests tourne
+    (`pytest`, `python -m pytest`, `playwright test`). Un `grep pytest` ne compte pas.
+- Le poste écrit aussi son journal dans `~/.local/state/plandesign/poste.log` (un fichier par
+  jour, 14 jours gardés), avec chaque tour passé. Rien du projet n'y entre.
+- Quand le garde-fou de Z-Image arrête un calcul (ou ne le lance pas), le poste envoie la cause
+  exacte avec la valeur relevée et le seuil, sans aucun texte : `vram_depassee` (Mio, seuil
+  5 000), `nvidia_smi_illisible` (lectures ratées d'affilée, seuil 3),
+  `nvidia_smi_illisible_depart`, `carte_occupee` (Mio, seuil 500), `ram_basse` (Mio libres,
+  minimum 1 500), `duree_max` (secondes, plafond 900). La phrase montrée à la personne est
+  écrite par le serveur. Vers un serveur d'avant, le poste envoie `vram` comme avant.
+- Un échec dû au poste (garde-fou, moteur absent, délai dépassé, connexion perdue) ne compte
+  pas dans le quota du jour de la personne.
 - Si le serveur refuse le jeton (401 ou 403), le poste attend 1 min, puis 5 min à chaque essai
   suivant.
 - Pour un 429, une panne du serveur ou du réseau, il attend 15 s, puis 30 s, puis 1 min, et
@@ -85,4 +97,5 @@ virgule, le temps de la bascule.
 - Une demande non prise expire après 24 h (réglable). Un rendu fait est rangé avec les images
   du projet : il compte dans la place du compte et n'est jamais purgé.
 - Le journal des rendus (`<data>/renders.jsonl`) ne garde que la date, le résultat, la durée,
-  le moteur et la taille de l'image. Il ne contient ni compte, ni projet, ni identifiant.
+  le moteur et la taille de l'image, et pour un arrêt du garde-fou la cause, la valeur relevée
+  et le seuil. Il ne contient ni compte, ni projet, ni identifiant.

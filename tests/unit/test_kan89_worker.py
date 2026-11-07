@@ -4,6 +4,7 @@ calcul sans réseau). Aucun GPU : le moteur réel (KAN-88) n'est jamais lancé i
 from __future__ import annotations
 
 import fcntl
+import functools
 import hashlib
 import os
 import subprocess
@@ -78,29 +79,39 @@ def _runner(answers: dict[str, tuple[int, str]]) -> checks.Runner:
 
 def test_turn_is_skipped_when_the_machine_works(tmp_path: Path) -> None:
     lock = tmp_path / "pd-lourd.lock"
-    calm = _runner({"nvidia-smi": (0, "0\n"), "pgrep": (1, "")})
-    assert checks.skip_reason(needs_gpu=True, run=calm, lock=lock) is None
+    # KAN-159 : plus de pgrep ; verrous de tests et /proc factices (vides : rien ne tourne).
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    test_lock = tmp_path / "pd-pytest-1.lock"
+    skip = functools.partial(checks.skip_reason, lock=lock, test_locks=(test_lock,), proc=proc)
+    calm = _runner({"nvidia-smi": (0, "0\n")})
+    assert skip(needs_gpu=True, run=calm) is None
     # Verrou du travail lourd tenu par un autre.
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX)
     try:
-        reason = checks.skip_reason(needs_gpu=True, run=calm, lock=lock) or ""
+        reason = skip(needs_gpu=True, run=calm) or ""
         # Lu dans le vrai /proc/locks : c'est ce pytest qui tient le verrou.
         assert reason.startswith("en attente : un test lourd tourne depuis"), reason
         assert reason.endswith("le rendu partira dès qu'il sera fini")
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-    assert checks.skip_reason(needs_gpu=True, run=calm, lock=lock) is None
-    busy_gpu = _runner({"nvidia-smi": (0, "0\n812\n"), "pgrep": (1, "")})
-    assert checks.skip_reason(needs_gpu=True, run=busy_gpu, lock=lock) == (
-        "GPU déjà occupé (812 Mio)"
-    )
-    no_smi = _runner({"pgrep": (1, "")})
-    assert checks.skip_reason(needs_gpu=True, run=no_smi, lock=lock) == "nvidia-smi illisible"
-    assert checks.skip_reason(needs_gpu=False, run=no_smi, lock=lock) is None
-    tests = _runner({"nvidia-smi": (0, "0\n"), "pgrep": (0, "4242\n")})
-    assert "tests en cours" in (checks.skip_reason(needs_gpu=True, run=tests, lock=lock) or "")
+    assert skip(needs_gpu=True, run=calm) is None
+    busy_gpu = _runner({"nvidia-smi": (0, "0\n812\n")})
+    assert skip(needs_gpu=True, run=busy_gpu) == ("GPU déjà occupé (812 Mio)")
+    no_smi = _runner({})
+    assert skip(needs_gpu=True, run=no_smi) == "nvidia-smi illisible"
+    assert skip(needs_gpu=False, run=no_smi) is None
+    # Un lot de tests sous pd-lock : son verrou est pris.
+    fd = os.open(test_lock, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        reason = skip(needs_gpu=True, run=calm) or ""
+        assert reason == "tests en cours (verrou pd-pytest-1.lock pris)"
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def test_who_holds_the_lock_is_said_from_proc_locks(tmp_path: Path) -> None:

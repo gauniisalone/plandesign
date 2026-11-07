@@ -22,11 +22,21 @@ import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import openplan
-from openplan.cli.render_worker.engine import EngineFailedError, RenderOutcome, render
-from openplan.schemas.render_queue import MAX_SEED, MAX_STYLE_IGNORED
+from openplan.cli.render_worker.engine import (
+    EngineFailedError,
+    RenderOutcome,
+    bounded_count,
+    render,
+)
+from openplan.schemas.render_queue import (
+    FAILURE_REASONS,
+    MAX_SEED,
+    MAX_STYLE_IGNORED,
+    FailureReason,
+)
 
 PROJECT, BAKE, CAMERA, OUT, RESULT = (
     "project.json",
@@ -148,10 +158,18 @@ def read_result(job_dir: Path, code: int | None) -> RenderOutcome:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise EngineFailedError("engine_error") from None
+    if not isinstance(data, dict):
+        raise EngineFailedError("engine_error")
     if not data.get("ok"):
         reason = data.get("reason")
-        valid = ("unavailable", "vram", "timeout", "engine_error", "invalid_input")
-        raise EngineFailedError(reason if reason in valid else "engine_error")
+        if reason not in FAILURE_REASONS:
+            raise EngineFailedError("engine_error")
+        # KAN-159 : valeur relevée et seuil, des entiers seulement (sinon rien).
+        raise EngineFailedError(
+            cast("FailureReason", reason),
+            bounded_count(data.get("measured")),
+            bounded_count(data.get("threshold")),
+        )
     if code != 0:
         raise EngineFailedError("engine_error")
     try:
@@ -200,7 +218,12 @@ def child(job_dir: Path, engine: str) -> int:
             style_ignored=read_ignored(job_dir),
         )
     except EngineFailedError as exc:
-        _answer(job_dir, {"ok": False, "reason": exc.reason})
+        answer: dict[str, object] = {"ok": False, "reason": exc.reason}
+        if exc.measured is not None:
+            answer["measured"] = exc.measured
+        if exc.threshold is not None:
+            answer["threshold"] = exc.threshold
+        _answer(job_dir, answer)
         return 1
     except Exception:
         _answer(job_dir, {"ok": False, "reason": "engine_error"})

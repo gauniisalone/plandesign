@@ -8,7 +8,7 @@ ne porte une commande, un chemin ou une adresse : le poste n'exécute rien de ce
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 from uuid import UUID
 
 from pydantic import Field
@@ -19,7 +19,45 @@ from openplan.schemas.fidelity import FidelityVerdict
 RequestState = Literal["pending", "taken", "done", "failed", "expired"]
 WorkerState = Literal["idle", "busy", "paused", "waiting"]
 """`waiting` : le poste passe son tour (verrou du travail lourd, GPU occupé, tests en cours)."""
-FailureReason = Literal["unavailable", "vram", "timeout", "engine_error", "invalid_input"]
+GuardReason = Literal[
+    "vram_depassee",
+    "nvidia_smi_illisible",
+    "nvidia_smi_illisible_depart",
+    "carte_occupee",
+    "ram_basse",
+    "duree_max",
+]
+"""KAN-159 : la cause exacte d'un arrêt par le garde-fou de Z-Image, au lieu de « vram » pour
+tout. Valeur relevée et seuil, quand il y en a (`WorkerFailure.measured`, `threshold`) :
+- `vram_depassee` : Mio occupés sur la carte pendant le calcul, seuil 5 000 Mio ;
+- `nvidia_smi_illisible` : lectures ratées d'affilée pendant le calcul, seuil 3 (KAN-146) ;
+- `nvidia_smi_illisible_depart` : nvidia-smi illisible avant le départ (ni valeur ni seuil) ;
+- `carte_occupee` : Mio déjà occupés avant le départ, seuil 500 Mio ;
+- `ram_basse` : Mio de mémoire vive libres, minimum 1 500 Mio ;
+- `duree_max` : secondes de calcul, plafond 900 s."""
+FailureReason = Literal[
+    "unavailable",
+    "vram",
+    "timeout",
+    "engine_error",
+    "invalid_input",
+    "vram_depassee",
+    "nvidia_smi_illisible",
+    "nvidia_smi_illisible_depart",
+    "carte_occupee",
+    "ram_basse",
+    "duree_max",
+]
+"""`vram` reste accepté : un poste d'avant KAN-159 l'envoie pour tout arrêt du garde-fou."""
+GUARD_REASONS: tuple[str, ...] = get_args(GuardReason)
+FAILURE_REASONS: tuple[str, ...] = get_args(FailureReason)
+LEGACY_GUARD_REASON: FailureReason = "vram"
+"""Ce qu'un poste envoie à la place d'une cause précise vers un serveur d'avant KAN-159."""
+POSTE_FAULTS = frozenset({*GUARD_REASONS, "vram", "unavailable", "timeout", "lost"})
+"""KAN-159 : échecs dus au poste lui-même (garde-fou, moteur absent, délai, connexion perdue) :
+la demande ne compte pas dans le quota du jour de la personne. `engine_error` et
+`invalid_input` comptent toujours : la vue elle-même peut en être la cause."""
+MAX_MEASURE = 10_000_000
 
 MAX_PROJECT_BYTES = 8 * 1024 * 1024
 MAX_BAKE_BYTES = 8 * 1024 * 1024
@@ -99,9 +137,13 @@ class WorkerResult(StrictModel):
 
 
 class WorkerFailure(StrictModel):
-    """Un code seulement : aucun texte libre (ni chemin, ni trace) ne quitte le poste."""
+    """Un code seulement : aucun texte libre (ni chemin, ni trace) ne quitte le poste. KAN-159 :
+    pour un arrêt du garde-fou, la valeur relevée et le seuil (deux entiers, voir `GuardReason`
+    pour leur unité), envoyés seulement à un serveur qui sert `FAILURE_DETAIL`."""
 
     reason: FailureReason
+    measured: int | None = Field(default=None, ge=0, le=MAX_MEASURE)
+    threshold: int | None = Field(default=None, ge=0, le=MAX_MEASURE)
 
 
 class RealisticRequest(StrictModel):
@@ -217,6 +259,34 @@ FAILURE_TEXT: dict[str, str] = {
     "invalid_input": "La vue n'a pas pu être lue par le poste de rendu.",
     "abandoned": "Le poste de rendu ne l'a pas terminé.",
     "lost": "Le poste de rendu a perdu la connexion, relancez le rendu.",
+    # KAN-159 : une phrase par cause du garde-fou (écrites ici, jamais par le poste).
+    "vram_depassee": (
+        "Le calcul a dépassé la mémoire de la carte graphique du poste de rendu et a été "
+        "arrêté : réessayez plus tard. Ce rendu ne compte pas dans votre quota du jour."
+    ),
+    "nvidia_smi_illisible": (
+        "Le poste de rendu ne pouvait plus surveiller sa carte graphique : le calcul a été "
+        "arrêté par prudence, réessayez plus tard. Ce rendu ne compte pas dans votre quota du "
+        "jour."
+    ),
+    "nvidia_smi_illisible_depart": (
+        "Le poste de rendu ne pouvait pas lire l'état de sa carte graphique : le rendu n'a pas "
+        "été lancé, réessayez plus tard. Ce rendu ne compte pas dans votre quota du jour."
+    ),
+    "carte_occupee": (
+        "Une autre application utilise la carte graphique du poste de rendu (vue 3D ouverte ?) : "
+        "le rendu n'a pas été lancé, réessayez plus tard. Ce rendu ne compte pas dans votre "
+        "quota du jour."
+    ),
+    "ram_basse": (
+        "Le poste de rendu manquait de mémoire vive (d'autres applications ouvertes ?) : le "
+        "calcul a été arrêté, réessayez plus tard. Ce rendu ne compte pas dans votre quota du "
+        "jour."
+    ),
+    "duree_max": (
+        "Le calcul a dépassé la durée maximale sur le poste de rendu et a été arrêté : "
+        "réessayez plus tard. Ce rendu ne compte pas dans votre quota du jour."
+    ),
 }
 
 CAPABILITIES_HEADER = "X-Render-Capabilities"
@@ -230,6 +300,10 @@ STYLE = "style"
 mots (`WorkerResult.style_words`)."""
 STYLE_IGNORE = "style-ignore"
 """KAN-130 : le poste sait écarter les mots désactivés (`WorkerJob.style_ignored`)."""
+FAILURE_DETAIL = "why"
+"""KAN-159 : le poste envoie la cause exacte d'un arrêt du garde-fou (`GuardReason`), avec la
+valeur relevée et le seuil ; sans elle, `vram` comme avant. Jeton court : `WorkerClaim.version`
+tient en 32 caractères chez un serveur d'avant (« heartbeat+style+style-ignore+why »)."""
 BEAT_EVERY_S = 30
 """KAN-96 : cadence du battement d'un rendu pris (calcul et envoi compris)."""
 
