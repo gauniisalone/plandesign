@@ -29,6 +29,7 @@ from openplan.schemas.render_queue import (
     HEARTBEAT,
     JSON_FILES,
     MAX_STYLE_IMAGE_BYTES,
+    PENDING_HEADER,
     STYLE,
     STYLE_IGNORE,
     WorkerClaim,
@@ -36,6 +37,7 @@ from openplan.schemas.render_queue import (
     WorkerJob,
     WorkerResult,
     parse_capabilities,
+    parse_pending,
 )
 from openplan.schemas.scene import Project
 
@@ -98,6 +100,9 @@ class WorkerClient:
         self.served: frozenset[str] = frozenset()
         """Les capacités que le serveur a confirmées à la dernière prise (`CAPABILITIES_HEADER`) :
         le poste n'use que de celles-là (KAN-96, KAN-97)."""
+        self.pending: int | None = None
+        """KAN-162 : les demandes en file lues à la dernière prise (`PENDING_HEADER`) ; None
+        chez un serveur d'avant (en-tête absent) ou pour une valeur mal formée."""
 
     def close(self) -> None:
         self.http.close()
@@ -135,6 +140,7 @@ class WorkerClient:
             json=WorkerClaim(state=state, version="+".join(CAPABILITIES)).model_dump(),
         )
         self.served = parse_capabilities(response.headers.get(CAPABILITIES_HEADER, ""))
+        self.pending = parse_pending(response.headers.get(PENDING_HEADER))
         self.beat_every_s = float(BEAT_EVERY_S) if HEARTBEAT in self.served else None
         if response.status_code == 204:
             return None

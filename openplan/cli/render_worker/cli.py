@@ -79,7 +79,7 @@ def _flags(name: str, pause: Path, stop: Path) -> int:
 
 
 def _run(cfg: config.WorkerConfig, pause: Path, stop: Path, *, once: bool) -> int:
-    from openplan.cli.render_worker import journal
+    from openplan.cli.render_worker import etat, journal
     from openplan.cli.render_worker.client import WorkerClient
     from openplan.cli.render_worker.loop import Worker
 
@@ -101,6 +101,8 @@ def _run(cfg: config.WorkerConfig, pause: Path, stop: Path, *, once: bool) -> in
                 stop_flag=stop,
                 say=say,
                 note=note,
+                # KAN-162 : l'état lu par les agents de la machine (`pd-poste-libre`).
+                state_file=etat.STATE_FILE,
             ).run(once=once)
         finally:
             client.close()

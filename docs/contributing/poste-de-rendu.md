@@ -52,6 +52,12 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
     (`pytest`, `python -m pytest`, `playwright test`). Un `grep pytest` ne compte pas.
 - Le poste écrit aussi son journal dans `~/.local/state/plandesign/poste.log` (un fichier par
   jour, 14 jours gardés), avec chaque tour passé. Rien du projet n'y entre.
+- KAN-162 : à chaque prise, le serveur dit combien de rendus attendent en file (en-tête
+  `X-Render-Pending`, un entier seul). Quand le poste passe son tour, le journal le dit avec la
+  ressource de `pd-lock` en cause et une commande courte (sans chemin ni argument long) :
+  `En attente : 2 rendu(s) en file (verrou tenu par pytest-1 depuis 14:32, pytest test_x.py).`
+  Avec un serveur d'avant (pas d'en-tête), les phrases restent celles d'avant. Le poste écrit
+  aussi un état pour les agents : voir plus bas.
 - Quand le garde-fou de Z-Image arrête un calcul (ou ne le lance pas), le poste envoie la cause
   exacte avec la valeur relevée et le seuil, sans aucun texte : `vram_depassee` (Mio, seuil
   5 000), `nvidia_smi_illisible` (lectures ratées d'affilée, seuil 3),
@@ -67,6 +73,34 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
   ainsi de suite, jusqu'à 5 min au plus.
 - Pour essayer l'installation sans GPU, mettez `PLANDESIGN_WORKER_ENGINE=fake` dans
   `worker.env` : le poste rend alors une image unie.
+
+## État du poste pour les agents (KAN-162)
+
+Le poste écrit son état dans `/tmp/pd-poste.etat`, pour que les agents de la machine lui
+cèdent la place à temps (la garde `pd-poste-libre` de l'Infra, appelée par `pd-lock`, le lit).
+
+```json
+{"en_file": 2, "rendu_en_cours": false, "horodatage": "2026-11-07T13:05:12+00:00", "version": 1}
+```
+
+| Clé | Valeur |
+|---|---|
+| `en_file` | Demandes en attente que le poste pourrait prendre (mêmes filtres que la prise), lues à la dernière prise ; `null` si le serveur ne le dit pas (serveur d'avant KAN-162, serveur injoignable, poste arrêté) |
+| `rendu_en_cours` | `true` pendant un calcul et son envoi, sinon `false` ; jamais d'identifiant de demande |
+| `horodatage` | Heure de l'écriture, ISO 8601 en UTC |
+| `version` | Version de ce format : `1` |
+
+- Le fichier est réécrit à **chaque tour** (rendu pris, tour passé, pause, serveur en erreur),
+  et au moins toutes les 60 s pendant les longues attentes et pendant un calcul. Plus vieux
+  que 300 s, il est **périmé** : le poste est sans doute arrêté.
+- L'écriture est **atomique** : un fichier temporaire dans le même dossier (`/tmp`), droits
+  644, puis `os.replace`. Un lecteur ne voit jamais un fichier à moitié écrit.
+- Il ne contient que ces quatre clés : ni compte, ni projet, ni identifiant.
+- À l'arrêt, le poste écrit `en_file: null` et `rendu_en_cours: false`.
+
+**Règle des agents** : un agent **cède** (ne lance pas de travail lourd : tests, bancs, GPU)
+dès que `en_file > 0` ou que `rendu_en_cours` est vrai ; il **reprend** quand les deux sont nuls
+(`en_file` à 0 ou `null`, `rendu_en_cours` faux), ou quand l'état est périmé.
 
 ## Révoquer le jeton
 

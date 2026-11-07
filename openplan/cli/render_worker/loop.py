@@ -26,11 +26,12 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from types import FrameType, TracebackType
 from typing import Literal
 
-from openplan.cli.render_worker import checks
+from openplan.cli.render_worker import checks, etat
 from openplan.cli.render_worker.client import (
     ApiBusyError,
     ApiRefusedError,
@@ -147,6 +148,37 @@ class Heartbeat:
             self.beats += 1
 
 
+class StateKeeper:
+    """KAN-162 : réécrit l'état local pendant un calcul et son envoi (plusieurs minutes), dans un
+    fil à part, pour que la garde des agents ne le croie pas périmé (300 s)."""
+
+    def __init__(self, worker: Worker, every: float = etat.REFRESH_S) -> None:
+        self.worker = worker
+        self.every = every
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> StateKeeper:
+        if self.worker.state_file is not None:
+            self._thread = threading.Thread(target=self._run, name="etat-poste", daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        _type: type[BaseException] | None,
+        _value: BaseException | None,
+        _trace: TracebackType | None,
+    ) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.every):
+            self.worker.publish(*self.worker.published)
+
+
 @dataclass
 class Worker:
     client: WorkerClient
@@ -154,7 +186,7 @@ class Worker:
     pause_flag: Path
     stop_flag: Path
     sandbox: Sandbox = field(default_factory=Sandbox)
-    skip: Callable[[], str | None] | None = None
+    skip: Callable[[], str | checks.Wait | None] | None = None
     say: Callable[[str], None] = print
     note: Callable[[str], None] = lambda _text: None
     """KAN-159 : le journal du poste seul (fichier), pour ce que le terminal tait : chaque tour
@@ -171,11 +203,35 @@ class Worker:
     """Cadence du battement imposée (tests) ; sinon celle annoncée par le serveur."""
     _said_no_style: bool = False
     """KAN-97 : « SigLIP2 non installé » n'est dit qu'une fois par lancement du poste."""
+    state_file: Path | None = None
+    """KAN-162 : l'état local lu par les agents (`etat.STATE_FILE` pour le vrai poste) ; None :
+    rien d'écrit (tests)."""
+    wall: Callable[[], datetime] = field(default=lambda: datetime.now().astimezone())
+    """KAN-162 : l'heure locale, pour « verrou tenu par gpu depuis 14:32 »."""
+    _wait: checks.Wait | None = None
+    """KAN-162 : la raison du tour passé en cours, dite après la prise (avec le nombre en file)."""
+    published: tuple[int | None, bool] = (None, False)
+    published_at: float | None = None
 
     def __post_init__(self) -> None:
         if self.skip is None:
             needs_gpu = self.engine != "fake"
-            self.skip = lambda: checks.skip_reason(needs_gpu=needs_gpu)
+            self.skip = lambda: checks.wait_reason(needs_gpu=needs_gpu)
+
+    # --- état local (KAN-162) -------------------------------------------------------
+
+    def publish(self, en_file: int | None, running: bool) -> None:
+        """Réécrit /tmp/pd-poste.etat (atomique, 644) ; jamais d'identifiant de demande."""
+        self.published = (en_file, running)
+        self.published_at = self.clock()
+        if self.state_file is not None:
+            etat.write_state(self.state_file, en_file, running)
+
+    def refresh(self) -> None:
+        """Réécrit le dernier état s'il date de `etat.REFRESH_S` ou plus (longues attentes,
+        calcul) : la garde des agents le tient pour périmé au-delà de 300 s."""
+        if self.published_at is None or self.clock() - self.published_at >= etat.REFRESH_S:
+            self.publish(*self.published)
 
     # --- arrêt ----------------------------------------------------------------------
 
@@ -195,6 +251,7 @@ class Worker:
             left = end - time.monotonic()
             if left <= 0:
                 return
+            self.refresh()  # KAN-162 : un recul de 5 min ne laisse pas l'état périmer
             self.sleep(min(1.0, left))
 
     # --- boucle ---------------------------------------------------------------------
@@ -211,6 +268,7 @@ class Worker:
         finally:
             signal.signal(signal.SIGINT, previous)
             signal.signal(signal.SIGTERM, previous_term)
+            self.publish(None, False)  # KAN-162 : poste arrêté, plus rien en cours
         self.say(f"Poste arrêté ({self.rendered} rendu(s) déposé(s)).")
         return 0
 
@@ -221,7 +279,10 @@ class Worker:
         dépôt, un échec) ; le serveur refuse plus d'un appel par 5 s et par jeton."""
         return max(delay, POLL_MIN_S)
 
-    def state(self) -> Literal["idle", "paused", "waiting"]:
+    def state(self, *, tell: bool = True) -> Literal["idle", "paused", "waiting"]:
+        """`tell` : dire aussitôt pourquoi le tour est passé ; `cycle` le dit après la prise
+        (KAN-162 : avec le nombre de rendus en file que le serveur renvoie)."""
+        self._wait = None
         if self.pause_flag.exists():
             return "paused"
         assert self.skip is not None
@@ -229,35 +290,71 @@ class Worker:
         if reason is None:
             self.said_at = None  # la prochaine attente se dira aussitôt
             return "idle"
-        # Une ligne par minute au plus (le poste passe son tour toutes les 10 à 15 s).
+        self._wait = reason if isinstance(reason, checks.Wait) else checks.Wait(reason)
+        if tell:
+            self.tell_wait(None)
+        return "waiting"
+
+    def wait_line(self, wait: checks.Wait, pending: int | None) -> str:
+        """La phrase d'un tour passé. KAN-162 : avec le nombre en file, « En attente : 2 rendu(s)
+        en file (verrou tenu par gpu depuis 14:32, banc.py focale). » ; sans (serveur d'avant),
+        la phrase d'avant, à l'identique."""
+        reason = wait.reason
+        if pending is None:
+            if reason.startswith("en attente"):
+                return f"{reason[0].upper()}{reason[1:]}."
+            return f"Tour passé : {reason}."
+        if wait.holder is not None:
+            detail = wait.holder.text(self.wall())
+        else:
+            detail = reason.removeprefix("en attente : ")
+        return f"En attente : {pending} rendu(s) en file ({detail})."
+
+    def tell_wait(self, pending: int | None) -> None:
+        """Une ligne par minute au plus au terminal (le poste passe son tour toutes les 10 à
+        15 s) ; chaque tour au journal."""
+        if self._wait is None:
+            return
+        line = self.wait_line(self._wait, pending)
         now = self.clock()
-        line = (
-            f"{reason[0].upper()}{reason[1:]}."
-            if reason.startswith("en attente")
-            else f"Tour passé : {reason}."
-        )
         if self.said_at is None or now - self.said_at >= SAY_EVERY_S:
             self.said_at = now
             self.say(line)  # terminal et journal
         else:
             self.note(line)  # journal seul : chaque tour passé y est écrit
-        return "waiting"
+
+    def after_claim(self, state: str, pending: int | None, *, running: bool = False) -> None:
+        """KAN-162 : la raison du tour passé (avec le nombre en file), puis l'état local, réécrit
+        à chaque tour quel qu'il soit."""
+        if state == "waiting":
+            self.tell_wait(pending)
+        elif state == "paused" and pending is not None:
+            self.note(f"En pause : {pending} rendu(s) en file.")
+        self.publish(pending, running)
 
     def cycle(self) -> float:
         """Un appel `claim` (et le rendu s'il y en a un) ; renvoie l'attente avant le suivant."""
+        state = self.state(tell=False)
         try:
-            job = self.client.claim(self.state())
+            job = self.client.claim(state)
         except ApiRefusedError:
+            self.after_claim(state, None)
             delay = self.backoff.refused()
             self.say(f"Jeton refusé par le serveur : nouvel essai dans {delay:.0f} s.")
             return delay
         except (ApiBusyError, LeaseLostError):
+            self.after_claim(state, None)
             delay = self.backoff.busy()
             self.say(f"Serveur occupé ou injoignable : nouvel essai dans {delay:.0f} s.")
             return delay
         self.backoff.reset()
+        pending: int | None = getattr(self.client, "pending", None)
+        self.after_claim(state, pending, running=job is not None)
         if job is not None:
-            return self.process(job)
+            try:
+                return self.process(job)
+            finally:
+                self.publish(pending, False)
         return self.jitter(POLL_MIN_S, POLL_MAX_S)
 
     def process(self, job: WorkerJob) -> float:
@@ -269,7 +366,7 @@ class Worker:
 
     def _process(self, job: WorkerJob, work: Path) -> float:
         every = self.beat_every_s or getattr(self.client, "beat_every_s", None)
-        with Heartbeat(self.client, job, every) as heart:
+        with StateKeeper(self), Heartbeat(self.client, job, every) as heart:
             return self._render(job, work, heart)
 
     def _fetch_style(self, job: WorkerJob, work: Path) -> bool:

@@ -16,6 +16,7 @@ import os
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Sonar S5443, faux positif : le verrou commun de la machine n'est qu'ouvert en lecture pour un
@@ -64,40 +65,114 @@ class Holder:
     """Commande raccourcie (« playwright e2e/openings.spec.ts ») ; None si illisible."""
     seconds: float | None
     """Depuis combien de temps le processus tourne ; None si illisible."""
+    resource: str = "lourd"
+    """KAN-162 : la ressource de `pd-lock` tenue (« gpu », « e2e », « pytest-1 », « pytest-2 »,
+    « lourd »), tirée du nom du verrou /tmp/pd-<ressource>.lock."""
+
+    def since(self, now: datetime) -> str | None:
+        """KAN-162 : l'heure (locale, « 14:32 ») où le détenteur a démarré ; None si inconnue."""
+        if self.seconds is None:
+            return None
+        return (now - timedelta(seconds=self.seconds)).strftime("%H:%M")
+
+    def text(self, now: datetime) -> str:
+        """KAN-162 : « verrou tenu par gpu depuis 14:32, playwright test e2e/x.spec.ts »."""
+        since = self.since(now)
+        line = f"verrou tenu par {self.resource}" + ("" if since is None else f" depuis {since}")
+        return line if self.command is None else f"{line}, {self.command}"
+
+
+@dataclass(frozen=True)
+class Wait:
+    """KAN-162 : pourquoi le poste passe son tour (`reason`, la phrase d'avant) et, quand c'est un
+    verrou de `pd-lock`, qui le tient (`holder`)."""
+
+    reason: str
+    holder: Holder | None = None
+
+
+def resource_name(lock: Path) -> str:
+    """« gpu » pour /tmp/pd-gpu.lock, « pytest-1 » pour /tmp/pd-pytest-1.lock."""
+    name = lock.name
+    if name.startswith("pd-") and name.endswith(".lock") and len(name) > len("pd-.lock"):
+        return name[len("pd-") : -len(".lock")]
+    return name
 
 
 _WRAPPERS = frozenset(
-    {"nice", "timeout", "npx", "npm", "exec", "uv", "run", "bash", "sh", "env", "node"}
+    {"nice", "timeout", "npx", "npm", "exec", "uv", "run", "bash", "sh", "env", "node", "setsid"}
 )
+_VALUE_OPTIONS = frozenset(
+    {
+        "--extra",
+        "--with",
+        "--project",
+        "--directory",
+        "--group",
+        "--python",
+        "--basetemp",
+        "--reporter",
+        "--grep",
+        "--config",
+        "--workers",
+        "--timeout",
+        "--rootdir",
+        "-k",
+        "-c",
+        "-g",
+        "-p",
+    }
+)
+"""KAN-162 : options suivies de leur valeur (`uv run --extra api`, `pytest -k "a or b"`) : la
+valeur part avec l'option."""
+MAX_WORD = 40
+"""KAN-162 : un mot plus long (expression, liste, chemin de projet) n'est pas gardé."""
 _TEST_WORDS = ("playwright", "pytest", "commit29", "e2e")
 WAIT_END = "le rendu partira dès qu'il sera fini"
 
 
+def _short_word(word: str) -> str:
+    """Un chemin absolu ou de projet réduit à son dernier élément (« test_x.py »)."""
+    if word.startswith(("/", "~")) or word.count("/") > 1:
+        return Path(word).name
+    return word
+
+
 def short_command(argv: Sequence[str], lock: Path = HEAVY_LOCK) -> str:
-    """La commande lancée sous le verrou, sans `flock`, les options courtes, les chemins
-    absolus ni les enveloppes (nice, timeout, npx, uv run, bash, python), en 3 mots au plus :
-    « playwright test e2e/x.spec.ts »."""
+    """La commande lancée sous le verrou, sans `flock`, les options (et leur valeur), les chemins
+    de projets, les mots longs ni les enveloppes (nice, timeout, npx, uv run, bash, python), en 3
+    mots au plus : « playwright test e2e/x.spec.ts »."""
     words = list(argv)
     if str(lock) in words:
         words = words[words.index(str(lock)) + 1 :]
     # KAN-152 : `pd-lock gpu -- <commande>` (le détenteur est le script pd-lock lui-même).
     if any(Path(w).name == "pd-lock" for w in words) and "--" in words:
         words = words[words.index("--") + 1 :]
-    words = [Path(w).name if w.startswith("/") else w for w in words]
-    kept = [
-        w
-        for w in words
-        if w not in _WRAPPERS
-        and not w.startswith("python")
-        and not w.lstrip("-").isdigit()
-        and not (w.startswith("-") and len(w) <= 3)
-    ]
+    kept: list[str] = []
+    skip_next = False
+    for raw in words:
+        if skip_next:
+            skip_next = False
+            continue
+        if raw in _VALUE_OPTIONS:
+            skip_next = True
+            continue
+        word = _short_word(raw)
+        if (
+            word in _WRAPPERS
+            or word.startswith(("python", "-"))
+            or word.isdigit()
+            or len(word) > MAX_WORD
+            or any(c in word for c in " =\"'$;&|")
+        ):
+            continue
+        kept.append(word)
     return " ".join(kept[:3])[:70] or "travail lourd"
 
 
 def lock_holder(path: Path = HEAVY_LOCK, proc: Path = Path("/proc")) -> Holder | None:
     """Le processus qui tient le verrou (ligne FLOCK de /proc/locks sur le même inode), avec sa
-    commande et sa durée ; None si on ne le trouve pas."""
+    commande, sa durée et la ressource (KAN-162) ; None si on ne le trouve pas."""
     try:
         st = path.stat()
         locks = (proc / "locks").read_text(encoding="utf-8")
@@ -108,7 +183,8 @@ def lock_holder(path: Path = HEAVY_LOCK, proc: Path = Path("/proc")) -> Holder |
         fields = line.split()
         if len(fields) >= 6 and "FLOCK" in fields and fields[5] == target:
             pid = int(fields[4]) if fields[4].isdigit() else 0
-            return Holder(pid, *_process(proc, pid, path))
+            command, seconds = _process(proc, pid, path)
+            return Holder(pid, command, seconds, resource_name(path))
     return None
 
 
@@ -200,6 +276,11 @@ def tests_running(locks: Sequence[Path] = TEST_LOCKS, proc: Path = Path("/proc")
     for lock in locks:
         if lock_taken(lock):
             return f"verrou {lock.name} pris"
+    return tests_launched(proc)
+
+
+def tests_launched(proc: Path = Path("/proc")) -> str | None:
+    """Les vrais lanceurs de tests vus dans /proc (« pytest, processus 204 »), ou None."""
     mine = str(os.getpid())
     try:
         pids = [p for p in proc.iterdir() if p.name.isdigit() and p.name != mine]
@@ -226,15 +307,33 @@ def skip_reason(
     proc: Path = Path("/proc"),
 ) -> str | None:
     """Pourquoi passer son tour, ou None si le poste peut rendre."""
+    wait = wait_reason(needs_gpu=needs_gpu, run=run, lock=lock, test_locks=test_locks, proc=proc)
+    return None if wait is None else wait.reason
+
+
+def wait_reason(
+    *,
+    needs_gpu: bool,
+    run: Runner = run_command,
+    lock: Path = HEAVY_LOCK,
+    test_locks: Sequence[Path] = TEST_LOCKS,
+    proc: Path = Path("/proc"),
+) -> Wait | None:
+    """KAN-162 : comme `skip_reason`, avec le détenteur du verrou de `pd-lock` en cause (lu dans
+    le vrai /proc/locks ; `proc` ne sert qu'à chercher les lanceurs de tests)."""
     if lock_taken(lock):
-        return waiting_text(lock_holder(lock))
+        holder = lock_holder(lock)
+        return Wait(waiting_text(holder), holder)
     if needs_gpu:
         used = gpu_used_mib(run)
         if used is None:
-            return "nvidia-smi illisible"
+            return Wait("nvidia-smi illisible")
         if used > 0:
-            return f"GPU déjà occupé ({used} Mio)"
-    running = tests_running(test_locks, proc)
+            return Wait(f"GPU déjà occupé ({used} Mio)")
+    for test_lock in test_locks:
+        if lock_taken(test_lock):
+            return Wait(f"tests en cours (verrou {test_lock.name} pris)", lock_holder(test_lock))
+    running = tests_launched(proc)
     if running is not None:
-        return f"tests en cours ({running})"
+        return Wait(f"tests en cours ({running})")
     return None
