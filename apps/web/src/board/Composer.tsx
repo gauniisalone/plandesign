@@ -329,7 +329,11 @@ export function Composer({
   const renderHint = !linked
     ? NO_PLAN_TEXT
     : needViews
-      ? ["Ambiance selon votre texte, puis une vue calculée et rendue par pièce.", todayText(used, quota)]
+      ? [
+          // KAN-160 : une 2e vue peut s'ajouter quand la 1re ne voit pas assez de la pièce.
+          "Ambiance selon votre texte, puis une vue calculée et rendue par pièce (une 2e si la 1re ne voit pas assez).",
+          todayText(used, quota),
+        ]
           .filter(Boolean)
           .join(" · ")
       : ticked.length === 0

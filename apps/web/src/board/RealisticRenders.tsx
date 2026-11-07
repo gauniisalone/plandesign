@@ -763,7 +763,8 @@ export function RealisticRenders({
                       >
                         <span>Rendre les pièces</span>
                         <small>
-                          une vue calculée par pièce, puis une demande chacune
+                          une vue calculée par pièce (une 2e si la 1re ne voit pas assez),
+                          puis une demande chacune
                           {todayText(used, quota) ? ` · ${todayText(used, quota)}` : ""}
                         </small>
                       </button>
