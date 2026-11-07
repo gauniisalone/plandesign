@@ -73,6 +73,7 @@ from openplan.schemas.render_queue import (
     JSON_FILES,
     MAX_DRAW,
     MAX_IMAGE_BYTES,
+    PENDING_HEADER,
     STYLE,
     STYLE_IGNORE,
     RealisticCover,
@@ -574,7 +575,11 @@ def worker_claim(
 
     KAN-96 : libre, le poste n'a plus rien en main ; une demande encore prise est reprise
     (`release_held`). Un poste qui annonce savoir battre (`HEARTBEAT` dans `version`) le voit
-    confirmé dans `CAPABILITIES_HEADER`, et ses prises suivent le bail court."""
+    confirmé dans `CAPABILITIES_HEADER`, et ses prises suivent le bail court.
+
+    KAN-162 : chaque réponse porte `PENDING_HEADER`, le nombre de demandes que ce poste pourrait
+    encore prendre (après la prise éventuelle), pour que les agents de la machine cèdent la place
+    à temps ; un nombre seul, sans identifiant ni contenu."""
     state = "idle" if body is None else body.state
     served = capabilities(body) & SERVED_CAPABILITIES
     beats = HEARTBEAT in served
@@ -585,6 +590,7 @@ def worker_claim(
     if state == "idle":
         queue.release_held()
         job = queue.claim(beats=beats)
+    headers[PENDING_HEADER] = str(queue.pending_count())
     if job is None:
         return Response(status_code=204, headers=headers)
     queue.beat("busy")

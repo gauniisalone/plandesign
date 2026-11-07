@@ -306,6 +306,24 @@ valeur relevée et le seuil ; sans elle, `vram` comme avant. Jeton court : `Work
 tient en 32 caractères chez un serveur d'avant (« heartbeat+style+style-ignore+why »)."""
 BEAT_EVERY_S = 30
 """KAN-96 : cadence du battement d'un rendu pris (calcul et envoi compris)."""
+PENDING_HEADER = "X-Render-Pending"
+"""KAN-162 : réponse à `claim` (avec ou sans travail) : le nombre de demandes en attente que ce
+poste pourrait prendre (mêmes filtres que la prise : comptes autorisés, non expirées), après la
+prise éventuelle. Un entier décimal seul, sans identifiant ni contenu. En en-tête, sans capacité
+annoncée (`WorkerClaim.version` est plein à 32 caractères) : un ancien poste l'ignore, et chez
+un ancien serveur il manque (le poste écrit alors `en_file: null`)."""
+MAX_PENDING_SHOWN = 999_999
+"""Plafond de lecture côté poste : une valeur plus grande ou mal formée vaut « inconnu »."""
+
+
+def parse_pending(text: str | None) -> int | None:
+    """KAN-162 : le nombre lu dans `PENDING_HEADER`, ou None (absent, mal formé, hors plafond)."""
+    if text is None:
+        return None
+    text = text.strip()
+    if not text.isascii() or not text.isdigit() or len(text) > len(str(MAX_PENDING_SHOWN)):
+        return None
+    return int(text)
 
 
 def parse_capabilities(text: str) -> frozenset[str]:

@@ -249,6 +249,24 @@ class RenderQueue:
 
     # --- côté poste --------------------------------------------------------------------
 
+    def pending_count(self) -> int:
+        """KAN-162 : les demandes en attente que le poste pourrait prendre, avec les filtres de
+        `claim` (comptes autorisés, non expirées) ; 0 sans compte autorisé. Un nombre seul."""
+        allowed = list(self.config.accounts)
+        if not allowed:
+            return 0
+        with self.session() as db:
+            count = db.scalar(
+                select(func.count())
+                .select_from(RenderRequest)
+                .where(
+                    RenderRequest.state == "pending",
+                    RenderRequest.expires_at > self.clock(),
+                    RenderRequest.user_id.in_(allowed),
+                )
+            )
+        return int(count or 0)
+
     def claim(self, *, beats: bool = False) -> WorkerJob | None:
         """Prend la plus ancienne demande en attente d'un compte autorisé (comparer-et-poser :
         une seule prise réussit, sur SQLite comme sur Postgres). `beats` : le poste a annoncé
