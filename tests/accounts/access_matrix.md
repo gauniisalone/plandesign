@@ -6,7 +6,7 @@ globale), les maillons en plus (fonction activée, bail du plan B2d, place KAN-1
 tentatives, porte et débit du poste), les
 décisions repérées dans le corps de la route, et les codes de refus qui y sont écrits.
 
-245 routes ; par règle : admin 8, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 91, membre ≥ owner 9, membre ≥ viewer 53, public 20, user 41, worker 6.
+247 routes ; par règle : admin 8, dans la route 2, extension 2, legacy 2, membre ≥ commenter 11, membre ≥ editor 92, membre ≥ owner 9, membre ≥ viewer 54, public 20, user 41, worker 6.
 
 | méthode | chemin | applis | règle déclarée | maillons en plus | corps | refus |
 |---|---|---|---|---|---|---|
@@ -136,6 +136,8 @@ décisions repérées dans le corps de la route, et les codes de refus qui y son
 | POST | /api/projects/{project_id}/levels/{level_id}/brief | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/brief/preview | local+comptes | membre ≥ editor |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/brief/zones | local+comptes | membre ≥ editor |  |  |  |
+| POST | /api/projects/{project_id}/levels/{level_id}/calage/answer | local+comptes | membre ≥ editor |  |  |  |
+| GET | /api/projects/{project_id}/levels/{level_id}/calage/missing | local+comptes | membre ≥ viewer |  |  |  |
 | POST | /api/projects/{project_id}/levels/{level_id}/calibrate | local+comptes | membre ≥ editor | bail du plan (409) |  |  |
 | GET | /api/projects/{project_id}/levels/{level_id}/cameras/architect | local+comptes | membre ≥ viewer |  |  |  |
 | GET | /api/projects/{project_id}/levels/{level_id}/cameras/section | local+comptes | membre ≥ viewer |  |  |  |
