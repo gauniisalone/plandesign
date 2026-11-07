@@ -369,6 +369,15 @@ export const IconTruss = (p: IconProps) => (
   </Svg>
 );
 
+/** KAN-161 : bois incliné (une pièce en biais, du sol au rampant). */
+export const IconBrace = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 12l9-8 9 8" />
+    <path d="M6 21l2 0 9-12-1.6-1.2z" />
+    <path d="M4 21h6" />
+  </Svg>
+);
+
 export const IconStairs = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 20h4v-4h4v-4h4V8h4V4" />

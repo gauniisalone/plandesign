@@ -19,6 +19,7 @@ import {
   IconFit,
   IconFloorZone,
   IconPost,
+  IconBrace,
   IconTruss,
   IconGear,
   IconHand,
@@ -487,6 +488,16 @@ export function ToolPalette({
           disabled={!drawing}
           pro
           onClick={() => onTool("post")}
+        />
+        {/* KAN-161 : bois incliné, deux clics (pied puis tête), sans raccourci clavier. */}
+        <IconButton
+          label="Bois incliné"
+          more="deux clics : le pied (au sol ou sur un muret), puis la tête, aimantée sur la faîtière, le rampant ou un autre bois ; Échap annule"
+          Icon={IconBrace}
+          active={tool === "brace"}
+          disabled={!drawing}
+          pro
+          onClick={() => onTool("brace")}
         />
         <IconButton
           label="Ajouter une ferme intermédiaire"

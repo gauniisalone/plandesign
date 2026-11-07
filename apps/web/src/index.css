@@ -1880,6 +1880,32 @@ button.cta:hover:not(:disabled) {
   stroke-width: 3px;
   pointer-events: none;
 }
+/* KAN-161 : bois incliné, projection au sol en trait plein, pied marqué d'un rond plein. */
+.plan .plan-brace-outline {
+  fill: color-mix(in srgb, var(--pd-tuile) 25%, transparent);
+  stroke: var(--pd-tuile);
+  stroke-width: 1.5;
+  cursor: move;
+}
+.plan .plan-brace-axis {
+  fill: none;
+  stroke: var(--pd-encre);
+  stroke-width: 1;
+  cursor: move;
+}
+.plan .plan-brace-foot {
+  fill: var(--pd-tuile);
+  stroke: var(--pd-encre);
+  stroke-width: 1;
+  cursor: move;
+}
+.plan .plan-brace.selected .plan-brace-outline {
+  stroke-width: 2.5;
+}
+.plan .plan-brace.preview .plan-brace-axis {
+  stroke: var(--pd-tuile);
+  stroke-width: 2;
+}
 .plan .plan-truss-lost {
   fill: var(--panel, #fff);
   stroke: var(--pd-ocre);

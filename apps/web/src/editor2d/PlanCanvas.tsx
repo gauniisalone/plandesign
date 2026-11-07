@@ -30,6 +30,7 @@ import {
   isFurniture,
   isExcludedView,
   isOpening,
+  isBrace,
   isPost,
   isStairs,
   isTruss,
@@ -93,7 +94,9 @@ export type Tool =
   | "pushpull"
   | "floorzone"
   /** KAN-94 : un clic pose un poteau (contre un mur s'il est près, sinon sur la grille). */
-  | "post";
+  | "post"
+  /** KAN-161 : deux clics posent un bois incliné (pied, puis tête aimantée). */
+  | "brace";
 
 /** Fond de photo : image du projet posée dans le plan (coin bas-gauche en (tx, ty), mètres). */
 export interface Background {
@@ -227,6 +230,8 @@ const SNAP_WALL_M = 0.35;
 const WALL_GAP_M = 0.02;
 /** KAN-94 : section d'un poteau neuf (le serveur garde 15 × 12 cm par défaut). */
 const POST_DEPTH_M = 0.12;
+/** KAN-161 : la tête d'un bois incliné s'aimante à 15 cm (comme le serveur). */
+const BRACE_SNAP_M = 0.15;
 
 function roundPoint(p: Point2): Point2 {
   return { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
@@ -359,6 +364,13 @@ type Drag =
       current: Point2;
       grab: Point2;
     }
+  /** KAN-161 : un bois incliné glissé d'un bloc (pied et tête ensemble). */
+  | {
+      kind: "braceMove";
+      id: string;
+      grab: Point2;
+      delta: Point2;
+    }
   | {
       /** Poignée d'un meuble (E2) : hu, hv ∈ {−1, 0, 1} le long de sa largeur, profondeur. */
       kind: "resize";
@@ -423,6 +435,8 @@ export function PlanCanvas({
     null,
   );
   const [cursor, setCursor] = useState<Point2 | null>(null);
+  /** KAN-161 : pied du bois incliné en cours de pose (premier clic). */
+  const [braceFoot, setBraceFoot] = useState<Point2 | null>(null);
   /** Accroche en cours (E1) : point, guides pointillés et étiquette près du curseur. */
   const [snap, setSnap] = useState<Snap | null>(null);
   /** Pointeur grossier (doigt) : l'aide-mémoire parle de toucher, pas de clic ni de molette. */
@@ -558,6 +572,34 @@ export function PlanCanvas({
       y: r.start.y + (r.end.y - r.start.y) * k,
     };
   };
+  /** KAN-161 : où ira la tête d'un bois incliné, comme le serveur l'aimante : un autre bois à
+   *  15 cm, sinon la faîtière à 15 cm, sinon le point de la grille (sous le rampant). */
+  const braceHeadAt = (w: Point2): { point: Point2; on: string } => {
+    let best: { d: number; p: Point2 } | null = null;
+    for (const b of Object.values(derived?.braces ?? {})) {
+      const { along, dist, length } = projectOnSegment(w, b.foot, b.head);
+      if (dist > BRACE_SNAP_M || (best && dist >= best.d)) continue;
+      const k = length === 0 ? 0 : along / length;
+      best = {
+        d: dist,
+        p: {
+          x: b.foot.x + (b.head.x - b.foot.x) * k,
+          y: b.foot.y + (b.head.y - b.foot.y) * k,
+        },
+      };
+    }
+    if (best) return { point: best.p, on: "sur un autre bois" };
+    if (derived?.ridge) {
+      const p = onRidge(w);
+      if (distance(w, p) <= BRACE_SNAP_M)
+        return { point: p, on: "sur la faîtière" };
+    }
+    const sloped = Object.keys(derived?.roofs ?? {}).length > 0;
+    return {
+      point: snapToGrid(w, GRID_M),
+      on: sloped ? "sous le rampant" : "au plafond",
+    };
+  };
   const showNotice = (text: string) => {
     setNotice(text);
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
@@ -632,6 +674,7 @@ export function PlanCanvas({
     const down = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setPendingStart(null);
+        setBraceFoot(null);
         setSnap(null);
       }
     };
@@ -641,6 +684,7 @@ export function PlanCanvas({
 
   useEffect(() => {
     if (tool !== "wall") setPendingStart(null);
+    if (tool !== "brace") setBraceFoot(null);
     setSnap(null);
   }, [tool]);
 
@@ -964,6 +1008,20 @@ export function PlanCanvas({
       });
       return;
     }
+    if (tool === "brace") {
+      // KAN-161 : premier clic, le pied (sur la grille) ; second clic, la tête, aimantée. Le
+      // serveur pose les hauteurs (sol ou muret, faîtière, rampant, autre bois) en un pas.
+      const w = toWorld(view, x, y);
+      if (braceFoot === null) {
+        setBraceFoot(e.altKey ? roundPoint(w) : snapToGrid(w, GRID_M));
+        return;
+      }
+      const head = e.altKey ? roundPoint(w) : braceHeadAt(w).point;
+      if (distance(head, braceFoot) < 0.05) return;
+      onOp({ op: "add_brace", foot: braceFoot, head: roundPoint(head) });
+      setBraceFoot(null);
+      return;
+    }
     if (tool === "select") {
       // Poignées de redimensionnement (E2) : avant les sommets, elles sont dessus.
       const handle = (e.target as SVGElement).dataset["handle"];
@@ -1060,6 +1118,16 @@ export function PlanCanvas({
           current: { x: element.position.x, y: element.position.y },
           yaw: element.yaw ?? 0,
           offset: { x: w.x - element.position.x, y: w.y - element.position.y },
+        });
+        return;
+      }
+      if (target && isBrace(element)) {
+        onSelect({ kind: "element", id: target });
+        setDrag({
+          kind: "braceMove",
+          id: target,
+          grab: toWorld(view, x, y),
+          delta: { x: 0, y: 0 },
         });
         return;
       }
@@ -1376,6 +1444,11 @@ export function PlanCanvas({
         current: at.position,
         yaw: e.altKey ? drag.yaw : at.yaw,
       });
+    } else if (drag.kind === "braceMove") {
+      // Au pas de la grille (Alt : libre) ; le serveur ré-aimante la tête au dépôt.
+      const w = toWorld(view, x, y);
+      const raw = { x: w.x - drag.grab.x, y: w.y - drag.grab.y };
+      setDrag({ ...drag, delta: e.altKey ? raw : snapToGrid(raw, GRID_M) });
     } else if (drag.kind === "trussMove") {
       // Le pas en travers du faîtage est ignoré : la ferme glisse sur l'axe seulement.
       const w = toWorld(view, x, y);
@@ -1435,6 +1508,20 @@ export function PlanCanvas({
             position: roundPoint(drag.current),
             yaw: Math.round(drag.yaw * 1000) / 1000,
           },
+        });
+      }
+    }
+    if (drag?.kind === "braceMove") {
+      // KAN-161 : pied et tête déplacés ensemble, un seul pas d'historique.
+      const beam = level.elements[drag.id];
+      const b = derived?.braces?.[drag.id];
+      if (isBrace(beam) && b && Math.hypot(drag.delta.x, drag.delta.y) > 1e-6) {
+        const by = (p: Point2) =>
+          roundPoint({ x: p.x + drag.delta.x, y: p.y + drag.delta.y });
+        onOp({
+          op: "update_element",
+          element_id: drag.id,
+          fields: { foot: by(b.foot), head: by(b.head) },
         });
       }
     }
@@ -2580,6 +2667,85 @@ export function PlanCanvas({
             </polygon>
           );
         })}
+      {/* KAN-161 : bois inclinés, projection au sol en trait plein, pied marqué, passage */}
+      {derived &&
+        Object.entries(derived.braces ?? {}).map(([id, b]) => {
+          const beam = level.elements[id];
+          if (!isBrace(beam)) return null;
+          const selected = selection.kind === "element" && selection.id === id;
+          const moving =
+            drag?.kind === "braceMove" && drag.id === id ? drag : null;
+          const foot = S(b.foot);
+          const moved = moving
+            ? S({ x: b.foot.x + moving.delta.x, y: b.foot.y + moving.delta.y })
+            : null;
+          const shift = moved
+            ? `translate(${moved.x - foot.x} ${moved.y - foot.y})`
+            : undefined;
+          const mid = S({
+            x: (b.foot.x + b.head.x) / 2,
+            y: (b.foot.y + b.head.y) / 2,
+          });
+          return (
+            <g
+              key={id}
+              className={`plan-brace${selected ? " selected" : ""}`}
+              data-element={id}
+              data-testid="plan-brace"
+              transform={shift}
+            >
+              <polygon
+                className="plan-brace-outline"
+                points={pts(b.outline)}
+                data-element={id}
+              />
+              <polyline
+                className="plan-brace-axis"
+                points={pts([b.foot, b.head])}
+                data-element={id}
+              />
+              <circle
+                className="plan-brace-foot"
+                cx={foot.x}
+                cy={foot.y}
+                r={4}
+                data-element={id}
+              />
+              {selected && (
+                <text
+                  className="plan-truss-label"
+                  x={mid.x + 8}
+                  y={mid.y - 6}
+                >
+                  passage {metres(b.passage_m)}
+                </text>
+              )}
+              <title>
+                {`${beam.name ?? "Bois incliné"} : passage ${metres(b.passage_m)} au milieu`}
+              </title>
+            </g>
+          );
+        })}
+      {tool === "brace" &&
+        braceFoot &&
+        cursor &&
+        (() => {
+          const head = braceHeadAt(cursor);
+          const a = S(braceFoot);
+          const h = S(head.point);
+          return (
+            <g className="plan-brace preview" pointerEvents="none">
+              <polyline
+                className="plan-brace-axis"
+                points={pts([braceFoot, head.point])}
+              />
+              <circle className="plan-brace-foot" cx={a.x} cy={a.y} r={4} />
+              <text className="plan-truss-label" x={h.x + 8} y={h.y - 6}>
+                tête {head.on}
+              </text>
+            </g>
+          );
+        })()}
 
       {/* Escaliers (S1) : trémie, marches, ligne de foulée fléchée, coupe, garde-corps */}
       {derived &&

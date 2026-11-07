@@ -133,6 +133,22 @@ export interface AddTruss {
   name?: string | null;
 }
 
+/** KAN-161 : un bois incliné en deux clics, pied (sol ou muret) puis tête, aimantée par le
+ *  serveur (`head_on` « auto » : autre bois, faîtière à 15 cm, sinon le rampant). */
+export interface AddBrace {
+  op: "add_brace";
+  foot: Point2;
+  head: Point2;
+  head_on?: "auto" | "ridge" | "slope" | "timber" | "height";
+  head_height?: number | null;
+  foot_height?: number | null;
+  width?: number;
+  depth?: number;
+  profile?: "square" | "round";
+  head_beam?: string | null;
+  name?: string | null;
+}
+
 export interface UpdateElement {
   op: "update_element";
   element_id: string;
@@ -185,6 +201,7 @@ export type Op =
   | AddFloorZone
   | AddPost
   | AddTruss
+  | AddBrace
   | UpdateElement
   | SetIntent
   | UpdateVertex

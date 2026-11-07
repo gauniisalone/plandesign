@@ -3,6 +3,7 @@ import type { Op } from "./api/ops";
 import { length } from "./format";
 import type { Point2 } from "./api/types.gen";
 import type {
+  Beam,
   DerivedRoof,
   RoofWindow,
   Camera,
@@ -231,6 +232,26 @@ export function isPost(e: Element | undefined): e is Post {
 /** KAN-94 : ferme intermédiaire ; poteaux et poutre viennent du serveur (`derived.trusses`). */
 export function isTruss(e: Element | undefined): e is Truss {
   return e?.type === "truss";
+}
+
+/** KAN-161 : bois incliné (un `Beam`) ; projection et passage viennent du serveur
+ *  (`derived.braces`). */
+export function isBrace(e: Element | undefined): e is Beam {
+  return e?.type === "beam";
+}
+
+/** Profil et aimantations d'un bois incliné, gardés dans `metadata.brace`. */
+export function braceSettings(beam: Beam): {
+  profile: "square" | "round";
+  head_on: string | null;
+  foot_on: string | null;
+} {
+  const raw = (beam.metadata?.["brace"] ?? {}) as Record<string, unknown>;
+  return {
+    profile: raw["profile"] === "round" ? "round" : "square",
+    head_on: typeof raw["head_on"] === "string" ? raw["head_on"] : null,
+    foot_on: typeof raw["foot_on"] === "string" ? raw["foot_on"] : null,
+  };
 }
 
 export function isStairs(e: Element | undefined): e is Stairs {

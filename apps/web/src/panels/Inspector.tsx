@@ -25,6 +25,7 @@ import {
 import type { Op } from "../api/ops";
 import { area, centimetres, decimal, metres, percent } from "../format";
 import type {
+  Beam,
   RoofWindow,
   Calibration,
   Camera,
@@ -62,6 +63,8 @@ import {
   ROOM_TYPE_LABELS,
   rooms,
   isRoofWindow,
+  braceSettings,
+  isBrace,
   isPost,
   isStairs,
   isTruss,
@@ -171,6 +174,15 @@ export function Inspector(props: Props) {
           onOp={props.onOp}
         />
       )}
+      {selection.kind === "element" &&
+        isBrace(level.elements[selection.id]) && (
+          <BracePanel
+            beam={level.elements[selection.id] as Beam}
+            derived={props.derived}
+            height={level.height}
+            onOp={props.onOp}
+          />
+        )}
       {selection.kind === "element" &&
         isTruss(level.elements[selection.id]) && (
           <TrussPanel
@@ -1371,6 +1383,110 @@ function PostPanel({
         Section 5 à 40 cm ; glisser le poteau le déplace (Alt : sans accroche au
         mur).
       </p>
+    </section>
+  );
+}
+
+/** KAN-161 : ce qui porte la tête d'un bois incliné, dit à la personne. */
+const BRACE_HEAD_LABEL: Record<string, string> = {
+  ridge: "sur la faîtière",
+  slope: "sous le rampant (ou au plafond)",
+  timber: "sur un autre bois",
+  height: "à la hauteur donnée",
+};
+
+/** KAN-161 : bois incliné : section (carrée ou ronde), tête aimantée ou à hauteur donnée,
+ *  hauteur de passage sous lui (calculée par le serveur). */
+function BracePanel({
+  beam,
+  derived,
+  height,
+  onOp,
+}: {
+  beam: Beam;
+  derived: DerivedLevel | null;
+  height: number;
+  onOp: (op: Op) => void;
+}) {
+  const update = (fields: Record<string, unknown>) =>
+    onOp({ op: "update_element", element_id: beam.id, fields });
+  const section = (v: number) => v >= 5 && v <= 40;
+  const s = braceSettings(beam);
+  const d = derived?.braces?.[beam.id];
+  const round = s.profile === "round";
+  return (
+    <section>
+      <h2>Bois incliné : {beam.name ?? "Bois incliné"}</h2>
+      <Badge source={beam.source} confidence={beam.confidence} />
+      <label>
+        Section
+        <select
+          aria-label="Section du bois"
+          value={s.profile}
+          onChange={(e) => update({ profile: e.target.value })}
+        >
+          <option value="square">carrée</option>
+          <option value="round">ronde</option>
+        </select>
+      </label>
+      <NumberField
+        label={round ? "Diamètre" : "Largeur"}
+        value={cm(beam.section_width, 0.2)}
+        suffix="cm"
+        step={1}
+        onCommit={(v) => section(v) && update({ section_width: v / 100 })}
+      />
+      {!round && (
+        <NumberField
+          label="Hauteur de section"
+          value={cm(beam.section_height, 0.2)}
+          suffix="cm"
+          step={1}
+          onCommit={(v) => section(v) && update({ section_height: v / 100 })}
+        />
+      )}
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={s.head_on !== "height"}
+          onChange={(e) =>
+            update(
+              e.target.checked
+                ? { head_on: "auto" }
+                : { head_height: round2(beam.end.z) },
+            )
+          }
+        />
+        Tête aimantée (faîtière, rampant ou autre bois)
+      </label>
+      {s.head_on === "height" && (
+        <NumberField
+          label="Hauteur de la tête"
+          value={round2(beam.end.z)}
+          suffix="m"
+          step={0.05}
+          onCommit={(v) => v > 0 && v <= height && update({ head_height: v })}
+        />
+      )}
+      {d && (
+        <p>
+          Pied à {metres(d.foot_z)}
+          {s.foot_on === "wall" ? " (sur le muret)" : ""}, tête à{" "}
+          {metres(d.head_z)} {BRACE_HEAD_LABEL[s.head_on ?? ""] ?? ""}.
+          Passage sous le bois : {metres(d.passage_m)} au milieu ; moins de 1,80
+          m sur {metres(d.low_reach_m)} depuis le pied.
+        </p>
+      )}
+      <p>
+        Section 5 à 40 cm ; glisser le bois le déplace (pied et tête ensemble),
+        la tête se ré-aimante.
+      </p>
+      <button
+        className="danger"
+        onClick={() => onOp({ op: "remove_element", element_id: beam.id })}
+      >
+        Supprimer le bois incliné
+      </button>
     </section>
   );
 }

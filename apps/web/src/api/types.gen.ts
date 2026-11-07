@@ -242,6 +242,9 @@ export interface Point2 {
 
 export interface DerivedLevel {
   bounds: Bounds | null;
+  braces: {
+    [k: string]: DerivedBrace;
+  };
   level_id: string;
   loops: string[][];
   posts: {
@@ -270,6 +273,21 @@ export interface Bounds {
   max: Point2;
   min: Point2;
 }
+
+export interface DerivedBrace {
+  foot: Point2;
+  foot_z: number;
+  head: Point2;
+  head_on: string | null;
+  head_z: number;
+  low_reach_m: number;
+  outline: Point2[];
+  passage_m: number;
+  profile: string;
+}
+/**
+ * KAN-94 : l'axe du faîtage en plan, d'un pignon à l'autre.
+ */
 
 export interface DerivedRidge {
   end: Point2;
