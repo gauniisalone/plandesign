@@ -24,6 +24,29 @@ from pathlib import Path
 # KAN-152 : la ressource GPU de `pd-lock` (pytest et e2e ont leurs propres verrous ; le poste les
 # voit encore par pgrep, plus bas, et le GPU occupé par nvidia-smi).
 HEAVY_LOCK = Path("/tmp/pd-gpu.lock")  # NOSONAR
+"""Le verrou GPU dans le dossier par défaut ; le poste le cherche dans `lock_dir()`."""
+LOCK_DIR_ENV = "PD_LOCK_DIR"
+"""Le dossier des verrous, comme pour `pd-lock` (même variable) ; /tmp sinon. Les tests le
+font pointer vers un dossier temporaire : aucun ne lit les verrous réels de la machine."""
+DEFAULT_LOCK_DIR = Path("/tmp")  # NOSONAR - même faux positif
+GPU_LOCK_NAME = "pd-gpu.lock"
+TEST_LOCK_NAMES = ("pd-e2e.lock", "pd-pytest-1.lock", "pd-pytest-2.lock")
+
+
+def lock_dir() -> Path:
+    """Le dossier des verrous de `pd-lock` : `PD_LOCK_DIR`, sinon /tmp (lu à chaque appel)."""
+    return Path(os.environ.get(LOCK_DIR_ENV) or DEFAULT_LOCK_DIR)
+
+
+def heavy_lock(folder: Path | None = None) -> Path:
+    return (folder or lock_dir()) / GPU_LOCK_NAME
+
+
+def pd_test_locks(folder: Path | None = None) -> tuple[Path, ...]:
+    base = folder or lock_dir()
+    return tuple(base / name for name in TEST_LOCK_NAMES)
+
+
 Runner = Callable[[Sequence[str]], tuple[int, str]]
 
 
@@ -35,8 +58,10 @@ def run_command(cmd: Sequence[str]) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
-def lock_taken(path: Path = HEAVY_LOCK) -> bool:
-    """Le verrou est-il tenu par quelqu'un ? (essai non bloquant, relâché aussitôt)"""
+def lock_taken(path: Path | None = None) -> bool:
+    """Le verrou est-il tenu par quelqu'un ? (essai non bloquant, relâché aussitôt ; le verrou
+    GPU de `lock_dir()` par défaut)"""
+    path = heavy_lock() if path is None else path
     try:
         fd = os.open(path, os.O_RDONLY)
     except FileNotFoundError:
@@ -170,9 +195,10 @@ def short_command(argv: Sequence[str], lock: Path = HEAVY_LOCK) -> str:
     return " ".join(kept[:3])[:70] or "travail lourd"
 
 
-def lock_holder(path: Path = HEAVY_LOCK, proc: Path = Path("/proc")) -> Holder | None:
+def lock_holder(path: Path | None = None, proc: Path = Path("/proc")) -> Holder | None:
     """Le processus qui tient le verrou (ligne FLOCK de /proc/locks sur le même inode), avec sa
     commande, sa durée et la ressource (KAN-162) ; None si on ne le trouve pas."""
+    path = heavy_lock() if path is None else path
     try:
         st = path.stat()
         locks = (proc / "locks").read_text(encoding="utf-8")
@@ -266,14 +292,14 @@ TEST_LOCKS: tuple[Path, ...] = (
     Path("/tmp/pd-pytest-2.lock"),  # NOSONAR
 )
 """Les verrous de `pd-lock` (Infra, 6 nov.) que prend tout lot de tests : e2e et les deux
-places de pytest."""
+places de pytest (dans le dossier par défaut ; le poste les cherche dans `lock_dir()`)."""
 
 
-def tests_running(locks: Sequence[Path] = TEST_LOCKS, proc: Path = Path("/proc")) -> str | None:
+def tests_running(locks: Sequence[Path] | None = None, proc: Path = Path("/proc")) -> str | None:
     """KAN-159 : pourquoi le poste croit que des tests tournent, ou None. D'abord les verrous de
     `pd-lock` (flock non bloquant), puis les vrais lanceurs de tests (`launches_tests`, lu dans
     /proc/<pid>/cmdline, sans commande lancée) ; le poste ne se compte pas lui-même."""
-    for lock in locks:
+    for lock in pd_test_locks() if locks is None else locks:
         if lock_taken(lock):
             return f"verrou {lock.name} pris"
     return tests_launched(proc)
@@ -302,12 +328,15 @@ def skip_reason(
     *,
     needs_gpu: bool,
     run: Runner = run_command,
-    lock: Path = HEAVY_LOCK,
-    test_locks: Sequence[Path] = TEST_LOCKS,
+    lock: Path | None = None,
+    test_locks: Sequence[Path] | None = None,
     proc: Path = Path("/proc"),
+    folder: Path | None = None,
 ) -> str | None:
     """Pourquoi passer son tour, ou None si le poste peut rendre."""
-    wait = wait_reason(needs_gpu=needs_gpu, run=run, lock=lock, test_locks=test_locks, proc=proc)
+    wait = wait_reason(
+        needs_gpu=needs_gpu, run=run, lock=lock, test_locks=test_locks, proc=proc, folder=folder
+    )
     return None if wait is None else wait.reason
 
 
@@ -315,12 +344,16 @@ def wait_reason(
     *,
     needs_gpu: bool,
     run: Runner = run_command,
-    lock: Path = HEAVY_LOCK,
-    test_locks: Sequence[Path] = TEST_LOCKS,
+    lock: Path | None = None,
+    test_locks: Sequence[Path] | None = None,
     proc: Path = Path("/proc"),
+    folder: Path | None = None,
 ) -> Wait | None:
     """KAN-162 : comme `skip_reason`, avec le détenteur du verrou de `pd-lock` en cause (lu dans
-    le vrai /proc/locks ; `proc` ne sert qu'à chercher les lanceurs de tests)."""
+    le vrai /proc/locks ; `proc` ne sert qu'à chercher les lanceurs de tests). Les verrous non
+    donnés sont cherchés dans `folder`, sinon dans `lock_dir()` (`PD_LOCK_DIR`, sinon /tmp)."""
+    lock = heavy_lock(folder) if lock is None else lock
+    test_locks = pd_test_locks(folder) if test_locks is None else test_locks
     if lock_taken(lock):
         holder = lock_holder(lock)
         return Wait(waiting_text(holder), holder)

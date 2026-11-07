@@ -32,6 +32,15 @@ JOB = WorkerJob.model_validate(
 )
 
 
+@pytest.fixture(autouse=True)
+def _own_lock_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Aucun test ne lit les verrous réels de la machine (`PD_LOCK_DIR` temporaire)."""
+    folder = tmp_path / "verrous"
+    folder.mkdir()
+    monkeypatch.setenv(checks.LOCK_DIR_ENV, str(folder))
+    return folder
+
+
 class StubClient:
     """Le client vu par la boucle : des réponses à `claim`, et `pending` comme le vrai client
     (None : serveur d'avant KAN-162)."""
@@ -318,7 +327,7 @@ def test_the_state_is_written_atomically_in_the_same_folder_644(
     monkeypatch.setattr("openplan.cli.render_worker.etat.os.replace", broken)
     assert etat.write_state(path, 9, False) is False
     assert path.read_text() == before
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["pd-poste.etat"]
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["pd-poste.etat"]
 
 
 def test_readers_never_see_a_partial_state(tmp_path: Path) -> None:
@@ -406,17 +415,29 @@ def test_short_command_drops_long_arguments_and_project_paths(
     assert checks.short_command(argv) == expected
 
 
-def test_a_held_test_lock_names_its_resource(tmp_path: Path) -> None:
-    """Le vrai /proc/locks : ce pytest tient la place pytest-2."""
+def test_the_lock_folder_is_pd_lock_dir_or_tmp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert checks.lock_dir() == tmp_path / "verrous"  # la fixture : jamais /tmp ici
+    assert checks.heavy_lock() == tmp_path / "verrous" / "pd-gpu.lock"
+    assert [p.name for p in checks.pd_test_locks()] == list(checks.TEST_LOCK_NAMES)
+    assert checks.pd_test_locks(tmp_path)[0] == tmp_path / "pd-e2e.lock"
+    monkeypatch.delenv(checks.LOCK_DIR_ENV)
+    assert checks.lock_dir() == Path("/tmp")  # le poste réel, comme pd-lock
+    assert checks.heavy_lock() == checks.HEAVY_LOCK
+    assert checks.pd_test_locks() == checks.TEST_LOCKS
+
+
+def test_a_held_test_lock_names_its_resource(tmp_path: Path, _own_lock_dir: Path) -> None:
+    """Le vrai /proc/locks : ce pytest tient la place pytest-2 (du dossier temporaire)."""
     proc = tmp_path / "proc"
     proc.mkdir()
-    lock = tmp_path / "pd-pytest-2.lock"
+    lock = _own_lock_dir / "pd-pytest-2.lock"
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX)
     try:
-        wait = checks.wait_reason(
-            needs_gpu=False, lock=tmp_path / "pd-gpu.lock", test_locks=(lock,), proc=proc
-        )
+        # Les verrous par défaut du dossier temporaire (PD_LOCK_DIR posé par la fixture).
+        wait = checks.wait_reason(needs_gpu=False, proc=proc)
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)

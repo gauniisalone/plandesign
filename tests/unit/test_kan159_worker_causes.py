@@ -33,6 +33,16 @@ from openplan.schemas.render_queue import (
 JOB = WorkerJob(request_id=uuid4(), lease=uuid4(), created_at=datetime(2026, 11, 7, tzinfo=UTC))
 
 
+@pytest.fixture(autouse=True)
+def _own_lock_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """KAN-162 : aucun test ne lit les verrous réels de la machine (un e2e d'une autre copie
+    tenait /tmp/pd-gpu.lock et faisait échouer le garde « tests en cours »)."""
+    folder = tmp_path / "verrous"
+    folder.mkdir()
+    monkeypatch.setenv(checks.LOCK_DIR_ENV, str(folder))
+    return folder
+
+
 class _Proc:
     def __init__(self, polls: int) -> None:
         self.polls = polls
@@ -292,9 +302,11 @@ def _fake_proc(root: Path, processes: dict[int, list[str]]) -> Path:
     return root
 
 
-def test_a_plain_grep_pytest_no_longer_skips_a_turn(tmp_path: Path) -> None:
+def test_a_plain_grep_pytest_no_longer_skips_a_turn(tmp_path: Path, _own_lock_dir: Path) -> None:
     """Le défaut constaté : `pgrep -f 'pytest|playwright'` voyait un `grep pytest` (ou un
     `tail` d'un journal de pytest) et le poste passait son tour pour rien."""
+    # Le verrou GPU cherché par défaut est celui du dossier temporaire, jamais /tmp.
+    assert checks.heavy_lock() == _own_lock_dir / "pd-gpu.lock"
     proc = _fake_proc(
         tmp_path / "proc",
         {

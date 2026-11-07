@@ -50,6 +50,9 @@ uv run openplan worker status    # adresse, moteur, pause : jamais le jeton
   - des tests tournent : un verrou de `pd-lock` est pris (`/tmp/pd-e2e.lock`,
     `/tmp/pd-pytest-1.lock`, `/tmp/pd-pytest-2.lock`), ou un vrai lanceur de tests tourne
     (`pytest`, `python -m pytest`, `playwright test`). Un `grep pytest` ne compte pas.
+  - Le dossier des verrous est `/tmp`, ou `PD_LOCK_DIR` s'il est posé (la même variable que
+    `pd-lock`). Les tests le font pointer vers un dossier temporaire : aucun test ne lit les
+    verrous réels de la machine.
 - Le poste écrit aussi son journal dans `~/.local/state/plandesign/poste.log` (un fichier par
   jour, 14 jours gardés), avec chaque tour passé. Rien du projet n'y entre.
 - KAN-162 : à chaque prise, le serveur dit combien de rendus attendent en file (en-tête
