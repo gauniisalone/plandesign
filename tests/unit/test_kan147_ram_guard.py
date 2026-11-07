@@ -90,7 +90,7 @@ def test_the_guard_now_stops_on_low_ram_under_windows(monkeypatch: pytest.Monkey
         ctypes, "windll", type("W", (), {"kernel32": _Kernel32(low)})(), raising=False
     )
     killed: list[bool] = []
-    reason, _ = watch(
+    stop, _ = watch(
         _Proc(5),
         kill=lambda: killed.append(True),
         read_vram=lambda: 3000,
@@ -98,22 +98,31 @@ def test_the_guard_now_stops_on_low_ram_under_windows(monkeypatch: pytest.Monkey
         sleep=lambda _s: None,
     )
     assert killed == [True]
-    assert (
-        reason
-        == f"il ne restait que {RAM_MIN_MIB - 200} Mio de mémoire vive (minimum {RAM_MIN_MIB})"
+    # KAN-159 : la cause est un code (ram_basse) avec la valeur relevée et le seuil ; le texte,
+    # qui reste sur le poste, est celui d'avant.
+    assert stop is not None
+    assert (stop.code, stop.measured, stop.threshold) == (
+        "ram_basse",
+        RAM_MIN_MIB - 200,
+        RAM_MIN_MIB,
+    )
+    assert stop.text == (
+        f"il ne restait que {RAM_MIN_MIB - 200} Mio de mémoire vive (minimum {RAM_MIN_MIB})"
     )
 
 
 def test_linux_threshold_and_message_unchanged(tmp_path: Path) -> None:
     meminfo = tmp_path / "meminfo"
     meminfo.write_text(f"MemAvailable: {(RAM_MIN_MIB - 1) * 1024} kB\n", encoding="ascii")
-    reason, _ = watch(
+    stop, _ = watch(
         _Proc(5),
         kill=lambda: None,
         read_vram=lambda: 3000,
         read_ram=lambda: _linux_available_mib(meminfo),
         sleep=lambda _s: None,
     )
-    assert (
-        reason == f"il ne restait que {RAM_MIN_MIB - 1} Mio de mémoire vive (minimum {RAM_MIN_MIB})"
+    assert stop is not None
+    assert (stop.code, stop.measured, stop.threshold) == ("ram_basse", RAM_MIN_MIB - 1, RAM_MIN_MIB)
+    assert stop.text == (
+        f"il ne restait que {RAM_MIN_MIB - 1} Mio de mémoire vive (minimum {RAM_MIN_MIB})"
     )
