@@ -17,11 +17,19 @@ sol tout proche, sous le bas de l'image, n'est pas retiré : à 1,55 m et 26 mm,
 jusqu'à 2,5 m, et aucune vue d'une chambre de 10 m² n'atteindrait alors 60 %.) Pénalités : un
 mur à moins de 1,5 m sur le tiers du cadre, le dos à la fenêtre, un meuble haut à moins de 1 m
 devant l'objectif (écarté). Même plan, même vue : rien d'aléatoire.
+
+KAN-160 (décision d'augus, 7 nov.) : c'est le point de vue par défaut de « Rendre ». Le score
+devient une part de 0 à 1 : sol vu, périmètre vu, ouvertures vues, éléments notables vus ; moins
+le mur proche (continu), l'« écran » (cadre bouché alors qu'on voit plus loin ailleurs), le dos
+à la lumière et l'œil bas. Les places : entrées, angles, milieux de murs, plus une grille de
+0,5 m. Une 2e vue, seulement si la 1re ne voit pas assez (L, pièce longue, combles cloisonnés),
+montre ce que la 1re ne voit pas.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
@@ -29,7 +37,9 @@ import numpy as np
 import shapely
 from pydantic import JsonValue
 from shapely.geometry import Point, Polygon
+from shapely.geometry.base import BaseGeometry
 
+from openplan.geom.roof import ridge_line
 from openplan.geom.stairs import stair_layout
 from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.pipeline.compose import RUGS
@@ -99,15 +109,42 @@ SMALL_ROOM_M2 = 3.0
 """Sous 3 m², la pièce est listée mais pas cochée d'office (augus, 6 nov.)."""
 ASPECT = "4:3"
 
-FLOOR_WEIGHT = 100.0
-WALL_WEIGHT = 8.0
-LIGHT_BONUS = 12.0
-"""L'ouverture principale dans le champ (Must have 2) vaut 12 points de sol."""
-CLOSE_WALL_PENALTY = 20.0
-BACK_TO_LIGHT_PENALTY = 8.0
-ENTRY_BONUS = 1.0
+# KAN-160 : score de visibilité (0 à 1), puis pénalités. Poids et seuils fixés au banc des
+# scènes de test (rapport KAN-160) ; une scène tenue à part les a validés.
+W_FLOOR = 0.55
+"""Part du sol libre de la pièce dans le champ horizontal (vu de dessus)."""
+W_WALLS = 0.17
+"""Part du périmètre de la pièce vue, pondérée par la longueur (un long mur pèse plus)."""
+W_OPENINGS = 0.16
+"""Part des ouvertures de la pièce vues (dans le champ, sans écran), pondérée : une fenêtre ou
+une fenêtre de toit compte 1, une porte `DOOR_WEIGHT` (la lumière fait le rendu, pas la porte)."""
+DOOR_WEIGHT = 0.25
+W_ITEMS = 0.12
+"""Part des éléments notables vus : escalier, meubles de plus de 1 m² au sol, faîtage."""
+NEAR_PENALTY = 0.5
+"""× la part du cadre où un mur (ou une cloison) est à moins de 1,5 m."""
+SCREEN_PENALTY = 0.25
+"""« Écran » (combles d'augus) : la profondeur médiane du cadre est courte alors que, depuis la
+même place, on voit plus loin ailleurs : × (1 − médiane / min(4 m, plus loin possible))."""
+SCREEN_REACH_M = 4.0
+BACK_TO_LIGHT_PENALTY = 0.05
+LOW_PENALTY = 0.15
+ENTRY_TIE = 0.01
 """À score presque égal, l'entrée : la vue naturelle d'un visiteur."""
-LOW_PENALTY = 30.0
+NOTABLE_AREA_M2 = 1.0
+GRID_STEP_M = 0.5
+"""En plus des entrées et des angles, une grille de places sur la zone où l'on se tient (pièces
+en L, combles, pièces longues : le meilleur point n'est ni une porte ni un angle)."""
+SECOND_COVERAGE = 0.55
+"""2e vue cherchée si la 1re voit moins que cette part du sol, ou pièce en L ou longue…"""
+SECOND_GAIN = 0.15
+"""… et gardée seulement si elle ajoute au moins cette part de sol nouveau."""
+LONG_RATIO = 2.2
+L_FILL = 0.85
+"""Pièce « en L » : sa surface remplit moins de 85 % de son plus petit rectangle englobant."""
+SECOND_TOP_YAWS = 6
+RANK_KEY = "room_view_rank"
+"""KAN-160 : 1 pour la vue calculée d'une pièce, 2 pour sa 2e vue calculée."""
 
 
 @dataclass(frozen=True)
@@ -132,12 +169,19 @@ class RoomView:
     """« depuis l'entrée », « depuis un angle »…"""
     low: bool = False
     """Œil sous 1,50 m (rampant bas) : dit dans la note."""
+    score: float = 0.0
+    """KAN-160 : le score de visibilité retenu (après pénalités)."""
+    rank: int = 1
+    of: int = 1
+    """KAN-160 : vue 1 sur 1, ou 1 et 2 sur 2 quand une 2e vue est utile."""
 
     @property
     def note(self) -> str:
         eye = f"{self.z:.2f}".replace(".", ",")
+        # KAN-160 : l'interface dit d'où vient chaque vue (« Vue calculée », « 2/2 »).
+        origin = "Vue calculée" + (f" {self.rank}/{self.of}" if self.of > 1 else "")
         text = (
-            f"{self.where} · {eye} m · {self.focal_mm:.0f} mm · "
+            f"{origin} · {self.where} · {eye} m · {self.focal_mm:.0f} mm · "
             f"{round(self.floor_seen * 100)} % du sol visible"
         )
         return text + (" · œil abaissé sous le rampant" if self.low else "")
@@ -204,8 +248,33 @@ def _settle(
 
 def _spots(level: Level, target: Room, room: _Room) -> list[_Spot]:
     """Entrées (escalier, portes et passages de la pièce), puis angles intérieurs et milieux
-    des murs."""
-    return [*_stair_spots(level, room), *_door_spots(level, target, room), *_corner_spots(room)]
+    des murs ; KAN-160 : puis une grille de places sur la zone où l'on se tient."""
+    return [
+        *_stair_spots(level, room),
+        *_door_spots(level, target, room),
+        *_corner_spots(room),
+        *_grid_spots(room),
+    ]
+
+
+def _grid_spots(room: _Room) -> list[_Spot]:
+    """KAN-160 : une place tous les 0,5 m sur la zone où l'on se tient (dans l'ordre des
+    lignes, donc déterministe), là où l'œil tient au moins à 1,40 m sous le rampant."""
+    if room.stand.is_empty:
+        return []
+    x0, y0, x1, y1 = room.stand.bounds
+    out: list[_Spot] = []
+    ny = int((y1 - y0) / GRID_STEP_M) + 1
+    nx = int((x1 - x0) / GRID_STEP_M) + 1
+    for j in range(ny):
+        for i in range(nx):
+            x, y = x0 + GRID_STEP_M * (i + 0.5), y0 + GRID_STEP_M * (j + 0.5)
+            if not room.stand.contains(Point(x, y)):
+                continue
+            if room.clearance(x, y) - HEADROOM_M < EYE_LOW_M - 1e-9:
+                continue
+            out.append(_Spot(x, y, 0.0, "depuis la pièce", False))
+    return out
 
 
 def _stair_spots(level: Level, room: _Room) -> list[_Spot]:
@@ -351,6 +420,85 @@ def _tall_ahead(room: _Room, x: float, y: float, yaw: float, half: float) -> boo
 
 
 @dataclass(frozen=True)
+class _Target:
+    """KAN-160 : ce qu'une vue doit montrer, en plan : une ouverture (porte, fenêtre, fenêtre
+    de toit) ou un élément notable (escalier, grand meuble, faîtage)."""
+
+    x: float
+    y: float
+    opening: bool
+    light: bool = False
+    weight: float = 1.0
+    """Ce que la cible pèse dans sa part (une porte : `DOOR_WEIGHT`)."""
+    shape: BaseGeometry | None = None
+    """Pour un meuble : son emprise (le point visé est son bord le plus proche de la caméra)."""
+
+
+def _targets(
+    level: Level, target: Room, room: _Room, lights: list[tuple[float, float]]
+) -> list[_Target]:
+    out = [_Target(x, y, True, light=True) for x, y in lights]
+    graph = WallGraph.from_level(level)
+    walls = set(target.boundary_walls)
+    for e in level.elements.values():
+        if not (
+            isinstance(e, Opening)
+            and e.visible
+            and e.kind in DOOR_KINDS
+            and e.host_wall in walls
+            and e.host_wall in graph.walls
+        ):
+            continue
+        a, b = graph.wall_axis(e.host_wall)
+        length = math.hypot(b.x - a.x, b.y - a.y) or 1.0
+        ux, uy = (b.x - a.x) / length, (b.y - a.y) / length
+        t = e.offset + e.width / 2.0
+        cx, cy = a.x + ux * t, a.y + uy * t
+        if (inward := _inward(room, cx, cy, ux, uy)) is not None:
+            out.append(
+                _Target(cx + inward[0] * 0.3, cy + inward[1] * 0.3, True, weight=DOOR_WEIGHT)
+            )
+    for e in level.elements.values():
+        if isinstance(e, Stairs) and e.visible:
+            c = stair_layout(e).opening.centroid
+            if room.polygon.contains(c):
+                out.append(_Target(c.x, c.y, False))
+    for f in room.furniture:
+        if f.category in RUGS:
+            continue
+        shape = _footprint(f)
+        if shape.area >= NOTABLE_AREA_M2:
+            c = shape.centroid
+            out.append(_Target(c.x, c.y, False, shape=shape))
+    if room.roofs and (ridge := ridge_line(room.roofs)) is not None:
+        (px, py), (dx, dy) = ridge
+        c = room.free.centroid
+        t = (c.x - px) * dx + (c.y - py) * dy
+        q = (px + dx * t, py + dy * t)
+        if room.free.contains(Point(q)):
+            out.append(_Target(q[0], q[1], False))
+    return out
+
+
+def _share(targets: list[_Target], seen: Iterable[int], among: Iterable[int]) -> float:
+    """La part pondérée des cibles `among` qui sont dans `seen`."""
+    pool = list(among)
+    total = sum(targets[i].weight for i in pool)
+    hit = set(seen)
+    return sum(targets[i].weight for i in pool if i in hit) / total if total > 0 else 1.0
+
+
+def _aim(t: _Target, x: float, y: float) -> tuple[float, float]:
+    """Le point visé : celui de la cible, ou le bord d'un meuble le plus proche, 10 cm en deçà."""
+    if t.shape is None:
+        return t.x, t.y
+    edge = t.shape.exterior.interpolate(t.shape.exterior.project(Point(x, y)))
+    d = math.hypot(x - edge.x, y - edge.y) or 1.0
+    k = min(0.1, d) / d
+    return edge.x + (x - edge.x) * k, edge.y + (y - edge.y) * k
+
+
+@dataclass(frozen=True)
 class _Choice:
     score: float
     spot: _Spot
@@ -362,32 +510,53 @@ class _Choice:
     walls: int
     light: bool
     low: bool
+    perimeter: float = 0.0
+    """Part du périmètre de la pièce vue (0 à 1)."""
+    seen: frozenset[int] = frozenset()
+    """Indices des cibles (`_targets`) vues par ce cadre."""
+    near: float = 0.0
+    screen: float = 0.0
+    half: float = 0.0
+    rays: _Rays | None = None
 
 
-def _best_for_spot(
+def _choices_for_spot(
     room: _Room,
     walls: list[Polygon],
-    lights: list[tuple[float, float]],
+    targets: list[_Target],
     floor_area: float,
     spot: _Spot,
     avoid: list[tuple[float, float, float]],
     wanted_mm: float | None = None,
-) -> _Choice | None:
+) -> list[_Choice]:
+    """Tous les cadres permis depuis cette place (une orientation tous les 5°), notés."""
     clearance = room.clearance(spot.x, spot.y)
     z = min(EYE_M, clearance - HEADROOM_M)
     if z < EYE_LOW_M - 1e-9:
-        return None
+        return []
     low = z < EYE_MIN_M - 1e-9
     rays = _rays(room, walls, spot.x, spot.y)
+    reach = float(rays.depth.max())
     # KAN-134 : la focale demandée (« Réglages des rendus ») ; sans elle, selon la profondeur.
-    focal_mm = float(wanted_mm) if wanted_mm is not None else _focal_mm(float(rays.depth.max()))
+    focal_mm = float(wanted_mm) if wanted_mm is not None else _focal_mm(reach)
     focal = focal_px(focal_mm)
     width, _ = SIZES[ASPECT]
     half = math.atan(width / 2.0 / focal)
     pitch = -math.radians(ATTIC_PITCH_DEG if room.roofs else PITCH_DEG)
     # Part du sol dans le champ horizontal, vue de dessus : un secteur par rayon.
     slices = 0.5 * rays.depth**2 * math.radians(RAY_STEP_DEG)
-    best: _Choice | None = None
+    # Part du périmètre : chaque rayon arrêté par un mur de la pièce en voit ~ d·Δθ.
+    perimeter = float(room.polygon.exterior.length) or 1.0
+    arcs = np.where(rays.hits >= 0, rays.depth * math.radians(RAY_STEP_DEG), 0.0)
+    # Les cibles : direction et visibilité calculées une fois par place.
+    here = (spot.x, spot.y)
+    aims = [_aim(t, *here) for t in targets]
+    bearing = [math.atan2(ay - spot.y, ax - spot.x) for ax, ay in aims]
+    visible = [room.sees(here, p) for p in aims]
+    openings = [i for i, t in enumerate(targets) if t.opening]
+    items = [i for i, t in enumerate(targets) if not t.opening]
+    lights = [i for i, t in enumerate(targets) if t.light]
+    out: list[_Choice] = []
     for deg in range(0, 360, YAW_STEP_DEG):
         yaw = math.radians(deg)
         if any(
@@ -399,25 +568,132 @@ def _best_for_spot(
         if _tall_ahead(room, spot.x, spot.y, yaw, half):
             continue
         inside = _window(rays, yaw, half)
+        if not inside.any():
+            continue
         floor = min(1.0, float(slices[inside].sum()) / floor_area) if floor_area > 0 else 0.0
         hit = rays.hits[inside]
         counts = np.bincount(hit[hit >= 0], minlength=len(walls)) if len(walls) else np.array([])
         seen_walls = int((counts >= WALL_RAYS).sum()) if len(walls) else 0
-        close = float((rays.depth[inside] < CLOSE_WALL_M).mean()) if inside.any() else 1.0
-        gaps = [_gap(math.atan2(ly - spot.y, lx - spot.x), yaw) for lx, ly in lights]
-        light = any(
-            g <= half and room.sees((spot.x, spot.y), p) for g, p in zip(gaps, lights, strict=True)
+        share = min(1.0, float(arcs[inside].sum()) / perimeter)
+        seen = frozenset(
+            i for i in range(len(targets)) if visible[i] and _gap(bearing[i], yaw) <= half
         )
-        behind = bool(gaps) and not light and min(gaps) > math.radians(BACK_TO_LIGHT_DEG)
-        score = FLOOR_WEIGHT * floor + WALL_WEIGHT * min(seen_walls, 3)
-        score += LIGHT_BONUS if light else 0.0
-        score -= CLOSE_WALL_PENALTY if close > CLOSE_WALL_SHARE else 0.0
-        score -= BACK_TO_LIGHT_PENALTY if behind else 0.0
-        score += ENTRY_BONUS if spot.entry else 0.0
-        score -= LOW_PENALTY if low else 0.0
-        if best is None or score > best.score + 1e-9:
-            best = _Choice(score, spot, z, yaw, pitch, focal_mm, floor, seen_walls, light, low)
-    return best
+        light = any(i in seen for i in lights)
+        behind = (
+            bool(lights)
+            and not light
+            and min(_gap(bearing[i], yaw) for i in lights) > math.radians(BACK_TO_LIGHT_DEG)
+        )
+        depth = rays.depth[inside]
+        near = float((depth < CLOSE_WALL_M).mean())
+        ref = min(SCREEN_REACH_M, reach)
+        screen = SCREEN_PENALTY * max(0.0, 1.0 - float(np.median(depth)) / ref) if ref > 0 else 0.0
+        open_share = _share(targets, seen, openings) if openings else 1.0
+        item_share = _share(targets, seen, items) if items else 1.0
+        score = (
+            W_FLOOR * floor
+            + W_WALLS * share
+            + W_OPENINGS * open_share
+            + W_ITEMS * item_share
+            - NEAR_PENALTY * near
+            - screen
+            - (BACK_TO_LIGHT_PENALTY if behind else 0.0)
+            - (LOW_PENALTY if low else 0.0)
+            + (ENTRY_TIE if spot.entry else 0.0)
+        )
+        out.append(
+            _Choice(
+                score,
+                spot,
+                z,
+                yaw,
+                pitch,
+                focal_mm,
+                floor,
+                seen_walls,
+                light,
+                low,
+                share,
+                seen,
+                near,
+                screen,
+                half,
+                rays,
+            )
+        )
+    return out
+
+
+def _fan(c: _Choice, room: _Room) -> BaseGeometry:
+    """Le sol réellement vu par le cadre : l'éventail des rayons du champ, coupé par la pièce."""
+    assert c.rays is not None
+    gap = np.arctan2(np.sin(c.rays.angles - c.yaw), np.cos(c.rays.angles - c.yaw))
+    idx = np.where(np.abs(gap) <= c.half)[0]
+    idx = idx[np.argsort(gap[idx])]
+    pts = [(c.spot.x, c.spot.y)] + [
+        (
+            c.spot.x + c.rays.depth[i] * math.cos(c.rays.angles[i]),
+            c.spot.y + c.rays.depth[i] * math.sin(c.rays.angles[i]),
+        )
+        for i in idx
+    ]
+    if len(pts) < 3:
+        return Polygon()
+    return Polygon(pts).buffer(0).intersection(room.free)
+
+
+def _needs_second(room: _Room, coverage: float) -> bool:
+    """2e vue cherchée : la 1re voit moins de 55 % du sol, ou la pièce est en L ou longue."""
+    if coverage < SECOND_COVERAGE:
+        return True
+    box = room.free.minimum_rotated_rectangle
+    if box.area <= 0:
+        return False
+    if room.free.area / box.area < L_FILL:
+        return True
+    xs, ys = box.exterior.coords.xy
+    sides = sorted(math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) for i in range(2))
+    return sides[0] > 0 and sides[1] / sides[0] > LONG_RATIO
+
+
+def _second_choice(
+    room: _Room,
+    choices: list[_Choice],
+    first: _Choice,
+    targets: list[_Target],
+    floor_area: float,
+) -> tuple[_Choice, float] | None:
+    """La 2e vue : celle qui montre le plus de ce que la 1re ne voit pas (sol, ouvertures,
+    éléments), distincte d'elle (1 m plus loin ou 35° plus tournée) et ajoutant au moins 15 %
+    du sol. Renvoie aussi la part de sol nouveau."""
+    fan1 = _fan(first, room)
+    openings = {i for i, t in enumerate(targets) if t.opening}
+    items = {i for i, t in enumerate(targets) if not t.opening}
+    by_spot: dict[tuple[float, float], list[_Choice]] = {}
+    for c in choices:
+        by_spot.setdefault((c.spot.x, c.spot.y), []).append(c)
+    best: tuple[float, _Choice, float] | None = None
+    for group in by_spot.values():
+        for c in sorted(group, key=lambda k: -k.score)[:SECOND_TOP_YAWS]:
+            moved = math.hypot(c.spot.x - first.spot.x, c.spot.y - first.spot.y)
+            if moved < DISTINCT_POS_M and _gap(c.yaw, first.yaw) < math.radians(DISTINCT_YAW_DEG):
+                continue
+            new = float(_fan(c, room).difference(fan1).area) / floor_area if floor_area else 0.0
+            if new < SECOND_GAIN:
+                continue
+            fresh = c.seen - first.seen
+            v = (
+                W_FLOOR * new
+                + W_WALLS * c.perimeter * (new / max(c.floor, 1e-6))
+                + (W_OPENINGS * _share(targets, fresh, openings) if openings else 0.0)
+                + (W_ITEMS * _share(targets, fresh, items) if items else 0.0)
+                - NEAR_PENALTY * c.near
+                - c.screen
+                - (LOW_PENALTY if c.low else 0.0)
+            )
+            if best is None or v > best[0] + 1e-9:
+                best = (v, c, new)
+    return (best[1], best[2]) if best is not None else None
 
 
 def plan_room_view(
@@ -431,38 +707,79 @@ def plan_room_view(
     """La meilleure vue de la pièce `target` ; `avoid` : vues déjà posées (x, y, lacet) dont
     la nouvelle doit se distinguer (« Ajouter une vue ») ; `focal_mm` : focale imposée (KAN-134),
     sinon choisie selon la profondeur de la pièce. None si aucune place ne convient."""
+    views = _plan(level, target, name, area_m2, avoid or [], focal_mm, second=False)
+    return views[0] if views else None
+
+
+def plan_room_view_pair(
+    level: Level, target: Room, name: str, area_m2: float, focal_mm: float | None = None
+) -> list[RoomView]:
+    """KAN-160 : la vue de la pièce, et une 2e seulement si la 1re ne voit pas assez (pièce en
+    L, longue, combles cloisonnés) et qu'elle ajoute au moins 15 % du sol. Vide si aucune
+    place ne convient."""
+    return _plan(level, target, name, area_m2, [], focal_mm, second=True)
+
+
+def _view(target: Room, name: str, area_m2: float, c: _Choice, rank: int, of: int) -> RoomView:
+    return RoomView(
+        room_id=str(target.id),
+        room_name=name if rank == 1 else f"{name} · vue {rank}",
+        area_m2=round(area_m2, 1),
+        x=c.spot.x,
+        y=c.spot.y,
+        z=c.z,
+        yaw=c.yaw,
+        pitch=c.pitch,
+        focal_px=focal_px(c.focal_mm),
+        focal_mm=c.focal_mm,
+        floor_seen=c.floor,
+        walls_seen=c.walls,
+        light_in_view=c.light,
+        where=c.spot.where,
+        low=c.low,
+        score=round(c.score, 4),
+        rank=rank,
+        of=of,
+    )
+
+
+def _plan(
+    level: Level,
+    target: Room,
+    name: str,
+    area_m2: float,
+    avoid: list[tuple[float, float, float]],
+    focal_mm: float | None,
+    *,
+    second: bool,
+) -> list[RoomView]:
     check_focal(focal_mm)
     room = _room(level, target)
     graph = WallGraph.from_level(level)
     walls = [graph.wall_polygon(w) for w in target.boundary_walls if w in graph.walls]
-    lights = _light_points(room)
+    targets = _targets(level, target, room, _light_points(room))
     floor_area = float(room.free.area)
     choices = [
         c
         for spot in _spots(level, target, room)
-        if (c := _best_for_spot(room, walls, lights, floor_area, spot, avoid or [], focal_mm))
-        is not None
+        for c in _choices_for_spot(room, walls, targets, floor_area, spot, avoid, focal_mm)
     ]
     if not choices:
-        return None
-    best = max(choices, key=lambda c: c.score)
-    return RoomView(
-        room_id=str(target.id),
-        room_name=name,
-        area_m2=round(area_m2, 1),
-        x=best.spot.x,
-        y=best.spot.y,
-        z=best.z,
-        yaw=best.yaw,
-        pitch=best.pitch,
-        focal_px=focal_px(best.focal_mm),
-        focal_mm=best.focal_mm,
-        floor_seen=best.floor,
-        walls_seen=best.walls,
-        light_in_view=best.light,
-        where=best.spot.where,
-        low=best.low,
-    )
+        return []
+    # Le premier meilleur dans l'ordre des places : même plan, même vue.
+    best = choices[0]
+    for c in choices[1:]:
+        if c.score > best.score + 1e-9:
+            best = c
+    if not second:
+        return [_view(target, name, area_m2, best, 1, 1)]
+    coverage = float(_fan(best, room).area) / floor_area if floor_area else 1.0
+    if not _needs_second(room, coverage):
+        return [_view(target, name, area_m2, best, 1, 1)]
+    pair = _second_choice(room, choices, best, targets, floor_area)
+    if pair is None:
+        return [_view(target, name, area_m2, best, 1, 1)]
+    return [_view(target, name, area_m2, best, 1, 2), _view(target, name, area_m2, pair[0], 2, 2)]
 
 
 def check_focal(focal_mm: float | None) -> None:
@@ -473,10 +790,11 @@ def check_focal(focal_mm: float | None) -> None:
 
 
 def plan_room_views(
-    level: Level, focal_mm: float | None = None
+    level: Level, focal_mm: float | None = None, *, second: bool = False
 ) -> tuple[list[RoomView], list[str]]:
     """Une vue par pièce du niveau, et la raison de chaque pièce sans vue ; `focal_mm` : focale
-    imposée à toutes (KAN-134), sinon celle du calcul."""
+    imposée à toutes (KAN-134), sinon celle du calcul. KAN-160 : `second`, la 2e vue de chaque
+    pièce qui en a besoin, juste après la 1re."""
     names = room_names(level)
     areas = compute_derived(level).rooms
     views: list[RoomView] = []
@@ -485,13 +803,12 @@ def plan_room_views(
         name = names[str(room.id)]
         area = areas[room.id].area_m2 if room.id in areas else 0.0
         try:
-            view = plan_room_view(level, room, name, area, focal_mm=focal_mm)
+            found = _plan(level, room, name, area, [], focal_mm, second=second)
         except (NoCameraError, GeometryError):
-            view = None
-        if view is None:
+            found = []
+        if not found:
             skipped.append(f"{name} : aucune place pour la caméra")
-        else:
-            views.append(view)
+        views.extend(found)
     return views, skipped
 
 
@@ -516,6 +833,7 @@ def _camera(view: RoomView, run_id: UUID, *, on: bool, added: bool = False) -> C
         AREA_KEY: view.area_m2,
         FLOOR_KEY: round(view.floor_seen, 3),
         ON_KEY: on,
+        RANK_KEY: view.rank,
         "aspect": ASPECT,
         "note": view.note,
     }
@@ -565,7 +883,8 @@ def apply_room_views(
             kept.append(f"{e.name} : vue ajoutée, gardée")
         else:
             del elements[e.id]
-    views, skipped = plan_room_views(level, focal_mm)
+    # KAN-160 : la 2e vue d'une pièce qui en a besoin, cochée comme sa pièce.
+    views, skipped = plan_room_views(level, focal_mm, second=True)
     run_id = uuid4()
     added: list[str] = []
     for view in views:
@@ -649,13 +968,27 @@ def reset_room_view(
     added = bool(camera.metadata.get(ADDED_KEY))
     name = room_names(level)[room_id]
     areas = compute_derived(level).rooms
-    view = plan_room_view(
-        level,
-        room,
-        name,
-        areas[room.id].area_m2 if room.id in areas else 0.0,
-        avoid=[(c.position.x, c.position.y, c.yaw) for c in others] if added else None,
-    )
+    area = areas[room.id].area_m2 if room.id in areas else 0.0
+    view: RoomView | None
+    if not added and camera.metadata.get(RANK_KEY) == 2:
+        # KAN-160 : une 2e vue calculée reprend la 2e vue (sinon, la meilleure qui se distingue
+        # des autres vues de sa pièce, jamais une copie de la 1re).
+        pair = plan_room_view_pair(level, room, name, area)
+        view = (
+            pair[1]
+            if len(pair) == 2
+            else plan_room_view(
+                level, room, name, area, avoid=[(c.position.x, c.position.y, c.yaw) for c in others]
+            )
+        )
+    else:
+        view = plan_room_view(
+            level,
+            room,
+            name,
+            area,
+            avoid=[(c.position.x, c.position.y, c.yaw) for c in others] if added else None,
+        )
     if view is None:
         msg = f"{camera.name or name} : aucune place pour la caméra"
         raise NoCameraError(msg)

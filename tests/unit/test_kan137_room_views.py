@@ -22,6 +22,7 @@ from openplan.pipeline.room_views import (
     EYE_LOW_M,
     EYE_MIN_M,
     ON_KEY,
+    RANK_KEY,
     ROOM_KEY,
     ROOM_NAME_KEY,
     SMALL_ROOM_M2,
@@ -198,11 +199,19 @@ def test_room_views_go_into_the_plan_small_rooms_unticked() -> None:
     after, report = apply_room_views(project, level.id, actor="user")
     cams = _room_cams(after)
     rooms = {str(r.id): r for r in rooms_of(level)}
-    assert len(cams) == len(rooms) == len(report.added) and not report.skipped
+    # KAN-160 : chaque pièce a sa vue, et au plus une 2e quand la 1re ne voit pas assez.
+    assert len(cams) == len(report.added) and not report.skipped
+    per_room: dict[str, list[Camera]] = {}
+    for cam in cams:
+        per_room.setdefault(str(cam.metadata[ROOM_KEY]), []).append(cam)
+    assert sorted(per_room) == sorted(rooms)
+    assert all(len(v) <= 2 for v in per_room.values())
     names = room_names(level)
     for cam in cams:
         meta = cam.metadata
-        assert cam.name == names[str(meta[ROOM_KEY])] == meta[ROOM_NAME_KEY]
+        base = names[str(meta[ROOM_KEY])]
+        wanted = base if meta[RANK_KEY] == 1 else f"{base} · vue 2"
+        assert cam.name == wanted == meta[ROOM_NAME_KEY]
         assert cam.image_id is None and cam.source is Source.GENERATED
         area = meta[AREA_KEY]
         assert isinstance(area, float)
@@ -270,7 +279,8 @@ def test_the_routes_propose_and_add_room_views(tmp_path: Path) -> None:
         r = client.post(base)
         assert r.status_code == 200, r.text
         body = r.json()
-        assert len(body["views"]["added"]) == len(rooms_of(level))
+        # KAN-160 : une vue par pièce, plus une 2e pour celles qui en ont besoin.
+        assert len(rooms_of(level)) <= len(body["views"]["added"]) <= 2 * len(rooms_of(level))
         room = next(r for r in rooms_of(level) if r.room_type == "living_room")
         added = client.post(f"{base}/{room.id}/add")
         assert added.status_code == 200, added.text
