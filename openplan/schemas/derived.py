@@ -99,6 +99,24 @@ class DerivedTruss(StrictModel):
     problem: str | None = None
 
 
+class DerivedBrace(StrictModel):
+    """KAN-161 : un bois incliné vu en plan : la projection au sol de son volume (trait plein),
+    son pied (marqué) et sa tête, leurs hauteurs, et la hauteur de passage sous lui."""
+
+    outline: list[Point2]
+    foot: Point2
+    head: Point2
+    foot_z: float
+    head_z: float
+    passage_m: float
+    """Hauteur du dessous du bois au milieu de sa portée en plan (la cote affichée)."""
+    low_reach_m: float
+    """Longueur en plan, depuis le pied, où l'on passe à moins de 1,80 m sous lui."""
+    head_on: str | None = None
+    """« ridge », « slope », « timber », « height » ; None pour un bois sans aimantation."""
+    profile: str = "square"
+
+
 class DerivedLevel(StrictModel):
     level_id: UUID
     walls: dict[UUID, DerivedWall] = Field(default_factory=dict)
@@ -112,6 +130,8 @@ class DerivedLevel(StrictModel):
     posts: dict[UUID, list[Point2]] = Field(default_factory=dict)
     """KAN-94 : emprise de chaque poteau seul."""
     trusses: dict[UUID, DerivedTruss] = Field(default_factory=dict)
+    braces: dict[UUID, DerivedBrace] = Field(default_factory=dict)
+    """KAN-161 : chaque bois incliné (`Beam`) du niveau."""
     loops: list[list[UUID]] = Field(default_factory=list)
     """Boucles fermées détectées, qu'une pièce les représente déjà ou non."""
     bounds: Bounds | None = None

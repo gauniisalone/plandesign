@@ -669,11 +669,13 @@ PRO_ROUTES = _with(OFFER_PRO)
 
 # --- KAN-126 : offres Essentiel et Pro (aucun paiement : l'offre est posée par l'administrateur)
 PRO_OPS: frozenset[str] = frozenset(
-    {"add_truss", "add_post", "add_roof_window", "add_stairs", "add_floor_zone"}
+    {"add_truss", "add_post", "add_brace", "add_roof_window", "add_stairs", "add_floor_zone"}
 )
 """Opérations d'AJOUT à la main de l'offre Pro (route `plan.ops`). Le calcul du plan (génération,
 régénération, combles) crée ces éléments quelle que soit l'offre : il ne passe pas par cette
-route. Un élément Pro existant reste lisible, sélectionnable, supprimable et exporté."""
+route. Un élément Pro existant reste lisible, sélectionnable, supprimable et exporté. KAN-161 :
+la pose à la main d'un bois incliné (`add_brace`) aussi ; le déplacer ou le modifier reste
+Essentiel, comme un poteau."""
 PUSH_PULL_FIELDS: frozenset[tuple[str, str]] = frozenset(
     {("wall", "thickness"), ("wall", "height"), ("floor_zone", "elevation")}
 )

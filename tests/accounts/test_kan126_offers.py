@@ -73,7 +73,14 @@ def test_the_pro_routes_are_declared_in_the_registry() -> None:
     assert names == {"project.exports.dxf:get", "project.exports.section-pdf:get"}
     assert ("GET", P + "/exports/archive") not in PRO_ROUTES, "la portabilité reste Essentielle"
     assert ("GET", P + "/exports/glb") not in PRO_ROUTES, "la vue 3D de l'éditeur le lit"
-    expected = {"add_truss", "add_post", "add_roof_window", "add_stairs", "add_floor_zone"}
+    expected = {
+        "add_truss",
+        "add_post",
+        "add_brace",  # KAN-161
+        "add_roof_window",
+        "add_stairs",
+        "add_floor_zone",
+    }
     assert expected == PRO_OPS
 
 
@@ -108,8 +115,11 @@ def test_essentiel_cannot_add_a_pro_element_by_hand(zoe: TestClient) -> None:
     _refused(zoe.post(ops, json={"op": "add_post", "position": {"x": 3.0, "y": 2.5}}))
     _refused(zoe.post(ops, json={"op": "add_truss"}))
     _refused(zoe.post(ops, json={"op": "add_stairs", "position": {"x": 3.0, "y": 2.5}}))
+    brace = {"op": "add_brace", "foot": {"x": 3.0, "y": 2.5}, "head": {"x": 3.5, "y": 2.5}}
+    _refused(zoe.post(ops, json=brace))  # KAN-161
     assert not any(
-        e["type"] in ("post", "truss", "stairs") for e in _elements(zoe, pid, level).values()
+        e["type"] in ("post", "truss", "stairs", "beam")
+        for e in _elements(zoe, pid, level).values()
     )
     # Un geste Essentiel passe : un mur.
     wall = zoe.post(

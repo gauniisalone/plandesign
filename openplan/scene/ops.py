@@ -13,11 +13,21 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import Field, JsonValue, TypeAdapter, ValidationError
 
+from openplan.geom.brace import (
+    BRACE_KEY,
+    SECTION_M,
+    BraceSpec,
+    is_brace,
+    metadata_of,
+    place,
+    spec_of,
+)
 from openplan.geom.floor_zones import MAX_ELEVATION_M as MAX_ZONE_ELEVATION_M
 from openplan.geom.floor_zones import quad, quad_problem
 from openplan.geom.roof import slope_length
@@ -45,6 +55,7 @@ from openplan.schemas.common import (
     Uncertainty,
 )
 from openplan.schemas.elements import (
+    Beam,
     Camera,
     Ceiling,
     Element,
@@ -244,9 +255,50 @@ class AddTruss(StrictModel):
     name: str | None = None
 
 
+HeadMode = Literal["auto", "ridge", "slope", "timber", "height"]
+
+
+class AddBrace(StrictModel):
+    """KAN-161 : un bois incliné (jambe de force, arbalétrier), posé en deux clics : `foot` (au
+    sol d'une pièce, ou sur un muret), puis `head`. La tête s'aimante (`head_on` « auto ») sur
+    un autre bois ou la faîtière à moins de 15 cm, sinon sous le rampant (le plafond hors des
+    combles) ; « height » la met à `head_height`. Section 20 × 20 cm par défaut, carrée ou
+    ronde (`profile`, diamètre `width`). Stocké comme un `Beam` (aucun changement de schéma)."""
+
+    op: Literal["add_brace"] = "add_brace"
+    foot: Point2
+    head: Point2
+    head_on: HeadMode = "auto"
+    head_height: float | None = Field(default=None, gt=0.0, le=6.0)
+    foot_height: float | None = Field(default=None, ge=0.0, le=3.0)
+    """None : le sol de la pièce, ou le dessus du muret sous le pied."""
+    width: float = Field(default=SECTION_M, ge=0.05, le=0.40)
+    depth: float = Field(default=SECTION_M, ge=0.05, le=0.40)
+    profile: Literal["square", "round"] = "square"
+    head_beam: UUID | None = None
+    """Le bois sur lequel aimanter la tête (`head_on` « timber ») ; sinon le plus proche."""
+    name: str | None = None
+
+
+class _BraceChange(StrictModel):
+    """KAN-161 : ce qu'`update_element` change d'un bois incliné (le reste est générique)."""
+
+    foot: Point2 | None = None
+    head: Point2 | None = None
+    head_on: HeadMode | None = None
+    head_height: float | None = Field(default=None, gt=0.0, le=6.0)
+    foot_height: float | None = Field(default=None, ge=0.0, le=3.0)
+    profile: Literal["square", "round"] | None = None
+    section_width: float | None = Field(default=None, ge=0.05, le=0.40)
+    section_height: float | None = Field(default=None, ge=0.05, le=0.40)
+    head_beam: UUID | None = None
+
+
 class UpdateElement(StrictModel):
     """Modifie des champs d'un élément ; `id` et `type` sont interdits. Une ferme (KAN-94)
-    accepte aussi `distance` et `from_wall`, convertis en point du faîtage."""
+    accepte aussi `distance` et `from_wall`, convertis en point du faîtage. Un bois incliné
+    (KAN-161) se déplace par `foot` et `head` (en plan, la hauteur est recalculée) et accepte
+    `head_on`, `head_height`, `foot_height`, `profile` et sa section."""
 
     op: Literal["update_element"] = "update_element"
     element_id: UUID
@@ -317,7 +369,8 @@ Op = Annotated[
     # corps sans `op` (« {} », un pas vide) doit rester DetectRooms, la première commande dont
     # tous les champs ont une valeur par défaut ; AddTruss en a aussi.
     | AddPost
-    | AddTruss,
+    | AddTruss
+    | AddBrace,
     Field(discriminator="op"),
 ]
 
@@ -405,8 +458,12 @@ def _dispatch(level: Level, op: Op, actor: str) -> tuple[Level, str]:  # noqa: P
             return _add_post(level, op), "Poser un poteau"
         case AddTruss():
             return _add_truss(level, op)
+        case AddBrace():
+            return _add_brace(level, op), "Poser un bois incliné"
         case UpdateElement() if isinstance(level.elements.get(op.element_id), Truss):
             return _update_truss(level, op, actor)
+        case UpdateElement() if is_brace(level.elements.get(op.element_id)):
+            return _update_brace(level, op, actor)
         case UpdateElement():
             return _update_element(level, op, actor), _update_label(level, op)
         case SetIntent():
@@ -876,6 +933,100 @@ def _update_truss(level: Level, op: UpdateElement, actor: str) -> tuple[Level, s
     )
     elements = {**moved.elements, op.element_id: truss}
     return moved.model_copy(update={"elements": elements}), label + note
+
+
+def _placed_brace(level: Level, beam: Beam, spec: BraceSpec) -> Beam:
+    """KAN-161 : le bois reposé selon `spec` (pied sur son support, tête aimantée)."""
+    try:
+        placed = place(level, WallGraph.from_level(level), spec, own=beam.id)
+    except ValueError as exc:
+        raise OpError(str(exc)) from exc
+    return beam.model_copy(
+        update={
+            "start": placed.start,
+            "end": placed.end,
+            "section_width": spec.width,
+            "section_height": spec.width if spec.profile == "round" else spec.depth,
+            "metadata": {**beam.metadata, BRACE_KEY: metadata_of(placed, spec.profile)},
+        }
+    )
+
+
+def _add_brace(level: Level, op: AddBrace) -> Level:
+    count = sum(1 for e in level.elements.values() if is_brace(e))
+    spec = BraceSpec(
+        foot=(op.foot.x, op.foot.y),
+        head=(op.head.x, op.head.y),
+        head_on=op.head_on,
+        head_height=op.head_height,
+        foot_height=op.foot_height,
+        width=op.width,
+        depth=op.depth,
+        profile=op.profile,
+        head_beam=op.head_beam,
+    )
+    blank = Beam(
+        name=op.name or f"Bois incliné {count + 1}",
+        start=Point3(x=op.foot.x, y=op.foot.y, z=0.0),
+        end=Point3(x=op.head.x, y=op.head.y, z=0.0),
+        section_width=op.width,
+        section_height=op.depth,
+        source=Source.USER_DEFINED,
+        confidence=1.0,
+    )
+    beam = _placed_brace(level, blank, spec)
+    return level.model_copy(update={"elements": {**level.elements, beam.id: beam}})
+
+
+_BRACE_FIELDS = frozenset(_BraceChange.model_fields)
+
+
+def _update_brace(level: Level, op: UpdateElement, actor: str) -> tuple[Level, str]:
+    """KAN-161 : un bois incliné déplacé (pied, tête en plan) ou modifié, reposé en un pas ;
+    ses hauteurs sont recalculées (support du pied, aimantation de la tête)."""
+    fields = dict(op.fields)
+    if {"start", "end"} & fields.keys():
+        msg = "un bois incliné se déplace par son pied et sa tête (foot, head), en plan"
+        raise OpError(msg)
+    raw = {k: fields.pop(k) for k in list(fields) if k in _BRACE_FIELDS}
+    try:
+        change = _BraceChange.model_validate(raw)
+    except ValidationError as exc:
+        raise OpError(str(exc)) from exc
+    moved = _update_element(level, op.model_copy(update={"fields": fields}), actor)
+    beam = moved.elements[op.element_id]
+    assert isinstance(beam, Beam)
+    spec = spec_of(beam)
+    given = change.model_fields_set
+    head_on = change.head_on or ("height" if "head_height" in given else spec.head_on)
+    width = change.section_width if change.section_width is not None else spec.width
+    spec = BraceSpec(
+        foot=(change.foot.x, change.foot.y) if change.foot else spec.foot,
+        head=(change.head.x, change.head.y) if change.head else spec.head,
+        head_on=head_on,
+        head_height=(
+            change.head_height
+            if "head_height" in given
+            else spec.head_height
+            if head_on == "height"
+            else None
+        ),
+        foot_height=change.foot_height if "foot_height" in given else spec.foot_height,
+        width=width,
+        depth=change.section_height if change.section_height is not None else spec.depth,
+        profile=change.profile or spec.profile,
+        head_beam=change.head_beam if "head_beam" in given else spec.head_beam,
+    )
+    if spec.head_on == "height" and spec.head_height is None:
+        spec = replace(spec, head_height=beam.end.z)
+    updated = _placed_brace(moved, beam, spec)
+    label = (
+        "Déplacer le bois incliné"
+        if raw and given <= {"foot", "head"} and not fields
+        else "Modifier le bois incliné"
+    )
+    elements = {**moved.elements, op.element_id: updated}
+    return moved.model_copy(update={"elements": elements}), label
 
 
 def _update_element(level: Level, op: UpdateElement, actor: str = USER_ACTOR) -> Level:

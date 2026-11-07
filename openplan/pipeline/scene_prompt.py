@@ -27,6 +27,7 @@ from shapely.geometry.base import BaseGeometry
 from openplan.pipeline.guides import VISIBLE_MIN_PX, visible_pixels
 from openplan.schemas.bake import Bake, Decor, Polyhedron, Prism, RenderCamera
 from openplan.schemas.elements import (
+    Beam,
     Fixture,
     Furniture,
     Opening,
@@ -195,6 +196,11 @@ POST_WORDS = ("timber post standing in the middle of the room", "timber posts st
 longueur (essai MH3)."""
 WALL_POST_WORDS = ("timber post against the wall", "timber posts against the walls")
 TRUSS_WORDS = ("timber truss of two posts under a crossbeam", "timber trusses of two posts")
+BRACE_WORDS = (
+    "diagonal timber brace rising to the roof",
+    "diagonal timber braces rising to the roof",
+)
+"""KAN-161 : bois incliné vu (jambe de force, arbalétrier) ; nommé seulement si la vue le voit."""
 RAILING_WORDS = ("stair railing", "stair railings")
 STAIRWELL_WORDS = ("open stairwell", "open stairwells")
 FREE_POST_M = 0.5
@@ -401,6 +407,8 @@ def _structure(
             posts["free" if free else "wall"] += 1
         elif isinstance(element, Truss):
             posts["truss"] += 1
+        elif isinstance(element, Beam):
+            posts["brace"] += 1
         elif isinstance(element, Opening):
             openings[element.kind] += 1
         elif isinstance(element, RoofWindow):
@@ -411,6 +419,7 @@ def _structure(
         "free": POST_WORDS,
         "wall": WALL_POST_WORDS,
         "truss": TRUSS_WORDS,
+        "brace": BRACE_WORDS,
         "roof_window": ROOF_WINDOW_WORDS,
         "railing": RAILING_WORDS,
         "stairwell": STAIRWELL_WORDS,

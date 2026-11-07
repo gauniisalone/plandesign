@@ -27,6 +27,7 @@ from shapely.geometry.polygon import orient
 from trimesh.creation import extrude_polygon
 from trimesh.visual.color import ColorVisuals
 
+from openplan.geom.brace import brace_points
 from openplan.geom.built_in_bed import BUILT_IN_BED, NICHE_GAP_M, capping, niche
 from openplan.geom.built_in_bed import parts as bed_parts
 from openplan.geom.convex import SURE_TOUCH_M, Solid
@@ -77,6 +78,7 @@ from openplan.schemas.bake import (
 from openplan.schemas.common import ElementBase, Point2, Point3, Source
 from openplan.schemas.elements import (
     DOOR_KINDS,
+    Beam,
     Ceiling,
     Fixture,
     Floor,
@@ -682,7 +684,8 @@ def _box(shape: Polygon, z0: float, z1: float) -> Float:
 
 def _bake_structure(level: Level, graph: WallGraph, style: BakeStyle) -> list[Polyhedron]:
     """KAN-94 : poteaux et fermes intermédiaires, en bois de charpente. Une ferme que le faîtage
-    ne porte plus n'est pas bâtie (la règle `truss_off_ridge` le dit)."""
+    ne porte plus n'est pas bâtie (la règle `truss_off_ridge` le dit). KAN-161 : les bois
+    inclinés aussi."""
     out: list[Polyhedron] = []
     tf = _timber_finish()
     solids: list[Float] | None = None
@@ -708,6 +711,10 @@ def _bake_structure(level: Level, graph: WallGraph, style: BakeStyle) -> list[Po
             boxes.append(
                 _box(beam, z0 + parts.beam_height, z0 + parts.beam_height + element.beam_depth)
             )
+        elif isinstance(element, Beam) and element.visible:
+            # KAN-161 : bois incliné, son volume réel (pied coupé de niveau), en bois de
+            # charpente : il entre aux guides d'arêtes et à la classe « timber » des masques.
+            boxes.append(brace_points(element, z0))
         for k, points in enumerate(boxes):
             piece = _polyhedron(trimesh.convex.convex_hull(points), element, k, "timber", style)
             out.append(

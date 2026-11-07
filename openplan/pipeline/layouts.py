@@ -85,6 +85,7 @@ from openplan.validation.layout import (
     _inside_sign,
     _strip,
     bed_headroom_at,
+    brace_obstacles,
     check_layout,
     clearance_at,
     door_zone,
@@ -530,6 +531,8 @@ def build_context(project: Project, level_id: UUID, room_id: UUID | None) -> Con
     )
     # KAN-94 : aucun meuble sur un poteau, seul ou de ferme.
     forbidden.extend(post_shapes(level, graph))
+    # KAN-161 : ni sous la partie basse (sous 1,80 m) d'un bois incliné.
+    forbidden.extend(low for _beam, low in brace_obstacles(level))
     catalog = load_catalog()
     by_category: dict[str, CatalogAsset] = {}
     for asset in catalog.assets:

@@ -8,6 +8,14 @@ from uuid import UUID
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+from openplan.geom.brace import (
+    brace_footprint,
+    low_reach,
+    passage,
+    plan_point,
+    profile_of,
+    settings,
+)
 from openplan.geom.polygon import to_points
 from openplan.geom.roof import derived_roofs
 from openplan.geom.stairs import arrow_head, cut_line, headroom, railing_lines, stair_layout
@@ -26,6 +34,7 @@ from openplan.geom.wallgraph import GeometryError, WallGraph
 from openplan.schemas.common import Point2
 from openplan.schemas.derived import (
     Bounds,
+    DerivedBrace,
     DerivedGable,
     DerivedLevel,
     DerivedRidge,
@@ -35,7 +44,16 @@ from openplan.schemas.derived import (
     DerivedTruss,
     DerivedWall,
 )
-from openplan.schemas.elements import DOOR_KINDS, Opening, Post, Room, Stairs, Truss, Wall
+from openplan.schemas.elements import (
+    DOOR_KINDS,
+    Beam,
+    Opening,
+    Post,
+    Room,
+    Stairs,
+    Truss,
+    Wall,
+)
 from openplan.schemas.scene import Level
 from openplan.validation.layout import clearance_at
 
@@ -102,6 +120,7 @@ def compute_derived(level: Level) -> DerivedLevel:
             for eid, e in level.elements.items()
             if isinstance(e, Truss)
         },
+        braces={eid: _brace(e) for eid, e in level.elements.items() if isinstance(e, Beam)},
         loops=loops,
         bounds=bounds,
     )
@@ -176,6 +195,22 @@ def _truss(level: Level, graph: WallGraph, ridge: Ridge | None, truss: Truss) ->
         beam_height=parts.beam_height,
         lowered=parts.lowered,
         distances={wall.id: round(abs(t - face), 3) for wall, face in _gables(level, graph, ridge)},
+    )
+
+
+def _brace(beam: Beam) -> DerivedBrace:
+    """KAN-161 : projection au sol, pied, tête et passage d'un bois incliné."""
+    head_on = settings(beam).get("head_on")
+    return DerivedBrace(
+        outline=to_points(brace_footprint(beam)),
+        foot=plan_point(beam.start),
+        head=plan_point(beam.end),
+        foot_z=beam.start.z,
+        head_z=beam.end.z,
+        passage_m=passage(beam),
+        low_reach_m=low_reach(beam),
+        head_on=str(head_on) if head_on is not None else None,
+        profile=profile_of(beam),
     )
 
 

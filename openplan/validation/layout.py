@@ -18,7 +18,10 @@ Chaque règle produit des violations compréhensibles, avec les éléments conce
 - `velux_casing` : un meuble qui entre dans le caisson d'un velux (KAN-67, souple) ; le volume
   est celui que le bake bâtit (`geom.velux.velux_casings`), en pleine profondeur ;
 - `truss_off_ridge` : une ferme intermédiaire que le faîtage ne porte plus (KAN-94, souple ;
-  gardée, jamais supprimée en silence), `truss_lowered` : sa poutre abaissée sous la pente.
+  gardée, jamais supprimée en silence), `truss_lowered` : sa poutre abaissée sous la pente ;
+- `brace_collision` : un meuble qui entre dans le volume d'un bois incliné (KAN-161, souple :
+  une alerte), `brace_blocks_door` : un bois plus bas que 1,80 m devant une porte (souple) ;
+  la partie basse d'un bois incliné barre aussi le passage (`furniture_unreachable`).
 
 « Dure » = sévérité `high` (l'édition est refusée, la proposition d'aménagement écartée) ;
 « souple » = `medium` (affichée, pénalité de score). Une `Constraint` de la sorte
@@ -40,6 +43,7 @@ from numpy.typing import NDArray
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
+from openplan.geom.brace import OBSTACLE_HEIGHT_M, brace_points, low_footprint, passage
 from openplan.geom.built_in_bed import (
     BUILT_IN_BED,
     MIN_HEADROOM_M,
@@ -47,7 +51,7 @@ from openplan.geom.built_in_bed import (
     headroom_at,
     standing_at,
 )
-from openplan.geom.convex import Solid
+from openplan.geom.convex import SURE_TOUCH_M, Solid
 from openplan.geom.opening_symbols import (
     SLIDE_DEPTH_M,
     STACK_KINDS,
@@ -66,6 +70,7 @@ from openplan.scene.catalog import CatalogError, load_catalog
 from openplan.schemas.derived import DerivedRoof
 from openplan.schemas.elements import (
     DOOR_KINDS,
+    Beam,
     Fixture,
     Furniture,
     Opening,
@@ -511,6 +516,7 @@ def check_layout(project: Project) -> list[Violation]:
         out.extend(_check_stairs(project, level, graph, pieces))
         out.extend(_check_stacks(level, graph))
         out.extend(_check_trusses(level, graph))
+        out.extend(_check_braces(project, level, graph, pieces))
         if not pieces:
             continue
         out.extend(_check_slopes(project, level, graph, pieces))
@@ -549,6 +555,83 @@ def _check_trusses(level: Level, graph: WallGraph) -> list[Violation]:
                     message=(
                         f"« {name} » : poutre abaissée à {_metres(parts.beam_height)} m, la "
                         "pente passe plus bas que la hauteur demandée."
+                    ),
+                )
+            )
+    return out
+
+
+def brace_obstacles(level: Level) -> list[tuple[Beam, Polygon]]:
+    """KAN-161 : chaque bois incliné visible et l'emprise de sa partie basse (sous 1,80 m) :
+    l'obstacle pour la circulation et pour le générateur d'aménagement."""
+    out: list[tuple[Beam, Polygon]] = []
+    for beam in (e for e in level.elements.values() if isinstance(e, Beam) and e.visible):
+        low = low_footprint(beam)
+        if low is not None:
+            out.append((beam, low))
+    return out
+
+
+def _check_braces(
+    project: Project, level: Level, graph: WallGraph, pieces: list[Piece]
+) -> list[Violation]:
+    """KAN-161 : un meuble qui entre dans le volume d'un bois incliné (`brace_collision`,
+    souple : une alerte), un bois bas devant une porte (`brace_blocks_door`, souple)."""
+    out: list[Violation] = []
+    braces = [e for e in level.elements.values() if isinstance(e, Beam) and e.visible]
+    if not braces:
+        return out
+    solids = [(b, Solid.of(brace_points(b))) for b in braces]
+    for piece in pieces:
+        z0 = piece.element.transform.position.z
+        for beam, solid in solids:
+            if solid is None or solid.depth_in(piece.polygon, z0, piece.top) <= SURE_TOUCH_M:
+                continue
+            severity = _severity(
+                project, [piece.element.id, beam.id], ConstraintKind.NO_OVERLAP, "soft"
+            )
+            if severity is None:
+                continue
+            out.append(
+                Violation(
+                    type="brace_collision",
+                    severity=severity,
+                    element_ids=[piece.element.id, beam.id],
+                    message=(
+                        f"{piece.label} heurte « {beam.name or 'bois incliné'} » (passage sous "
+                        f"le bois : {_metres(passage(beam))} m au milieu) : à décaler."
+                    ),
+                )
+            )
+    rooms = _room_polygons(level, graph)
+    doors = [
+        e
+        for e in level.elements.values()
+        if isinstance(e, Opening) and e.kind in DOOR_KINDS and e.visible
+    ]
+    for beam, low in brace_obstacles(level):
+        for door in doors:
+            entries = [
+                p
+                for room in rooms.values()
+                for p in (_door_entry(graph, door, room),)
+                if p is not None
+            ]
+            zone = door_zone(graph, door, rooms)
+            near = unary_union([p.buffer(PASSAGE_WIDTH_M / 2.0) for p in entries])
+            blocked = (zone is not None and _overlap_area(low, zone) > OVERLAP_EPS_M2) or (
+                not near.is_empty and low.intersects(near)
+            )
+            if not blocked:
+                continue
+            out.append(
+                Violation(
+                    type="brace_blocks_door",
+                    severity="medium",
+                    element_ids=[beam.id, door.id],
+                    message=(
+                        f"« {beam.name or 'bois incliné'} » passe à moins de "
+                        f"{_metres(OBSTACLE_HEIGHT_M)} m devant une porte : le passage est gêné."
                     ),
                 )
             )
@@ -1087,6 +1170,7 @@ def _check_passages(
         for z in (radiator_zone(graph, e, rooms),)
         if z is not None
     ]
+    braces = [low for _beam, low in brace_obstacles(level)]
     for room_id, polygon in rooms.items():
         room = level.elements[room_id]
         assert isinstance(room, Room)
@@ -1102,7 +1186,8 @@ def _check_passages(
         ]
         if not entries:
             continue
-        blockers = unary_union([p.polygon for p in inside] + radiators)
+        # KAN-161 : la partie basse d'un bois incliné barre le passage comme un meuble.
+        blockers = unary_union([p.polygon for p in inside] + radiators + braces)
         free = polygon.difference(blockers).buffer(-PASSAGE_WIDTH_M / 2.0 + 0.01)
         components = (
             list(free.geoms)
